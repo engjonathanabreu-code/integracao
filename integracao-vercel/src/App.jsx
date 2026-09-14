@@ -1,3 +1,4 @@
+import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
@@ -9910,36 +9911,18 @@ function diasDoPeriodo(ini, fim) {
   for (let d = new Date(inicio); d <= ultimo; d.setDate(d.getDate() + 1)) lista.push(new Date(d));
   return lista;
 }
-function itensDoCalendario(db, usuario) {
+function itensDoCalendario(db, usuario, filtros = {}) {
   const perm = permissoes(usuario);
   const itens = [];
   (db.eventos || []).forEach((e) => {
     const chave = `evento:${e.id}`;
-    if (estaOculto(usuario, chave)) return;
+    if (estaOculto(usuario, chave) || !eventoDoFiltro(e, db, filtros)) return;
     if (!e.publico && !(e.participantes || []).includes(usuario.id) && e.criadoPor !== usuario.id && !perm.diretor && !naMinhaAgenda(usuario, chave)) return;
     ocorrenciasDoEvento(e).forEach((dia) => {
       itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: soData(e.inicio) === dia || e.recorrencia !== "nenhuma" ? hhmm(e.inicio) : "", titulo: e.titulo, cor: e.cor, cancelado: e.status === "cancelado" });
     });
   });
-  const hojeISO = new Date().toISOString().slice(0, 10);
-  (db.metas || []).forEach((m) => {
-    const chave = `meta:${m.id}`;
-    if (["Concluído", "Cancelado"].includes(m.status) || estaOculto(usuario, chave)) return;
-    if (!gerenciaMetas(usuario) && !respMeta(m, usuario) && !naMinhaAgenda(usuario, chave)) return;
-    const atrasada = m.prazo && m.prazo < hojeISO;
-    const dia = m.prazo || m.semana_inicio;
-    if (!dia) return;
-    itens.push({ tipo: "meta", id: `mt_${m.id}`, chave, meta: m, dia, titulo: `${atrasada ? "Atrasada" : "Meta"}: ${m.titulo}`, cor: atrasada ? "#B63A3A" : "#B87912", atrasada });
-  });
-  (db.planos || []).forEach((p) => (p.etapas || []).forEach((e) => {
-    const chave = `plano:${e.id}`;
-    if (e.status === "Concluída" || estaOculto(usuario, chave)) return;
-    if (!(e.responsaveis || []).length) return;
-    if (!permissoes(usuario).diretor && !(e.responsaveis || []).includes(usuario.id) && !naMinhaAgenda(usuario, chave)) return;
-    const dia = e.prazo || e.inicio;
-    if (!dia) return;
-    itens.push({ tipo: "plano", id: `pl_${e.id}`, chave, plano: p, etapa: e, dia, titulo: `${p.titulo}: ${e.titulo}`, cor: e.prazo && e.prazo < hojeISO ? "#B63A3A" : "#2563B8", atrasada: e.prazo && e.prazo < hojeISO });
-  }));
+  itens.push(...prazosDoCalendario(db, filtros).filter(i => !estaOculto(usuario, i.chave)));
   return itens;
 }
 
@@ -10027,6 +10010,8 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
 }
 
 function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [filtroSetor, setFiltroSetor] = useState("");
   const agora = new Date();
   const [visao, setVisao] = useState("mes");
   const [ref, setRef] = useState({ ano: agora.getFullYear(), mes: agora.getMonth(), dia: agora.getDate() });
@@ -10040,7 +10025,9 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const alternarAgenda = (chave) => mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); const lista = u.agendaPessoal || []; u.agendaPessoal = lista.includes(chave) ? lista.filter((x) => x !== chave) : [...lista, chave]; return d; }, "Agenda pessoal alterada", { detalhe: chave });
   const ocultar = (chave, titulo) => { mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); u.calendarioOculto = [...(u.calendarioOculto || []), chave]; return d; }, "Item ocultado do calendário", { detalhe: titulo }); setToast("Item ocultado do seu calendário."); };
   const mostrar = (chave) => mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); u.calendarioOculto = (u.calendarioOculto || []).filter((x) => x !== chave); return d; }, "Item voltou ao calendário", { detalhe: chave });
-  const todos = itensDoCalendario(db, usuario).filter((i) => !(i.tipo === "evento" && agendasOcultas.includes(i.evento.agendaId)));
+  const todos = itensDoCalendario(db, usuario, {usuarioId: filtroUsuario, setor: filtroSetor}).filter((i) => !(i.tipo === "evento" && agendasOcultas.includes(i.evento.agendaId)));
+  const setoresFiltro = [...new Set([...(db.usuarios || []).map(u => setorCalendario(u.setor)), ...(db.metas || []).map(m => setorCalendario(m.setor))])].filter(Boolean).sort();
+  const rotuloSetor = valor => SETORES[valor]?.nome || (db.metas || []).find(m => setorCalendario(m.setor) === valor)?.setor || valor;
   const periodo = periodoDaVisao(visao, ref);
   const dias = diasDoPeriodo(periodo.ini, periodo.fim);
   const noPeriodo = (d) => d >= periodo.ini && d <= periodo.fim;
@@ -10058,9 +10045,9 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const hoje = agora.toISOString().slice(0, 10);
   const doDia = todos.filter((i) => i.dia === dia).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
   const mudarPeriodo = (n) => {
-    if (visao === "mes" || visao === "trimestre") { const passo = visao === "mes" ? 1 : 3; const d = new Date(ref.ano, ref.mes + n * passo, 1); setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: 1 }); return; }
+    if (visao === "mes" || visao === "trimestre") { const passo = visao === "mes" ? 1 : 3; const d = new Date(ref.ano, ref.mes + n * passo, 1); setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: 1 }); setDia(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`); return; }
     const d = new Date(periodo.ini); d.setDate(d.getDate() + n * (visao === "dia" ? 1 : visao === "semana" ? 7 : 14));
-    setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: d.getDate() });
+    setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: d.getDate() }); setDia(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
   };
   const abrirItem = (i) => {
     if (i.tipo === "evento") setEvento(i.evento);
@@ -10079,7 +10066,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         <button className="btn btn-sm" onClick={() => mudarPeriodo(1)} aria-label="Próximo período"><ChevronRight size={16} /></button>
         <button className="btn btn-sm" onClick={() => { setRef({ ano: agora.getFullYear(), mes: agora.getMonth(), dia: agora.getDate() }); setDia(hoje); }}>Hoje</button>
         <span className="flex gap-1" role="group" aria-label="Visualização">
-          {VISOES_CAL.map(([v, t]) => <button key={v} className={`btn btn-sm${visao === v ? " btn-primario" : ""}`} onClick={() => { setVisao(v); setRef({ ano: agora.getFullYear(), mes: new Date(dia + "T12:00:00").getMonth(), dia: new Date(dia + "T12:00:00").getDate() }); }}>{t}</button>)}
+          {VISOES_CAL.map(([v, t]) => <button key={v} className={`btn btn-sm${visao === v ? " btn-primario" : ""}`} onClick={() => { setVisao(v); setRef({ ano: new Date(dia + "T12:00:00").getFullYear(), mes: new Date(dia + "T12:00:00").getMonth(), dia: new Date(dia + "T12:00:00").getDate() }); }}>{t}</button>)}
         </span>
         <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
           {(db.agendas || []).map((a) => (
@@ -10087,6 +10074,13 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
           ))}
         </span>
       </div>
+      <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}>
+        <div><label className="rot" htmlFor="cal-setor">Setor</label><select id="cal-setor" className="inp" value={filtroSetor} onChange={(e) => { setFiltroSetor(e.target.value); setFiltroUsuario(""); }}><option value="">Todos os setores</option>{setoresFiltro.map(setor => <option key={setor} value={setor}>{rotuloSetor(setor)}</option>)}</select></div>
+        <div><label className="rot" htmlFor="cal-usuario">Usuário / agente</label><select id="cal-usuario" className="inp" value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)}><option value="">{filtroSetor ? "Todo o setor" : "Todos os usuários"}</option>{(db.usuarios || []).filter(u => !filtroSetor || setorCalendario(u.setor) === filtroSetor).map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}</select></div>
+        <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(usuario.id); }}>Minhas metas e etapas</button>
+        {(filtroSetor || filtroUsuario) && <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(""); }}>Limpar filtros</button>}
+      </div>
+      <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
       <div className="layout-calendario">
         {colunasHora ? (
           <div className="card agenda-horas" style={{ padding: 10 }}>
@@ -10113,7 +10107,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 return (
                   <span key={iso} className="celula-prazo">
                     {todos.filter((i) => i.dia === iso && i.tipo !== "evento").map((i) => (
-                      <button key={i.id} className="chip-prazo" style={{ background: i.cor }} onClick={() => abrirItem(i)} title={i.titulo}>{i.titulo}</button>
+                      <button key={i.id} className="chip-prazo" style={{ background: i.cor }} onClick={() => abrirItem(i)} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</button>
                     ))}
                   </span>
                 );
@@ -10142,7 +10136,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                       const topo = ((ini - HORA_INICIO * 60) / 60) * 52;
                       const altura = Math.max(24, ((fim - ini) / 60) * 52);
                       return (
-                        <button key={i.id} className="bloco-evento" style={{ top: topo, height: altura, background: i.cor, opacity: i.cancelado ? 0.5 : 1 }} onClick={(ev) => { ev.stopPropagation(); abrirItem(i); }} title={i.titulo}>
+                        <button key={i.id} className="bloco-evento" style={{ top: topo, height: altura, background: i.cor, opacity: i.cancelado ? 0.5 : 1 }} onClick={(ev) => { ev.stopPropagation(); abrirItem(i); }} title={rotuloPrazo(i)}>
                           <strong>{i.hora}</strong> {i.titulo}
                         </button>
                       );
@@ -10167,7 +10161,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
                   title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length} itens`}>
                   <span className="numero-dia">{d.getDate()}</span>
-                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} className="risco-evento" style={{ background: i.cor, opacity: i.cancelado ? 0.4 : 1 }} title={i.titulo} />)}
+                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} style={{ display: "block", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, textAlign: "left", padding: "2px 3px", borderRadius: 3, background: i.cor, color: "white", opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
                   {itens.length > (visao === "trimestre" ? 2 : 3) && <span className="ajuda" style={{ margin: 0, fontSize: 10 }}>+{itens.length - (visao === "trimestre" ? 2 : 3)}</span>}
                 </button>
               );

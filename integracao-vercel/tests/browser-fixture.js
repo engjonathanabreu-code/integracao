@@ -1,6 +1,16 @@
 // Development-only harness. Never included in the production entry point.
-import {fixture} from './fixture.js';
+import {fixture,id} from './fixture.js';
 const base=fixture();base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
+if(new URLSearchParams(location.search).has('calendario')) {
+  const hoje=new Date().toISOString().slice(0,10);
+  base.profiles.push({id:id(70),nome:'Ana Topografia',tipo:'Topografia',ativo:true},{id:id(71),nome:'Bia Projetos',tipo:'Projetos',ativo:true});
+  base.meta_setores.push({id:id(72),nome:'Projetos',ativo:true});
+  base.metas[0].prazo=hoje;base.metas[0].titulo='Meta ativa da Ana';base.meta_responsaveis=[{meta_id:id(7),usuario_id:id(70)}];
+  base.metas.push({...base.metas[0],id:id(73),titulo:'Meta ativa da Bia',setor_id:id(72)},{...base.metas[0],id:id(74),titulo:'Meta concluída invisível',status:'Concluído'});
+  base.meta_responsaveis.push({meta_id:id(73),usuario_id:id(71)});
+  base.etapas_plano[0].status='Em andamento';base.etapas_plano[0].prazo=hoje;base.etapas_plano[0].titulo='Etapa em andamento da Ana';base.etapa_responsaveis=[{etapa_id:id(9),usuario_id:id(70)}];
+  base.etapas_plano.push({...base.etapas_plano[0],id:id(75),titulo:'Etapa concluída invisível',status:'Concluída'});
+}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
