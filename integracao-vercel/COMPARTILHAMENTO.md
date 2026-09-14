@@ -35,4 +35,6 @@ Os testes SQL verificam edição, concorrência, atomicidade, repetição sem du
 
 ## Publicação
 
+No calendário, `integracao_eventos()` limita no servidor a leitura dos eventos: administradores e diretores recebem todos; os demais recebem somente eventos próprios, convites e reservas de agendas compartilhadas. Metas e etapas são filtradas pelos responsáveis na visualização pessoal. A função privada aplica a regra específica do Integração sem substituir as políticas usadas pelas outras telas do ERP. A migração `20260914145805_permissoes_agendas_integracao.sql` também autoriza administradores e diretores a editar apenas nome e cor das agendas existentes. `tests/agendas-rls.sql` verifica essas permissões com ROLLBACK.
+
 Na Vercel, a pasta raiz do projeto é `integracao-vercel`, o comando de compilação é `npm run build` e a saída é `dist`. O projeto continua ligado ao repositório existente.

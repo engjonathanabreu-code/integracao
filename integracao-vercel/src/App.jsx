@@ -1,4 +1,4 @@
-import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo} from './calendario-prazos.js';
+import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
@@ -9916,13 +9916,13 @@ function itensDoCalendario(db, usuario, filtros = {}) {
   const itens = [];
   (db.eventos || []).forEach((e) => {
     const chave = `evento:${e.id}`;
-    if (estaOculto(usuario, chave) || !eventoDoFiltro(e, db, filtros)) return;
-    if (!e.publico && !(e.participantes || []).includes(usuario.id) && e.criadoPor !== usuario.id && !perm.diretor && !naMinhaAgenda(usuario, chave)) return;
+    if (estaOculto(usuario, chave) || !podeVerEventoCalendario(e, db, usuario) || (gestaoCalendario(usuario) && !eventoDoFiltro(e, db, filtros))) return;
+
     ocorrenciasDoEvento(e).forEach((dia) => {
-      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: soData(e.inicio) === dia || e.recorrencia !== "nenhuma" ? hhmm(e.inicio) : "", titulo: e.titulo, cor: e.cor, cancelado: e.status === "cancelado" });
+      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: soData(e.inicio) === dia || e.recorrencia !== "nenhuma" ? hhmm(e.inicio) : "", titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
     });
   });
-  itens.push(...prazosDoCalendario(db, filtros).filter(i => !estaOculto(usuario, i.chave)));
+  itens.push(...prazosDoCalendario(db, {...filtros, ator: usuario}).filter(i => !estaOculto(usuario, i.chave)));
   return itens;
 }
 
@@ -10009,9 +10009,21 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
   );
 }
 
+function ModalEditarAgenda({ agenda, onFechar, onSalvar }) {
+  const [nome, setNome] = useState(agenda.nome);
+  const [cor, setCor] = useState(agenda.cor);
+  const valido = nome.trim().length > 0 && nome.trim().length <= 120 && /^#[0-9a-f]{6}$/i.test(cor);
+  return <Modal titulo="Editar agenda" onFechar={onFechar} rodape={<><button className="btn" onClick={onFechar}>Cancelar</button><button className="btn btn-primario" disabled={!valido} onClick={() => onSalvar({nome: nome.trim(), cor})}>Salvar agenda</button></>}>
+    <label className="rot" htmlFor="agenda-nome">Nome da agenda</label><input id="agenda-nome" className="inp" maxLength={120} value={nome} onChange={e => setNome(e.target.value)} />
+    <label className="rot" htmlFor="agenda-cor">Cor da agenda</label><div className="flex items-center gap-2"><input id="agenda-cor" type="color" value={/^#[0-9a-f]{6}$/i.test(cor) ? cor : '#2563b8'} onChange={e => setCor(e.target.value)} /><input aria-label="Código da cor" className="inp" maxLength={7} value={cor} onChange={e => setCor(e.target.value)} /></div>
+  </Modal>;
+}
+
 function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
+  const [agendaEditando, setAgendaEditando] = useState(null);
+  const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
   const [visao, setVisao] = useState("mes");
   const [ref, setRef] = useState({ ano: agora.getFullYear(), mes: agora.getMonth(), dia: agora.getDate() });
@@ -10070,16 +10082,17 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         </span>
         <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
           {(db.agendas || []).map((a) => (
-            <button key={a.id} className={`btn btn-sm${agendasOcultas.includes(a.id) ? "" : " btn-primario"}`} style={agendasOcultas.includes(a.id) ? {} : { background: a.cor, borderColor: a.cor }} onClick={() => setAgendasOcultas((o) => (o.includes(a.id) ? o.filter((x) => x !== a.id) : [...o, a.id]))} aria-pressed={!agendasOcultas.includes(a.id)}>{a.nome}</button>
+            <span key={a.id} className="flex items-center gap-1"><button className={`btn btn-sm${agendasOcultas.includes(a.id) ? "" : " btn-primario"}`} style={agendasOcultas.includes(a.id) ? {} : { background: a.cor, borderColor: a.cor }} onClick={() => setAgendasOcultas((o) => (o.includes(a.id) ? o.filter((x) => x !== a.id) : [...o, a.id]))} aria-pressed={!agendasOcultas.includes(a.id)}>{a.nome}</button>{podeGerenciar && <button className="btn-icone" aria-label={`Editar agenda ${a.nome}`} title={`Editar agenda ${a.nome}`} onClick={() => setAgendaEditando(a)}><Pencil size={14} /></button>}</span>
           ))}
         </span>
       </div>
-      <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}>
+      {podeGerenciar ? <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}>
         <div><label className="rot" htmlFor="cal-setor">Setor</label><select id="cal-setor" className="inp" value={filtroSetor} onChange={(e) => { setFiltroSetor(e.target.value); setFiltroUsuario(""); }}><option value="">Todos os setores</option>{setoresFiltro.map(setor => <option key={setor} value={setor}>{rotuloSetor(setor)}</option>)}</select></div>
         <div><label className="rot" htmlFor="cal-usuario">Usuário / agente</label><select id="cal-usuario" className="inp" value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)}><option value="">{filtroSetor ? "Todo o setor" : "Todos os usuários"}</option>{(db.usuarios || []).filter(u => !filtroSetor || setorCalendario(u.setor) === filtroSetor).map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}</select></div>
         <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(usuario.id); }}>Minhas metas e etapas</button>
         {(filtroSetor || filtroUsuario) && <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(""); }}>Limpar filtros</button>}
       </div>
+      : <p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p>}
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
       <div className="layout-calendario">
         {colunasHora ? (
@@ -10193,6 +10206,10 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
           ))}
         </Secao>
       </div>
+      {agendaEditando && podeGerenciar && <ModalEditarAgenda key={agendaEditando.id} agenda={agendaEditando} onFechar={() => setAgendaEditando(null)} onSalvar={(dados) => {
+        mutar(d => { Object.assign(d.agendas.find(a => a.id === agendaEditando.id), dados); return d; }, "Agenda editada", {detalhe: dados.nome});
+        setAgendaEditando(null); setToast("Agenda atualizada. Acompanhe a confirmação de gravação.");
+      }} />}
       {evento && <ModalEvento db={db} usuario={usuario} inicial={evento === "novo" ? null : evento} diaPadrao={dia} mutar={mutar} setToast={setToast} onFechar={() => setEvento(null)} />}
       {novoEm && <ModalEvento key={`${novoEm.dia}_${novoEm.hora}`} db={db} usuario={usuario} inicial={null} diaPadrao={novoEm.dia} horaPadrao={novoEm.hora} mutar={mutar} setToast={setToast} onFechar={() => setNovoEm(null)} />}
       {verOcultos && (

@@ -37,7 +37,8 @@ export async function lerBase() {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
-      const page = await requisicao(`${table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`);
+      const path = `${table==='erp_eventos'?'rpc/integracao_eventos':table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`;
+      const page = await requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:{});
       rows.push(...page); if (page.length < 500) break;
     }
     return [table, rows];
@@ -84,7 +85,7 @@ export function projetar(base, local) {
     const extension = extra.get(`${collection}:${view.id}`);
     const saved=unirCampos(existing||{},extension?.dados||{});
     const value = { ...saved, ...view };
-    const canonical=new Set(['id','erpId','erpRef','financeiroRef','origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
+    const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP','origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
     for(const [field,v] of Object.entries(extension?.dados||{}))if(!canonical.has(field))value[field]=copy(v);
     const ownFields={usuarios:['tema','agendaPessoal','calendarioOculto','online','ultimaAtividade'],nucleos:['remessaId','etapa','campos','checks','criterio','codigo'],processos:['nucleoId','etapa','motivoSituacao','conjuge','endereco','imovel','social','extras','docs','checks','campos','campo','unidades'],planos:['municipioId','municipioNome','uf','remessaId'],conversas:['lidaPor']};
     for(const field of ownFields[collection]||[]) if(saved[field]!==undefined) value[field]=saved[field];
@@ -204,7 +205,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
       Object.assign(changes,{municipio:m.nome,estado:m.uf});Object.assign(expected,{municipio:b.row.municipio,estado:b.row.estado});
     }
     if(Object.keys(changes).length) {
-      if(b.table==='erp_agendas') ops.push({action:'agenda_atualizar',payload:{id:b.row.id,nome:next.nome,cor:next.cor},expected:{nome:b.row.nome,cor:b.row.cor},table:b.table,key:b.key});
+      if(b.table==='erp_agendas') ops.push({table:b.table,key:b.key,expected,changes});
       else if(b.table==='erp_eventos') {
         const rest={...changes};
         if('status' in rest && rest.status!=='ativo') { ops.push({action:'evento_status',payload:{id:b.row.id,status:rest.status},expected:{status:expected.status},table:b.table,key:b.key}); delete rest.status; }

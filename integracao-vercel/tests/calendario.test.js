@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prazosDoCalendario,eventoDoFiltro,rotuloPrazo} from '../src/calendario-prazos.js';
+import {prazosDoCalendario,eventoDoFiltro,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from '../src/calendario-prazos.js';
 const db={usuarios:[{id:'ana',nome:'Ana',setor:'topografia'},{id:'bia',nome:'Bia',setor:'projeto'}],metas:[
  {id:'ativa',titulo:'Levantamento',status:'Em andamento',prazo:'2026-09-14',setor:'Topografia',responsaveis:['ana']},
  {id:'aprovacao',titulo:'Revisão',status:'Aguardando aprovação',prazo:'2026-10-02',setor:'Projetos',responsaveis:['bia']},
@@ -30,4 +30,17 @@ test('deadlines keep their original dates for period navigation and overdue item
 test('calendar filters also select event participants without changing event data',()=>{
  const event={participantes:['ana'],criadoPor:'bia'};assert(eventoDoFiltro(event,db,{setor:'Projetos'}));assert(!eventoDoFiltro(event,db,{usuarioId:'outro'}));
  const original=structuredClone(db);prazosDoCalendario(db,{usuarioId:'ana'});assert.deepEqual(db,original);
+});
+test('ordinary users cannot select another agent or the entire sector, including saved calendar items',()=>{
+ const ator={id:'ana',tipoERP:'Topografia',setor:'diretoria',agendaPessoal:['meta:aprovacao']};
+ assert.equal(gestaoCalendario(ator),false);
+ assert.deepEqual(prazosDoCalendario(db,{ator,usuarioId:'bia',setor:'Projetos'}).map(i=>i.id),['mt_ativa','pl_et']);
+});
+test('admins and directors can select any calendar but ordinary users only see own and shared events',()=>{
+ const base={...db,agendas:[{id:'sala'}]},ator={id:'ana',tipoERP:'Topografia'};
+ assert(podeVerEventoCalendario({agendaId:'sala',criadoPor:'bia'},base,ator));
+ assert(podeVerEventoCalendario({criadoPor:'ana'},base,ator));
+ assert(podeVerEventoCalendario({participantes:['ana'],criadoPor:'bia'},base,ator));
+ assert(!podeVerEventoCalendario({publico:true,criadoPor:'bia'},base,ator));
+ for(const tipoERP of ['Administrador','Diretor Técnico','Diretor de Projetos'])assert(podeVerEventoCalendario({criadoPor:'bia'},base,{id:'diretor',tipoERP}));
 });

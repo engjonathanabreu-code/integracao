@@ -11,6 +11,12 @@ if(new URLSearchParams(location.search).has('calendario')) {
   base.etapas_plano[0].status='Em andamento';base.etapas_plano[0].prazo=hoje;base.etapas_plano[0].titulo='Etapa em andamento da Ana';base.etapa_responsaveis=[{etapa_id:id(9),usuario_id:id(70)}];
   base.etapas_plano.push({...base.etapas_plano[0],id:id(75),titulo:'Etapa concluída invisível',status:'Concluída'});
 }
+if(new URLSearchParams(location.search).has('calendario')) {
+ const hoje=new Date().toISOString().slice(0,10);
+ base.erp_agendas=[{id:id(81),nome:'Sala de reuniões',cor:'#2563b8'},{id:id(82),nome:'Carro',cor:'#198754'}];
+ const evento={inicio:hoje+'T13:00:00-03:00',fim:hoje+'T14:00:00-03:00',status:'ativo',publico:true,cor:'#2563b8',participantes:[],created_by:id(71)};
+ base.erp_eventos=[{...evento,id:id(83),titulo:'Reserva compartilhada',agenda_id:id(81)},{...evento,id:id(84),titulo:'Compromisso pessoal da Bia'},{...evento,id:id(85),titulo:'Compromisso pessoal da Ana',participantes:[id(70)]}];
+}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
@@ -19,7 +25,7 @@ window.fetch=async(input,options={})=>{
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
-  if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:base.profiles[0].id}});
+  if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});
   if(url.pathname.includes('/storage/v1/object/')) {
     const path=url.pathname.split('/integracao/')[1];
     if(options.method==='POST'){objects.set(path,new TextDecoder().decode(options.body));return json({});}
@@ -38,7 +44,7 @@ window.fetch=async(input,options={})=>{
     writes++;document.getElementById('diagnostico').textContent=`Gravações: ${writes}; tabelas: ${operacoes.map(o=>o.table).join(', ')}`;
     return json({aliases:{}});
   }
-  const table=url.pathname.split('/').at(-1);
+  const table=url.pathname.endsWith('/rpc/integracao_eventos')?'erp_eventos':url.pathname.split('/').at(-1);
   if(table in base) {
     let rows=base[table];const id=url.searchParams.get('id');if(id?.startsWith('eq.'))rows=rows.filter(r=>r.id===id.slice(3));
     const offset=Number(url.searchParams.get('offset')||0);return json(rows.slice(offset,offset+Number(url.searchParams.get('limit')||500)));

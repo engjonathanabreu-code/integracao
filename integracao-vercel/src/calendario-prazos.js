@@ -2,9 +2,12 @@ const normalizar = value => String(value || '').normalize('NFD').replace(/[\u030
 export const setorCalendario = value => ({atendimentos:'comercial',projetos:'projeto',diretortecnico:'diretoria',diretordeprojetos:'diretoria',administrador:'diretoria'}[normalizar(value)] || normalizar(value));
 const encerrado = status => ['concluido','concluida','cancelado','cancelada','arquivado','arquivada','inativo','inativa'].includes(normalizar(status));
 const dataPrazo = valor => /^\d{4}-\d{2}-\d{2}/.test(valor || '') ? valor.slice(0,10) : '';
+export const gestaoCalendario = usuario => usuario?.tipoERP ? ['administrador','diretortecnico','diretordeprojetos','diretordeprojeto'].includes(normalizar(usuario.tipoERP)) : usuario?.setor === 'diretoria';
+export const podeVerEventoCalendario = (evento,db,usuario) => gestaoCalendario(usuario) || (db.agendas || []).some(a=>a.id===evento.agendaId) || evento.criadoPor===usuario.id || (evento.participantes || []).includes(usuario.id);
 
 // The input is already limited by Supabase RLS. Filters never request another account's session.
-export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().toISOString().slice(0,10)}={}) {
+export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().toISOString().slice(0,10),ator=null}={}) {
+  if(ator && !gestaoCalendario(ator)){usuarioId=ator.id;setor='';}
   const usuarios = new Map((db.usuarios || []).map(u=>[u.id,u]));
   const corresponde = (responsaveis, setorItem) => {
     if(usuarioId && !responsaveis.includes(usuarioId))return false;
