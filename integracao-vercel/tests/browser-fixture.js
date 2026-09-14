@@ -2,6 +2,7 @@
 import {fixture} from './fixture.js';
 const base=fixture();base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
 const original=window.fetch.bind(window);let writes=0;
+const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href);
@@ -9,6 +10,11 @@ window.fetch=async(input,options={})=>{
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:base.profiles[0].id}});
+  if(url.pathname.includes('/storage/v1/object/')) {
+    const path=url.pathname.split('/integracao/')[1];
+    if(options.method==='POST'){objects.set(path,new TextDecoder().decode(options.body));return json({});}
+    return new Response(objects.get(path)||'');
+  }
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
@@ -30,3 +36,6 @@ window.fetch=async(input,options={})=>{
   return json({message:`Consulta inesperada no teste: ${url.pathname}`},500);
 };
 await import('../src/main.jsx');
+const {agendarArquivo}=await import('../src/arquivos-compartilhados.js');
+const assetButton=document.createElement('button');assetButton.textContent='Verificar arquivo isolado';assetButton.style.cssText='position:fixed;bottom:30px;right:0;z-index:99999;background:white;color:black;padding:4px';
+assetButton.onclick=()=>agendarArquivo('integracao-prf-modelo-v4','<p>Modelo fictício de verificação</p>');document.body.append(assetButton);

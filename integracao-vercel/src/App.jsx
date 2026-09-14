@@ -1,3 +1,4 @@
+import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
@@ -251,16 +252,19 @@ const memoriaLocal = new Map();
 const armazenamento = {
   async get(chave) {
     if(chave?.startsWith('erp-storage|'))return lerArquivoERP(chave);
+    const remoto=await obterArquivo(chave);if(remoto!==undefined)return remoto;
     try { if (typeof window !== "undefined" && window.storage) { const r = await window.storage.get(chave, false); if (r && r.value !== undefined) return r.value; } } catch (e) { /* chave inexistente */ }
     return memoriaLocal.has(chave) ? memoriaLocal.get(chave) : null;
   },
   async set(chave, valor) {
     memoriaLocal.set(chave, valor);
     try { if (typeof window !== "undefined" && window.storage) await window.storage.set(chave, valor, false); } catch (e) { console.error("Falha ao salvar", chave, e); throw e; }
+    await agendarArquivo(chave,valor);
   },
   async del(chave) {
     memoriaLocal.delete(chave);
     try { if (typeof window !== "undefined" && window.storage) await window.storage.delete(chave, false); } catch (e) { /* já não existia */ }
+    await agendarArquivo(chave,null);
   },
 };
 async function comprimirImagem(arquivo, max = 1280, qualidade = 0.72) {
@@ -6449,7 +6453,7 @@ function FichaComercialOffline({ db, pk, cliente, usuario, conexao, comercial, m
         {!conexao.online && extras.some((x) => !x.validadoEm) && <p className="ajuda" style={{ marginTop: 8 }}>A validação é feita no escritório, com internet.</p>}
       </Secao>
 
-      <Secao titulo={`Fotos dos documentos (${cliente.fotos.length})`} nota="As fotos ficam só neste aparelho. No escritório, baixe os arquivos, guarde no servidor interno e apague daqui.">
+      <Secao titulo={`Fotos dos documentos (${cliente.fotos.length})`} nota="As fotos ficam disponíveis neste aparelho e são guardadas no Supabase quando há conexão. Acompanhe a confirmação de gravação no topo da tela.">
         <input ref={input} type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => capturar(e.target.files)} />
         <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", marginBottom: 12 }}>
           <div>

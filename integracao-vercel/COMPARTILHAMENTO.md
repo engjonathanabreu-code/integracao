@@ -8,8 +8,10 @@ O Integração consulta as tabelas existentes no projeto Supabase do ERP usando 
 - Núcleos, andamentos, observações e histórico usam `processos_kanban*`.
 - Metas, responsáveis, checklist, comentários, arquivos, ordens de serviço, planos, etapas e entregáveis usam suas tabelas existentes.
 - Agendas, eventos e conversas usam `erp_*`, incluindo as operações já oferecidas pelo ERP para colaboração. Grupos sem vínculo passam a ser permitidos; vínculos de grupos com metas e ordens de serviço ficam no complemento do Integração porque não existem no modelo de vínculos do chat do ERP.
-- Campos exclusivos são gravados em `integracao_complementos`, com referência ao registro original e RLS. Não armazenam cópias das colunas canônicas.
-- Arquivos de metas e documentos de planos são acessados nos caminhos existentes do Storage. Novos anexos de metas usam nomes únicos e upload sem sobrescrita. As fotos de campo continuam locais, como previsto na tela original.
+- Campos exclusivos são gravados nas tabelas `integracao_moradores`, `integracao_nucleos`, `integracao_municipios`, `integracao_remessas`, `integracao_metas`, `integracao_planos`, `integracao_ordens_servico`, `integracao_chat`, `integracao_usuarios`, `integracao_calendario` e `integracao_configuracoes`. O campo JSONB `dados` acomoda campos personalizados e estruturas variáveis, sem exigir uma nova migração a cada campo cadastrado na interface. As referências apontam para os registros canônicos. `integracao_complementos` continua disponível para compatibilidade.
+- `integracao_notificacoes` preserva os avisos e as confirmações de leitura por destinatário. `integracao_auditoria` registra as ações explícitas; não permite atualizar ou excluir o histórico. Entrada, saída e presença não geram gravações.
+- `integracao_arquivos` guarda os metadados de PRF, timbrado, KML, fotos, devolutivas e pacotes de campo. O conteúdo fica no bucket privado `integracao`, em objetos imutáveis. A fila offline é separada por conta, sobrevive ao fechamento e mantém a versão esperada para detectar conflitos. Pacotes não validados continuam sendo rascunhos e não alteram automaticamente os moradores do ERP.
+- Arquivos de metas e documentos de planos mantêm os caminhos existentes do Storage. Novos anexos de metas usam nomes únicos e upload sem sobrescrita. Nenhum arquivo antigo é enviado apenas por abrir o sistema.
 
 `integracao_gravar` recebe apenas alterações explícitas. Confere os valores anteriores dos campos alterados, mantém todo o lote em uma transação e usa um identificador de pedido para evitar duplicação após falhas de rede. As permissões existentes continuam sendo aplicadas no banco. Uma edição sem permissão ou conflitante fica pendente e seu rascunho é preservado.
 
@@ -19,11 +21,13 @@ O navegador guarda uma cópia de trabalho por conta para uso offline. Credenciai
 
 Aplicar uma única vez `supabase/compartilhamento.sql` como migração transacional antes de publicar o frontend. A preparação acrescenta duas colunas opcionais, tabelas auxiliares, políticas e funções. Não faz DML sobre os registros existentes. A própria migração compara contagens e assinaturas de todas as tabelas públicas existentes antes e depois e falha caso detecte alteração nos dados.
 
+A extensão `supabase/migrations/20260914142328_persistencia_completa_integracao.sql` acrescenta 14 tabelas e o armazenamento privado. Ambas as preparações já foram aplicadas ao projeto existente. A extensão também verifica a integridade de todas as tabelas públicas anteriores, sem copiar ou atualizar seus dados.
+
 Nunca executar os testes SQL com COMMIT. `tests/compartilhamento.sql` deve ser executado dentro de `BEGIN` / `ROLLBACK`, depois do esquema em uma base de teste ou na mesma transação de validação. Os perfis usados no teste são selecionados por função; os registros de teste usam UUIDs novos.
 
 ## Verificação
 
-`node --test tests/compartilhamento.test.js` verifica a abertura sem gravações, mudanças de campos específicos, preservação de dados locais, novas entidades, arquivos, comentários por etapa e mesclagem de edições. `npm run build` gera a aplicação.
+`node --test tests/compartilhamento.test.js tests/persistencia.test.js` verifica abertura sem gravações, campos canônicos, campos próprios em um aparelho vazio, histórico, notificações, arquivos imutáveis, fila offline e edições durante upload. `tests/persistencia-rls.sql` valida gravações, conflitos, idempotência e permissões dentro de uma transação encerrada com ROLLBACK. `npm run build` gera a aplicação.
 
 `tests/browser.html`, servido somente no desenvolvimento, usa dados fictícios e bloqueia solicitações externas. Permite conferir o contador de gravações na entrada e após uma edição real pela interface. Esse simulador não faz parte do pacote de produção.
 

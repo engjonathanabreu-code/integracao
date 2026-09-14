@@ -10,7 +10,7 @@ test('login presence flags do not create writes',()=>{
 });
 test('creating a record writes shared columns once and links only its extra fields',()=>{
   const {s,actor}=setup(),n=copy(s.db);n.metas.push({...copy(n.metas[0]),id:id(40),titulo:'Nova',erpId:null,campoExclusivo:'Detalhe',checklist:[],responsaveis:[],historico:[]});
-  const ops=prepararEdicao(s.db,n,s,actor),meta=ops.find(o=>o.table==='metas'&&o.insert),extra=ops.find(o=>o.table==='integracao_complementos');
+  const ops=prepararEdicao(s.db,n,s,actor),meta=ops.find(o=>o.table==='metas'&&o.insert),extra=ops.find(o=>o.table==='integracao_metas');
   assert.equal(meta.changes.titulo,'Nova');assert.equal(extra.changes.referencia_tabela,'metas');assert.equal(extra.changes.referencia_id,id(40));assert.equal(extra.changes.dados.titulo,undefined);assert.equal(extra.changes.dados.campoExclusivo,'Detalhe');
 });
 test('financial conditions read in place and update just the edited amount',()=>{

@@ -1,3 +1,4 @@
+import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {temSessao,definirSessao,lerBase,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
@@ -26,21 +27,25 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
         const before=copy(server.current.db),after=copy(current.current);
         const operations=prepararEdicao(before,after,server.current,who);
         const files=await prepararArquivos(before,after,storage,who);
-        attempt.current={before,after,operations:[...operations,...files],id:crypto.randomUUID()};
+        if(gen!==generation.current)return;
+        const assets=await prepararArmazenamento(server.current,after);
+        if(gen!==generation.current)return;
+        attempt.current={before,after,operations:[...operations,...files,...assets.operations],sent:assets.sent,id:crypto.randomUUID()};
         await saveDraft();
       }
-      const {after,operations,id}=attempt.current;
+      const {after,operations,id,sent}=attempt.current;
       const result=await gravarOperacoes(operations,id);
       if(gen!==generation.current) return;
       const aliases=result.aliases||{};
       const saved=remap(after,aliases), latest=remap(current.current,aliases);
       const base=await lerBase();
       if(gen!==generation.current) return;
+      await confirmarArquivos(sent,base);
       const state=projetar(base,saved);
       server.current=state;
       attempt.current=null;
       publish(mesclarEdicoes(saved,latest,state.db));
-      pending.current=JSON.stringify(current.current)!==JSON.stringify(state.db);
+      pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(state.db);
       setStatus(pending.current?'Salvando próximas alterações…':'Dados compartilhados no Supabase');
       await saveDraft();
       if(pending.current) timer.current=setTimeout(flush,500);
@@ -56,11 +61,13 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     attempt.current=draft?.attempt||null;
     if(!temSessao()) {
       if(!draft?.base) throw new Error('Entre conectado uma vez para disponibilizar os dados desta conta neste aparelho.');
+      await abrirArquivos(user,draft.base,storage);
       server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);pending.current=!!draft.pending;
       setStatus('Modo offline. Entre novamente conectado para enviar as alterações.');
       return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
     }
     const base=await lerBase();
+    await abrirArquivos(user,base,storage);
     if(legacy && !(await storage.get('integracao-antes-compartilhamento'))) await storage.set('integracao-antes-compartilhamento',JSON.stringify(legacy));
     const legacyOwner=await storage.get('integracao-dono-base-local');
     if(!legacyOwner)await storage.set('integracao-dono-base-local',user.erpRef);
@@ -73,7 +80,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       server.current={...prior,db:draft.baseline};publish(draft.db);pending.current=true;
       setStatus('Há alterações locais aguardando revisão ou envio.');
     } else {server.current=state;publish(state.db);pending.current=false;setStatus('Dados compartilhados no Supabase');}
+    pending.current=pending.current||arquivosPendentes();
     await saveDraft();
+    if(pending.current)timer.current=setTimeout(flush,700);
     return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
   };
   const mutate=(fn,entry)=>{
@@ -86,10 +95,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const refresh=async()=>{
     if(!actor.current||busy.current||pending.current||!temSessao()||!navigator.onLine)return;
     busy.current=true;const gen=generation.current;
-    try {const base=await lerBase();if(gen!==generation.current||pending.current)return;const state=projetar(base,current.current);server.current=state;publish(state.db);setStatus('Dados compartilhados no Supabase');setError('');}
+    try {const base=await lerBase();if(gen!==generation.current||pending.current)return;await abrirArquivos(actor.current,base,storage);const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');}
     catch(e){setError(e.message);} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
   };
-  const close=()=>{saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
+  const close=()=>{saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
     if(busy.current)return;
     try {
@@ -104,8 +113,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   useEffect(()=>{
     const tick=setInterval(refresh,30000);
     const online=()=>{if(pending.current)flush();else refresh();};
+    const filePending=()=>{if(!actor.current)return;pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,700);};
+    window.addEventListener('integracao:arquivo-pendente',filePending);
     window.addEventListener('online',online);window.addEventListener('focus',refresh);
-    return()=>{clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('online',online);window.removeEventListener('focus',refresh);};
+    return()=>{clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',refresh);};
   },[]);
   return {open,mutate,close,flush,refresh,reopen,status,error,ready:()=>!!server.current};
 }

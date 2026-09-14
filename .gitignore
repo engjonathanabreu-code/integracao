@@ -4,4 +4,5 @@ dist/
 .env
 .env.*
 !.env.example
-tests/generated-operations.json
+integracao-vercel/tests/generated-operations.json
+integracao-vercel/supabase/.temp/

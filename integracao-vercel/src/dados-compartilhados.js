@@ -1,3 +1,4 @@
+import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
 // Canonical ERP rows are read in place. Only explicit user edits produce writes.
 // Tokens stay in memory; local storage contains drafts, never credentials.
 export const configERP = {
@@ -32,11 +33,11 @@ export async function lerTabela(tabela, campos = '*', filtro = '') {
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
 export async function lerBase() {
-  const pairs = await Promise.all([...TABLES,'meta_arquivos','erp_exclusoes_chat','documentos'].map(async table => {
+  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].map(async table => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
-      const page = await requisicao(`${table}?select=${fields}&order=${compositeOrder[table] || 'id'}&limit=500&offset=${offset}`);
+      const page = await requisicao(`${table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`);
       rows.push(...page); if (page.length < 500) break;
     }
     return [table, rows];
@@ -58,10 +59,12 @@ const uuid = id => /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id || '')
 const fieldValue=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value);
 const decimal=v=>Number(typeof v==='string' && v.includes(',')?v.replace(/\./g,'').replace(',','.'):v||0);
 const group = (rows, key, id) => (rows || []).filter(r => r[key] === id);
+const nestedFields={nucleos:['andamentos','observacoes','historicoEtapas'],metas:['responsaveis','checklist','comentarios','historico','arquivos','associacao_tipo','associacao_id'],planos:['etapas','comentarios','documentos'],etapas:['responsaveis','entregaveis','comentarios'],ordensServico:['comentarios'],eventos:['respostas','participantes','entidade','agendaId','serieERP'],conversas:['mensagens','participantes','entidade','criadoPor','exclusaoSolicitada']};
 const sectors = { Administrador:'diretoria', 'Diretor Técnico':'diretoria', 'Diretor de Projetos':'diretoria', Comercial:'comercial', Atendimentos:'comercial', Topografia:'topografia', Projetos:'projeto', 'Pós-protocolo':'posprotocolo', 'Jurídico':'juridico' };
 
 // Metadata is kept separately from each rendered entity, so it never becomes app data.
 export function projetar(base, local) {
+  base={...base,integracao_complementos:reunirComplementos(base)};
   const aliases=Object.fromEntries((local.usuarios||[]).filter(u=>uuid(u.erpRef)).map(u=>[u.id,userId(u.erpRef)]));
   const relink=value=>{
     if(typeof value==='string')return aliases[value]||value;
@@ -70,6 +73,7 @@ export function projetar(base, local) {
     return value;
   };
   const db = relink(copy(local)), bindings = [];
+  for(const c of ['auditoria','notificacoes','regrasIA','tiposDocumento','advogados','camposComercial'])if(Array.isArray(db[c]))db[c]=db[c].filter(r=>!r._compartilhado);
   const names = Object.fromEntries(base.profiles.map(p => [p.id,p.nome]));
   const extra = new Map(base.integracao_complementos.map(r => [`${r.colecao}:${r.registro_id}`,r]));
   const bind = (collection, row, view, map, table, parent = null) => {
@@ -78,8 +82,10 @@ export function projetar(base, local) {
     const existing = (siblings || []).find(x => x.id === view.id || x.erpId === row.id || x.erpRef === row.id || x.externo?.kanbanId === row.id);
     if (existing) view.id = existing.id;
     const extension = extra.get(`${collection}:${view.id}`);
-    const saved={...existing,...(extension?.dados || {})};
+    const saved=unirCampos(existing||{},extension?.dados||{});
     const value = { ...saved, ...view };
+    const canonical=new Set(['id','erpId','erpRef','financeiroRef','origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
+    for(const [field,v] of Object.entries(extension?.dados||{}))if(!canonical.has(field))value[field]=copy(v);
     const ownFields={usuarios:['tema','agendaPessoal','calendarioOculto','online','ultimaAtividade'],nucleos:['remessaId','etapa','campos','checks','criterio','codigo'],processos:['nucleoId','etapa','motivoSituacao','conjuge','endereco','imovel','social','extras','docs','checks','campos','campo','unidades'],planos:['municipioId','municipioNome','uf','remessaId'],conversas:['lidaPor']};
     for(const field of ownFields[collection]||[]) if(saved[field]!==undefined) value[field]=saved[field];
     if(collection==='conversas' && !row.entidade_id && saved.entidade)value.entidade=saved.entidade;
@@ -149,13 +155,14 @@ export function projetar(base, local) {
   }));
   merge('agendas',base.erp_agendas.map(r=>bind('agendas',r,{id:r.id,nome:r.nome,cor:r.cor},direct('nome,cor'),'erp_agendas')));
   merge('eventos',base.erp_eventos.map(r=>bind('eventos',r,{id:r.id,titulo:r.titulo,descricao:r.descricao,inicio:r.inicio,fim:r.fim,agendaId:r.agenda_id||'',entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),publico:r.publico,cor:r.cor,status:r.status,criadoPor:uid(r.created_by),recorrencia:'nenhuma',serieERP:r.serie_id,respostas:Object.fromEntries(group(base.erp_evento_respostas,'evento_id',r.id).map(x=>[uid(x.usuario_id),x.resposta]))},{...direct('titulo,descricao,publico,cor,status'),inicio:{column:'inicio',encode:v=>new Date(v).toISOString()},fim:{column:'fim',encode:v=>new Date(v).toISOString()},agendaId:'agenda_id',participantes:{column:'participantes',encode:v=>v.map(rawUser)}},'erp_eventos')));
-  merge('conversas',base.erp_conversas.filter(r=>!r.excluido_em).map(r=>bind('conversas',r,{id:r.id,tipo:r.tipo,titulo:r.titulo,entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),criadoPor:uid(r.created_by),exclusaoSolicitada:(()=>{const req=(base.erp_exclusoes_chat||[]).find(x=>x.conversa_id===r.id && x.status==='pendente');return req?{id:req.id,por:uid(req.solicitado_por),motivo:req.motivo,data:req.created_at}:null;})(),lidaPor:{},mensagens:group(base.erp_mensagens,'conversa_id',r.id).sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(x=>({id:x.id,autorId:uid(x.autor_id),texto:x.texto,data:x.created_at,eventoId:x.evento_id,arquivoERP:x.arquivo_path?{caminho:x.arquivo_path,nome:x.arquivo_nome}:null}))},direct('titulo,tipo'),'erp_conversas')));
+  merge('conversas',base.erp_conversas.filter(r=>!r.excluido_em).map(r=>bind('conversas',r,{id:r.id,tipo:r.tipo,titulo:r.titulo,entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),criadoPor:uid(r.created_by),exclusaoSolicitada:(()=>{const req=(base.erp_exclusoes_chat||[]).find(x=>x.conversa_id===r.id && x.status==='pendente');return req?{id:req.id,por:uid(req.solicitado_por),motivo:req.motivo,data:req.created_at}:null;})(),lidaPor:{},mensagens:group(base.erp_mensagens,'conversa_id',r.id).sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(x=>bind('mensagens',x,{id:x.id,autorId:uid(x.autor_id),texto:x.texto,data:x.created_at,eventoId:x.evento_id,arquivoERP:x.arquivo_path?{caminho:x.arquivo_path,nome:x.arquivo_nome}:null},{texto:'texto',autorId:'autor_id',data:'created_at',eventoId:'evento_id',arquivoERP:'arquivo_path'},'erp_mensagens',{collection:'conversas',id:r.id,field:'mensagens'}))},direct('titulo,tipo'),'erp_conversas')));
   // Additional Integração data is additive and does not replace canonical columns.
   for (const e of base.integracao_complementos) {
     if (e.colecao==='config') { db[e.registro_id]=copy(e.dados.valor); continue; }
-    if (!Array.isArray(db[e.colecao])) continue;
+    if (!Array.isArray(db[e.colecao])) {if(tabelasProprias.includes(e._tabela)&& !['etapas','entregaveis','mensagens','checklist','arquivos'].includes(e.colecao))db[e.colecao]=[];else continue;}
     const current=db[e.colecao].find(x=>x.id===e.registro_id);
-    if (!current) db[e.colecao].push({...copy(e.dados),id:e.registro_id});
+    if (!current) db[e.colecao].push({...copy(e.dados),id:e.registro_id,_compartilhado:true});
+    else if(!bindings.some(b=>!b.parent && b.collection===e.colecao && b.id===e.registro_id)) Object.assign(current,unirCampos(current,e.dados),{_compartilhado:true});
   }
   return {db,bindings,base};
 }
@@ -173,6 +180,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const old=at(before,b), next=at(after,b);
     if (!old || !next) {
       if(old && !next) {
+        if(b.table==='erp_mensagens')throw new Error('Mensagens existentes são preservadas no histórico do ERP.');
         if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw new Error('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
         else if(b.table==='processos_kanban') ops.push({table:b.table,key:b.key,expected:b.row,changes:{excluido_erp:true}});
         else ops.push({table:b.table,key:b.key,expected:b.row,remove:true});
@@ -203,7 +211,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
         if('cor' in rest) { ops.push({action:'evento_cor',payload:{id:b.row.id,cor:rest.cor},expected:{cor:expected.cor},table:b.table,key:b.key}); delete rest.cor; }
         if(Object.keys(rest).length) ops.push({table:b.table,key:b.key,expected:Object.fromEntries(Object.keys(rest).map(k=>[k,expected[k]])),changes:rest});
       }
-      else if(b.table==='erp_conversas') throw new Error('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
+      else if(['erp_conversas','erp_mensagens'].includes(b.table)) throw new Error('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
       else ops.push({table:b.table,key:b.key,expected,changes});
     }
   }
@@ -218,7 +226,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const m=after.municipios.find(x=>x.id===r.municipioId);
     insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
   }
-  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.cpf),ativo:r.situacao!=='Inativo'});
+  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
   for(const n of after.nucleos||[]) {
     const prev=(before.nucleos||[]).find(x=>x.id===n.id);
     const id=n.externo?.kanbanId || n.id;
@@ -297,30 +305,30 @@ export function mesclarEdicoes(base,local,remote) {
 export function complementos(before,after,state,actor) {
   const operations=[];
   const ignored=new Set(['_compartilhado','online','ultimaAtividade']);
-  const nestedCanonical={nucleos:['andamentos','observacoes','historicoEtapas'],metas:['responsaveis','checklist','comentarios','historico','arquivos'],planos:['etapas','comentarios','documentos'],ordensServico:['comentarios'],eventos:['respostas','participantes','entidade','agendaId','recorrencia','serieERP'],conversas:['mensagens','participantes','entidade','criadoPor','exclusaoSolicitada']};
   for(const collection of Object.keys(after)) {
-    if(['previaERP','versao','auditoria'].includes(collection)) continue;
+    if(['previaERP','versao'].includes(collection)) continue;
     const array=Array.isArray(after[collection]) && after[collection].every(x=>x && typeof x==='object' && x.id);
-    const records=array?after[collection]:[{id:collection,valor:after[collection]}];
-    if(array) for(const removed of (before[collection]||[]).filter(x=>!records.some(r=>r.id===x.id))) {
+    const records=array?(collection==='auditoria'?after[collection].filter(r=>!['Entrou no sistema','Saiu do sistema','Sessão encerrada por inatividade'].includes(r.acao)):after[collection]):[{id:collection,valor:after[collection]}];
+    if(array && !['auditoria','notificacoes'].includes(collection)) for(const removed of (before[collection]||[]).filter(x=>!records.some(r=>r.id===x.id))) {
       const prior=state.base.integracao_complementos.find(x=>x.colecao===collection && x.registro_id===removed.id);
-      if(prior) operations.push({table:'integracao_complementos',key:{colecao:collection,registro_id:removed.id},expected:{dados:prior.dados},remove:true});
+      if(prior) operations.push({table:prior._tabela||destinoComplemento(collection),key:{colecao:collection,registro_id:removed.id},expected:{dados:prior.dados},remove:true});
     }
     for(const r of records) {
       const old=array?(before[collection]||[]).find(x=>x.id===r.id):{id:collection,valor:before[collection]};
       if(eq(old,r)) continue;
       const b=state.bindings.find(b=>!b.parent && b.collection===collection && b.id===r.id);
-      const excluded=new Set([...ignored,...Object.keys(b?.map||{}),...(b?nestedCanonical[collection]||[]:[])]);
+      const excluded=new Set([...ignored,...Object.keys(b?.map||{}),...(b?nestedFields[collection]||[]:[])]);
       const prior=state.base.integracao_complementos.find(x=>x.colecao===(array?collection:'config') && x.registro_id===r.id);
       const data={...(prior?.dados||{})};
+      const initialOwn=!b&&!prior;
       // Only fields edited in this action enter the complement; never cache shared columns.
-      for(const field of Object.keys(r)) if(!excluded.has(field) && !eq(old?.[field],r[field])) {
+      for(const field of new Set([...Object.keys(old||{}),...Object.keys(r)])) if(!excluded.has(field) && (initialOwn || !eq(old?.[field],r[field]))) {
         const sharedChildren=Object.keys(b?.map||{}).filter(path=>path.startsWith(`${field}.`)).map(path=>path.split('.')[1]);
         if(sharedChildren.length && r[field] && typeof r[field]==='object') {
           const values={...(data[field]||{})};
-          for(const child of Object.keys(r[field])) if(!sharedChildren.includes(child) && !eq(old?.[field]?.[child],r[field][child])) values[child]=copy(r[field][child]);
+          for(const child of new Set([...Object.keys(old?.[field]||{}),...Object.keys(r[field])])) if(!sharedChildren.includes(child) && !eq(old?.[field]?.[child],r[field][child])) values[child]=copy(r[field][child]??null);
           if(Object.keys(values).length)data[field]=values;
-        } else data[field]=copy(r[field]);
+        } else data[field]=copy(r[field]??null);
       }
       if(collection==='processos' && old?.situacao!==r.situacao && !['Ativo','Inativo'].includes(r.situacao))data.situacao=r.situacao;
       for(const path of Object.keys(b?.map||{}).filter(k=>k.includes('.'))) {
@@ -330,10 +338,10 @@ export function complementos(before,after,state,actor) {
       }
       if(eq(data,prior?.dados||{})) continue;
       const key={colecao:array?collection:'config',registro_id:r.id};
-      if(prior) operations.push({table:'integracao_complementos',key,expected:{dados:prior.dados},changes:{dados:data,updated_at:new Date().toISOString()}});
+      if(prior) operations.push({table:prior?._tabela||destinoComplemento(key.colecao),key,expected:{dados:prior.dados},changes:{dados:data,updated_at:new Date().toISOString()}});
       else {
         const parent=r.nucleoId?state.bindings.find(x=>x.collection==='nucleos' && x.id===r.nucleoId):null;
-        operations.push({table:'integracao_complementos',key,insert:true,changes:{dados:data,criado_por:actor.erpRef||rawUser(actor.id),referencia_tabela:b?.table||parent?.table||(!array?'integracao_config':null),referencia_id:b?.row.id||parent?.row.id||null}});
+        operations.push({table:destinoComplemento(key.colecao),key,insert:true,changes:{dados:data,criado_por:actor.erpRef||rawUser(actor.id),referencia_tabela:b?.table||parent?.table||(destinoComplemento(key.colecao)==='integracao_configuracoes'?'integracao_config':null),referencia_id:b?.row.id||parent?.row.id||null}});
       }
     }
   }
@@ -341,11 +349,11 @@ export function complementos(before,after,state,actor) {
     const old=at(before,b),r=at(after,b);if(!r||eq(old,r))continue;
     const prior=state.base.integracao_complementos.find(e=>e.colecao===b.collection && e.registro_id===b.id);
     const data={...(prior?.dados||{})};
-    for(const field of Object.keys(r)) if(!['id',...Object.keys(b.map),'responsaveis','entregaveis','comentarios'].includes(field) && !eq(old?.[field],r[field])) data[field]=copy(r[field]);
+    for(const field of new Set([...Object.keys(old||{}),...Object.keys(r)])) if(!['id',...Object.keys(b.map),'responsaveis','entregaveis','comentarios'].includes(field) && !eq(old?.[field],r[field])) data[field]=copy(r[field]??null);
     if(eq(data,prior?.dados||{}))continue;
     const parent=state.bindings.find(x=>!x.parent && x.collection===b.parent.collection && x.id===b.parent.id);
     const key={colecao:b.collection,registro_id:b.id};
-    operations.push(prior?{table:'integracao_complementos',key,expected:{dados:prior.dados},changes:{dados:data}}:{table:'integracao_complementos',key,insert:true,changes:{dados:data,criado_por:actor.erpRef||rawUser(actor.id),referencia_tabela:parent?.table||null,referencia_id:parent?.row.id||null}});
+    operations.push(prior?{table:prior?._tabela||destinoComplemento(key.colecao),key,expected:{dados:prior.dados},changes:{dados:data}}:{table:destinoComplemento(key.colecao),key,insert:true,changes:{dados:data,criado_por:actor.erpRef||rawUser(actor.id),referencia_tabela:parent?.table||null,referencia_id:parent?.row.id||null}});
   }
   return operations;
 }
@@ -354,6 +362,12 @@ export function prepararEdicao(before,after,state,actor) {
   // Newly created canonical rows need the same binding rules as existing rows.
   const projected=copy(state.base);
   for(const op of canonical) if(op.insert && op.key.id && projected[op.table]) projected[op.table].push({...op.changes,...op.key});
+  for(const op of canonical)if(op.tempId) {
+    if(op.action==='conversa')projected.erp_conversas.push({...op.payload,id:op.tempId,created_by:actor.erpRef});
+    if(op.action==='mensagem')projected.erp_mensagens.push({...op.payload,id:op.tempId,autor_id:actor.erpRef,created_at:new Date().toISOString()});
+    if(op.action==='agenda')projected.erp_agendas.push({...op.payload,id:op.tempId});
+    if(op.action==='evento')projected.erp_eventos.push({...op.payload,id:op.tempId,created_by:actor.erpRef});
+  }
   const extended=projetar(projected,after);
   const metadata={...state,bindings:[...state.bindings,...extended.bindings.filter(b=>!state.bindings.some(old=>old.table===b.table && old.id===b.id))]};
   const extras=complementos(before,after,metadata,actor);
@@ -372,6 +386,19 @@ export async function lerArquivoERP(chave) {
   if(!r.ok)throw new Error('Arquivo indisponível para esta conta.');
   const blob=await r.blob();
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
+}
+
+// Immutable objects: replacing a template creates a new object and CAS-updates its pointer.
+export async function conteudoStorage(path,bytes) {
+  await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
+  const response=await fetch(`${configERP.url}/storage/v1/object/${bytes?'':'authenticated/'}integracao/${path.split('/').map(encodeURIComponent).join('/')}`,{method:bytes?'POST':'GET',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,...(bytes?{'Content-Type':'text/plain;charset=utf-8','x-upsert':'false'}:{})},...(bytes?{body:bytes}:{})});
+  if(bytes) {
+    const result=await response.json();
+    if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw new Error(result.message||'Não foi possível guardar o arquivo no Supabase.');
+    return path;
+  }
+  if(!response.ok)throw new Error('Arquivo indisponível para esta conta.');
+  return response.text();
 }
 
 // Only files explicitly attached after loading are uploaded. Existing ERP files stay in place.

@@ -1,7 +1,8 @@
+import {tabelasProprias} from '../src/persistencia-modulos.js';
 export const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 export function fixture() {
   const tables=['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
-  const b=Object.fromEntries(tables.map(t=>[t,[]]));
+  const b=Object.fromEntries([...tables,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].map(t=>[t,[]]));
   b.profiles=[{id:id(1),nome:'Equipe Teste',tipo:'Administrador',ativo:true,email:'teste@example.invalid'}];
   b.fin_receb_municipios=[{id:id(2),nome:'Município teste',uf:'SC',prefixo:'TST'}];
   b.fin_receb_remessas=[{id:id(3),municipio_id:id(2),codigo:'TST01',nome:'Remessa teste'}];
