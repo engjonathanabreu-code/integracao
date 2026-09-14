@@ -6,13 +6,16 @@ import { resolve } from "node:path";
 // Coloca no sw.js a lista de arquivos gerados, para o sistema abrir sem internet já depois do primeiro acesso
 function guardarParaOffline() {
   let arquivos = [];
+  let falhou = false;
   return {
     name: "integracao-offline",
     apply: "build",
+    buildEnd(erro) { falhou = !!erro; },
     generateBundle(_, bundle) {
       arquivos = Object.keys(bundle).filter((f) => !f.includes("mammoth")).map((f) => `/${f}`);
     },
     closeBundle() {
+      if (falhou) return;
       const caminho = resolve("dist/sw.js");
       const versao = Date.now().toString(36);
       const texto = readFileSync(caminho, "utf8")

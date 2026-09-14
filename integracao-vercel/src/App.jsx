@@ -1,3 +1,5 @@
+import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
+import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
 import {
   FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
@@ -172,7 +174,7 @@ const so = (s) => String(s ?? "").replace(/\D/g, "");
 const pad2 = (n) => String(n).padStart(2, "0");
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let contadorId = 0;
-const uid = (p = "id") => `${p}_${Date.now().toString(36)}${(contadorId++).toString(36)}`;
+const uid = (p = "id") => crypto.randomUUID();
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 const preenchido = (v) => v !== null && v !== undefined && String(v).trim() !== "";
 
@@ -248,6 +250,7 @@ async function impressaoDigital(arquivo) {
 const memoriaLocal = new Map();
 const armazenamento = {
   async get(chave) {
+    if(chave?.startsWith('erp-storage|'))return lerArquivoERP(chave);
     try { if (typeof window !== "undefined" && window.storage) { const r = await window.storage.get(chave, false); if (r && r.value !== undefined) return r.value; } } catch (e) { /* chave inexistente */ }
     return memoriaLocal.has(chave) ? memoriaLocal.get(chave) : null;
   },
@@ -746,7 +749,7 @@ function baseLimpa() {
     versao: 6, municipios: [], remessas: [], nucleos: [], processos: [], auditoria: [],
     regrasIA: clone(REGRAS_PADRAO), tiposDocumento: [], campos: clone(CAMPOS_PADRAO), checklistCampo: clone(CHECKLIST_CAMPO_PADRAO),
     usuarios: [], metas: [], notificacoes: [], prf: null,
-    setoresMeta: SETORES_META_PADRAO.map((nome) => ({ id: uid("st"), nome, ativo: true })), ordensServico: [], planos: [], conversas: [], eventos: [], agendas: clone(AGENDAS_PADRAO),
+    setoresMeta: [], ordensServico: [], planos: [], conversas: [], eventos: [], agendas: [],
     advogados: [], modelosDoc: {}, timbrado: null, ajustesRequisitos: {}, ajustesMunicipio: {}, camposComercial: [],
   };
 }
@@ -4786,7 +4789,7 @@ function EditorRegra({ inicial, onSalvar, onFechar }) {
       setR((x) => ({ ...x, ocultos: x.ocultos.filter((y) => y !== existente), tipos: x.tipos.includes(existente) ? x.tipos : [...x.tipos, existente] }));
       setNovoNome(""); setErroNovo(""); return;
     }
-    const id = `doc_${normalizar(nome).replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 28)}_${uid("t").split("_")[1]}`;
+    const id = `doc_${normalizar(nome).replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 28)}_${uid("t")}`;
     setNovos((n) => [...n, { id, nome, categoria: r.categoria, criadoEm: new Date().toISOString() }]);
     setR((x) => ({ ...x, tipos: [...x.tipos, id] }));
     setNovoNome(""); setErroNovo("");
@@ -5230,12 +5233,14 @@ async function entrarPeloERP(email, senha) {
     if (msg.includes("confirm")) throw new Error("Esta conta ainda não foi confirmada no ERP");
     throw new Error(dados.error_description || dados.msg || `o ERP respondeu com código ${resp.status}`);
   }
+  definirSessao(dados);
   const token = dados.access_token;
   const idAuth = dados.user?.id;
   const perfis = await fetch(`${ERP_SUPABASE.url}/rest/v1/profiles?select=id,nome,email,tipo,setor,ativo&id=eq.${idAuth}`, {
     headers: { apikey: ERP_SUPABASE.chave, Authorization: `Bearer ${token}` },
   }).then((r) => r.json()).catch(() => []);
-  const p = perfis[0] || { id: idAuth, nome: dados.user?.email || email, tipo: "Administrativo", ativo: true };
+  const p = Array.isArray(perfis) ? perfis[0] : null;
+  if (!p) { definirSessao(null); throw new Error("Não foi possível confirmar seu perfil no ERP. Tente novamente."); }
   if (p.ativo === false) throw new Error("Este usuário está inativo no ERP");
   return {
     id: `erp_${p.id}`, erpRef: p.id, nome: p.nome || email, email: p.email || email,
@@ -5265,11 +5270,11 @@ function Login({ usuarios, onEntrar, aviso }) {
     try {
       const u = await entrarPeloERP(email, senha);
       setSenha("");
-      onEntrar(u);
+      await onEntrar(u);
     } catch (e) {
       // Sem internet, ainda entra quem já usou o sistema neste aparelho
       const local = ativos.find((x) => normalizar(x.email) === normalizar(email));
-      if (local && /rede|failed|fetch|network/i.test(e.message)) { setSenha(""); onEntrar(local); }
+      if (local && !navigator.onLine && /rede|failed|fetch|network/i.test(e.message)) { try { definirSessao(null); await onEntrar({...local,offline:true}); } catch(err) {setErro(err.message);} }
       else setErro(e.message);
     } finally { setEntrando(false); }
   };
@@ -8173,10 +8178,7 @@ function cssDoTema(tema, escopo = ".rb") {
 // É só leitura: nada é gravado no ERP.
 // Endereço e chave publicável do Supabase do ERP. Na Vercel, defina VITE_ERP_SUPABASE_URL e VITE_ERP_SUPABASE_KEY.
 const AMBIENTE = import.meta.env || {};
-const ERP_SUPABASE = {
-  url: AMBIENTE.VITE_ERP_SUPABASE_URL || "https://ycdsyilyvaxslkwbkxyo.supabase.co",
-  chave: AMBIENTE.VITE_ERP_SUPABASE_KEY || "sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4",
-};
+const ERP_SUPABASE = configERP;
 const SETOR_POR_TIPO_ERP = {
   Administrador: "diretoria", "Diretor Técnico": "diretoria", "Diretor de Projetos": "diretoria",
   Comercial: "comercial", Atendimentos: "comercial", Topografia: "topografia", Projetos: "projeto",
@@ -8188,11 +8190,9 @@ const FUNCAO_POR_TIPO_ERP = {
   "Jurídico": "Advogado", Financeiro: "Analista", Marketing: "Analista", Administrativo: "Assistente",
 };
 async function lerTabelaERP(tabela, campos, filtro = "") {
-  const url = `${ERP_SUPABASE.url}/rest/v1/${tabela}?select=${encodeURIComponent(campos)}${filtro}&limit=2000`;
-  const resp = await fetch(url, { headers: { apikey: ERP_SUPABASE.chave, Authorization: `Bearer ${ERP_SUPABASE.chave}` } });
-  if (!resp.ok) throw new Error(`${tabela}: o ERP respondeu com código ${resp.status}`);
-  return resp.json();
+  return lerTabelaCompartilhada(tabela, campos, filtro);
 }
+
 // Separa "Ibirama 2 (Dalbérgia) - NUI03" em remessa e núcleo
 function separarNomeERP(nome, municipio) {
   const bruto = String(nome || "").trim();
@@ -8318,6 +8318,7 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
     } finally { setTestando(""); }
   };
   const carregar = async () => {
+    if (!AMBIENTE.DEMO) { window.dispatchEvent(new Event("focus")); setToast("Atualizando os registros compartilhados, sem substituir dados locais."); setConfirmar(false); return; }
     setErro(""); setCarregando(true);
     try {
       const { db: novo, entrarComo } = await montarPreviaERP(db, usuario);
@@ -8329,7 +8330,7 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <Secao titulo="Prévia com os dados do ERP" nota="Traz municípios, remessas, núcleos e usuários direto do banco do ERP Integral, para ver o sistema com a realidade da empresa. É só leitura: nada é gravado no ERP.">
+      <Secao titulo={AMBIENTE.DEMO ? "Prévia com os dados do ERP" : "Dados compartilhados da Integral"} nota="ERP e Integração utilizam os mesmos registros do Supabase. As alterações são gravadas no registro correspondente, respeitando as permissões da sua conta.">
         {previa ? (
           <div className="faixa-especifica">
             <span className="ajuda" style={{ margin: 0 }}>
@@ -8338,7 +8339,7 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
             {perm.importar && <button className="btn btn-sm" disabled={carregando} onClick={() => setConfirmar(true)}><RefreshCw size={13} />Atualizar</button>}
           </div>
         ) : (
-          <p className="ajuda" style={{ margin: 0 }}>Ainda não carregada. O sistema está com os dados de exemplo.</p>
+          <p className="ajuda" style={{ margin: 0 }}>Os dados compartilhados são carregados ao entrar e atualizados automaticamente.</p>
         )}
         {erro && <div className="msg-erro" role="alert">{erro}</div>}
         {perm.importar && !previa && (
@@ -8361,18 +8362,18 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
         <div className="ajuda" style={{ marginTop: 8 }}>Lendo de {ERP_SUPABASE.url}.</div>
       </Secao>
 
-      <Secao titulo="O que vem e o que não vem" nota="A prévia serve para ver o sistema com nomes reais. Os moradores continuam fora até a importação do CRM.">
+      <Secao titulo="Registros compartilhados" nota="A abertura consulta os dados existentes. Somente as edições feitas após entrar geram gravações.">
         <ul className="lista-orientacoes">
-          <li><strong>Vem do ERP:</strong> usuários com setor e função, municípios com o prefixo do financeiro, núcleos com a etapa no kanban, prioridade, pendência, prazo e responsável.</li>
+          <li><strong>Cadastros:</strong> usuários, municípios, remessas e moradores cadastrados no financeiro, além dos núcleos e seus responsáveis.</li>
           <li><strong>Sem remessa:</strong> os núcleos entram direto no município, porque o ERP não guarda a remessa. Crie as remessas depois e mova cada núcleo para a sua.</li>
           <li><strong>Andamentos:</strong> os registros do CRM, já espelhados no ERP, entram na aba Andamentos de cada núcleo, com status, texto para o cliente, observação interna e previsão. As observações por setor e o histórico de etapas vêm junto.</li>
-          <li><strong>Não vem ainda:</strong> moradores e unidades, que estão no CRM, e o histórico de metas, planos, calendário e chat.</li>
-          <li><strong>Cuidado:</strong> carregar a prévia substitui tudo o que está neste aparelho, inclusive o que você cadastrou de exemplo.</li>
-          <li><strong>Para voltar:</strong> use "Restaurar dados de exemplo" na aba Histórico e dados.</li>
+          <li><strong>Trabalho em equipe:</strong> metas, planos, entregáveis, ordens de serviço, agendas, eventos e conversas são consultados com as permissões da sua conta.</li>
+          <li><strong>Campos próprios:</strong> as informações específicas do Integração são guardadas como complementos no Supabase.</li>
+          <li><strong>Conflitos:</strong> alterações simultâneas no mesmo campo ficam pendentes para revisão. O rascunho permanece neste aparelho.</li>
         </ul>
       </Secao>
       {confirmar && (
-        <ModalConfirmar titulo="Carregar os dados do ERP?" texto="Tudo o que está neste aparelho será substituído pelos dados lidos do ERP. Nada é gravado no ERP." rotuloBotao="Carregar" onFechar={() => setConfirmar(false)} onConfirmar={carregar} />
+        <ModalConfirmar titulo="Carregar os dados do ERP?" texto={AMBIENTE.DEMO ? "Os dados de demonstração serão substituídos pela prévia." : "Consultar novamente os registros compartilhados, preservando os dados locais e as alterações pendentes?"} rotuloBotao="Carregar" onFechar={() => setConfirmar(false)} onConfirmar={carregar} />
       )}
     </div>
   );
@@ -9634,7 +9635,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       })()}
 
       {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = db.metas.find((x) => x.id === detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
-      {editando && <ModalMetaERP db={db} meta={editando === "nova" || editando.associacao_tipo ? null : editando} prefill={editando === "nova" ? null : editando.associacao_tipo ? editando : null} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
+      {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} onFechar={() => setSetorModal(null)} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} onFechar={() => setOsModal(null)} />}
     </div>
@@ -10378,6 +10379,7 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
         <div className="barra-progresso"><span style={{ width: `${(feitas / p.etapas.length) * 100}%` }} /></div>
       </div>
+      {!!p.documentos?.length && <Secao titulo="Documentos do plano">{p.documentos.map(a=><button key={a.id} className="btn btn-sm" onClick={async()=>{try{const url=await armazenamento.get(a.chave);baixarArquivo(a.nome,await(await fetch(url)).blob(),a.tipo);}catch(e){setToast(e.message);}}}><Download size={14}/>{a.nome}</button>)}</Secao>}
       <p className="ajuda" style={{ margin: "0 0 8px" }}>Arraste uma etapa pela alça para mudar a ordem do plano.</p>
       <div className="flex flex-col gap-2">
         {[...p.etapas].sort((a, b) => a.ordem - b.ordem).map((e, i, todas) => {
@@ -10570,6 +10572,7 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
                     <div key={m.id} className={`mensagem${meu ? " minha" : ""}`}>
                       {!meu && <span className="ajuda" style={{ margin: 0 }}>{(db.usuarios || []).find((u) => u.id === m.autorId)?.nome || "Usuário"}</span>}
                       <span style={estiloMensagem(m)}><TextoFormatado texto={m.texto} /></span>
+                      {m.arquivoERP && <button className="btn btn-sm" onClick={async()=>{try{const url=await lerArquivoERP(`erp-storage|erp-chat|${m.arquivoERP.caminho}`);baixarArquivo(m.arquivoERP.nome,await(await fetch(url)).blob());}catch(e){setToast(e.message);}}}><Download size={13}/>{m.arquivoERP.nome||'Baixar anexo'}</button>}
                       <span className="hora-msg">{dataHoraBR(m.data)}</span>
                     </div>
                   );
@@ -10705,6 +10708,7 @@ class Protecao extends Component {
 export default function App() {
   const [db, setDb] = useState(null);
   const [usuarioId, setUsuarioId] = useState(null);
+  const compartilhado = useDadosCompartilhados({setDb, storage: armazenamento, baseLimpa});
   const [aviso, setAviso] = useState("");
   const [rota, setRota] = useState({ pag: "home" });
   const [toast, setToast] = useState("");
@@ -10719,12 +10723,13 @@ export default function App() {
     (async () => {
       let dados = null;
       try { const v = await armazenamento.get(CHAVE_STORAGE); if (v) { const parsed = JSON.parse(v); if (parsed) dados = migrarDados(parsed); } } catch (e) { /* primeira execução */ }
+      if(!AMBIENTE.DEMO) try {const owner=await armazenamento.get('integracao-ultima-conta');const cached=owner?await armazenamento.get(`integracao-compartilhado-${owner}`):null;if(cached)dados=JSON.parse(cached).db||dados;}catch(e){/* mantém a base local anterior */}
       if (vivo) setDb(dados || (AMBIENTE.DEMO ? criarSeed() : baseLimpa()));
     })();
     return () => { vivo = false; };
   }, []);
   useEffect(() => {
-    if (!db) return undefined;
+    if (!db || !AMBIENTE.DEMO) return undefined;
     const t = setTimeout(() => { armazenamento.set(CHAVE_STORAGE, JSON.stringify(db)).catch(() => setToast("Não foi possível salvar os dados no navegador.")); }, 700);
     return () => clearTimeout(t);
   }, [db]);
@@ -10735,12 +10740,15 @@ export default function App() {
     const u = usuarioRef.current;
     return { id: uid("a"), data: new Date().toISOString(), usuarioId: u ? u.id : null, usuario: u ? u.nome : "Sistema", papel: papelDe(u), setor: u ? u.setor : "", acao, ...extra };
   };
-  const mutar = (fn, acao, extra = {}) => setDb((d) => {
+  const mutar = (fn, acao, extra = {}) => {
+    if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutate(fn, acao ? entrada(acao,extra) : null);
+    return setDb((d) => {
     if (!d) return d;
     const nd = fn(clone(d));
     if (acao) nd.auditoria = [entrada(acao, extra), ...nd.auditoria].slice(0, 2000);
     return nd;
-  });
+    });
+  };
 
   useEffect(() => {
     if (!usuarioId) return undefined;
@@ -10751,14 +10759,18 @@ export default function App() {
     const iv = setInterval(() => {
       if (Date.now() - ultimoUso.current > LIMITE_OCIOSO_MS) {
         mutar((d) => d, "Sessão encerrada por inatividade");
-        setUsuarioId(null); setAviso("Sessão encerrada depois de 15 minutos sem uso. Entre de novo.");
+        compartilhado.close(); setUsuarioId(null); setAviso("Sessão encerrada depois de 15 minutos sem uso. Entre de novo.");
       }
     }, 20000);
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
 
   const ir = (r) => { setRota(r); setMenuAberto(false); try { window.scrollTo(0, 0); } catch (e) { /* sem janela */ } };
-  const entrar = (u) => {
+  const entrar = async (u) => {
+    if (!AMBIENTE.DEMO) {
+      if (!temSessao() && !u.offline) throw new Error("Entre com sua conta do ERP para acessar os registros compartilhados.");
+      u = await compartilhado.open(u, db);
+    }
     usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); setEntrouEm(new Date().toISOString());
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
@@ -10771,9 +10783,11 @@ export default function App() {
   const sair = () => {
     const id = usuarioRef.current?.id;
     mutar((d) => { const q = d.usuarios.find((x) => x.id === id); if (q) { q.online = false; q.ultimaAtividade = new Date().toISOString(); } return d; }, "Saiu do sistema");
+    compartilhado.close();
     setUsuarioId(null); setMenuAberto(false); setJanela(null);
   };
   const restaurar = async () => {
+    if (!AMBIENTE.DEMO) { setToast("A restauração de exemplos está disponível no modo demonstração. Os dados de produção foram preservados."); return; }
     const chavesFotos = db.processos.flatMap((p) => (p.campo?.fotos || []).map((f) => f.chave)).filter(Boolean);
     await Promise.all([...chavesFotos.map((c) => armazenamento.del(c)), armazenamento.del(CHAVE_MODELO_PRF)]);
     const novo = criarSeed();
@@ -10849,6 +10863,7 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
+          {!AMBIENTE.DEMO && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
