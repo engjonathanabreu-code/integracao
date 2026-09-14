@@ -10216,28 +10216,45 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
 }
 
 /* ---------------- planos de trabalho ---------------- */
+function ModalInformacoesPlano({ db, plano, onSalvar, onFechar }) {
+  const [f, setF] = useState(() => ({ titulo: plano?.titulo || "", descricao: plano?.descricao || "", status: plano?.status || "Em andamento", municipioId: plano?.municipioId || "", municipioNome: plano?.municipioNome || "", uf: plano?.uf || "SC", remessaId: plano?.remessaId || "", projetoId: plano?.projetoId || null,
+    vinculo: plano ? (plano.tipoVinculo || (plano.municipioId ? "cadastrado" : plano.municipioNome ? "novo" : "avulso")) : "avulso" }));
+  const mudar = (campo, valor) => setF((atual) => ({ ...atual, [campo]: valor }));
+  const salvar = () => {
+    const m = db.municipios.find((x) => x.id === f.municipioId);
+    onSalvar({ titulo: f.titulo.trim(), descricao: f.descricao.trim(), status: f.status, tipoVinculo: f.vinculo,
+      municipioId: f.vinculo === "cadastrado" ? m.id : null,
+      municipioNome: f.vinculo === "avulso" ? "" : f.vinculo === "cadastrado" ? m.nome : f.municipioNome.trim(),
+      uf: f.vinculo === "avulso" ? "" : f.vinculo === "cadastrado" ? m.uf : f.uf,
+      remessaId: f.vinculo === "cadastrado" ? f.remessaId || null : null,
+      projetoId: f.vinculo === "avulso" ? null : f.projetoId });
+  };
+  const valido = f.titulo.trim().length >= 3 && (f.vinculo === "avulso" || (f.vinculo === "cadastrado" ? db.municipios.some((m) => m.id === f.municipioId) : f.municipioNome.trim().length >= 3));
+  return <Modal titulo={plano ? "Editar plano de trabalho" : "Novo plano de trabalho"} onFechar={onFechar} rodape={<><button className="btn" onClick={onFechar}>Cancelar</button><button className="btn btn-primario" disabled={!valido} onClick={salvar}>{plano ? "Salvar alterações" : "Criar plano"}</button></>}>
+    <label className="rot" htmlFor="pl-titulo">Título do plano</label><input id="pl-titulo" className="inp" value={f.titulo} onChange={(e) => mudar("titulo", e.target.value)} placeholder="Ex.: Organização dos levantamentos" />
+    <label className="rot" htmlFor="pl-descricao">Descrição</label><textarea id="pl-descricao" className="inp" rows={4} value={f.descricao} onChange={(e) => mudar("descricao", e.target.value)} />
+    <label className="rot" htmlFor="pl-status">Situação</label><select id="pl-status" className="inp" value={f.status} onChange={(e) => mudar("status", e.target.value)}>{["Planejamento", "Em andamento", "Concluído", "Cancelado"].map((x) => <option key={x}>{x}</option>)}</select>
+    <label className="rot" htmlFor="pl-vinculo">Vínculo do plano</label><select id="pl-vinculo" className="inp" value={f.vinculo} onChange={(e) => mudar("vinculo", e.target.value)}><option value="avulso">Avulso — sem vínculo obrigatório</option><option value="cadastrado">Município cadastrado em Clientes</option><option value="novo">Município ainda não cadastrado</option></select>
+    {f.vinculo === "cadastrado" && <><label className="rot" htmlFor="pl-municipio">Município</label><select id="pl-municipio" className="inp" value={f.municipioId} onChange={(e) => setF((v) => ({ ...v, municipioId: e.target.value, remessaId: "" }))}><option value="">Escolha o município</option>{db.municipios.map((m) => <option key={m.id} value={m.id}>{m.nome}/{m.uf}</option>)}</select><label className="rot" htmlFor="pl-remessa">Remessa (opcional)</label><select id="pl-remessa" className="inp" value={f.remessaId} onChange={(e) => mudar("remessaId", e.target.value)}><option value="">Sem remessa</option>{db.remessas.filter((r) => r.municipioId === f.municipioId).map((r) => <option key={r.id} value={r.id}>{r.titulo || r.codigo || r.numero}</option>)}</select></>}
+    {f.vinculo === "novo" && <><label className="rot" htmlFor="pl-nome-municipio">Nome do município</label><input id="pl-nome-municipio" className="inp" value={f.municipioNome} onChange={(e) => mudar("municipioNome", e.target.value)} /><label className="rot" htmlFor="pl-uf">UF</label><select id="pl-uf" className="inp" value={f.uf} onChange={(e) => mudar("uf", e.target.value)}>{UFS.map((x) => <option key={x}>{x}</option>)}</select></>}
+    <p className="ajuda">Um plano avulso não exige processo, cliente ou município. Você pode editar estas informações e vincular um cliente depois.{!plano && " O plano será criado com as etapas do modelo da Integral."}</p>
+  </Modal>;
+}
+
 function PaginaPlanos({ db, usuario, ir, mutar, setToast }) {
   const [novo, setNovo] = useState(false);
-  const [municipio, setMunicipio] = useState("");
-  const [nomeNovo, setNomeNovo] = useState("");
-  const [uf, setUf] = useState("SC");
   const perm = permissoes(usuario);
   const planos = db.planos || [];
-  const criar = () => {
-    const m = municipio ? municipioDe(db, municipio) : null;
-    const nome = m ? m.nome : nomeNovo.trim();
-    const p = { id: uid("pl"), municipioId: m ? m.id : null, municipioNome: nome, uf: m ? m.uf : uf, remessaId: m ? db.remessas.find((r) => r.municipioId === m.id)?.id || null : null,
-      titulo: `REURB ${nome}`, descricao: "", status: "Em andamento", criadoEm: new Date().toISOString(),
+  const criar = (informacoes) => {
+    const p = { id: uid("pl"), ...informacoes, criadoEm: new Date().toISOString(),
       etapas: MODELO_PLANO.map((titulo, i) => ({ id: uid("et"), titulo, descricao: "", ordem: i, status: "Pendente", prioridade: "Normal", inicio: "", prazo: "", responsaveis: [], entregaveis: [], comentarios: [], icone: "" })) };
-    mutar((d) => { d.planos = [...(d.planos || []), p]; return d; }, "Plano de trabalho criado", { municipioId: m ? m.id : undefined, detalhe: `${p.titulo}, ${MODELO_PLANO.length} etapas${m ? "" : ". Município ainda sem cliente"}` });
-    setNovo(false); setMunicipio(""); setNomeNovo(""); ir({ pag: "plano", id: p.id });
-    setToast(m ? "Plano criado com as etapas do modelo." : "Plano criado. Quando houver contrato, vincule o município na aba Clientes.");
+    mutar((d) => { d.planos = [...(d.planos || []), p]; return d; }, "Plano de trabalho criado", { municipioId: p.municipioId || undefined, detalhe: p.titulo });
+    setNovo(false); ir({ pag: "plano", id: p.id }); setToast("Plano criado com as etapas do modelo.");
   };
-  const semPlano = db.municipios.filter((m) => !planos.some((p) => p.municipioId === m.id));
   return (
     <div className="contem">
       <div className="cabeca">
-        <div><h1>Planos de trabalho</h1><p>Etapas do contrato com cada prefeitura, com prazos, responsáveis e entregáveis. Mesma estrutura do ERP.</p></div>
+        <div><h1>Planos de trabalho</h1><p>Planos avulsos ou vinculados a clientes, com prazos, responsáveis e entregáveis.</p></div>
         {perm.estrutura && <button className="btn btn-primario" onClick={() => setNovo(true)}><Plus size={16} />Novo plano</button>}
       </div>
       <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
@@ -10248,7 +10265,7 @@ function PaginaPlanos({ db, usuario, ir, mutar, setToast }) {
           return (
             <button key={p.id} className="card" style={{ padding: 16, textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit" }} onClick={() => ir({ pag: "plano", id: p.id })}>
               <div className="flex items-center justify-between gap-2"><strong style={{ color: "var(--titulo)", fontSize: 16 }}>{p.titulo}</strong><Tag tipo={feitas === p.etapas.length ? "ok" : "pend"}>{feitas} de {p.etapas.length}</Tag></div>
-              <div className="ajuda" style={{ margin: "2px 0 8px" }}>{m ? `${m.nome}/${m.uf}` : `${p.municipioNome || "Município"}/${p.uf || ""}, ainda sem cliente`}</div>
+              <div className="ajuda" style={{ margin: "2px 0 8px" }}>{m ? `${m.nome}/${m.uf}` : p.tipoVinculo === "avulso" || !p.municipioNome ? "Plano avulso" : `${p.municipioNome}/${p.uf || ""}, ainda sem cliente`}</div>
               <div className="barra-progresso"><span style={{ width: `${(feitas / p.etapas.length) * 100}%` }} /></div>
               <div className="ajuda" style={{ marginTop: 8 }}>{atual ? `Agora: ${atual.titulo}${atual.prazo ? `, prazo ${dataBR(atual.prazo)}` : ""}` : "Todas as etapas concluídas"}</div>
             </button>
@@ -10256,19 +10273,7 @@ function PaginaPlanos({ db, usuario, ir, mutar, setToast }) {
         })}
         {!planos.length && <p className="ajuda">Nenhum plano de trabalho cadastrado.</p>}
       </div>
-      {novo && (
-        <Modal titulo="Novo plano de trabalho" onFechar={() => setNovo(false)} rodape={<><button className="btn" onClick={() => setNovo(false)}>Voltar</button><button className="btn btn-primario" disabled={!municipio && nomeNovo.trim().length < 3} onClick={criar}>Criar plano</button></>}>
-          <label className="rot" htmlFor="plm">Município já cadastrado em Clientes</label>
-          <select id="plm" className="inp" value={municipio} onChange={(e) => { setMunicipio(e.target.value); if (e.target.value) setNomeNovo(""); }}><option value="">Nenhum, é um município novo</option>{semPlano.map((m) => <option key={m.id} value={m.id}>{m.nome}/{m.uf}</option>)}</select>
-          {!municipio && (
-            <div className="fg" style={{ gridTemplateColumns: "2fr 1fr", marginTop: 12 }}>
-              <div><label className="rot" htmlFor="pln">Nome do município</label><input id="pln" className="inp" value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Ex.: Presidente Getúlio" /></div>
-              <div><label className="rot" htmlFor="plu">UF</label><select id="plu" className="inp" value={uf} onChange={(e) => setUf(e.target.value)}>{UFS.map((x) => <option key={x}>{x}</option>)}</select></div>
-            </div>
-          )}
-          <div className="ajuda" style={{ marginTop: 8 }}>O plano já vem com as {MODELO_PLANO.length} etapas do modelo da Integral. Um município sem contrato pode ter plano: depois é só vinculá-lo na aba Clientes.</div>
-        </Modal>
-      )}
+      {novo && <ModalInformacoesPlano db={db} onSalvar={criar} onFechar={() => setNovo(false)} />}
     </div>
   );
 }
@@ -10333,6 +10338,7 @@ function ModalEtapaPlano({ db, plano, etapa, usuario, mutar, setToast, onFechar 
 }
 
 function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
+  const [editando, setEditando] = useState(false);
   const [aberta, setAberta] = useState(null);
   const [vincular, setVincular] = useState(false);
   const [escolha, setEscolha] = useState("");
@@ -10375,8 +10381,9 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
       <div className="cabeca">
         <div>
           <h1>{p.titulo}</h1>
-          <p>{m ? `${m.nome}/${m.uf}` : `${p.municipioNome || ""}/${p.uf || ""}, município ainda sem cliente`}, {feitas} de {p.etapas.length} etapas concluídas{p.descricao ? `. ${p.descricao}` : ""}</p>
+          <p>{m ? `${m.nome}/${m.uf}` : p.tipoVinculo === "avulso" || !p.municipioNome ? "Plano avulso" : `${p.municipioNome}/${p.uf || ""}, município ainda sem cliente`}, {feitas} de {p.etapas.length} etapas concluídas{p.descricao ? `. ${p.descricao}` : ""}</p>
         </div>
+        {perm.estrutura && <button className="btn btn-primario" onClick={() => setEditando(true)}><Pencil size={14} />Editar plano</button>}
         {m ? <button className="btn btn-sm" onClick={() => ir({ pag: "municipio", id: p.municipioId })}><MapPin size={14} />Abrir cliente</button>
           : perm.estrutura && <button className="btn btn-sm btn-primario" onClick={() => setVincular(true)}><Link2 size={14} />Vincular a um cliente</button>}
       </div>
@@ -10417,12 +10424,16 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
           );
         })}
       </div>
+      {editando && <ModalInformacoesPlano db={db} plano={p} onFechar={() => setEditando(false)} onSalvar={(informacoes) => {
+        mutar((d) => { Object.assign(d.planos.find((x) => x.id === p.id), informacoes); return d; }, "Plano de trabalho editado", { municipioId: informacoes.municipioId || undefined, detalhe: informacoes.titulo });
+        setEditando(false); setToast("Informações do plano atualizadas.");
+      }} />}
       {aberta && <ModalEtapaPlano db={db} plano={p} etapa={aberta} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAberta(null)} />}
       {vincular && (
         <Modal titulo="Vincular o plano a um cliente" onFechar={() => setVincular(false)}
           rodape={<><button className="btn" onClick={() => setVincular(false)}>Voltar</button><button className="btn btn-primario" disabled={!escolha} onClick={() => {
             const alvo = municipioDe(db, escolha);
-            mutar((d) => { const q = d.planos.find((x) => x.id === p.id); q.municipioId = alvo.id; q.municipioNome = alvo.nome; q.uf = alvo.uf; q.remessaId = d.remessas.find((r) => r.municipioId === alvo.id)?.id || null; return d; }, "Plano vinculado a um cliente", { municipioId: alvo.id, detalhe: `${p.titulo} em ${alvo.nome}/${alvo.uf}` });
+            mutar((d) => { const q = d.planos.find((x) => x.id === p.id); q.tipoVinculo = "cadastrado"; q.municipioId = alvo.id; q.municipioNome = alvo.nome; q.uf = alvo.uf; q.remessaId = d.remessas.find((r) => r.municipioId === alvo.id)?.id || null; return d; }, "Plano vinculado a um cliente", { municipioId: alvo.id, detalhe: `${p.titulo} em ${alvo.nome}/${alvo.uf}` });
             setVincular(false); setToast(`Plano vinculado a ${alvo.nome}.`);
           }}>Vincular</button></>}>
           <p style={{ margin: "0 0 10px", color: "var(--muted)" }}>Este plano foi criado para {p.municipioNome || "um município"} antes do trabalho comercial. Escolha o município já cadastrado em Clientes.</p>

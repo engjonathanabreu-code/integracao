@@ -147,11 +147,11 @@ export function projetar(base, local) {
   merge('planos',base.planos_trabalho.map(r=>{
     const project=base.projetos.find(p=>p.id===r.projeto_id);
     const m=db.municipios.find(m=>normalize(project?.nome||r.titulo).includes(normalize(m.nome)));
-    return bind('planos',r,{id:r.id,titulo:r.titulo,descricao:text(r.descricao),status:r.status,icone:text(r.icone),municipioId:m?.id||null,municipioNome:project?.nome||r.titulo,uf:m?.uf||'',criadoEm:r.created_at,documentos:(base.documentos||[]).filter(d=>(r.projeto_id && d.projeto_id===r.projeto_id)||group(base.etapas_plano,'plano_id',r.id).some(e=>e.id===d.etapa_plano_id)).map(d=>({id:d.id,nome:d.nome,tipo:d.mime_type,chave:`erp-storage|documentos|${d.caminho_storage}`})),
+    return bind('planos',r,{id:r.id,projetoId:r.projeto_id||null,titulo:r.titulo,descricao:text(r.descricao),status:r.status,icone:text(r.icone),municipioId:m?.id||null,municipioNome:project?.nome||r.titulo,uf:m?.uf||'',criadoEm:r.created_at,documentos:(base.documentos||[]).filter(d=>(r.projeto_id && d.projeto_id===r.projeto_id)||group(base.etapas_plano,'plano_id',r.id).some(e=>e.id===d.etapa_plano_id)).map(d=>({id:d.id,nome:d.nome,tipo:d.mime_type,chave:`erp-storage|documentos|${d.caminho_storage}`})),
       etapas:group(base.etapas_plano,'plano_id',r.id).sort((a,b)=>a.ordem-b.ordem).map(e=>bind('etapas',e,{id:e.id,titulo:e.titulo,descricao:text(e.descricao),ordem:e.ordem,status:e.status,prioridade:e.prioridade,inicio:text(e.inicio_prazo),prazo:text(e.prazo),icone:text(e.icone),responsaveis:group(base.etapa_responsaveis,'etapa_id',e.id).map(x=>uid(x.usuario_id)),
         entregaveis:group(base.entregaveis,'etapa_id',e.id).map(x=>bind('entregaveis',x,{id:x.id,titulo:x.titulo,concluido:x.concluido,por:names[x.concluido_por]||'',em:text(x.concluido_em)},{titulo:'titulo',concluido:'concluido',em:'concluido_em'},'entregaveis',{collection:'planos',id:r.id,field:'etapas',childId:e.id,childField:'entregaveis'})),comentarios:group(base.comentarios_plano,'integracao_etapa_id',e.id).map(comment),
       },{...direct('titulo,descricao,ordem,prioridade,prazo,icone'),inicio:'inicio_prazo',status:'status'},'etapas_plano',{collection:'planos',id:r.id,field:'etapas'})),comentarios:group(base.comentarios_plano,'plano_id',r.id).map(comment),
-    },direct('titulo,descricao,status,icone'),'planos_trabalho');
+    },{...direct('titulo,descricao,status,icone'),projetoId:'projeto_id'},'planos_trabalho');
   }));
   merge('agendas',base.erp_agendas.map(r=>bind('agendas',r,{id:r.id,nome:r.nome,cor:r.cor},direct('nome,cor'),'erp_agendas')));
   merge('eventos',base.erp_eventos.map(r=>bind('eventos',r,{id:r.id,titulo:r.titulo,descricao:r.descricao,inicio:r.inicio,fim:r.fim,agendaId:r.agenda_id||'',entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),publico:r.publico,cor:r.cor,status:r.status,criadoPor:uid(r.created_by),recorrencia:'nenhuma',serieERP:r.serie_id,respostas:Object.fromEntries(group(base.erp_evento_respostas,'evento_id',r.id).map(x=>[uid(x.usuario_id),x.resposta]))},{...direct('titulo,descricao,publico,cor,status'),inicio:{column:'inicio',encode:v=>new Date(v).toISOString()},fim:{column:'fim',encode:v=>new Date(v).toISOString()},agendaId:'agenda_id',participantes:{column:'participantes',encode:v=>v.map(rawUser)}},'erp_eventos')));
@@ -255,7 +255,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
   }
   for(const p of after.planos||[]) {
     const prev=(before.planos||[]).find(x=>x.id===p.id);
-    if(!prev) insert('planos_trabalho',requireUuid(p.id),{titulo:p.titulo,descricao:p.descricao||'',status:p.status,created_by:who});
+    if(!prev) insert('planos_trabalho',requireUuid(p.id),{titulo:p.titulo,descricao:p.descricao||'',status:p.status,projeto_id:p.projetoId||null,created_by:who});
     if(!uuid(p.id)) continue;
     for(const e of p.etapas||[]) {
       const old=prev?.etapas?.find(x=>x.id===e.id);
