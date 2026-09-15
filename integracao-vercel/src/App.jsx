@@ -1,3 +1,4 @@
+import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
@@ -141,6 +142,7 @@ const SECOES_BASE = [
   { id: "endereco", nome: "Endereço de residência", setor: "comercial" },
   { id: "enderecoImovel", nome: "Endereço do imóvel", setor: "topografia" },
   { id: "imovel", nome: "Imóvel, remessa e núcleo", setor: "topografia" },
+  SECAO_CONFRONTANTES,
   { id: "social", nome: "Social e modalidade", setor: "comercial" },
 ];
 // Tipos de requerente, como no Integrado: (1) menor emancipado, (2) normal, (3) menor representado, (4) pessoa jurídica, (5) representado
@@ -152,7 +154,7 @@ const PARENTESCOS = ["Cônjuge ou companheiro(a)", "Filho(a)", "Enteado(a)", "Pa
 const OBJETOS_REURB = ["Terreno", "Condomínio Edilício", "Condomínio Simples (Divisão de Edificações)", "Conjunto Habitacional (Terreno e Edificação)", "Laje (Construção Base)", "Laje (Infrapartição)"];
 const INSTRUMENTOS_REURB = ["Legitimação Fundiária", "Legitimação de Posse", "Especialização"];
 function secoesOrdenadas(campos) {
-  const todas = [...SECOES_BASE, ...((campos && campos.secoes) || [])];
+  const todas = [...SECOES_BASE, ...((campos && campos.secoes) || []).filter((s) => s.id !== SECAO_CONFRONTANTES.id)];
   const ordem = (campos && campos.ordem) || [];
   const pos = (id) => { const i = ordem.indexOf(id); return i < 0 ? 1000 + todas.findIndex((x) => x.id === id) : i; };
   return [...todas].sort((a, b) => pos(a.id) - pos(b.id));
@@ -3568,7 +3570,7 @@ function ListaPessoas({ form, chave, dis, cpfVisivel, perm, mostrarCPF, titulo, 
 function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, cpfVisivel, mostrarCPF }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
-  const defs = db.campos?.lista || [];
+  const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
   const form = { rascunho, ia: iaPaths, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
   const pode = (k) => !cancelado && !!perm[k];
   const pd = { ...p, ...rascunho };
@@ -3584,6 +3586,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
   const representantes = [{ v: "principal", t: `${req.nome || "Requerente principal"} (requerente)` }, ...(rascunho.corequerentes || []).filter((c) => !ehPJ(c.pessoa) && c.tipo !== "menor").map((c) => ({ v: c.id, t: c.pessoa.nome || "Outro requerente sem nome" }))];
 
   const blocos = {
+    [SECAO_CONFRONTANTES.id]: <FormConfrontantes valores={confrontantesDe(pd)} pode={pode("imovel")} onChange={(lado, valor) => form.set(`extras.${CONFRONTANTES.find((c) => c.lado === lado).id}`, valor)}><ExtrasSecao defs={defs} secaoId={SECAO_CONFRONTANTES.id} form={form} dis={disImovel} /></FormConfrontantes>,
     requerente: (
       <Secao titulo="Requerente" nota={ehPJ(req) ? "Pessoa jurídica: o contrato e a procuração saem em nome da empresa, assinados pelo representante legal." : ""}>
         <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} permitirPJ representantes={representantes.slice(1)} />
@@ -4238,7 +4241,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const r = remessaDe(db, p.remessaId);
   const ctx = contexto(db, p);
   const cancelado = !ativo(p);
-  const defs = db.campos?.lista || [];
+  const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
   const planoAtual = achatar(rascunho); const planoSalvo = achatar(extrair(p));
   const alterados = Object.keys({ ...planoAtual, ...planoSalvo }).filter((k) => String(planoAtual[k] ?? "") !== String(planoSalvo[k] ?? ""));
   const sujo = alterados.length > 0;
@@ -4269,7 +4272,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       novoNumero = proximoNumeroCliente(db, rascunho.remessaId);
       novoCodigo = codigoCliente(db, rascunho.remessaId, novoNumero);
     }
-    const nomes = Array.from(new Set(alterados.map((k) => rotuloCaminho(k, defs))));
+    const nomes = Array.from(new Set(alterados.map((k) => rotuloCaminho(k, [...defs, ...CONFRONTANTES]))));
     const viaIA = alterados.filter((k) => iaPaths.includes(k)).length;
     const extrasDetalhe = `${vincular ? `. ${nucleoSel.codigo} colocado em ${nomeRemessa(db, remessaNova)}` : ""}${novoCodigo ? `. Código alterado para ${novoCodigo}` : ""}`;
     mutar((d) => {
@@ -4551,9 +4554,20 @@ function Miniatura({ foto, altura = 120 }) {
   );
 }
 
+function FormConfrontantes({ valores, pode, onChange, children }) {
+  return <Secao titulo="Confrontantes" nota="Obrigatório para concluir a Topografia. Considere os lados olhando de dentro do terreno para a frente. Os dados coletados em campo alimentam este mesmo cadastro.">
+    <div className="fg">{CONFRONTANTES.map(({ lado, rotulo }) => <div key={lado}>
+      <label className="rot" htmlFor={`confrontante-${lado}`}>{rotulo} (obrigatório)</label>
+      <textarea id={`confrontante-${lado}`} className="inp" rows={2} value={valores[lado] || ""} disabled={!pode} aria-required="true" onChange={(e) => onChange(lado, e.target.value)} placeholder="Nome do confrontante ou identificação da via/área limítrofe" />
+    </div>)}</div>{children}
+  </Secao>;
+}
+
 function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, onGravar, onProximo, rotuloSalvar = "Salvar campo" }) {
   const checklist = checklistDoMunicipio(db, p?.municipioId || n?.municipioId).filter((i) => i.ativo);
   const [resp, setResp] = useState(() => clone(p.campo?.respostas || {}));
+  const [confrontantes, setConfrontantes] = useState(() => confrontantesDe(p));
+  const faltamConfrontantes = confrontantesFaltando({ campo: { confrontantes } });
   const [fotos, setFotos] = useState(() => clone(p.campo?.fotos || []));
   const [geo, setGeo] = useState(p.campo?.geo || null);
   const [salvando, setSalvando] = useState(false);
@@ -4561,7 +4575,7 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
   const [rapido, setRapido] = useState(!!onGravar); // no campo offline começa no modo rápido
   const [verTudo, setVerTudo] = useState(false);
   const inputFachada = useRef(null); const inputOutras = useRef(null);
-  const sujo = JSON.stringify(resp) !== JSON.stringify(p.campo?.respostas || {}) || JSON.stringify(fotos.map(({ dataUrl, ...f }) => f)) !== JSON.stringify(p.campo?.fotos || []) || JSON.stringify(geo) !== JSON.stringify(p.campo?.geo || null);
+  const sujo = JSON.stringify(confrontantes) !== JSON.stringify(confrontantesDe(p)) || JSON.stringify(resp) !== JSON.stringify(p.campo?.respostas || {}) || JSON.stringify(fotos.map(({ dataUrl, ...f }) => f)) !== JSON.stringify(p.campo?.fotos || []) || JSON.stringify(geo) !== JSON.stringify(p.campo?.geo || null);
   useEffect(() => { onSujo(sujo); }, [sujo]); // eslint-disable-line
   const grupos = Array.from(new Set(checklist.map((i) => i.grupo || "Geral")));
   const obrig = checklist.filter((i) => i.obrigatorio);
@@ -4623,8 +4637,8 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
         if (f.dataUrl) { const chave = `${PREFIXO_FOTO}${f.id}`; await armazenamento.set(chave, f.dataUrl); const { dataUrl, ...resto } = f; finais.push({ ...resto, chave }); }
         else finais.push(f);
       }
-      const completo = finais.some((f) => f.tipo === "fachada") && obrig.every((i) => itemRespondido(i, resp[i.id]));
-      const campoNovo = { respostas: resp, fotos: finais, geo, data: new Date().toISOString(), por: usuario.nome };
+      const completo = finais.some((f) => f.tipo === "fachada") && obrig.every((i) => itemRespondido(i, resp[i.id])) && !faltamConfrontantes.length;
+      const campoNovo = { respostas: resp, fotos: finais, geo, confrontantes, data: new Date().toISOString(), por: usuario.nome };
       if (onGravar) {
         // Sem internet: grava no aparelho. Fotos removidas só são apagadas depois de sincronizar.
         await onGravar(campoNovo);
@@ -4633,14 +4647,14 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
       } else {
         const removidas = (p.campo?.fotos || []).filter((f) => f.chave && !finais.some((x) => x.id === f.id));
         await Promise.all(removidas.map((f) => armazenamento.del(f.chave)));
-        mutar((d) => { d.processos.find((x) => x.id === p.id).campo = campoNovo; return d; },
+        mutar((d) => { aplicarLevantamento(d.processos.find((x) => x.id === p.id), campoNovo); return d; },
           "Levantamento de campo registrado", { processoId: p.id, nucleoId: n.id, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${respondidos} de ${obrig.length} itens, ${finais.length} foto(s)${geo ? ", com localização" : ""}` });
         setFotos(finais);
         setToast(completo ? `${p.codigo}: campo completo.` : `${p.codigo}: campo salvo, ainda com itens pendentes.`);
       }
       onSalvo(completo);
     } catch (e) {
-      setErro(`As fotos não foram guardadas: ${e.message}. Tente de novo com menos fotos.`);
+      setErro(`Não foi possível salvar o levantamento: ${e.message}. Os campos continuam nesta tela; tente novamente.`);
     } finally { setSalvando(false); }
   };
   return (
@@ -4650,6 +4664,7 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
           <Tag tipo={respondidos === obrig.length ? "ok" : "pend"}>{respondidos} de {obrig.length} itens obrigatórios</Tag>
           <Tag tipo={fachada ? "ok" : "pend"}>{fachada ? "Com foto de fachada" : "Sem foto de fachada"}</Tag>
           {geo && <Tag tipo="ok"><Crosshair size={12} />Local registrado</Tag>}
+          <Tag tipo={faltamConfrontantes.length ? "pend" : "ok"}>{faltamConfrontantes.length ? `Confrontantes: falta ${faltamConfrontantes.join(", ")}` : "Confrontantes preenchidos"}</Tag>
           {!pode && <Tag><Lock size={12} />Só visualização: registro feito pela Topografia</Tag>}
           {pode && <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => setRapido((x) => !x)} title="No modo rápido aparecem só os itens que faltam">{rapido ? <><Eye size={13} />Ver tudo</> : <><Sparkles size={13} />Modo rápido</>}</button>}
         </div>
@@ -4659,6 +4674,7 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
 
       </Secao>
 
+      <FormConfrontantes valores={confrontantes} pode={pode} onChange={(lado, valor) => setConfrontantes((atual) => ({ ...atual, [lado]: valor }))} />
       <Secao titulo="Fotos">
         <input ref={inputFachada} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { adicionarFotos(e.target.files, "fachada"); e.target.value = ""; }} />
         <input ref={inputOutras} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { adicionarFotos(e.target.files, "outra"); e.target.value = ""; }} />
@@ -5264,7 +5280,7 @@ function ConfigCampos({ db, mutar, setToast }) {
         </div>
       </div>
       {secoes.map((sec, idx) => {
-        const lista = campos.lista.filter((c) => c.secao === sec.id);
+        const lista = campos.lista.filter((c) => c.secao === sec.id && !campoConfrontante(c.id));
         const personalizada = !SECOES_BASE.some((b) => b.id === sec.id);
         const classe = `secao-ordenavel${arrastando === sec.id ? " arrastando" : ""}${alvo && alvo.id === sec.id && arrastando && arrastando !== sec.id ? (alvo.antes ? " alvo-antes" : " alvo-depois") : ""}`;
         return (
@@ -5283,7 +5299,8 @@ function ConfigCampos({ db, mutar, setToast }) {
                   {personalizada && <button className="btn btn-sm btn-perigo" disabled={lista.length > 0} title={lista.length ? "Mova ou exclua os campos antes" : ""} onClick={() => mutar((d) => { d.campos.secoes = d.campos.secoes.filter((x) => x.id !== sec.id); d.campos.ordem = (d.campos.ordem || []).filter((x) => x !== sec.id); return d; }, "Seção do cadastro excluída", { detalhe: sec.nome })}><Trash2 size={13} />Excluir</button>}
                 </div>
               }>
-            {!lista.length && <p className="ajuda" style={{ margin: 0 }}>Nenhum campo adicionado nesta seção.</p>}
+            {sec.id === SECAO_CONFRONTANTES.id && <p className="ajuda">Frente, Fundo, Lado Direito e Lado Esquerdo são campos fixos, obrigatórios na Topografia e disponíveis no Campo offline. Os valores anteriores foram preservados.</p>}
+            {!lista.length && sec.id !== SECAO_CONFRONTANTES.id && <p className="ajuda" style={{ margin: 0 }}>Nenhum campo adicionado nesta seção.</p>}
             {lista.map((c, i) => {
               const uso = usoDe(c.id);
               return (
@@ -6139,11 +6156,11 @@ function montarPacote(db, n, usuario) {
     unidades: db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)).map((p) => ({
       id: p.id, codigo: p.codigo, remessaId: p.remessaId, municipioId: p.municipioId, etapa: p.etapa,
       requerente: { nome: p.requerente.nome, telefone: p.requerente.telefone }, conjuge: { nome: p.conjuge.nome }, endereco: clone(p.endereco),
-      campo: clone(p.campo || campoVazio()), versaoBase: p.campo?.data || "", alterado: false, alteradoEm: "", conflito: null, sincronizadoEm: "",
+      campo: campoComConfrontantes(p), versaoConfrontantesBase: versaoConfrontantes(p), versaoBase: p.campo?.data || "", alterado: false, alteradoEm: "", conflito: null, sincronizadoEm: "",
     })),
   };
 }
-const unidadeCompleta = (pk, un) => (un.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(un, pk.checklist || []).length === 0;
+const unidadeCompleta = (pk, un) => (un.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(un, pk.checklist || []).length === 0 && !confrontantesFaltando(un).length;
 
 function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicipio }) {
   const [pacotes, setPacotesEstado] = useState({});
@@ -6155,8 +6172,8 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
   const onlineAnterior = useRef(online);
   const sincInicial = useRef(false);
   const gravar = async (novo) => {
+    await armazenamento.set(CHAVE_OFFLINE, JSON.stringify(novo));
     pacotesRef.current = novo; setPacotesEstado(novo);
-    try { await armazenamento.set(CHAVE_OFFLINE, JSON.stringify(novo)); } catch (e) { setToast("Não foi possível guardar no aparelho. Libere espaço e tente de novo."); }
   };
   useEffect(() => {
     let vivo = true;
@@ -6181,16 +6198,16 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
           const p = loaded.processos.find((x) => x.id === un.id);
           if (!p) { un.conflito = { motivo: "Este morador não está mais no sistema.", sistema: null }; conf++; continue; }
           const dataSistema = p.campo?.data || "";
-          if (dataSistema && dataSistema !== un.versaoBase && dataSistema !== un.campo.data) {
-            un.conflito = { motivo: `${p.campo.por || "Outra pessoa"} salvou o campo desta unidade em ${dataHoraBR(dataSistema)}, depois do pré-carregamento.`, sistema: clone(p.campo) };
+          if ((dataSistema && dataSistema !== un.versaoBase && dataSistema !== un.campo.data) || conflitoConfrontantes(p, un)) {
+            un.conflito = { motivo: "O levantamento ou os confrontantes do cadastro foram alterados no sistema depois do pré-carregamento. Confira antes de substituir.", sistema: campoComConfrontantes(p) };
             conf++; continue;
           }
           const removidas = (p.campo?.fotos || []).filter((f) => f.chave && !(un.campo.fotos || []).some((x) => x.id === f.id));
           await Promise.all(removidas.map((f) => armazenamento.del(f.chave)));
           const campo = clone(un.campo);
-          mutar((d) => { const q = d.processos.find((x) => x.id === un.id); if (q) q.campo = campo; return d; }, "Levantamento de campo sincronizado",
+          mutar((d) => { const q = d.processos.find((x) => x.id === un.id); if (q) aplicarLevantamento(q, campo); return d; }, "Levantamento de campo sincronizado",
             { processoId: un.id, nucleoId: pk.nucleoId, remessaId: un.remessaId, municipioId: un.municipioId, detalhe: `${un.codigo}: feito sem internet em ${dataHoraBR(un.alteradoEm)} por ${campo.por}` });
-          un.versaoBase = campo.data; un.alterado = false; un.sincronizadoEm = agora; ok++;
+          un.versaoConfrontantesBase = versaoConfrontantes({ campo }); un.versaoBase = campo.data; un.alterado = false; un.sincronizadoEm = agora; ok++;
         }
         if (pk.unidades.some((u) => u.sincronizadoEm === agora)) pk.ultimaSincronizacao = agora;
       }
@@ -6240,11 +6257,11 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
     if (!p) { pk.unidades = pk.unidades.filter((u) => u.id !== un.id); }
     else if (escolha === "campo") {
       const campo = { ...clone(un.campo), data: new Date().toISOString() };
-      mutar((d) => { const q = d.processos.find((x) => x.id === un.id); if (q) q.campo = campo; return d; }, "Conflito de campo resolvido", { ...log, detalhe: `${un.codigo}: ficou o levantamento feito sem internet` });
-      un.campo = campo; un.versaoBase = campo.data; un.alterado = false; un.conflito = null; un.sincronizadoEm = campo.data;
+      mutar((d) => { const q = d.processos.find((x) => x.id === un.id); if (q) aplicarLevantamento(q, campo); return d; }, "Conflito de campo resolvido", { ...log, detalhe: `${un.codigo}: ficou o levantamento feito sem internet` });
+      un.campo = campo; un.versaoConfrontantesBase = versaoConfrontantes({ campo }); un.versaoBase = campo.data; un.alterado = false; un.conflito = null; un.sincronizadoEm = campo.data;
     } else {
       mutar((d) => d, "Conflito de campo resolvido", { ...log, detalhe: `${un.codigo}: ficou o que já estava no sistema` });
-      un.campo = clone(p.campo || campoVazio()); un.versaoBase = p.campo?.data || ""; un.alterado = false; un.conflito = null;
+      un.campo = campoComConfrontantes(p); un.versaoConfrontantesBase = versaoConfrontantes(p); un.versaoBase = p.campo?.data || ""; un.alterado = false; un.conflito = null;
     }
     await gravar(novo);
     setToast("Conflito resolvido.");
@@ -8897,7 +8914,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   }, "Nome do requisito alterado", `${original} para "${texto.trim() || original}"`);
   const linha = (r, ehExtra) => {
     const opcional = ehExtra ? r.opcional : opcionais.has(r.id) || (r.opcional && !obrigatorios.has(r.id));
-    const desligado = desligados.has(r.id);
+    const desligado = !r.fixo && desligados.has(r.id);
     return (
       <div key={r.id} className={`linha-requisito${desligado ? " desligado" : ""}`}>
         <span style={{ flex: 1, minWidth: 200 }}>
@@ -8911,7 +8928,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
         ) : (
           <>
             <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
-              <span className="chave"><input type="checkbox" checked={!desligado} disabled={!pode} onChange={(e) => alternarLista("desativados", r.id, !e.target.checked, r.label)} /><span /></span>Ativo
+              <span className="chave"><input type="checkbox" checked={!desligado} disabled={!pode || r.fixo} onChange={(e) => alternarLista("desativados", r.id, !e.target.checked, r.label)} /><span /></span>Ativo
             </label>
             {r.tipo !== "auto" && (
               <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
