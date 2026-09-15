@@ -1,3 +1,4 @@
+import {expandirResumo} from './resumo-transporte.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
 // Canonical ERP rows are read in place. Only explicit user edits produce writes.
 // Tokens stay in memory; local storage contains drafts, never credentials.
@@ -18,7 +19,7 @@ export async function requisicao(path, options = {}) {
     })().finally(() => { refreshing = null; });
     await refreshing;
   }
-  const r = await fetch(`${configERP.url}/rest/v1/${path}`, { ...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
+  const r = await fetch(`${configERP.url}/rest/v1/${path}`, { signal:AbortSignal.timeout(25000), ...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
   const body = await r.json().catch(() => null);
   if (!r.ok) throw new Error(body?.message || `Não foi possível acessar ${path.split('?')[0]} (${r.status}).`);
   return body;
@@ -32,8 +33,8 @@ export async function lerTabela(tabela, campos = '*', filtro = '') {
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
-export async function lerBase() {
-  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].map(async table => {
+export async function lerBase({municipios=[]}={}) {
+  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)).map(async table => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
@@ -47,7 +48,25 @@ export async function lerBase() {
   // The existing ERP directory exposes names/roles without exposing personal fields.
   const directory = await requisicao('rpc/erp_collab_directory', { method: 'POST', body: '{}' });
   result.profiles = directory.map(p => ({ ...p, ativo: true, ...(result.profiles.find(x => x.id === p.id) || {}) }));
+  result.fin_receb_clientes=[];result.integracao_moradores=[];
+  for(const municipio of municipios){const carga=await lerMoradoresMunicipio(municipio);result.fin_receb_clientes.push(...carga.clientes);result.integracao_moradores.push(...carga.complementos);}
   return result;
+}
+export async function lerMoradoresMunicipio(municipio) {
+  const pagina=inicio=>requisicao('rpc/integracao_moradores_carga',{method:'POST',body:JSON.stringify({municipio,resumo:false,inicio})});
+  const carga=await pagina(0);
+  for(let inicio=500;inicio<carga.total;inicio+=500){const next=await pagina(inicio);carga.complementos.push(...next.complementos);}
+  return carga;
+}
+export async function lerResumoMoradores(db) {
+  // Refresh the caller's session if needed, without exposing it to application state.
+  await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
+  const contexto=Object.fromEntries(['nucleos','campos','checklistCampo','ajustesRequisitos','ajustesMunicipio'].map(k=>[k,db[k]]));
+  contexto.nucleos=(db.nucleos||[]).map(({id,codigo,criterio})=>({id,codigo,criterio}));
+  const response=await fetch('/api/resumo-moradores',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({contexto}),signal:AbortSignal.timeout(90000)});
+  const body=await response.json();
+  if(!response.ok)throw new Error(body.message||'Não foi possível carregar as pendências.');
+  return expandirResumo(body.resumo);
 }
 export const copy = x => structuredClone(x);
 export const eq = (a,b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -74,6 +93,13 @@ export function projetar(base, local) {
     return value;
   };
   const db = relink(copy(local)), bindings = [];
+  if(base._moradoresResumo){
+    const loaded=new Set((base.fin_receb_clientes||[]).map(r=>r.id));
+    const own=new Set((base.integracao_moradores||[]).map(r=>r.registro_id));
+    const keep=(db.processos||[]).filter(p=>!p._resumo&&(!p._compartilhado||loaded.has(p.financeiroRef||p.id)||own.has(p.id)));
+    const ids=new Set(keep.map(p=>p.id));
+    db.processos=[...keep,...base._moradoresResumo.filter(p=>!ids.has(p.id))];
+  }
   for(const c of ['auditoria','notificacoes','regrasIA','tiposDocumento','advogados','camposComercial'])if(Array.isArray(db[c]))db[c]=db[c].filter(r=>!r._compartilhado);
   const names = Object.fromEntries(base.profiles.map(p => [p.id,p.nome]));
   const extra = new Map(base.integracao_complementos.map(r => [`${r.colecao}:${r.registro_id}`,r]));
@@ -83,7 +109,7 @@ export function projetar(base, local) {
     const existing = (siblings || []).find(x => x.id === view.id || x.erpId === row.id || x.erpRef === row.id || x.externo?.kanbanId === row.id);
     if (existing) view.id = existing.id;
     const extension = extra.get(`${collection}:${view.id}`);
-    const saved=unirCampos(existing||{},extension?.dados||{});
+    const saved=unirCampos(existing?._resumo?{}:existing||{},extension?.dados||{});
     const value = { ...saved, ...view };
     const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP','origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
     for(const [field,v] of Object.entries(extension?.dados||{}))if(!canonical.has(field))value[field]=copy(v);
@@ -107,7 +133,7 @@ export function projetar(base, local) {
   const merge = (collection, rows) => {
     const ids = new Set(rows.map(x => x.id));
     // Keep unmatched local records. No import replaces a collection or deletes a record.
-    db[collection] = [...rows, ...(db[collection] || []).filter(x => !ids.has(x.id) && !x._compartilhado)];
+    db[collection] = [...rows, ...(db[collection] || []).filter(x => !ids.has(x.id) && (!x._compartilhado || (collection==='processos'&&x._resumo)))];
     rows.forEach(x => { x._compartilhado = true; });
   };
   const direct = fields => Object.fromEntries(fields.split(',').map(x => [x,x]));
@@ -116,8 +142,10 @@ export function projetar(base, local) {
   merge('municipios',base.fin_receb_municipios.map(m=>bind('municipios',m,{id:m.id,nome:m.nome,uf:m.uf,prefixo:m.prefixo,origem:['ERP'],criado:text(m.created_at).slice(0,10)},direct('nome,uf,prefixo'),'fin_receb_municipios')));
   merge('remessas',(base.fin_receb_remessas||[]).map(r=>bind('remessas',r,{id:r.id,municipioId:r.municipio_id,numero:Number(text(r.codigo).match(/\d+$/)?.[0])||1,titulo:r.nome||r.codigo,criada:text(r.created_at).slice(0,10),origem:['ERP'],externo:{financeiro:r.id}}, {titulo:'nome',municipioId:'municipio_id'},'fin_receb_remessas')));
   const pessoa=()=>({nome:'',statusCRM:'',statusFinanceiro:'',sexo:'',nacionalidade:'Brasileira',rg:'',rgOrgao:'',cpf:'',nascimento:'',mae:'',pai:'',estadoCivil:'',regimeBens:'',dataUniao:'',profissao:'',renda:'',telefone:'',email:''});
+  const residentsByReference=new Map(base.integracao_complementos.filter(e=>e.colecao==='processos'&&e.referencia_id).map(e=>[e.referencia_id,e.registro_id]));
   merge('processos',(base.fin_receb_clientes||[]).map(r=>{
-    const old=(db.processos||[]).find(p=>p.id===r.id || p.financeiroRef===r.id);
+    const found=(db.processos||[]).find(p=>p.id===r.id || p.financeiroRef===r.id);
+    const old=found?._resumo?{id:found.id}:found||{id:residentsByReference.get(r.id)||r.id};
     return bind('processos',r,{id:old?.id||r.id,financeiroRef:r.id,municipioId:r.municipio_id,remessaId:r.remessa_id,codigo:r.codigo,nucleoId:old?.nucleoId||'',etapa:old?.etapa||0,situacao:r.ativo?'Ativo':'Inativo',motivoSituacao:old?.motivoSituacao||'',requerente:{...pessoa(),...old?.requerente,nome:r.nome,cpf:r.cpf_cnpj||''},conjuge:old?.conjuge||pessoa(),endereco:old?.endereco||{logradouro:'',numero:'',complemento:'',bairro:'',municipio:'',uf:'',cep:''},imovel:old?.imovel||{area:'',comprovantePosse:''},social:old?.social||{ocupantes:'',rendaFamiliar:'',possuiImovel:'',modalidade:''},extras:old?.extras||{},docs:old?.docs||[],checks:old?.checks||{},campos:old?.campos||{},campo:old?.campo||{respostas:{},fotos:[],data:'',por:'',geo:null},numeroCliente:Number(text(r.codigo).match(/\d+$/)?.[0])||0,unidades:old?.unidades||[{id:`unidade_${r.id}`,area:'',memorial:'',loteQuadra:''}]}, {codigo:'codigo',municipioId:'municipio_id',remessaId:'remessa_id','requerente.nome':'nome','requerente.cpf':'cpf_cnpj',situacao:{column:'ativo',encode:v=>v==='Ativo'}},'fin_receb_clientes');
   }));
   // Municípios sintéticos (criados só a partir do nome no kanban, id "municipio_...") são substituídos pelo registro real
@@ -173,7 +201,7 @@ export function projetar(base, local) {
     if (!Array.isArray(db[e.colecao])) {if(tabelasProprias.includes(e._tabela)&& !['etapas','entregaveis','mensagens','checklist','arquivos'].includes(e.colecao))db[e.colecao]=[];else continue;}
     const current=db[e.colecao].find(x=>x.id===e.registro_id);
     if (!current) db[e.colecao].push({...copy(e.dados),id:e.registro_id,_compartilhado:true});
-    else if(!bindings.some(b=>!b.parent && b.collection===e.colecao && b.id===e.registro_id)) Object.assign(current,unirCampos(current,e.dados),{_compartilhado:true});
+    else if(!bindings.some(b=>!b.parent && b.collection===e.colecao && b.id===e.registro_id)) {Object.assign(current,unirCampos(current,e.dados),{_compartilhado:true});if(e.colecao==='processos'){delete current._resumo;delete current._pendencias;delete current._campoCompleto;}}
   }
   return {db,bindings,base};
 }
@@ -371,6 +399,9 @@ export function complementos(before,after,state,actor) {
   return operations;
 }
 export function prepararEdicao(before,after,state,actor) {
+  // Summaries are read-only facts, never candidates for inserts, updates or deletes.
+  before={...before,processos:(before.processos||[]).filter(p=>!p._resumo)};
+  after={...after,processos:(after.processos||[]).filter(p=>!p._resumo)};
   const canonical=alteracoesCompartilhadas(before,after,state,actor);
   // Newly created canonical rows need the same binding rules as existing rows.
   const projected=copy(state.base);

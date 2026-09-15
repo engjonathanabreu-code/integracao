@@ -1,7 +1,9 @@
+import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
+import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
 import {
@@ -93,15 +95,8 @@ const papelDe = (u) => (u ? `${u.funcao || "Sem função"}, ${SETORES[u.setor]?.
 
 /* ---------------- etapas ---------------- */
 // Etapas de cada morador (unidade). As três primeiras formam o Documental do núcleo.
-const ETAPAS = [
-  { id: "mobilizacao", nome: "Mobilização", completo: "Apresentação da REURB e mobilização", grupo: 0 },
-  { id: "contrato", nome: "Contrato", completo: "Assinatura do contrato", grupo: 0 },
-  { id: "documental", nome: "Análise documental", completo: "Análise documental e de viabilidade", grupo: 0 },
-  { id: "topografia", nome: "Topografia", completo: "Topografia e medições do terreno", grupo: 1 },
-  { id: "projeto", nome: "Projeto", completo: "Projeto de REURB da unidade", grupo: 2 },
-  { id: "prefeitura", nome: "Prefeitura", completo: "Acompanhamento na prefeitura", grupo: 3 },
-];
-const TOTAL = ETAPAS.length; // etapa === TOTAL: unidade pronta, aguardando CRF e matrícula do núcleo
+
+ // etapa === TOTAL: unidade pronta, aguardando CRF e matrícula do núcleo
 // Etapas do núcleo (NUI)
 const NUCLEO_ETAPAS = [
   { id: "documental", nome: "Documental", completo: "Documental: mobilização, contrato e análise", icone: "documental", fim: 3 },
@@ -118,18 +113,9 @@ const STATUS_CRM = ["Novo", "Contato feito", "Proposta enviada", "Negociação",
 const STATUS_FINANCEIRO = ["Adimplente", "3 atrasado", "6+ atrasado", "Total Atrasado"];
 const TAG_FINANCEIRO = { Adimplente: "ok", "3 atrasado": "pend", "6+ atrasado": "bloq", "Total Atrasado": "bloq" };
 const TAG_CRM = { "Cliente Ativo": "ok", Perdido: "bloq", "Negociação": "pend", "Proposta enviada": "pend" };
-const ativo = (p) => p.situacao === "Ativo";
 
-const DOC_TIPOS = {
-  identidade: "RG ou CNH do requerente",
-  identidade_conjuge: "RG ou CNH do cônjuge",
-  comp_residencia: "Comprovante de residência",
-  estado_civil: "Certidão de nascimento ou casamento",
-  comp_renda: "Comprovante de renda",
-  comp_posse: "Comprovante de posse",
-  matricula_origem: "Matrícula ou transcrição de origem",
-  outro: "Outro documento",
-};
+
+
 const DOC_CATEGORIA = { identidade: "pessoal", identidade_conjuge: "pessoal", comp_residencia: "pessoal", estado_civil: "pessoal", comp_renda: "pessoal", comp_posse: "posse", matricula_origem: "posse" };
 const CATEGORIAS = { pessoal: "Documentos pessoais", posse: "Documentos de posse" };
 // Tipos fixos do sistema. Os tipos criados nas regras entram por cima destes em sincronizarTiposDocumento.
@@ -141,7 +127,7 @@ function sincronizarTiposDocumento(extras) {
 }
 
 const ESTADOS_CIVIS = ["Solteiro(a)", "Casado(a)", "União estável", "Divorciado(a)", "Viúvo(a)"];
-const COM_CONJUGE = ["Casado(a)", "União estável"];
+
 const REGIMES = ["Comunhão parcial de bens", "Comunhão universal de bens", "Separação total de bens", "Participação final nos aquestos"];
 const POSSE = ["Contrato de compra e venda", "Escritura particular", "Declaração de posse", "Cessão de direitos"];
 
@@ -187,26 +173,15 @@ const ROTULOS = {
 const SECAO_NOME = { requerente: "requerente", conjuge: "cônjuge", corequerentes: "outro requerente", ocupantes: "ocupante", endereco: "endereço", enderecoImovel: "endereço do imóvel", imovel: "imóvel", social: "social", nucleoId: "imóvel", remessaId: "imóvel" };
 
 /* ---------------- utilidades ---------------- */
-const so = (s) => String(s ?? "").replace(/\D/g, "");
+
 const pad2 = (n) => String(n).padStart(2, "0");
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let contadorId = 0;
 const uid = (p = "id") => crypto.randomUUID();
-const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-const preenchido = (v) => v !== null && v !== undefined && String(v).trim() !== "";
 
-function cpfValido(v) {
-  const c = so(v);
-  if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
-  let s = 0;
-  for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
-  let d = (s * 10) % 11; if (d === 10) d = 0;
-  if (d !== +c[9]) return false;
-  s = 0;
-  for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
-  d = (s * 10) % 11; if (d === 10) d = 0;
-  return d === +c[10];
-}
+
+
+
 function fmtCPF(v) {
   const c = so(v).slice(0, 11);
   if (c.length <= 3) return c;
@@ -216,12 +191,7 @@ function fmtCPF(v) {
 }
 const mascararCPF = (v) => { const c = so(v); if (!c) return "Não informado"; if (c.length !== 11) return "Incompleto"; return `***.${c.slice(3, 6)}.***-${c.slice(9)}`; };
 const fmtCEP = (v) => { const c = so(v).slice(0, 8); return c.length > 5 ? `${c.slice(0, 5)}-${c.slice(5)}` : c; };
-function parseNum(v) {
-  if (v === null || v === undefined || String(v).trim() === "") return null;
-  const s = String(v).trim();
-  const n = s.includes(",") ? Number(s.replace(/\./g, "").replace(",", ".")) : Number(s);
-  return Number.isFinite(n) ? n : null;
-}
+
 const moeda = (n) => (n === null || n === undefined ? "não informado" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 function idade(iso) {
   if (!iso) return null;
@@ -328,104 +298,26 @@ const SECOES = ["requerente", "conjuge", "corequerentes", "ocupantes", "endereco
 const PADRAO_SECAO = { extras: () => ({}), corequerentes: () => [], ocupantes: () => [], enderecoImovel: enderecoVazio, endereco: enderecoVazio };
 const extrair = (p) => { const o = {}; SECOES.forEach((k) => { o[k] = clone(p[k] ?? (PADRAO_SECAO[k] ? PADRAO_SECAO[k]() : "")); }); return o; };
 
-const ehPJ = (x) => x?.tipoPessoa === "juridica";
-const temConjuge = (p) => !ehPJ(p.requerente) && COM_CONJUGE.includes(p.requerente.estadoCivil);
+
+
 // CNPJ com dígitos verificadores
-function cnpjValido(v) {
-  const c = so(v);
-  if (c.length !== 14 || /^(\d)\1+$/.test(c)) return false;
-  const calc = (base) => { const pesos = base.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]; const s = base.split("").reduce((a, d, i) => a + Number(d) * pesos[i], 0); const r = s % 11; return r < 2 ? 0 : 11 - r; };
-  const d1 = calc(c.slice(0, 12)); const d2 = calc(c.slice(0, 12) + d1);
-  return c.endsWith(`${d1}${d2}`);
-}
+
 const fmtCNPJ = (v) => { const c = so(v).slice(0, 14); return c.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2"); };
 // Documento principal válido: CPF para pessoa física, CNPJ para jurídica
-const documentoValido = (x) => (ehPJ(x) ? cnpjValido(x.cnpj) : cpfValido(x.cpf));
-const docBloqueado = (d) => !!d?.regras?.some((r) => r.gravidade === "bloqueia" && r.resultado === "nao_atende");
-const docOk = (p, tipo) => p.docs.some((d) => d.tipo === tipo && d.status === "validado");
-function docStatusTexto(p, tipo) {
-  const d = [...p.docs].reverse().find((x) => x.tipo === tipo);
-  if (!d) return "Não enviado";
-  if (d.status === "validado") return "";
-  if (d.status === "rejeitado") return "Rejeitado, envie outro arquivo";
-  if (docBloqueado(d)) return "Regra obrigatória não atendida";
-  return "Analisado, aguardando validação";
-}
-function faltantesPessoa(x, ehRequerente) {
-  const f = [];
-  if (ehPJ(x)) {
-    if (!x.nome) f.push("razão social");
-    if (!cnpjValido(x.cnpj)) f.push(x.cnpj ? "CNPJ válido" : "CNPJ");
-    if (!x.representante) f.push("representante legal");
-    return f;
-  }
-  if (!x.nome) f.push("nome");
-  if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
-  if (!x.rg) f.push("RG");
-  if (!x.nascimento) f.push("nascimento");
-  if (!x.mae) f.push("nome da mãe");
-  if (ehRequerente && !x.estadoCivil) f.push("estado civil");
-  if (ehRequerente && !x.profissao) f.push("profissão");
-  return f;
-}
-// Dados mínimos para qualificar alguém num documento (ocupantes e outros requerentes): nome, CPF, RG, nascimento, mãe, estado civil e profissão
-function faltantesQualificacao(x) {
-  if (!x) return ["nome"];
-  if (ehPJ(x)) return faltantesPessoa(x, true);
-  const f = [];
-  if (!x.nome) f.push("nome");
-  if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
-  if (!x.rg) f.push("RG");
-  if (!x.nascimento) f.push("nascimento");
-  if (!x.mae) f.push("nome da mãe");
-  if (!x.estadoCivil) f.push("estado civil");
-  if (!x.profissao) f.push("profissão");
-  return f;
-}
-function campoPreenchido(def, v) {
-  if (def.tipo === "grupo") {
-    if (def.repetir) return Array.isArray(v) && v.length > 0 && v.every((l) => def.subcampos.every((s) => preenchido(l?.[s.id])));
-    return def.subcampos.every((s) => preenchido(v?.[s.id]));
-  }
-  return preenchido(v);
-}
-function acharDuplicado(db, p) {
-  const cpf = so(p.requerente.cpf);
-  const nome = normalizar(p.requerente.nome);
-  for (const o of db.processos) {
-    if (o.id === p.id || o.remessaId !== p.remessaId || !ativo(o)) continue;
-    if (cpf.length === 11 && so(o.requerente.cpf) === cpf) return { codigo: o.codigo, motivo: "CPF", id: o.id };
-    if (nome && normalizar(o.requerente.nome) === nome) return { codigo: o.codigo, motivo: "nome", id: o.id };
-  }
-  return null;
-}
-const contexto = (db, p) => ({ nucleo: db.nucleos.find((n) => n.id === p.nucleoId) || null, duplicado: acharDuplicado(db, p), campos: db.campos?.lista || [], checklist: db.checklistCampo || [], ajustesReq: db.ajustesRequisitos || {} });
-// A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios em cada etapa
-function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
-  const a = (ajustes || {})[etapaId] || {};
-  const desligados = new Set(a.desativados || []);
-  const opcionais = new Set(a.opcionais || []);
-  const obrigatorios = new Set(a.obrigatorios || []);
-  const base = lista.filter((r) => !desligados.has(r.id)).map((r) => {
-    const rotulo = (a.rotulos || {})[r.id];
-    const item = { ...r, label: rotulo || r.label };
-    if (opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!p.checks[r.id]; item.ok = true; }
-    if (obrigatorios.has(r.id) && item.tipo === "marcador") { item.opcional = false; item.tipo = "manual"; item.ok = !!p.checks[r.id]; }
-    return item;
-  });
-  (a.extras || []).forEach((e) => {
-    if (e.tipo === "campo") base.push({ id: e.id, label: e.label, ok: preenchido(p.campos[e.id]), tipo: "campo", valor: p.campos[e.id] || "", placeholder: e.ajuda || "" });
-    else if (e.opcional) base.push({ id: e.id, label: e.label, ok: true, tipo: "marcador", marcado: !!p.checks[e.id], opcional: true, ajuda: e.ajuda || "" });
-    else base.push({ id: e.id, label: e.label, ok: !!p.checks[e.id], tipo: "manual", ajuda: e.ajuda || "" });
-  });
-  return base;
-}
 
-function criterioNucleo(n) {
-  const teto = parseNum(n?.criterio?.rendaMaxima);
-  const sm = parseNum(n?.criterio?.salarioMinimo);
-  return { teto: teto && teto > 0 ? teto : null, sm: sm && sm > 0 ? sm : null };
-}
+
+
+
+
+// Dados mínimos para qualificar alguém num documento (ocupantes e outros requerentes): nome, CPF, RG, nascimento, mãe, estado civil e profissão
+
+
+
+
+// A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios em cada etapa
+
+
+
 const qtdSalarios = (teto, sm) => (teto && sm ? (teto / sm).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : null);
 function sugerirModalidade(p, nucleo) {
   if (!nucleo) return { aviso: "Defina o núcleo do processo para calcular a modalidade." };
@@ -438,97 +330,11 @@ function sugerirModalidade(p, nucleo) {
   return { ...base, modalidade: "REURB-E", motivo: p.social.possuiImovel === "sim" ? "A família declara possuir outro imóvel." : `Renda familiar de ${moeda(renda)}, acima do teto de ${moeda(teto)} do ${nucleo.codigo}.` };
 }
 
-function requisitosEtapa(etapaId, p, ctx) {
-  return aplicarAjustesRequisitos(requisitosPadrao(etapaId, p, ctx), etapaId, ctx?.ajustesReq, p);
-}
-function requisitosPadrao(etapaId, p, ctx) {
-  const R = [];
-  const auto = (id, label, ok, detalhe = "", extra = {}) => R.push({ id, label, ok: !!ok, tipo: "auto", detalhe: ok ? "" : detalhe, ...extra });
-  const manual = (id, label, extra = {}) => R.push({ id, label, ok: !!p.checks[id], tipo: "manual", ...extra });
-  const campo = (id, label, placeholder) => R.push({ id, label, ok: preenchido(p.campos[id]), tipo: "campo", valor: p.campos[id] || "", placeholder });
-  const marcador = (id, label, ajuda) => R.push({ id, label, ok: true, tipo: "marcador", marcado: !!p.checks[id], opcional: true, ajuda });
-  switch (etapaId) {
-    case "mobilizacao": {
-      const temTelefone = so(p.requerente.telefone).length >= 10;
-      manual("apresentacao", "Participou da apresentação da REURB");
-      manual("docsEntregues", "Entregou documentos");
-      manual("contatoValido", "Entregou contato válido e testado", temTelefone ? {} : { bloqueado: "Cadastre o telefone antes de marcar" });
-      manual("interesse", "Interesse em aderir confirmado");
-      marcador("liderLocal", "Potencial líder local", "Marcação opcional, não trava a etapa");
-      break;
-    }
-    case "contrato":
-      auto("cpf_contrato", ehPJ(p.requerente) ? "CNPJ válido do contratante" : "CPF válido do contratante", documentoValido(p.requerente), ehPJ(p.requerente) ? "Informe um CNPJ válido no cadastro" : "Informe um CPF válido no cadastro");
-      manual("contrato", "Contrato assinado");
-      manual("procuracao", "Procuração assinada");
-      manual("requerimento", "Requerimento de REURB assinado");
-      break;
-    case "documental": {
-      const fr = faltantesPessoa(p.requerente, true);
-      auto("dados_req", "Dados pessoais do requerente", fr.length === 0, `Falta ${fr.join(", ")}`);
-      if (temConjuge(p)) { const fc = faltantesPessoa(p.conjuge, false); auto("dados_conj", "Dados pessoais do cônjuge", fc.length === 0, `Falta ${fc.join(", ")}`); }
-      (p.corequerentes || []).forEach((cr, i) => { const fx = faltantesPessoa(cr.pessoa, true); auto(`dados_coreq_${cr.id}`, `Dados de ${cr.pessoa.nome || `requerente ${i + 2}`}`, fx.length === 0, `Falta ${fx.join(", ")}`); });
-      { const fo = (p.ocupantes || []).filter((o) => faltantesQualificacao(o.pessoa).length).map((o) => o.pessoa.nome || "ocupante sem nome"); if ((p.ocupantes || []).length) auto("dados_ocup", "Qualificação dos ocupantes", fo.length === 0, `Falta completar ${fo.slice(0, 3).join(", ")}${fo.length > 3 ? ` e mais ${fo.length - 3}` : ""}`); }
-      const e = p.endereco; const fe = [];
-      if (!e.logradouro) fe.push("logradouro"); if (!e.numero) fe.push("número"); if (!e.bairro) fe.push("bairro");
-      if (!e.municipio) fe.push("município"); if (!e.uf) fe.push("UF"); if (so(e.cep).length !== 8) fe.push("CEP");
-      auto("endereco", "Endereço de residência", fe.length === 0, `Falta ${fe.join(", ")}`);
-      const tipos = ["identidade", "comp_residencia", "estado_civil", "comp_posse"];
-      if (temConjuge(p)) tipos.splice(1, 0, "identidade_conjuge");
-      tipos.forEach((t) => auto(`doc_${t}`, `${DOC_TIPOS[t]} validado`, docOk(p, t), docStatusTexto(p, t)));
-      auto("sem_duplicidade", "Sem cadastro duplicado na remessa", !ctx.duplicado, ctx.duplicado ? `Mesmo ${ctx.duplicado.motivo} do ${ctx.duplicado.codigo}` : "");
-      auto("renda", "Composição familiar e renda", (parseNum(p.social.ocupantes) || 0) > 0 && parseNum(p.social.rendaFamiliar) !== null, "Informe pessoas no imóvel e renda familiar");
-      auto("declaracao", "Declaração sobre outro imóvel", p.social.possuiImovel !== "", "Registre se a família possui outro imóvel");
-      auto("doc_comp_renda", "Comprovante de renda validado", docOk(p, "comp_renda"), docStatusTexto(p, "comp_renda"));
-      auto("teto_nucleo", "Teto de renda do núcleo definido", !!criterioNucleo(ctx.nucleo).teto, ctx.nucleo ? `Defina o teto no cadastro do ${ctx.nucleo.codigo}` : "Defina o núcleo no cadastro do imóvel");
-      auto("modalidade", "Modalidade definida", ["REURB-S", "REURB-E"].includes(p.social.modalidade), "Escolha REURB-S ou REURB-E no cadastro");
-      manual("parecer", "Parecer social emitido");
-      break;
-    }
-    case "topografia": {
-      const temFachada = (p.campo?.fotos || []).some((f) => f.tipo === "fachada");
-      const faltamCampo = itensCampoFaltando(p, ctx.checklist || []);
-      auto("nucleo", "Vinculado a um núcleo", !!ctx.nucleo, "Defina o núcleo no cadastro do imóvel");
-      auto("foto_fachada", "Foto de fachada", temFachada, "Registre no Top. Campo do núcleo");
-      auto("info_campo", "Informações de campo coletadas", faltamCampo.length === 0, faltamCampo.length ? `Falta no Top. Campo: ${faltamCampo.slice(0, 3).join(", ")}${faltamCampo.length > 3 ? ` e mais ${faltamCampo.length - 3}` : ""}` : "");
-      manual("medicao", "Medição em campo realizada");
-      manual("lepac", "LEPAC realizado");
-      manual("conferencia", "Conferência topográfica");
-      const uns = unidadesDe(p);
-      const varias = uns.length > 1;
-      const semArea = uns.map((u, i) => ((parseNum(u.area) || 0) > 0 ? null : codigoUnidade(p, i))).filter(Boolean);
-      const semMemorial = uns.map((u, i) => ((u.memorial || "").trim().length >= MIN_MEMORIAL ? null : codigoUnidade(p, i))).filter(Boolean);
-      auto("area", varias ? "Área medida de todas as unidades" : "Área medida da unidade", !semArea.length, `Falta em ${semArea.join(", ")}`, { aba: "unidades" });
-      auto("memorial", varias ? "Memorial descritivo de todas as unidades" : "Memorial descritivo da unidade", !semMemorial.length, `Cole o memorial de ${semMemorial.join(", ")}`, { aba: "unidades" });
-      break;
-    }
-    case "projeto": {
-      const semLote = unidadesDe(p).map((u, i) => (preenchido(u.loteQuadra) ? null : codigoUnidade(p, i))).filter(Boolean);
-      auto("loteQuadra", unidadesDe(p).length > 1 ? "Lote e quadra de todas as unidades" : "Lote e quadra no projeto", !semLote.length, `Falta em ${semLote.join(", ")}`, { aba: "unidades" });
-      manual("confrontacoes", "Confrontações conferidas no projeto");
-      auto("termo_gerado", "Termo de compromisso gerado", (p.documentosGerados || []).some((g) => g.tipo === "termo_compromisso"), "Gere o termo pelo botão abaixo");
-      manual("termoAssinado", "Termo de compromisso assinado");
-      break;
-    }
-    case "prefeitura":
-      manual("semExigencias", "Unidade sem exigências pendentes da prefeitura");
-      break;
-    default:
-  }
-  (ctx.campos || []).filter((c) => c.ativo && c.obrigatorioEtapa === etapaId)
-    .forEach((c) => auto(`extra_${c.id}`, `${c.rotulo} preenchido`, campoPreenchido(c, p.extras?.[c.id]), "Preencha no cadastro"));
-  return R;
-}
+
+
 const contaNoTotal = (r) => !r.opcional;
-function itemRespondido(item, v) {
-  if (item.tipo === "check") return v === true;
-  if (item.tipo === "simnao") return v === "sim" || v === "nao";
-  return preenchido(v);
-}
-function itensCampoFaltando(p, checklist) {
-  const resp = p.campo?.respostas || {};
-  return checklist.filter((i) => i.ativo && i.obrigatorio && !itemRespondido(i, resp[i.id])).map((i) => i.rotulo);
-}
+
+
 // O morador só conclui etapas cujo grupo o núcleo já alcançou
 function bloqueioPeloNucleo(p, nucleo) {
   if (p.etapa >= TOTAL) return null;
@@ -538,10 +344,7 @@ function bloqueioPeloNucleo(p, nucleo) {
   if (nucleo.etapa < g) return `Aguardando o ${nucleo.codigo} concluir a etapa ${NUCLEO_ETAPAS[nucleo.etapa]?.nome || ""} do núcleo.`;
   return null;
 }
-function pendencias(db, p) {
-  if (!ativo(p) || p.etapa >= TOTAL) return [];
-  return requisitosEtapa(ETAPAS[p.etapa].id, p, contexto(db, p)).filter((r) => !r.ok);
-}
+
 
 function progressoNucleo(db, n, k) {
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
@@ -1467,13 +1270,10 @@ function montarMorador(db, municipioId, dados) {
 /* ---------------- códigos de cliente e unidades ---------------- */
 // Padrão: IBI01_001A = prefixo do município (IBI) + remessa (01) + _ + número do cliente (001) + letra da unidade (só quando há mais de uma)
 const pad3 = (n) => String(n).padStart(3, "0");
-const MIN_MEMORIAL = 40;
-function unidadesDe(p) {
-  if (p && Array.isArray(p.unidades) && p.unidades.length) return p.unidades;
-  return [{ id: `${p?.id || "p"}_u1`, area: "", memorial: "", loteQuadra: p?.campos?.loteQuadra || "" }];
-}
-function letraUnidade(p, i) { return unidadesDe(p).length > 1 ? String.fromCharCode(65 + i) : ""; }
-function codigoUnidade(p, i) { return `${p.codigo}${letraUnidade(p, i)}`; }
+
+
+
+
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
 function numeroClienteDe(p) { return p.numeroCliente || parseInt(so(String(p.codigo).split("_")[1] || p.codigo), 10) || 0; }
 function proximoNumeroCliente(db, remessaId) { return db.processos.filter((p) => p.remessaId === remessaId).reduce((mx, p) => Math.max(mx, numeroClienteDe(p)), 0) + 1; }
@@ -4588,7 +4388,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
 }
 
 /* ---------------- página do núcleo ---------------- */
-const campoCompleto = (db, p) => (p.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(p, checklistDoMunicipio(db, p.municipioId)).length === 0;
+
 
 function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToast, comercial }) {
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
@@ -5644,7 +5444,7 @@ async function entrarPeloERP(email, senha) {
   };
 }
 
-function Login({ usuarios, onEntrar, aviso }) {
+function Login({ usuarios, onEntrar, aviso, progresso }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
@@ -5688,6 +5488,7 @@ function Login({ usuarios, onEntrar, aviso }) {
           <input id="login-senha" className="login-inp" type="password" autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} />
           {erro && <div className="msg-erro" role="alert" style={{ marginTop: -4, marginBottom: 8 }}>{erro}</div>}
           <button className="login-botao" disabled={entrando} onClick={entrar}>{entrando ? "Entrando" : "Entrar"}</button>
+          {entrando && <p role="status" style={{fontSize:13,margin:'10px 0 0'}}>{progresso||'Confirmando acesso…'}</p>}
         </div>
       </div>
       <div className="login-rodape">
@@ -6342,7 +6143,7 @@ function montarPacote(db, n, usuario) {
 }
 const unidadeCompleta = (pk, un) => (un.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(un, pk.checklist || []).length === 0;
 
-function useCampoOffline({ db, usuario, mutar, setToast, online }) {
+function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicipio }) {
   const [pacotes, setPacotesEstado] = useState({});
   const [carregado, setCarregado] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -6374,7 +6175,8 @@ function useCampoOffline({ db, usuario, mutar, setToast, online }) {
       for (const pk of Object.values(novo)) {
         for (const un of pk.unidades) {
           if (!un.alterado || un.conflito) continue;
-          const p = dbRef.current.processos.find((x) => x.id === un.id);
+          const loaded=await carregarMunicipio(un.municipioId);
+          const p = loaded.processos.find((x) => x.id === un.id);
           if (!p) { un.conflito = { motivo: "Este morador não está mais no sistema.", sistema: null }; conf++; continue; }
           const dataSistema = p.campo?.data || "";
           if (dataSistema && dataSistema !== un.versaoBase && dataSistema !== un.campo.data) {
@@ -6391,7 +6193,7 @@ function useCampoOffline({ db, usuario, mutar, setToast, online }) {
         if (pk.unidades.some((u) => u.sincronizadoEm === agora)) pk.ultimaSincronizacao = agora;
       }
       if (ok || conf) await gravar(novo);
-    } finally { setSincronizando(false); }
+    } catch(e) { if(ok||conf)await gravar(novo);setToast(e.message||'Não foi possível sincronizar. As alterações continuam neste aparelho.'); } finally { setSincronizando(false); }
     if (avisar && (ok || conf)) setToast([ok && `${ok} ${ok === 1 ? "unidade sincronizada" : "unidades sincronizadas"}`, conf && `${conf} com conflito para revisar no Campo offline`].filter(Boolean).join(". ") + ".");
     return { ok, conf };
   };
@@ -6402,7 +6204,8 @@ function useCampoOffline({ db, usuario, mutar, setToast, online }) {
   }, [online, carregado, usuario?.id]); // eslint-disable-line
   const baixar = async (n) => {
     if (!onlineRef.current) { setToast("Precisa de internet para pré-carregar um núcleo."); return false; }
-    const novoPk = montarPacote(dbRef.current, n, usuario);
+    let dados;try{dados=await carregarMunicipio(n.municipioId);}catch(e){setToast(e.message);return false;}
+    const novoPk = montarPacote(dados||dbRef.current, n, usuario);
     const antigo = pacotesRef.current[n.id];
     if (antigo) {
       novoPk.unidades = novoPk.unidades.map((u) => { const velha = antigo.unidades.find((x) => x.id === u.id); return velha && (velha.alterado || velha.conflito) ? velha : u; });
@@ -6683,7 +6486,7 @@ function totalFotosComercial(pacotes) {
   return Object.values(pacotes).reduce((s, pk) => s + pk.clientes.reduce((x, c) => x + c.fotos.filter((f) => !f.enviada).length, 0) + (pk.novos || []).reduce((x, c) => x + c.fotos.filter((f) => !f.enviada).length, 0), 0);
 }
 
-function useComercialOffline({ db, usuario, mutar, setToast }) {
+function useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio }) {
   const [pacotes, setPacotes] = useState({});
   const [carregado, setCarregado] = useState(false);
   const ref = useRef({});
@@ -6701,7 +6504,8 @@ function useComercialOffline({ db, usuario, mutar, setToast }) {
     return () => { vivo = false; };
   }, []);
   const baixar = async (r) => {
-    const pk = montarPacoteComercial(db, r, usuario);
+    let dados;try{dados=await carregarMunicipio(r.municipioId);}catch(e){setToast(e.message);return false;}
+    const pk = montarPacoteComercial(dados||db, r, usuario);
     const antigo = ref.current[r.id];
     if (antigo) {
       pk.clientes = pk.clientes.map((c) => { const velho = antigo.clientes.find((x) => x.id === c.id); return velho ? { ...c, fotos: velho.fotos, anotacao: velho.anotacao, alterado: velho.alterado } : c; });
@@ -7119,9 +6923,9 @@ function ComercialOffline({ db, usuario, comercial, conexao, ir, mutar, setToast
 // Cada município pode ter uma cópia própria das regras da IA, do checklist de campo e do modelo de PRF.
 // Enquanto não houver cópia, valem as regras gerais do sistema. Só a Diretoria altera.
 const CHAVE_MODELO_PRF_MUN = "integracao-prf-modelo-mun-v1-";
-const ajustesDoMunicipio = (db, municipioId) => (db.ajustesMunicipio || {})[municipioId] || null;
+
 const regrasDoMunicipio = (db, municipioId) => ajustesDoMunicipio(db, municipioId)?.regrasIA || db.regrasIA || [];
-const checklistDoMunicipio = (db, municipioId) => ajustesDoMunicipio(db, municipioId)?.checklistCampo || db.checklistCampo || [];
+
 const temAjustePRF = (db, municipioId) => !!ajustesDoMunicipio(db, municipioId)?.prf;
 const municipioDoProcesso = (db, p) => p?.municipioId || null;
 
@@ -11409,6 +11213,8 @@ export default function App() {
   const compartilhado = useDadosCompartilhados({setDb, storage: armazenamento, baseLimpa});
   const [aviso, setAviso] = useState("");
   const [rota, setRota] = useState({ pag: "home" });
+  const [abrindoMunicipio,setAbrindoMunicipio]=useState('');
+  const navegacao=useRef(0);
   const [toast, setToast] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
   const ultimoUso = useRef(Date.now());
@@ -11463,7 +11269,17 @@ export default function App() {
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
 
-  const ir = (r) => { setRota(r); setMenuAberto(false); try { window.scrollTo(0, 0); } catch (e) { /* sem janela */ } };
+  const carregarMunicipio=async(id)=>{if(AMBIENTE.DEMO)return db;return compartilhado.loadMunicipio(id);};
+  const ir = async (r) => {
+    const vez=++navegacao.current;setMenuAberto(false);setAbrindoMunicipio('');
+    const municipio=municipioDaRota(db,r);
+    try {
+      if(municipio&&!AMBIENTE.DEMO){setAbrindoMunicipio(db.municipios.find(m=>m.id===municipio)?.nome||'município');await carregarMunicipio(municipio);}
+      if(vez!==navegacao.current)return;
+      setRota(r);window.scrollTo(0,0);
+    }catch(e){if(vez===navegacao.current)setToast(e.message);}
+    finally{if(vez===navegacao.current)setAbrindoMunicipio('');}
+  };
   const entrar = async (u) => {
     if (!AMBIENTE.DEMO) {
       if (!temSessao() && !u.offline) throw new Error("Entre com sua conta do ERP para acessar os registros compartilhados.");
@@ -11498,7 +11314,7 @@ export default function App() {
   const [janela, setJanela] = useState(null);
   const [respirar, setRespirar] = useState(false);
   const conexao = useConexao();
-  const offline = useCampoOffline({ db, usuario, mutar, setToast, online: conexao.online });
+  const offline = useCampoOffline({ db, usuario, mutar, setToast, online: conexao.online, carregarMunicipio });
   const [avisoChat, setAvisoChat] = useAvisoChat({ db, usuario, entrouEm });
   useEffect(() => {
     if (!avisoChat) return;
@@ -11511,10 +11327,10 @@ export default function App() {
     const relogio = setInterval(() => mutar((d) => { const q = d.usuarios.find((x) => x.id === usuario.id); if (q) { q.online = true; q.ultimaAtividade = new Date().toISOString(); } return d; }), 120000);
     return () => clearInterval(relogio);
   }, [usuario?.id]); // eslint-disable-line
-  const comercial = useComercialOffline({ db, usuario, mutar, setToast });
+  const comercial = useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio });
   if (db) sincronizarTiposDocumento(db.tiposDocumento);
   if (!db) return <div className="rb" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
-  if (!usuario) return <div className="rb"><style>{CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} /></div>;
+  if (!usuario) return <div className="rb"><style>{CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
 
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
@@ -11562,8 +11378,9 @@ export default function App() {
             </div>
           </header>
           {!AMBIENTE.DEMO && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
+          {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
-          {rota.pag === "home" && <PaginaHome {...props} />}
+          {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : <div className="pagina"><h1>Início</h1><p role="status">{compartilhado.summaryError||'Atualizando pendências e contagens. Você já pode abrir um município pelo menu Clientes.'}</p>{compartilhado.summaryError&&<button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button>}</div>)}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
           {rota.pag === "metas" && <PaginaMetas {...props} />}
@@ -11586,7 +11403,8 @@ export default function App() {
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
         onMinimizar={() => setJanela((j) => ({ ...j, minimizada: !j.minimizada }))} onFechar={() => setJanela(null)} onAbrirChat={(id) => { setJanela(null); ir({ pag: "chat", id }); }} />}
       {respirar && <PausaRespirar onFechar={() => setRespirar(false)} />}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {abrindoMunicipio && <div className="toast" role="status"><Loader2 size={16} className="girando" /> Carregando moradores de {abrindoMunicipio}…</div>}
+      {toast && !abrindoMunicipio && <div className="toast" role="alert">{toast}</div>}
     </div>
   );
 }
