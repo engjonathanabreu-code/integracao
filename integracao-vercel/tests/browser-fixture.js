@@ -1,4 +1,6 @@
 // Development-only harness. Never included in the production entry point.
+import {resumirMoradores} from '../src/resumo-moradores.js';
+import {compactarResumo} from '../src/resumo-transporte.js';
 import {fixture,id} from './fixture.js';
 const base=fixture();base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
 if(new URLSearchParams(location.search).has('calendario')) {
@@ -17,11 +19,16 @@ if(new URLSearchParams(location.search).has('calendario')) {
  const evento={inicio:hoje+'T13:00:00-03:00',fim:hoje+'T14:00:00-03:00',status:'ativo',publico:true,cor:'#2563b8',participantes:[],created_by:id(71)};
  base.erp_eventos=[{...evento,id:id(83),titulo:'Reserva compartilhada',agenda_id:id(81)},{...evento,id:id(84),titulo:'Compromisso pessoal da Bia'},{...evento,id:id(85),titulo:'Compromisso pessoal da Ana',participantes:[id(70)]}];
 }
+base.fin_receb_municipios.push({id:id(102),nome:'Segundo município',uf:'SC',prefixo:'SEG'});
+base.fin_receb_remessas.push({id:id(103),municipio_id:id(102),codigo:'SEG01',nome:'Segunda remessa'});
+base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(104),municipio_id:id(102),remessa_id:id(103),nome:'Morador do segundo',codigo:'SEG01_001'});
+let detailReads=[];
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href);
+  if(url.pathname==='/api/resumo-moradores'){const {contexto}=JSON.parse(options.body);return json({resumo:compactarResumo(resumirMoradores({clientes:base.fin_receb_clientes,complementos:base.integracao_moradores},contexto))});}
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
@@ -31,6 +38,7 @@ window.fetch=async(input,options={})=>{
     if(options.method==='POST'){objects.set(path,new TextDecoder().decode(options.body));return json({});}
     return new Response(objects.get(path)||'');
   }
+  if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:[],total:0});}
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
@@ -55,3 +63,4 @@ await import('../src/main.jsx');
 const {agendarArquivo}=await import('../src/arquivos-compartilhados.js');
 const assetButton=document.createElement('button');assetButton.textContent='Verificar arquivo isolado';assetButton.style.cssText='position:fixed;bottom:30px;right:0;z-index:99999;background:white;color:black;padding:4px';
 assetButton.onclick=()=>agendarArquivo('integracao-prf-modelo-v4','<p>Modelo fictício de verificação</p>');document.body.append(assetButton);
+
