@@ -43,6 +43,7 @@ export async function importarIntegrado(pacote, { actor, onProgresso = () => {},
       const changes = { ...linha };
       chave.forEach((c) => delete changes[c]);
       if ('criado_por' in changes) changes.criado_por = quem; // RLS exige que o autor seja quem está importando
+      if (fase.tabela === 'processos_kanban_observacoes') changes.autor_id = quem; // idem: a política só aceita autor_id = quem grava; o nome original fica em autor_nome
       ops.push({ table: fase.tabela, key: Object.fromEntries(chave.map((c) => [c, linha[c]])), insert: true, changes });
     }
     let feitos = fase.linhas.length - ops.length;
@@ -62,6 +63,8 @@ export async function importarIntegrado(pacote, { actor, onProgresso = () => {},
       feitos += lote.length;
     }
     onProgresso({ fase: fase.nome, feitos, total: fase.linhas.length, gravados: resumo.gravados, pulados: resumo.pulados, mensagem: `${fase.nome}: concluída` });
+    // As etapas seguintes dependem desta (chaves estrangeiras). Com erro aqui, parar evita uma cascata de falhas sem sentido.
+    if (resumo.erros.some((e) => e.fase === fase.nome)) { resumo.interrompido = true; resumo.motivo = `A etapa "${fase.nome}" teve lotes com erro; as etapas seguintes não foram executadas. Corrija e rode de novo.`; return resumo; }
   }
   return resumo;
 }

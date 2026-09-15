@@ -6197,7 +6197,7 @@ function ConfigImportarIntegrado({ db, usuario, setToast, recarregar }) {
     try {
       const r = await importarIntegrado(pacote, { actor: usuario, onProgresso: setProgresso, parar: () => pararRef.current });
       setResultado(r);
-      setToast(r.interrompido ? "Importação interrompida. Rode de novo para continuar de onde parou." : `Importação concluída: ${r.gravados} registros gravados, ${r.pulados} já existiam.`);
+      setToast(r.interrompido ? (r.motivo || "Importação interrompida. Rode de novo para continuar de onde parou.") : `Importação concluída: ${r.gravados} registros gravados, ${r.pulados} já existiam.`);
       if (recarregar) await recarregar();
     } catch (e) { setErro(e.message); } finally { setRodando(false); }
   };
@@ -6229,10 +6229,16 @@ function ConfigImportarIntegrado({ db, usuario, setToast, recarregar }) {
         {resultado && (
           <div style={{ marginTop: 14 }}>
             <Tag tipo={resultado.erros.length ? "pend" : "ok"}>{resultado.gravados.toLocaleString("pt-BR")} gravados, {resultado.pulados.toLocaleString("pt-BR")} já existiam{resultado.erros.length ? `, ${resultado.erros.length} lote(s) com erro` : ""}</Tag>
+            <div style={{ marginTop: 10 }}>
+              <button className="btn btn-primario" onClick={() => window.location.reload()}><RefreshCw size={15} />Recarregar o sistema com os dados importados</button>
+              <div className="ajuda">O que está na tela foi carregado antes da importação; recarregue para ver códigos, remessas e fichas vindos do Integrado.</div>
+            </div>
             {resultado.erros.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <p className="ajuda" style={{ margin: "0 0 6px" }}>Lotes que não entraram (rode a importação de novo depois de corrigir a causa; o que já entrou não se repete):</p>
+                {resultado.motivo && <div className="msg-erro" style={{ margin: "2px 0" }}>{resultado.motivo}</div>}
                 {resultado.erros.slice(0, 10).map((e, i) => <div key={i} className="msg-erro" style={{ margin: "2px 0" }}>{e.fase}, registros {e.de + 1} a {e.ate}: {e.mensagem}</div>)}
+                <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => navigator.clipboard.writeText(JSON.stringify(resultado, null, 1)).then(() => setToast("Relatório copiado.")).catch(() => {})}><Copy size={13} />Copiar relatório completo</button>
               </div>
             )}
           </div>
