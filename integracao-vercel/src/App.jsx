@@ -1843,6 +1843,18 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .offline .btn,.rb .offline .inp{min-height:46px}
 .rb .offline .item-campo .btn{min-height:50px;min-width:84px;font-size:15px}
 .rb .offline .foto-vazia{height:150px}
+.rb .form-campo{min-width:0}
+.rb .form-campo .tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.rb .confrontantes-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rb .confrontantes-grid>div{min-width:0}
+.rb .confrontantes-grid textarea{resize:vertical;min-height:80px}
+@media (max-width:640px){
+ .rb .form-campo .inp,.rb .confrontantes-grid textarea{font-size:16px}
+ .rb .form-campo .barra-salvar>div{padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px))!important}
+ .rb .form-campo .barra-salvar>div>span{width:100%;min-width:0}
+ .rb .form-campo .barra-salvar .btn{white-space:normal}
+}
+
 @media (max-width:640px){.rb .offline{padding:12px 10px 150px}.rb .offline .btn{font-size:15px}.rb .grade-unidades{grid-template-columns:1fr}.rb .offline .grade-fotos{grid-template-columns:1fr 1fr}.rb .offline .item-campo>div{flex:1 1 100%!important}}
 .rb .layout-home{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
 .rb .lista-pendencias{list-style:none;margin:0;padding:0}
@@ -4556,7 +4568,7 @@ function Miniatura({ foto, altura = 120 }) {
 
 function FormConfrontantes({ valores, pode, onChange, children }) {
   return <Secao titulo="Confrontantes" nota="Obrigatório para concluir a Topografia. Considere os lados olhando de dentro do terreno para a frente. Os dados coletados em campo alimentam este mesmo cadastro.">
-    <div className="fg">{CONFRONTANTES.map(({ lado, rotulo }) => <div key={lado}>
+    <div className="fg confrontantes-grid">{CONFRONTANTES.map(({ lado, rotulo }) => <div key={lado}>
       <label className="rot" htmlFor={`confrontante-${lado}`}>{rotulo} (obrigatório)</label>
       <textarea id={`confrontante-${lado}`} className="inp" rows={2} value={valores[lado] || ""} disabled={!pode} aria-required="true" onChange={(e) => onChange(lado, e.target.value)} placeholder="Nome do confrontante ou identificação da via/área limítrofe" />
     </div>)}</div>{children}
@@ -4658,7 +4670,7 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
     } finally { setSalvando(false); }
   };
   return (
-    <div className="flex flex-col gap-3">
+    <div className="form-campo flex flex-col gap-3">
       <Secao titulo={`${p.codigo} ${p.requerente.nome || "Sem nome"}`} nota={`${p.endereco.logradouro || "Endereço não informado"}${p.endereco.numero ? `, ${p.endereco.numero}` : ""}. ${p.campo?.data ? `Última visita em ${dataHoraBR(p.campo.data)} por ${p.campo.por}.` : "Ainda sem visita registrada."}`}>
         <div className="flex flex-wrap items-center gap-2">
           <Tag tipo={respondidos === obrig.length ? "ok" : "pend"}>{respondidos} de {obrig.length} itens obrigatórios</Tag>
