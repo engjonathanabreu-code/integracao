@@ -120,6 +120,13 @@ export function projetar(base, local) {
     const old=(db.processos||[]).find(p=>p.id===r.id || p.financeiroRef===r.id);
     return bind('processos',r,{id:old?.id||r.id,financeiroRef:r.id,municipioId:r.municipio_id,remessaId:r.remessa_id,codigo:r.codigo,nucleoId:old?.nucleoId||'',etapa:old?.etapa||0,situacao:r.ativo?'Ativo':'Inativo',motivoSituacao:old?.motivoSituacao||'',requerente:{...pessoa(),...old?.requerente,nome:r.nome,cpf:r.cpf_cnpj||''},conjuge:old?.conjuge||pessoa(),endereco:old?.endereco||{logradouro:'',numero:'',complemento:'',bairro:'',municipio:'',uf:'',cep:''},imovel:old?.imovel||{area:'',comprovantePosse:''},social:old?.social||{ocupantes:'',rendaFamiliar:'',possuiImovel:'',modalidade:''},extras:old?.extras||{},docs:old?.docs||[],checks:old?.checks||{},campos:old?.campos||{},campo:old?.campo||{respostas:{},fotos:[],data:'',por:'',geo:null},numeroCliente:Number(text(r.codigo).match(/\d+$/)?.[0])||0,unidades:old?.unidades||[{id:`unidade_${r.id}`,area:'',memorial:'',loteQuadra:''}]}, {codigo:'codigo',municipioId:'municipio_id',remessaId:'remessa_id','requerente.nome':'nome','requerente.cpf':'cpf_cnpj',situacao:{column:'ativo',encode:v=>v==='Ativo'}},'fin_receb_clientes');
   }));
+  // Municípios sintéticos (criados só a partir do nome no kanban, id "municipio_...") são substituídos pelo registro real
+  // do financeiro quando ele passa a existir, e tudo que apontava para o sintético é religado ao id real.
+  {
+    const reais=db.municipios.filter(m=>uuid(m.id)); const troca={};
+    db.municipios=db.municipios.filter(m=>{ if(uuid(m.id))return true; const real=reais.find(r=>normalize(r.nome)===normalize(m.nome)&&(r.uf||'SC')===(m.uf||'SC')); if(real){troca[m.id]=real.id;return false;} return true; });
+    if(Object.keys(troca).length) for(const col of ['remessas','nucleos','processos','planos']) (db[col]||[]).forEach(x=>{ if(troca[x.municipioId]) x.municipioId=troca[x.municipioId]; });
+  }
   const municipality = (name,uf) => {
     let m = db.municipios.find(x=>normalize(x.nome)===normalize(name) && (x.uf||'SC')===(uf||'SC'));
     if (!m) { m={id:`municipio_${normalize(name)}_${uf||'SC'}`,nome:name,uf:uf||'SC',prefixo:'',origem:['ERP'],criado:''}; db.municipios.push(m); }
@@ -224,13 +231,15 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
   const who=actor.erpRef||rawUser(actor.id), name=actor.nome;
   const link=e=> e ? {entidade_tipo:e.tipo==='nucleo'?'processo':e.tipo,entidade_id:after.nucleos.find(n=>n.id===e.id)?.externo?.kanbanId||e.id} : {};
   const requireUuid=id=> {if(!uuid(id)) throw new Error('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.');return id;};
+  // Um município sintético (só do kanban) vira o registro real do financeiro quando ele existe com o mesmo nome e UF.
+  const municipioReal=id=>{ if(uuid(id))return id; const m=after.municipios.find(x=>x.id===id); const real=m&&after.municipios.find(x=>uuid(x.id)&&normalize(x.nome)===normalize(m.nome)&&(x.uf||'SC')===(m.uf||'SC')); return real?real.id:id; };
   // These are creations requested after loading, never an import of old local rows.
-  for(const m of newItems(before.municipios,after.municipios)) insert('fin_receb_municipios',requireUuid(m.id),{nome:m.nome,uf:m.uf||'SC',prefixo:nullText(m.prefixo)});
+  for(const m of newItems(before.municipios,after.municipios).filter(m=>!String(m.id).startsWith('municipio_'))) insert('fin_receb_municipios',requireUuid(m.id),{nome:m.nome,uf:m.uf||'SC',prefixo:nullText(m.prefixo)});
   for(const r of newItems(before.remessas,after.remessas)) {
     const m=after.municipios.find(x=>x.id===r.municipioId);
-    insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
+    insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
   }
-  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
+  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
   for(const n of after.nucleos||[]) {
     const prev=(before.nucleos||[]).find(x=>x.id===n.id);
     const id=n.externo?.kanbanId || n.id;
