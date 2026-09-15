@@ -348,7 +348,7 @@ export function complementos(before,after,state,actor) {
   const ignored=new Set(['_compartilhado','online','ultimaAtividade']);
   for(const collection of Object.keys(after)) {
     if(['previaERP','versao'].includes(collection)) continue;
-    const array=Array.isArray(after[collection]) && after[collection].every(x=>x && typeof x==='object' && x.id);
+    const array=collection!=='advogados' && Array.isArray(after[collection]) && after[collection].every(x=>x && typeof x==='object' && x.id);
     const records=array?(collection==='auditoria'?after[collection].filter(r=>!['Entrou no sistema','Saiu do sistema','Sessão encerrada por inatividade'].includes(r.acao)):after[collection]):[{id:collection,valor:after[collection]}];
     if(array && !['auditoria','notificacoes'].includes(collection)) for(const removed of (before[collection]||[]).filter(x=>!records.some(r=>r.id===x.id))) {
       const prior=state.base.integracao_complementos.find(x=>x.colecao===collection && x.registro_id===removed.id);

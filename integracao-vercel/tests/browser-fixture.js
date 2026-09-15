@@ -26,6 +26,15 @@ if(new URLSearchParams(location.search).has('confrontantes') || new URLSearchPar
   base.fin_receb_clientes[0].cpf_cnpj='52998224725';
   base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:3,nucleoId:id(5),extras:{'2be328c2-7ccd-4448-a942-cfc6f62631fc':'Rua já cadastrada'},checks:{medicao:true,lepac:true,conferencia:true},unidades:[{id:'un1',area:'200',memorial:'Memorial fictício suficientemente longo para validar a etapa.'}],campo:{respostas:{},fotos:[],data:''}}});
 }
+if(new URLSearchParams(location.search).has('gerador')) {
+  base.integracao_nucleos.push({colecao:'nucleos',registro_id:id(5),referencia_tabela:'processos_kanban',referencia_id:id(5),dados:{id:id(5),etapa:2,checks:{crfEmitida:new URLSearchParams(location.search).has('crf')}}});
+  base.integracao_configuracoes.push({colecao:'config',registro_id:'ajustesMunicipio',referencia_tabela:'integracao_config',dados:{valor:{[id(2)]:{prefeitura:{cnpj:'00.000.000/0000-00',endereco:'Sede teste',prefeito:{nome:'Prefeito de teste',cargo:'Prefeito'}},comarca:{nome:'Comarca teste',estadoPorExtenso:'Santa Catarina'}}}}});
+  base.fin_receb_clientes[0].nome='Moradora Teste'; base.fin_receb_clientes[0].cpf_cnpj='52998224725';
+  const pessoa={nome:'Moradora Teste',sexo:'Feminino',cpf:'52998224725',rg:'12345',rgOrgao:'SSP',rgUf:'SC',nacionalidade:'Brasileira',profissao:'Professora',estadoCivil:'Solteiro(a)',renda:'1500'};
+  const endereco={logradouro:'Rua Teste',numero:'10',bairro:'Centro',municipio:'Residência Teste',uf:'SC',cep:'89000-000'};
+  base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:2,nucleoId:id(5),requerente:pessoa,endereco,social:{estadoCivil:'Solteiro(a)'},documentosGerados:[{id:'proc-antiga',tipo:'procuracao',nome:'Procuração antiga',data:'2026-09-10T12:00:00Z',por:'Equipe teste',representantes:[{id:'usado',nome:'Representante usado'}],condicoes:'para Representante usado',html:'<p>Procuração histórica para Representante usado</p>'}]}});
+  base.integracao_configuracoes.push({colecao:'config',registro_id:'advogados',referencia_tabela:'integracao_config',dados:{valor:[{id:'mantido',nome:'Representante disponível',ativo:true},{id:'usado',nome:'Representante usado',ativo:false},{id:'sem-uso',nome:'Representante nunca usado',ativo:true}]}});
+}
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const original=window.fetch.bind(window);let writes=0;
@@ -44,6 +53,7 @@ window.fetch=async(input,options={})=>{
     return new Response(objects.get(path)||'');
   }
   if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:inicio?[]:base.integracao_moradores.filter(e=>base.fin_receb_clientes.some(c=>c.id===e.referencia_id&&c.municipio_id===municipio)),total:0});}
+  if(url.pathname.endsWith('/rpc/integracao_uso_representantes')) { const {contarProcuracoes}=await import('../src/representantes.js'); const representantes=base.integracao_configuracoes.find(e=>e.registro_id==='advogados')?.dados.valor||[];return json(Object.fromEntries(representantes.map(a=>[a.id,contarProcuracoes(base.integracao_moradores.map(e=>e.dados),a)]))); }
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
@@ -64,7 +74,7 @@ window.fetch=async(input,options={})=>{
   }
   return json({message:`Consulta inesperada no teste: ${url.pathname}`},500);
 };
-if(new URLSearchParams(location.search).has('prf')) {
+if(new URLSearchParams(location.search).has('prf') || new URLSearchParams(location.search).has('gerador')) {
   // Captura a saída real de baixarArquivo para inspeção, sem depender do suporte
   // a downloads de blob do navegador usado na verificação automatizada.
   const blobs=new Map(), criarURL=URL.createObjectURL.bind(URL);
@@ -72,7 +82,7 @@ if(new URLSearchParams(location.search).has('prf')) {
   document.addEventListener('click',async event=>{
     const a=event.target.closest?.('a[download]'),blob=a&&blobs.get(a.href);if(!blob)return;
     event.preventDefault();
-    let out=document.getElementById('exportacao-teste');if(!out){out=document.createElement('pre');out.id='exportacao-teste';document.body.append(out)}
+    let out=document.getElementById('exportacao-teste');if(!out){out=document.createElement('pre');out.id='exportacao-teste';out.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%';document.body.append(out)}
     out.setAttribute('data-nome',a.download);out.setAttribute('data-tipo',blob.type);out.textContent=await blob.text();
   },true);
   const {instalarArmazenamento}=await import('../src/armazenamento-local.js');instalarArmazenamento();
