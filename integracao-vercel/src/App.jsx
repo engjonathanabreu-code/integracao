@@ -1,3 +1,4 @@
+import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10495,6 +10496,8 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [agendasOcultas, setAgendasOcultas] = useState([]);
   const [verOcultos, setVerOcultos] = useState(false);
   const [novoEm, setNovoEm] = useState(null);
+  const cardDia=useCardCalendario(visao,ref,evento,novoEm);
+  const abrirDia=iso=>{setDia(iso);cardDia.abrir();};
   const perm = permissoes(usuario);
   const ocultos = usuario.calendarioOculto || [];
   const alternarAgenda = (chave) => mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); const lista = u.agendaPessoal || []; u.agendaPessoal = lista.includes(chave) ? lista.filter((x) => x !== chave) : [...lista, chave]; return d; }, "Agenda pessoal alterada", { detalhe: chave });
@@ -10557,7 +10560,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
       </div>
       : <p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p>}
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
-      <div className="layout-calendario">
+      <div className="layout-calendario" style={cardDia.aberto ? undefined : {gridTemplateColumns:"minmax(0,1fr)"}}>
         {colunasHora ? (
           <div className="card agenda-horas" style={{ padding: 10 }}>
             {blocosHora.map((diasSemana, idxSemana) => (
@@ -10568,7 +10571,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 const iso = d.toISOString().slice(0, 10);
                 const doDiaTodos = todos.filter((i) => i.dia === iso);
                 return (
-                  <button key={iso} className={`cabecalho-dia${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => setDia(iso)}>
+                  <button key={iso} className={`cabecalho-dia${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}>
                     <span>{DIAS_SEMANA[(d.getDay() + 6) % 7]}</span>
                     <strong>{d.getDate()}/{String(d.getMonth() + 1).padStart(2, "0")}</strong>
                     {doDiaTodos.filter((i) => i.tipo !== "evento").length > 0 && <span className="ajuda" style={{ margin: 0 }}>{doDiaTodos.filter((i) => i.tipo !== "evento").length} prazo(s)</span>}
@@ -10597,7 +10600,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 const iso = d.toISOString().slice(0, 10);
                 const eventos = todos.filter((i) => i.dia === iso && i.tipo === "evento");
                 return (
-                  <div key={iso} className={`coluna-dia${iso === hoje ? " hoje" : ""}`} onClick={() => setDia(iso)}
+                  <div key={iso} className={`coluna-dia${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                     onDoubleClick={(ev) => {
                       if (perm.setor === "consulta") return;
                       const r = ev.currentTarget.getBoundingClientRect();
@@ -10633,7 +10636,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
               const noMes = noPeriodo(d);
               const itens = todos.filter((i) => i.dia === iso);
               return (
-                <button key={iso} className={`dia-cal${noMes ? "" : " fora"}${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => setDia(iso)}
+                <button key={iso} className={`dia-cal${noMes ? "" : " fora"}${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
                   title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length} itens`}>
                   <span className="numero-dia">{d.getDate()}</span>
@@ -10645,8 +10648,9 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
           </div>
         </div>
         )}
+        {cardDia.aberto && <div ref={cardDia.ref} role="region" aria-label="Detalhes do dia">
         <Secao titulo={`Dia ${dataBR(dia)}`} nota={doDia.length ? `${doDia.length} item(ns)` : "Nada marcado neste dia."}
-          acao={<span className="flex gap-2">{ocultos.length > 0 && <button className="btn btn-sm" onClick={() => setVerOcultos(true)}>Itens ocultados ({ocultos.length})</button>}{perm.setor !== "consulta" && <button className="btn btn-sm" onClick={() => setEvento("novo")}><Plus size={14} />Evento</button>}</span>}>
+          acao={<span className="flex gap-2"><button className="btn-icone" aria-label="Fechar detalhes do dia" onClick={cardDia.fechar}><X size={16} /></button>{ocultos.length > 0 && <button className="btn btn-sm" onClick={() => setVerOcultos(true)}>Itens ocultados ({ocultos.length})</button>}{perm.setor !== "consulta" && <button className="btn btn-sm" onClick={() => setEvento("novo")}><Plus size={14} />Evento</button>}</span>}>
           {doDia.map((i) => (
             <button key={i.id} className="linha-link" onClick={() => abrirItem(i)}>
               <span className="flex items-start gap-2" style={{ minWidth: 0 }}>
@@ -10668,6 +10672,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
             </button>
           ))}
         </Secao>
+        </div>}
       </div>
       {agendaEditando && podeGerenciar && <ModalEditarAgenda key={agendaEditando.id} agenda={agendaEditando} onFechar={() => setAgendaEditando(null)} onSalvar={(dados) => {
         mutar(d => { Object.assign(d.agendas.find(a => a.id === agendaEditando.id), dados); return d; }, "Agenda editada", {detalhe: dados.nome});
