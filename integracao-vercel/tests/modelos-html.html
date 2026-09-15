@@ -1,7 +1,10 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Testes DOM dos modelos</title></head><body><h1>Testes DOM dos modelos</h1><output id="resultado">Executando</output><ol id="casos"></ol><script type="module">
+import {testesDeclaracoes} from './declaracoes.browser.js';
 import {testesModelos} from './modelos-html.browser.js';
 let passou=0,falhou=0;
 const assert={equal(a,b){if(a!==b)throw Error(`Esperado: ${b}; recebido: ${a}`)},ok(a){if(!a)throw Error('Condição não satisfeita')},throws(fn){let erro=false;try{fn()}catch{erro=true}if(!erro)throw Error('Esperava erro')}};
-testesModelos((nome,fn)=>{const li=document.createElement('li');try{fn();passou++;li.textContent='PASSOU: '+nome}catch(e){falhou++;li.textContent='FALHOU: '+nome+' — '+e.message}document.querySelector('#casos').append(li)},assert);
+const executar=(nome,fn)=>{const li=document.createElement('li');try{fn();passou++;li.textContent='PASSOU: '+nome}catch(e){falhou++;li.textContent='FALHOU: '+nome+' — '+e.message}document.querySelector('#casos').append(li)};
+testesModelos(executar,assert);
+testesDeclaracoes(executar,assert);
 document.querySelector('#resultado').textContent=`${passou} passaram; ${falhou} falharam`;
 </script></body></html>

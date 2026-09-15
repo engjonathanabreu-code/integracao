@@ -1,3 +1,5 @@
+import { contarProcuracoes } from './representantes.js';
+import { DECLARACOES, MODELO_PROTOCOLO, CAMPOS_DECLARANTE, CAMPOS_PREFEITURA, contextoDeclaracao, entradasDeclaracao, gerarTextoDeclaracao, camposFaltantesDeclaracao, impedimentoDeclaracao, datasDocumento, rotulosLacunas } from './declaracoes.js';
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
 import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
@@ -6,7 +8,7 @@ import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
-import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
+import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, requisicao} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -1818,7 +1820,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .barra-voltar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .rb .status-conexao{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-radius:15px;border:1px solid var(--line);background:var(--card);box-shadow:var(--sombra)}
 .rb .status-conexao.sem{background:var(--warning-bg);border-color:#EAD3A2}
-.rb .grade-unidades{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.rb .grade-unidades{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:12px}
 .rb .cartao-unidade{border:1px solid var(--line);border-radius:15px;background:var(--card);box-shadow:var(--sombra);overflow:hidden}
 .rb .cartao-unidade.conflito{border-color:var(--danger);background:var(--danger-bg)}
 .rb .cartao-unidade-botao{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:14px;border:none;background:none;font:inherit;color:inherit;cursor:pointer;min-height:100px}
@@ -3201,6 +3203,38 @@ function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAb
   );
 }
 
+function RequerimentoProtocolo({ db, n, usuario, mutar, setToast, crfDisponivel }) {
+  const pode = permissoes(usuario).etapa("projeto");
+  const [previa, setPrevia] = useState(null);
+  const [historico, setHistorico] = useState(null);
+  const timbrado = useTimbrado(db);
+  const municipio = municipioDe(db, n.municipioId) || {};
+  const dados = { ...ajustesDoMunicipio(db, n.municipioId), municipio, nucleo: { ...n }, documento: datasDocumento() };
+  const corpo = corpoDoModelo(db, "requerimento_protocolo");
+  const faltas = camposFaltantesDeclaracao(corpo, dados);
+  const emissoes = n.documentosGerados || [];
+  const anteriores = emissoes.filter((g) => g.tipo === "requerimento_protocolo");
+  const ultimo = anteriores.at(-1);
+  const bloqueado = !pode || !crfDisponivel || faltas.length > 0;
+  const emitir = (formato) => {
+    if (bloqueado || !previa || lacunasDoDocumento(previa).marcadores.length) return;
+    const registro = { id: uid("dg"), tipo: "requerimento_protocolo", nome: MODELO_PROTOCOLO.nome, data: new Date().toISOString(), por: usuario.nome, html: previa, timbrado: timbrado.temTimbre };
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.documentosGerados = [...(q.documentosGerados || []), registro]; return d; }, ultimo ? "Requerimento para protocolo reemitido" : "Requerimento para protocolo emitido", { nucleoId: n.id, municipioId: n.municipioId, detalhe: `${n.codigo}: ${MODELO_PROTOCOLO.nome}` });
+    baixarArquivo(`${n.codigo}-requerimento-protocolo.${formato}`, documentoWord(previa, MODELO_PROTOCOLO.nome), formato === "doc" ? "application/msword" : "text/html;charset=utf-8");
+    setPrevia(null); setToast("Requerimento emitido e incluído no histórico do núcleo.");
+  };
+  return <Secao titulo="Requerimento para Protocolo" nota="Documento da prefeitura para pedir o registro da CRF, emitido uma vez para o núcleo e mantido no histórico a cada reemissão.">
+    {!crfDisponivel && <Aviso>É necessário cadastrar a CRF do núcleo para liberar a emissão.</Aviso>}
+    {faltas.length > 0 && <p className="ajuda">Falta preencher: {rotulosLacunas(faltas).join(", ")}. Confira Configurações → Modelos e representantes → Prefeitura e comarca.</p>}
+    {!pode && <p className="ajuda">Somente o setor Projeto ou a Diretoria pode emitir.</p>}
+    {ultimo && <p className="ajuda">Última emissão: {dataHoraBR(ultimo.data)}, por {ultimo.por}.</p>}
+    <button className="btn btn-primario" disabled={bloqueado} onClick={() => { if (!bloqueado) setPrevia(aplicarTimbrado(gerarTextoDeclaracao(corpo, dados), timbrado)); }}><FileText size={14} />{ultimo ? "Reemitir requerimento" : "Gerar requerimento"}</button>
+    {anteriores.length > 0 && <details style={{ marginTop: 12 }}><summary>Histórico do requerimento ({anteriores.length})</summary>{[...anteriores].reverse().map((g) => <div key={g.id}><button className="btn-link" onClick={() => setHistorico(g)}>{dataHoraBR(g.data)}, por {g.por}</button></div>)}</details>}
+    {previa && <Modal titulo={MODELO_PROTOCOLO.nome} largura={780} onFechar={() => setPrevia(null)} rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={bloqueado} onClick={() => emitir("html")}>HTML</button><button className="btn btn-primario" disabled={bloqueado} onClick={() => emitir("doc")}>Emitir para Word</button></>}><div className="previa-doc" dangerouslySetInnerHTML={{ __html: previa }} /></Modal>}
+    {historico && <Modal titulo={historico.nome} largura={780} onFechar={() => setHistorico(null)}><p>{dataHoraBR(historico.data)}, por {historico.por}</p><div className="previa-doc" dangerouslySetInnerHTML={{ __html: limparHtml(historico.html) }} /></Modal>}
+  </Secao>;
+}
+
 function PainelEtapaNucleo({ db, n, usuario, mutar, setToast, setModal }) {
   const perm = permissoes(usuario);
   const log = { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId };
@@ -4334,7 +4368,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             {[
               ["cadastro", "Cadastro", UserPlus, 0, sujo ? "não salvo" : ""],
               ["unidades", "Unidade" + (unidadesDe(p).length > 1 ? "s" : ""), MapPin, unidadesDe(p).length > 1 ? unidadesDe(p).length : 0],
-              ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
+              ["comercial", "Gerador", Wallet, (p.documentosGerados || []).length],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
               ["qualificacao", "Qualificação", ScrollText, 0, p.qualificacao?.desatualizada ? "desatualizada" : ""],
@@ -4528,7 +4562,15 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
           </div>
         </div>
-        {n && <aside className="lateral"><PainelEtapaNucleo db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} /></aside>}
+        {n && <aside className="lateral"><PainelEtapaNucleo db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} />
+          {n.etapa >= 2 && <div style={{ marginTop: 16 }} aria-label="Documentos da etapa Projeto"><h2 style={{ fontSize: 16 }}>Documentos da etapa Projeto</h2>
+            <RequerimentoProtocolo db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} crfDisponivel={!!n.checks?.crfEmitida} />
+            <div style={{ marginTop: 12 }}><Secao titulo="Termos de compromisso dos moradores" nota="Cada termo pertence ao morador e é emitido na etapa Projeto de seu cadastro.">
+              {ps.filter((p) => p.etapa === 4 && ativo(p)).map((p) => <button key={p.id} className="btn-link" style={{ display: "block", marginBottom: 8 }} onClick={() => ir({ pag: "processo", id: p.id })}>{p.codigo} — {p.requerente.nome}</button>)}
+              {!ps.some((p) => p.etapa === 4 && ativo(p)) && <p className="ajuda">Nenhum morador na etapa Projeto no momento.</p>}
+            </Secao></div>
+          </div>}
+        </aside>}
       </div>
       {modal?.tipo === "motivo" && <ModalMotivo {...modal} onFechar={() => setModal(null)} />}
       {cad.elemento}
@@ -7897,9 +7939,7 @@ const DOCS_COMERCIAIS = [
   { id: "contrato", nome: "Contrato de prestação de serviços", precisa: ["nome", "cpf", "endereco", "condicoes"] },
   { id: "procuracao", nome: "Procuração", precisa: ["nome", "cpf", "endereco", "procurador"] },
   { id: "requerimento", nome: "Requerimento de REURB", precisa: ["nome", "cpf", "endereco", "nucleo"] },
-  { id: "dec_estado_civil", nome: "Declaração de estado civil", precisa: ["nome", "cpf"] },
-  { id: "dec_renda", nome: "Declaração de renda", precisa: ["nome", "cpf", "renda"] },
-  { id: "dec_endereco", nome: "Declaração de residência", precisa: ["nome", "cpf", "endereco"] },
+  ...Object.entries(DECLARACOES).map(([id, modelo]) => ({ id, nome: modelo.nome, precisa: [], declaracao: true })),
   { id: "dec_posse", nome: "Declaração de posse mansa e pacífica", precisa: ["nome", "cpf", "endereco"] },
   { id: "distrato", nome: "Distrato do contrato", precisa: ["nome", "cpf", "distrato"] },
 ];
@@ -7929,7 +7969,8 @@ function textoCompromissos(c, remessaPrazos) {
 // Declarações sugeridas conforme a situação de cada morador
 function documentosSugeridos(db, p) {
   const sugestoes = { contrato: "Base do serviço com o morador", procuracao: "Para a Integral representar o morador na prefeitura e no cartório", requerimento: "Pedido formal de regularização" };
-  if (["Casado(a)", "União estável", "Separado(a)", "Divorciado(a)", "Viúvo(a)"].includes(p.social?.estadoCivil || p.requerente?.estadoCivil)) sugestoes.dec_estado_civil = "O estado civil declarado precisa de comprovação";
+  if (!impedimentoDeclaracao("dec_estado_civil", p)) sugestoes.dec_estado_civil = "Declaração de solteiro ou solteira";
+  if (!impedimentoDeclaracao("dec_uniao_estavel", p)) sugestoes.dec_uniao_estavel = "Declaração conjunta dos companheiros";
   if (p.social?.modalidade === "REURB-S" || !preenchido(p.social?.rendaFamiliar)) sugestoes.dec_renda = "Necessária para enquadrar em REURB-S";
   if (!p.docs?.some((d) => d.tipo === "comp_residencia" && d.status === "validado")) sugestoes.dec_endereco = "Sem comprovante de residência validado";
   if (!p.docs?.some((d) => d.tipo === "comp_posse" && d.status === "validado")) sugestoes.dec_posse = "Sem documento de posse validado";
@@ -8078,6 +8119,7 @@ const MODELOS_DOC = {
 {{assinatura_todos}}`,
   },
 };
+Object.assign(MODELOS_DOC, DECLARACOES, { requerimento_protocolo: MODELO_PROTOCOLO });
 const MARCADORES_DOC = [
   ["qualificacao", "Qualificação completa do morador"], ["nome", "Nome"], ["cpf", "CPF"], ["rg", "RG"],
   ["nacionalidade", "Nacionalidade"], ["estadoCivil", "Estado civil"], ["profissao", "Profissão"], ["telefone", "Telefone"],
@@ -8327,6 +8369,36 @@ function AbaComercialNucleo({ db, n, usuario, mutar, setToast }) {
   );
 }
 
+function CamposEmissao({ tipo, valor, pode, onChange }) {
+  const campo = (chave, rotulo, opcoes, terceiro = false) => {
+    const atual = terceiro ? valor.declarante || {} : valor;
+    const mudar = (v) => onChange(terceiro ? { ...valor, declarante: { ...atual, [chave]: v } } : { ...valor, [chave]: v });
+    const id = `${tipo}-${chave}`;
+    return <div key={chave}><label className="rot" htmlFor={id}>{rotulo}</label>{opcoes ? <select id={id} className="inp" disabled={!pode} value={atual[chave] || ""} onChange={(e) => mudar(e.target.value)}><option value="">Selecione</option>{opcoes.map((v) => <option key={v}>{v}</option>)}</select> : <input id={id} className="inp" disabled={!pode} value={atual[chave] ?? ""} inputMode={chave === "rendaMensal" ? "decimal" : ["cpf","cep"].includes(chave) ? "numeric" : undefined} onChange={(e) => mudar(e.target.value)} />}</div>;
+  };
+  return <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,170px),1fr))", marginBottom: 12 }}>
+    {tipo === "dec_sem_renda" && campo("condicaoSemRenda", "Condição sem renda", ["ESTUDANTE","DO LAR","DESEMPREGADO(A)"])}
+    {tipo === "dec_renda" && <>{campo("ocupacaoDeclarada", "Ocupação declarada")}{campo("rendaMensal", "Renda mensal do requerente (R$)")}</>}
+    {tipo === "dec_endereco" && <><p className="ajuda" style={{ gridColumn: "1 / -1" }}>Preencha os dados de quem declara que o morador reside em sua casa. Eles serão guardados com o documento emitido.</p>{CAMPOS_DECLARANTE.map(([chave, rotulo]) => campo(chave, rotulo, chave === "sexo" ? ["Feminino","Masculino"] : chave === "uf" ? UFS : null, true))}</>}
+  </div>;
+}
+function ConfigPrefeituras({ db, pode, mutar, setToast }) {
+  const [municipioId, setMunicipioId] = useState("");
+  const [rascunho, setRascunho] = useState({});
+  const [sujo, setSujo] = useState(false);
+  const carregar = (id) => {
+    setMunicipioId(id); setSujo(false);
+    const ajuste = ajustesDoMunicipio(db, id);
+    setRascunho({ prefeitura: { ...ajuste.prefeitura, prefeito: { ...ajuste.prefeitura?.prefeito } }, comarca: { ...ajuste.comarca } });
+  };
+  const ler = (caminho) => caminho.split(".").reduce((v, k) => v?.[k], rascunho) || "";
+  const mudar = (caminho, valor) => { const novo = structuredClone(rascunho); const partes = caminho.split("."); let alvo = novo; for (const parte of partes.slice(0,-1)) alvo = alvo[parte] ||= {}; alvo[partes.at(-1)] = valor; setRascunho(novo); setSujo(true); };
+  return <Secao titulo="Prefeitura e comarca por município" nota="Cadastro único para os documentos deste município. Preencha o nome e o cargo do representante legal que assina pela prefeitura.">
+    <label className="rot" htmlFor="prefeitura-municipio">Município</label><select id="prefeitura-municipio" className="inp" value={municipioId} onChange={(e) => carregar(e.target.value)}><option value="">Selecione o município</option>{(db.municipios || []).map((m) => <option key={m.id} value={m.id}>{m.nome}/{m.uf}</option>)}</select>
+    {municipioId && <><div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", marginTop: 12 }}>{CAMPOS_PREFEITURA.map(([chave, rotulo]) => <div key={chave}><label className="rot" htmlFor={`pref-${chave}`}>{rotulo}</label><input id={`pref-${chave}`} className="inp" disabled={!pode} value={ler(chave)} onChange={(e) => mudar(chave, e.target.value)} /></div>)}</div><button className="btn btn-primario" style={{ marginTop: 12 }} disabled={!pode || !sujo} onClick={() => { if (!pode) return; mutar((d) => { d.ajustesMunicipio = { ...d.ajustesMunicipio, [municipioId]: { ...ajustesDoMunicipio(d, municipioId), ...rascunho } }; return d; }, "Prefeitura e comarca atualizadas", { municipioId }); setSujo(false); setToast("Dados da prefeitura e comarca salvos."); }}>Salvar prefeitura e comarca</button></>}
+  </Secao>;
+}
+
 function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const perm = permissoes(usuario);
   const pode = (perm.diretor || perm.setor === "comercial") && ativo(p);
@@ -8337,26 +8409,36 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const [previa, setPrevia] = useState(null);
   const [confirmarProprio, setConfirmarProprio] = useState(false);
   const [escolherProc, setEscolherProc] = useState(null);
+  const [formularios, setFormularios] = useState({});
+  const [historico, setHistorico] = useState(null);
   const timbrado = useTimbrado(db);
   const gerar = (doc, procuradoresEscolhidos) => {
     const lista = (procuradoresEscolhidos || []).map((id) => (db.advogados || []).find((a) => a.id === id)).filter(Boolean);
     const texto = lista.length ? lista.map(qualificacaoAdvogado).join("; ") : "";
-    const html = aplicarTimbrado(montarDocumentoComercial(doc.id, dados, db, { procuradores: texto }), timbrado);
-    setPrevia({ doc, html, procuradores: lista.map((a) => a.nome) });
+    if (!pode) return;
+    if (doc.id === "procuracao" && (!lista.length || lista.some((a) => a.ativo === false))) { setToast("Escolha um representante disponível."); return; }
+    const entradas = formularios[doc.id] || entradasDeclaracao(p, doc.id);
+    const motivo = doc.declaracao && impedimentoDeclaracao(doc.id, p);
+    const faltas = doc.declaracao ? camposFaltantesDeclaracao(corpoDoModelo(db, doc.id), contextoDeclaracao(p, entradas)) : [];
+    if (motivo || faltas.length) { setToast(motivo || `Falta preencher: ${rotulosLacunas(faltas).join(", ")}`); return; }
+    const html = aplicarTimbrado(montarDocumentoComercial(doc.id, dados, db, { ...contextoDeclaracao(p, entradas), procuradores: texto }), timbrado);
+    setPrevia({ doc, html, entradas, representantes: lista.map((a) => ({ ...a })), procuradores: lista.map((a) => a.nome) });
   };
   const abrirDoc = (doc) => {
     if (doc.id === "procuracao") { setEscolherProc({ doc, ids: (db.advogados || []).filter((a) => a.ativo !== false).map((a) => a.id).slice(0, 1) }); return; }
     gerar(doc);
   };
   const baixar = (doc, html, formato) => {
+    if (!pode || (doc.declaracao && (lacunasDoDocumento(html).marcadores.length || impedimentoDeclaracao(doc.id, p)))) return;
+    if (doc.id === "procuracao" && previa?.representantes?.some((a) => !(db.advogados || []).some((atual) => atual.id === a.id && atual.ativo !== false))) { setToast("O representante ficou indisponível. Gere uma nova prévia."); return; }
     const nomeArq = `${p.codigo}-${doc.id}`;
     const corpo = documentoWord(html, `${doc.nome} ${p.codigo}`);
     baixarArquivo(`${nomeArq}.${formato === "doc" ? "doc" : "html"}`, corpo, formato === "doc" ? "application/msword" : "text/html;charset=utf-8");
     mutar((d) => {
       const q = d.processos.find((x) => x.id === p.id);
-      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : "" }];
+      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, html, entradas: previa?.entradas || {}, representantes: previa?.representantes || [], condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : "" }];
       return d;
-    }, "Documento comercial gerado", { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${doc.nome}${doc.id === "contrato" ? `, ${resumoCondicoes(condicoes)}` : ""}` });
+    }, "Documento do Gerador emitido", { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${doc.nome}${doc.id === "contrato" ? `, ${resumoCondicoes(condicoes)}` : ""}` });
     setToast(`${doc.nome} baixado.`);
   };
   const gerados = p.documentosGerados || [];
@@ -8381,9 +8463,11 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
       <SecaoDistrato db={db} p={p} usuario={usuario} pode={perm.diretor || perm.setor === "comercial"} mutar={mutar} setToast={setToast} onGerar={() => abrirDoc(DOCS_COMERCIAIS.find((d) => d.id === "distrato"))} />
       <Secao titulo="Documentos" nota="Gerados na hora, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
-        <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
+        <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,280px),1fr))" }}>
           {DOCS_COMERCIAIS.map((doc) => {
-            const falta = faltandoPara(doc, dados, p);
+            const entradas = formularios[doc.id] || entradasDeclaracao(p, doc.id);
+            const motivo = doc.declaracao ? impedimentoDeclaracao(doc.id, p) : "";
+            const falta = doc.declaracao ? camposFaltantesDeclaracao(corpoDoModelo(db, doc.id), contextoDeclaracao(p, entradas)) : faltandoPara(doc, dados, p);
             const sugerido = sugeridos[doc.id];
             const jaGerado = gerados.filter((g) => g.tipo === doc.id).slice(-1)[0];
             return (
@@ -8393,8 +8477,10 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
                   {sugerido ? <Tag tipo="pend">Sugerido</Tag> : <Tag>Opcional</Tag>}
                 </div>
                 <div className="ajuda" style={{ margin: "3px 0 8px" }}>{sugerido || "Gere quando for necessário."}</div>
-                {falta.length > 0 ? <div style={{ fontSize: 13, color: "var(--warning)" }}>Falta preencher: {falta.join(", ")}.</div> : (
-                  <button className="btn btn-sm btn-primario" onClick={() => abrirDoc(doc)}><FileText size={13} />Ver e baixar</button>
+                {doc.declaracao && perm.verCPF && <CamposEmissao tipo={doc.id} valor={entradas} pode={pode} onChange={(valor) => setFormularios((atual) => ({ ...atual, [doc.id]: valor }))} />}
+                {motivo && <Aviso>{motivo}</Aviso>}
+                {falta.length > 0 ? <div style={{ fontSize: 13, color: "var(--warning)" }}>Falta preencher: {rotulosLacunas(falta).join(", ")}.</div> : (
+                  <button className="btn btn-sm btn-primario" disabled={!pode || !!motivo} onClick={() => abrirDoc(doc)}><FileText size={13} />Ver e baixar</button>
                 )}
                 {jaGerado && <div className="ajuda" style={{ margin: "8px 0 0" }}>Último: {dataBR(jaGerado.data)}, por {jaGerado.por}{jaGerado.condicoes ? `, ${jaGerado.condicoes}` : ""}</div>}
               </div>
@@ -8409,11 +8495,13 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
             <div key={g.id} className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "8px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
               <span><strong style={{ fontWeight: 650 }}>{g.nome}</strong>{g.condicoes ? <span className="ajuda" style={{ display: "block", margin: 0 }}>{g.condicoes}</span> : null}</span>
               <span className="ajuda" style={{ margin: 0 }}>{dataHoraBR(g.data)}, por {g.por}</span>
+              {g.html && perm.verCPF && <button className="btn btn-sm" onClick={() => setHistorico(g)}>Ver documento emitido</button>}
             </div>
           ))}
         </Secao>
       )}
 
+      {historico && <Modal titulo={historico.nome} largura={780} onFechar={() => setHistorico(null)}><p>{dataHoraBR(historico.data)}, por {historico.por}</p><div className="previa-doc" dangerouslySetInnerHTML={{ __html: limparHtml(historico.html) }} /></Modal>}
       {escolherProc && (
         <Modal titulo="Quem representa a Integral nesta procuração" onFechar={() => setEscolherProc(null)}
           rodape={<><button className="btn" onClick={() => setEscolherProc(null)}>Voltar</button><button className="btn btn-primario" disabled={!escolherProc.ids.length} onClick={() => { gerar(escolherProc.doc, escolherProc.ids); setEscolherProc(null); }}>Gerar procuração</button></>}>
@@ -9171,6 +9259,27 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   const [rascunho, setRascunho] = useState(null);
   const [advogado, setAdvogado] = useState(null);
   const [restaurar, setRestaurar] = useState(null);
+  const [excluir, setExcluir] = useState(null);
+  const [usos, setUsos] = useState(null);
+  const [erroUsos, setErroUsos] = useState("");
+  useEffect(() => {
+    if (!pode) return;
+    let cancelado = false;
+    setUsos(null); setErroUsos("");
+    requisicao("rpc/integracao_uso_representantes", { method: "POST", body: "{}" }).then((valor) => { if (!cancelado) setUsos(valor); }).catch(() => { if (!cancelado) setErroUsos("Não foi possível conferir o histórico completo. A exclusão está bloqueada; tente abrir esta aba novamente."); });
+    return () => { cancelado = true; };
+  }, [pode, JSON.stringify(db.advogados)]);
+  const quantidadeUsos = (a) => usos === null || usos[a.id] === undefined ? null : Math.max(Number(usos[a.id]), contarProcuracoes(db.processos, a));
+  const excluirAdvogado = async () => {
+    if (!pode || !excluir) return;
+    try {
+      const atuais = await requisicao("rpc/integracao_uso_representantes", { method: "POST", body: "{}" });
+      setUsos(atuais);
+      if (atuais[excluir.id] === undefined || Number(atuais[excluir.id]) > 0 || contarProcuracoes(db.processos, excluir) > 0) { setToast("Exclusão bloqueada: o representante consta no histórico de procurações."); setExcluir(null); return; }
+      mutar((d) => { if (contarProcuracoes(d.processos, excluir)) throw new Error("Representante usado em procuração"); d.advogados = d.advogados.filter((a) => a.id !== excluir.id); return d; }, "Representante excluído", { detalhe: `${excluir.nome}: nenhum uso em procurações emitidas` });
+      setExcluir(null); setToast("Exclusão enviada para gravação.");
+    } catch (erro) { setToast(`Não foi possível excluir: ${erro.message}`); }
+  };
   const corpo = corpoDoModelo(db, aberto);
   const proprio = !!(db.modelosDoc || {})[aberto];
   const texto = rascunho !== null ? rascunho : corpo;
@@ -9187,6 +9296,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
+      <ConfigPrefeituras db={db} pode={pode} mutar={mutar} setToast={setToast} />
       <Secao titulo="Modelos dos documentos" nota="O texto é preenchido pelo próprio sistema com os dados do cadastro, sem depender de IA. Use os marcadores entre chaves para indicar onde cada informação entra.">
         {!pode && <Aviso>Só a Diretoria altera os modelos. Você pode conferir o texto aqui.</Aviso>}
         <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
@@ -9216,28 +9326,36 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
             <span key={chave} className="marcador"><code>{`{{${chave}}}`}</code><span className="ajuda" style={{ margin: 0 }}>{desc}</span></span>
           ))}
         </div>
+        <details><summary>Marcadores das declarações e do protocolo</summary><div className="grade-marcadores">{[...new Set(Object.values({ ...DECLARACOES, protocolo: MODELO_PROTOCOLO }).flatMap((modelo) => [...modelo.corpo.matchAll(/\{\{([\w.]+)\}\}/g)].map((m) => m[1])))].map((chave) => <span key={chave} className="marcador"><code>{`{{${chave}}}`}</code></span>)}</div></details>
         <p className="ajuda">Use também {"{{titulo:TEXTO}}"} para o título e {"{{p:TEXTO}}"} para cada parágrafo.</p>
       </Secao>
 
       <Secao titulo={`Representantes da empresa (${(db.advogados || []).length})`} nota="Quem pode receber a procuração dos moradores. Na hora de gerar, o comercial escolhe quem representa a Integral naquele documento."
         acao={pode && <button className="btn btn-sm btn-primario" onClick={() => setAdvogado({ id: uid("adv"), nome: "", nacionalidade: "brasileiro(a)", estadoCivil: "", profissao: "advogado(a)", oab: "", oabUf: "SC", cpf: "", endereco: "", ativo: true })}><Plus size={14} />Novo representante</button>}>
+        {pode && erroUsos && <Aviso>{erroUsos}</Aviso>}
+        {pode && usos === null && !erroUsos && <p className="ajuda">Conferindo todas as procurações emitidas…</p>}
         {!(db.advogados || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhum representante cadastrado. Sem isso a procuração não pode ser gerada.</p>}
         {(db.advogados || []).map((a, i) => (
           <div key={a.id} className="flex flex-wrap items-center gap-2" style={{ padding: "10px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <span style={{ flex: 1, minWidth: 220 }}>
-              <strong style={{ color: "var(--titulo)" }}>{a.nome}</strong>{a.ativo === false && <Tag>Inativo</Tag>}
+              <strong style={{ color: "var(--titulo)" }}>{a.nome}</strong>{a.ativo === false && <Tag>Indisponível</Tag>}
               <span className="ajuda" style={{ display: "block", margin: 0 }}>{qualificacaoAdvogado(a)}</span>
             </span>
-            {pode && <button className="btn btn-sm" onClick={() => setAdvogado({ ...a })}><Pencil size={13} />Editar</button>}
+            {pode && <><button className="btn btn-sm" onClick={() => setAdvogado({ ...a })}><Pencil size={13} />Editar</button>
+              <button className="btn btn-sm" disabled={quantidadeUsos(a) !== 0} aria-describedby={`uso-${a.id}`} onClick={() => setExcluir(a)}>Excluir</button>
+              {quantidadeUsos(a) > 0 && a.ativo !== false && <button className="btn btn-sm" onClick={() => salvarAdvogado({ ...a, ativo: false })}>Marcar indisponível</button>}
+              <span id={`uso-${a.id}`} className="ajuda" style={{ width: "100%" }}>{quantidadeUsos(a) === null ? "Exclusão bloqueada até conferir o histórico completo." : quantidadeUsos(a) > 0 ? `Consta em ${quantidadeUsos(a)} procurações emitidas; só pode ser marcado como indisponível.` : "Nenhum uso em procurações emitidas."}</span>
+            </>}
           </div>
         ))}
       </Secao>
 
+      {excluir && <ModalConfirmar titulo={`Excluir ${excluir.nome}?`} texto={`Excluir definitivamente ${excluir.nome} do cadastro de representantes? O histórico será conferido novamente antes de excluir.`} rotuloBotao="Excluir representante" onFechar={() => setExcluir(null)} onConfirmar={excluirAdvogado} />}
       {advogado && (
         <Modal titulo={(db.advogados || []).some((x) => x.id === advogado.id) ? "Editar representante" : "Novo representante"} largura={620} onFechar={() => setAdvogado(null)}
           rodape={<><button className="btn" onClick={() => setAdvogado(null)}>Voltar</button><button className="btn btn-primario" disabled={advogado.nome.trim().length < 3} onClick={() => salvarAdvogado({ ...advogado, nome: advogado.nome.trim() })}>Salvar</button></>}>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
-            <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="advn">Nome completo</label><input id="advn" className="inp" value={advogado.nome} onChange={(e) => setAdvogado((x) => ({ ...x, nome: e.target.value }))} /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="advn">Nome completo</label><input id="advn" className="inp" value={advogado.nome} disabled={quantidadeUsos(advogado) > 0} onChange={(e) => setAdvogado((x) => ({ ...x, nome: e.target.value }))} /></div>
             <div><label className="rot" htmlFor="advna">Nacionalidade</label><input id="advna" className="inp" value={advogado.nacionalidade} onChange={(e) => setAdvogado((x) => ({ ...x, nacionalidade: e.target.value }))} /></div>
             <div><label className="rot" htmlFor="advec">Estado civil</label><input id="advec" className="inp" value={advogado.estadoCivil} onChange={(e) => setAdvogado((x) => ({ ...x, estadoCivil: e.target.value }))} /></div>
             <div><label className="rot" htmlFor="advpr">Profissão</label><input id="advpr" className="inp" value={advogado.profissao} onChange={(e) => setAdvogado((x) => ({ ...x, profissao: e.target.value }))} /></div>
