@@ -2,6 +2,7 @@ import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCale
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
+import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
 import {
   FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
@@ -147,10 +148,21 @@ const POSSE = ["Contrato de compra e venda", "Escritura particular", "Declaraç�
 const SECOES_BASE = [
   { id: "requerente", nome: "Requerente", setor: "comercial" },
   { id: "conjuge", nome: "Cônjuge ou companheiro(a)", setor: "comercial" },
+  { id: "corequerentes", nome: "Outros requerentes", setor: "comercial" },
+  { id: "ocupantes", nome: "Ocupantes do imóvel", setor: "comercial" },
   { id: "endereco", nome: "Endereço de residência", setor: "comercial" },
+  { id: "enderecoImovel", nome: "Endereço do imóvel", setor: "topografia" },
   { id: "imovel", nome: "Imóvel, remessa e núcleo", setor: "topografia" },
   { id: "social", nome: "Social e modalidade", setor: "comercial" },
 ];
+// Tipos de requerente, como no Integrado: (1) menor emancipado, (2) normal, (3) menor representado, (4) pessoa jurídica, (5) representado
+const TIPOS_REQUERENTE = [
+  { v: "normal", t: "Pessoa física" }, { v: "menor", t: "Menor, com representante" }, { v: "emancipado", t: "Menor emancipado" },
+  { v: "representado", t: "Representado por procurador ou curador" }, { v: "juridica", t: "Pessoa jurídica" },
+];
+const PARENTESCOS = ["Cônjuge ou companheiro(a)", "Filho(a)", "Enteado(a)", "Pai ou mãe", "Sogro(a)", "Irmão ou irmã", "Neto(a)", "Sobrinho(a)", "Namorado(a)", "Outro"];
+const OBJETOS_REURB = ["Terreno", "Condomínio Edilício", "Condomínio Simples (Divisão de Edificações)", "Conjunto Habitacional (Terreno e Edificação)", "Laje (Construção Base)", "Laje (Infrapartição)"];
+const INSTRUMENTOS_REURB = ["Legitimação Fundiária", "Legitimação de Posse", "Especialização"];
 function secoesOrdenadas(campos) {
   const todas = [...SECOES_BASE, ...((campos && campos.secoes) || [])];
   const ordem = (campos && campos.ordem) || [];
@@ -168,8 +180,11 @@ const ROTULOS = {
   logradouro: "logradouro", numero: "número", complemento: "complemento", bairro: "bairro", municipio: "município",
   uf: "UF", cep: "CEP", area: "área", comprovantePosse: "comprovante de posse", ocupantes: "pessoas no imóvel",
   statusCRM: "status do cliente", statusFinanceiro: "status financeiro", rendaFamiliar: "renda familiar", possuiImovel: "outro imóvel", modalidade: "modalidade", nucleoId: "núcleo", remessaId: "remessa",
+  naturalidade: "naturalidade", rgUf: "UF do emissor", dataSeparacao: "data da separação", empregador: "empregador", whatsapp: "WhatsApp", deficiencia: "pessoa com deficiência",
+  tipoPessoa: "tipo de pessoa", cnpj: "CNPJ", representante: "representante", beneficiario: "beneficiário", localidade: "localidade", historicoPosse: "histórico da posse",
+  matricula: "matrícula", objeto: "objeto", instrumento: "instrumento", aquisicao: "data de aquisição", areaPublica: "área pública", inventario: "inventário", cadUnico: "CadÚnico", parentesco: "parentesco", pessoa: "pessoa", tipo: "tipo",
 };
-const SECAO_NOME = { requerente: "requerente", conjuge: "cônjuge", endereco: "endereço", imovel: "imóvel", social: "social", nucleoId: "imóvel", remessaId: "imóvel" };
+const SECAO_NOME = { requerente: "requerente", conjuge: "cônjuge", corequerentes: "outro requerente", ocupantes: "ocupante", endereco: "endereço", enderecoImovel: "endereço do imóvel", imovel: "imóvel", social: "social", nucleoId: "imóvel", remessaId: "imóvel" };
 
 /* ---------------- utilidades ---------------- */
 const so = (s) => String(s ?? "").replace(/\D/g, "");
@@ -290,20 +305,42 @@ function limparHtml(html) {
 }
 
 /* ---------------- modelo ---------------- */
-const pessoaVazia = () => ({ nome: "", statusCRM: "", statusFinanceiro: "", sexo: "", nacionalidade: "Brasileira", rg: "", rgOrgao: "", cpf: "", nascimento: "", mae: "", pai: "", estadoCivil: "", regimeBens: "", dataUniao: "", profissao: "", renda: "", telefone: "", email: "" });
+// Pessoa (requerente, cônjuge, outro requerente ou ocupante). Os campos seguem o cadastro do Integrado, sistema anterior da Integral.
+// tipoPessoa: "fisica" ou "juridica". Para PJ valem razão social (nome), cnpj e representante; os demais ficam vazios.
+const pessoaVazia = () => ({
+  nome: "", statusCRM: "", statusFinanceiro: "", sexo: "", nacionalidade: "Brasileira", naturalidade: "", rg: "", rgOrgao: "", rgUf: "", cpf: "", nascimento: "", mae: "", pai: "",
+  estadoCivil: "", regimeBens: "", dataUniao: "", dataSeparacao: "", profissao: "", empregador: "", renda: "", telefone: "", whatsapp: "", email: "", deficiencia: "",
+  tipoPessoa: "fisica", cnpj: "", representante: "", beneficiario: "sim",
+});
+const enderecoVazio = () => ({ logradouro: "", numero: "", complemento: "", bairro: "", localidade: "", municipio: "", uf: "", cep: "" });
 const processoVazio = (municipioId, remessaId, codigo) => ({
   id: uid("p"), municipioId, remessaId, codigo, nucleoId: "", etapa: 0, situacao: "Ativo", motivoSituacao: "",
   requerente: pessoaVazia(), conjuge: pessoaVazia(),
-  endereco: { logradouro: "", numero: "", complemento: "", bairro: "", municipio: "", uf: "", cep: "" },
-  imovel: { area: "", comprovantePosse: "" },
-  social: { ocupantes: "", rendaFamiliar: "", possuiImovel: "", modalidade: "" },
+  corequerentes: [], ocupantes: [],
+  endereco: enderecoVazio(), enderecoImovel: enderecoVazio(),
+  imovel: { area: "", comprovantePosse: "", historicoPosse: "", matricula: "", objeto: "", instrumento: "", aquisicao: "", areaPublica: "", inventario: "" },
+  social: { ocupantes: "", rendaFamiliar: "", possuiImovel: "", modalidade: "", cadUnico: "" },
   extras: {}, docs: [], checks: {}, campos: {}, campo: { respostas: {}, fotos: [], data: "", por: "", geo: null },
+  observacoes: [], qualificacao: null, distrato: null, compromisso: null,
   numeroCliente: 0, unidades: [{ id: uid("un"), area: "", memorial: "", loteQuadra: "" }],
 });
-const SECOES = ["requerente", "conjuge", "endereco", "imovel", "social", "remessaId", "nucleoId", "extras"];
-const extrair = (p) => { const o = {}; SECOES.forEach((k) => { o[k] = clone(p[k] ?? (k === "extras" ? {} : "")); }); return o; };
+const SECOES = ["requerente", "conjuge", "corequerentes", "ocupantes", "endereco", "enderecoImovel", "imovel", "social", "remessaId", "nucleoId", "extras"];
+const PADRAO_SECAO = { extras: () => ({}), corequerentes: () => [], ocupantes: () => [], enderecoImovel: enderecoVazio, endereco: enderecoVazio };
+const extrair = (p) => { const o = {}; SECOES.forEach((k) => { o[k] = clone(p[k] ?? (PADRAO_SECAO[k] ? PADRAO_SECAO[k]() : "")); }); return o; };
 
-const temConjuge = (p) => COM_CONJUGE.includes(p.requerente.estadoCivil);
+const ehPJ = (x) => x?.tipoPessoa === "juridica";
+const temConjuge = (p) => !ehPJ(p.requerente) && COM_CONJUGE.includes(p.requerente.estadoCivil);
+// CNPJ com dígitos verificadores
+function cnpjValido(v) {
+  const c = so(v);
+  if (c.length !== 14 || /^(\d)\1+$/.test(c)) return false;
+  const calc = (base) => { const pesos = base.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]; const s = base.split("").reduce((a, d, i) => a + Number(d) * pesos[i], 0); const r = s % 11; return r < 2 ? 0 : 11 - r; };
+  const d1 = calc(c.slice(0, 12)); const d2 = calc(c.slice(0, 12) + d1);
+  return c.endsWith(`${d1}${d2}`);
+}
+const fmtCNPJ = (v) => { const c = so(v).slice(0, 14); return c.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2"); };
+// Documento principal válido: CPF para pessoa física, CNPJ para jurídica
+const documentoValido = (x) => (ehPJ(x) ? cnpjValido(x.cnpj) : cpfValido(x.cpf));
 const docBloqueado = (d) => !!d?.regras?.some((r) => r.gravidade === "bloqueia" && r.resultado === "nao_atende");
 const docOk = (p, tipo) => p.docs.some((d) => d.tipo === tipo && d.status === "validado");
 function docStatusTexto(p, tipo) {
@@ -316,6 +353,12 @@ function docStatusTexto(p, tipo) {
 }
 function faltantesPessoa(x, ehRequerente) {
   const f = [];
+  if (ehPJ(x)) {
+    if (!x.nome) f.push("razão social");
+    if (!cnpjValido(x.cnpj)) f.push(x.cnpj ? "CNPJ válido" : "CNPJ");
+    if (!x.representante) f.push("representante legal");
+    return f;
+  }
   if (!x.nome) f.push("nome");
   if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
   if (!x.rg) f.push("RG");
@@ -323,6 +366,20 @@ function faltantesPessoa(x, ehRequerente) {
   if (!x.mae) f.push("nome da mãe");
   if (ehRequerente && !x.estadoCivil) f.push("estado civil");
   if (ehRequerente && !x.profissao) f.push("profissão");
+  return f;
+}
+// Dados mínimos para qualificar alguém num documento (ocupantes e outros requerentes): nome, CPF, RG, nascimento, mãe, estado civil e profissão
+function faltantesQualificacao(x) {
+  if (!x) return ["nome"];
+  if (ehPJ(x)) return faltantesPessoa(x, true);
+  const f = [];
+  if (!x.nome) f.push("nome");
+  if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
+  if (!x.rg) f.push("RG");
+  if (!x.nascimento) f.push("nascimento");
+  if (!x.mae) f.push("nome da mãe");
+  if (!x.estadoCivil) f.push("estado civil");
+  if (!x.profissao) f.push("profissão");
   return f;
 }
 function campoPreenchido(def, v) {
@@ -401,7 +458,7 @@ function requisitosPadrao(etapaId, p, ctx) {
       break;
     }
     case "contrato":
-      auto("cpf_contrato", "CPF válido do contratante", cpfValido(p.requerente.cpf), "Informe um CPF válido no cadastro");
+      auto("cpf_contrato", ehPJ(p.requerente) ? "CNPJ válido do contratante" : "CPF válido do contratante", documentoValido(p.requerente), ehPJ(p.requerente) ? "Informe um CNPJ válido no cadastro" : "Informe um CPF válido no cadastro");
       manual("contrato", "Contrato assinado");
       manual("procuracao", "Procuração assinada");
       manual("requerimento", "Requerimento de REURB assinado");
@@ -410,6 +467,8 @@ function requisitosPadrao(etapaId, p, ctx) {
       const fr = faltantesPessoa(p.requerente, true);
       auto("dados_req", "Dados pessoais do requerente", fr.length === 0, `Falta ${fr.join(", ")}`);
       if (temConjuge(p)) { const fc = faltantesPessoa(p.conjuge, false); auto("dados_conj", "Dados pessoais do cônjuge", fc.length === 0, `Falta ${fc.join(", ")}`); }
+      (p.corequerentes || []).forEach((cr, i) => { const fx = faltantesPessoa(cr.pessoa, true); auto(`dados_coreq_${cr.id}`, `Dados de ${cr.pessoa.nome || `requerente ${i + 2}`}`, fx.length === 0, `Falta ${fx.join(", ")}`); });
+      { const fo = (p.ocupantes || []).filter((o) => faltantesQualificacao(o.pessoa).length).map((o) => o.pessoa.nome || "ocupante sem nome"); if ((p.ocupantes || []).length) auto("dados_ocup", "Qualificação dos ocupantes", fo.length === 0, `Falta completar ${fo.slice(0, 3).join(", ")}${fo.length > 3 ? ` e mais ${fo.length - 3}` : ""}`); }
       const e = p.endereco; const fe = [];
       if (!e.logradouro) fe.push("logradouro"); if (!e.numero) fe.push("número"); if (!e.bairro) fe.push("bairro");
       if (!e.municipio) fe.push("município"); if (!e.uf) fe.push("UF"); if (so(e.cep).length !== 8) fe.push("CEP");
@@ -447,6 +506,8 @@ function requisitosPadrao(etapaId, p, ctx) {
       const semLote = unidadesDe(p).map((u, i) => (preenchido(u.loteQuadra) ? null : codigoUnidade(p, i))).filter(Boolean);
       auto("loteQuadra", unidadesDe(p).length > 1 ? "Lote e quadra de todas as unidades" : "Lote e quadra no projeto", !semLote.length, `Falta em ${semLote.join(", ")}`, { aba: "unidades" });
       manual("confrontacoes", "Confrontações conferidas no projeto");
+      auto("termo_gerado", "Termo de compromisso gerado", (p.documentosGerados || []).some((g) => g.tipo === "termo_compromisso"), "Gere o termo pelo botão abaixo");
+      manual("termoAssinado", "Termo de compromisso assinado");
       break;
     }
     case "prefeitura":
@@ -532,13 +593,27 @@ const pendenciasNucleo = (db, n) => (n.etapa >= TOTAL_NUCLEO ? [] : requisitosNu
 function alertasDados(p, ctx) {
   const a = [];
   const r = p.requerente;
-  if (r.cpf && !cpfValido(r.cpf)) a.push("CPF do requerente inválido");
-  if (p.conjuge.cpf && !cpfValido(p.conjuge.cpf)) a.push("CPF do cônjuge inválido");
-  if (!r.estadoCivil && r.dataUniao) a.push("Data da união preenchida, mas estado civil não informado");
-  if (COM_CONJUGE.includes(r.estadoCivil) && !p.conjuge.nome) a.push(`Estado civil "${r.estadoCivil}" sem cônjuge cadastrado`);
-  if (p.conjuge.nome && r.estadoCivil && !COM_CONJUGE.includes(r.estadoCivil)) a.push("Cônjuge cadastrado, mas o estado civil não indica união");
-  const i = idade(r.nascimento);
-  if (i !== null && (i < 18 || i > 110)) a.push(`Idade calculada fora do esperado (${i} anos)`);
+  if (ehPJ(r)) {
+    if (r.cnpj && !cnpjValido(r.cnpj)) a.push("CNPJ do requerente inválido");
+    if (!r.representante) a.push("Pessoa jurídica sem representante legal informado");
+  } else {
+    if (r.cpf && !cpfValido(r.cpf)) a.push("CPF do requerente inválido");
+    if (p.conjuge.cpf && !cpfValido(p.conjuge.cpf)) a.push("CPF do cônjuge inválido");
+    if (!r.estadoCivil && r.dataUniao) a.push("Data da união preenchida, mas estado civil não informado");
+    if (COM_CONJUGE.includes(r.estadoCivil) && !p.conjuge.nome) a.push(`Estado civil "${r.estadoCivil}" sem cônjuge cadastrado`);
+    if (p.conjuge.nome && r.estadoCivil && !COM_CONJUGE.includes(r.estadoCivil)) a.push("Cônjuge cadastrado, mas o estado civil não indica união");
+    const i = idade(r.nascimento);
+    if (i !== null && (i < 18 || i > 110)) a.push(`Idade calculada fora do esperado (${i} anos)`);
+  }
+  (p.corequerentes || []).forEach((cr) => {
+    const x = cr.pessoa || {};
+    if (x.cpf && !cpfValido(x.cpf)) a.push(`CPF de ${x.nome || "outro requerente"} inválido`);
+    if (x.cnpj && !cnpjValido(x.cnpj)) a.push(`CNPJ de ${x.nome || "outro requerente"} inválido`);
+    if ((cr.tipo === "menor" || cr.tipo === "representado") && !cr.representanteId) a.push(`${x.nome || "Outro requerente"} precisa de representante`);
+  });
+  (p.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) a.push(`CPF de ${o.pessoa.nome || "ocupante"} inválido`); });
+  const qtdPessoas = 1 + (p.conjuge?.nome ? 1 : 0) + (p.corequerentes || []).length + (p.ocupantes || []).length;
+  if (parseNum(p.social.ocupantes) !== null && parseNum(p.social.ocupantes) < qtdPessoas) a.push(`Pessoas no imóvel (${p.social.ocupantes}) menor que as pessoas cadastradas (${qtdPessoas})`);
   const ri = parseNum(r.renda), rf = parseNum(p.social.rendaFamiliar);
   if (ri !== null && rf !== null && ri > rf) a.push("Renda individual maior que a renda familiar");
   if (ctx.duplicado) a.push(`Possível duplicidade com ${ctx.duplicado.codigo} (mesmo ${ctx.duplicado.motivo})`);
@@ -751,7 +826,7 @@ function gerarCPF(rnd) {
 // Base de produção: só as configurações. Nenhum município, núcleo, morador ou usuário de exemplo.
 function baseLimpa() {
   return {
-    versao: 6, municipios: [], remessas: [], nucleos: [], processos: [], auditoria: [],
+    versao: 7, municipios: [], remessas: [], nucleos: [], processos: [], auditoria: [],
     regrasIA: clone(REGRAS_PADRAO), tiposDocumento: [], campos: clone(CAMPOS_PADRAO), checklistCampo: clone(CHECKLIST_CAMPO_PADRAO),
     usuarios: [], metas: [], notificacoes: [], prf: null,
     setoresMeta: [], ordensServico: [], planos: [], conversas: [], eventos: [], agendas: [],
@@ -1010,6 +1085,7 @@ function criarSeed() {
 
   const base = { versao: 6, municipios, remessas, nucleos, processos, auditoria, regrasIA: clone(REGRAS_PADRAO), tiposDocumento: [], campos: clone(CAMPOS_PADRAO), checklistCampo: checklist, usuarios: clone(USUARIOS_PADRAO), metas: metasExemplo, notificacoes, prf: null };
   seedColaboracao(base, rnd);
+  migrarParaV7(base);
   return base;
 }
 
@@ -1061,11 +1137,12 @@ ${listaRegras}
 Tipos de documento aceitos, responda com o id: ${listaTipos}. Se nenhum servir, use "outro".
 
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
-{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","emissao":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
+{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","historicoPosse":"","emissao":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":"","cnpj":"","naturalidade":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
 Orientações:
 - Em "campos", só o que está escrito no documento. Não invente. Omita chaves sem valor.
 - RG e CNH são "identidade". Certidões de nascimento ou casamento são "estado_civil". Contratos de compra e venda, cessões e declarações de posse são "comp_posse".
 - Estado civil: Solteiro(a), Casado(a), União estável, Divorciado(a) ou Viúvo(a). Renda e área: só números, com ponto decimal.
+- Em documentos de posse (comp_posse, matricula_origem), preencha "historicoPosse": um parágrafo de até 80 palavras, em terceira pessoa, contando a cadeia da posse lida no documento: de quem o requerente adquiriu, por qual instrumento, em que data, por qual valor se houver, e se há transferências anteriores. Só com o que está escrito.
 - "alertas": frases curtas sobre problemas fora das regras (rasura, trecho ilegível, dados de terceiros).
 - Se não conseguir ler, use "legivel": false, "campos": {} e marque as regras como "nao_atende".
 - "vinculo": diga "nao" quando o documento for claramente de outra pessoa sem relação com o cadastro, e liste em "divergencias" o que não bate.
@@ -1097,7 +1174,7 @@ function simularAnalise(tipo, p, regras) {
   } else if (t === "comp_renda") {
     base.campos = { nome: r.nome, renda: "2350", profissao: r.profissao || "Auxiliar de produção" };
   } else if (t === "comp_posse") {
-    base.campos = { nome: r.nome, area: "364.00" };
+    base.campos = { nome: r.nome, area: "364.00", historicoPosse: `${r.nome || "O requerente"} adquiriu a posse do imóvel por contrato particular de compra e venda, firmado com o antigo ocupante, exercendo-a desde então de forma contínua e sem oposição (exemplo simulado).` };
   }
   base.regras = regrasAplicaveis(regras, t).map((regra, i) => ({ id: regra.id, resultado: i === 0 ? "nao_atende" : "atende", observacao: i === 0 ? "Exemplo simulado de regra não atendida" : "" }));
   return base;
@@ -1124,6 +1201,8 @@ const MAPA_IA = {
   bairro: { rot: "Bairro", path: "endereco.bairro" }, municipio: { rot: "Município", path: "endereco.municipio" },
   uf: { rot: "UF", path: "endereco.uf", fmt: (s) => String(s).toUpperCase().slice(0, 2) }, cep: { rot: "CEP", path: "endereco.cep", fmt: fmtCEP },
   area: { rot: "Área (m²)", path: "imovel.area", fmt: numTexto },
+  historicoPosse: { rot: "Histórico da posse", path: "imovel.historicoPosse" },
+  cnpj: { rot: "CNPJ", campo: "cnpj", fmt: fmtCNPJ }, naturalidade: { rot: "Naturalidade", campo: "naturalidade" },
 };
 function montarLinhas(res, rascunho) {
   const pessoa = res.pessoa === "conjuge" || res.tipo === "identidade_conjuge" ? "conjuge" : "requerente";
@@ -1382,6 +1461,7 @@ function montarMorador(db, municipioId, dados) {
   np.requerente.telefone = dados.telefone.trim();
   np.requerente.cpf = dados.cpf;
   np.endereco.municipio = m?.nome || ""; np.endereco.uf = m?.uf || "";
+  np.enderecoImovel.municipio = m?.nome || ""; np.enderecoImovel.uf = m?.uf || "";
   return np;
 }
 /* ---------------- códigos de cliente e unidades ---------------- */
@@ -1424,11 +1504,30 @@ function gerarPrefixo(nome, usados = new Set()) {
 // Dados salvos na versão 4 recebem prefixos, números de cliente, novos códigos e a lista de unidades
 function migrarDados(d) {
   if (!d) return null;
-  if (![4, 5, 6].includes(d.versao)) return null;
+  if (![4, 5, 6, 7].includes(d.versao)) return null;
   const n = clone(d);
   if (n.versao === 4) migrarParaV5(n);
   if (n.versao < 6) migrarParaV6(n);
+  if (n.versao < 7) migrarParaV7(n);
   return n;
+}
+// Versão 7: campos do Integrado (sistema anterior). Outros requerentes, ocupantes com ficha completa, pessoa jurídica,
+// dois endereços, histórico da posse, qualificação salva, observações por morador, distrato, termo de compromisso e endereço/situação do núcleo.
+function migrarParaV7(n) {
+  const completarPessoa = (x) => ({ ...pessoaVazia(), ...(x || {}) });
+  n.processos = (n.processos || []).map((p) => ({
+    ...p,
+    requerente: completarPessoa(p.requerente), conjuge: completarPessoa(p.conjuge),
+    corequerentes: (p.corequerentes || []).map((c) => ({ ...c, pessoa: completarPessoa(c.pessoa), conjuge: completarPessoa(c.conjuge) })),
+    ocupantes: (p.ocupantes || []).map((o) => ({ ...o, pessoa: completarPessoa(o.pessoa) })),
+    endereco: { ...enderecoVazio(), ...(p.endereco || {}) },
+    enderecoImovel: { ...enderecoVazio(), ...(p.enderecoImovel || {}) },
+    imovel: { historicoPosse: "", matricula: "", objeto: "", instrumento: "", aquisicao: "", areaPublica: "", inventario: "", ...(p.imovel || {}) },
+    social: { cadUnico: "", ...(p.social || {}) },
+    observacoes: p.observacoes || [], qualificacao: p.qualificacao || null, distrato: p.distrato || null, compromisso: p.compromisso || null,
+  }));
+  n.nucleos = (n.nucleos || []).map((x) => ({ endereco: enderecoVazio(), situacao: "Ativo", situacaoDescricao: "", modalidade: "", objeto: "", instrumento: "", ...x }));
+  n.versao = 7;
 }
 // Dados da versão 5 ganham os módulos vindos do ERP: metas no novo formato, processos, calendário, planos e chat
 function migrarParaV6(n) {
@@ -2391,6 +2490,13 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   const [responsavel, setResponsavel] = useState(inicial?.responsavel || "");
   const [sm, setSm] = useState(inicial?.criterio?.salarioMinimo || "");
   const [teto, setTeto] = useState(inicial?.criterio?.rendaMaxima || "");
+  const [end, setEnd] = useState({ ...enderecoVazio(), municipio: inicial?.endereco?.municipio || municipio.nome, uf: inicial?.endereco?.uf || municipio.uf, ...(inicial?.endereco || {}) });
+  const [situacao, setSituacao] = useState(inicial?.situacao || "Ativo");
+  const [situacaoDescricao, setSituacaoDescricao] = useState(inicial?.situacaoDescricao || "");
+  const [modalidade, setModalidade] = useState(inicial?.modalidade || "");
+  const [objeto, setObjeto] = useState(inicial?.objeto || "");
+  const [instrumento, setInstrumento] = useState(inicial?.instrumento || "");
+  const setE = (k, v) => setEnd((x) => ({ ...x, [k]: v }));
   const moradores = inicial ? db.processos.filter((p) => p.nucleoId === inicial.id).length : 0;
   const dup = db.nucleos.find((n) => n.id !== inicial?.id && n.municipioId === municipio.id && (n.remessaId || "") === remessaId && codigoNorm(n.codigo) === codigoNorm(codigo));
   const smN = parseNum(sm), tetoN = parseNum(teto);
@@ -2401,8 +2507,8 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   if (teto && !(tetoN > 0)) erros.push("Renda máxima precisa ser maior que zero");
   const disEstr = !perm.estrutura;
   return (
-    <Modal titulo={editando ? `Editar ${nomeNucleo(inicial)}` : "Novo núcleo"} largura={560} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() } })}>Salvar núcleo</button></>}>
+    <Modal titulo={editando ? `Editar ${nomeNucleo(inicial)}` : "Novo núcleo"} largura={640} onFechar={onFechar}
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end, situacao, situacaoDescricao: situacaoDescricao.trim(), modalidade, objeto, instrumento })}>Salvar núcleo</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="nrem">Remessa</label>
@@ -2423,6 +2529,22 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
         <div><label className="rot" htmlFor="nteto">Renda familiar máxima (R$)</label><input id="nteto" className="inp" inputMode="decimal" value={teto} disabled={!perm.criterio} onChange={(e) => setTeto(e.target.value)} /></div>
       </div>
       {tetoN > 0 && smN > 0 && <div className="tag tag-neutra" style={{ marginTop: 10, borderRadius: 10, padding: "8px 12px" }}>Equivale a {qtdSalarios(tetoN, smN)} salários mínimos</div>}
+      <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Localização do núcleo</h3>
+      <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nlog">Logradouro ou referência</label><input id="nlog" className="inp" value={end.logradouro} disabled={disEstr} onChange={(e) => setE("logradouro", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="ncomp">Complemento</label><input id="ncomp" className="inp" value={end.complemento} disabled={disEstr} onChange={(e) => setE("complemento", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="nbai">Bairro</label><input id="nbai" className="inp" value={end.bairro} disabled={disEstr} onChange={(e) => setE("bairro", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="nloc">Localidade</label><input id="nloc" className="inp" value={end.localidade} disabled={disEstr} onChange={(e) => setE("localidade", e.target.value)} placeholder="Loteamento, comunidade" /></div>
+        <div><label className="rot" htmlFor="ncep">CEP</label><input id="ncep" className="inp" inputMode="numeric" value={end.cep} disabled={disEstr} onChange={(e) => setE("cep", fmtCEP(e.target.value))} /></div>
+      </div>
+      <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Situação e enquadramento</h3>
+      <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div><label className="rot" htmlFor="nsit">Situação</label><select id="nsit" className="inp" value={situacao} disabled={disEstr} onChange={(e) => setSituacao(e.target.value)}>{["Ativo", "Suspenso", "Cancelado", "Concluído"].map((x) => <option key={x}>{x}</option>)}</select></div>
+        <div><label className="rot" htmlFor="nmod">Modalidade predominante</label><select id="nmod" className="inp" value={modalidade} disabled={disEstr} onChange={(e) => setModalidade(e.target.value)}><option value="">Não definida</option><option value="REURB-S">REURB-S</option><option value="REURB-E">REURB-E</option><option value="Mista">Mista</option></select></div>
+        <div><label className="rot" htmlFor="nobj">Objeto</label><select id="nobj" className="inp" value={objeto} disabled={disEstr} onChange={(e) => setObjeto(e.target.value)}><option value="">Não definido</option>{OBJETOS_REURB.map((x) => <option key={x}>{x}</option>)}</select></div>
+        <div><label className="rot" htmlFor="nins">Instrumento</label><select id="nins" className="inp" value={instrumento} disabled={disEstr} onChange={(e) => setInstrumento(e.target.value)}><option value="">Não definido</option>{INSTRUMENTOS_REURB.map((x) => <option key={x}>{x}</option>)}</select></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nsitd">Descrição da situação</label><textarea id="nsitd" className="inp" rows={3} value={situacaoDescricao} disabled={disEstr} onChange={(e) => setSituacaoDescricao(e.target.value)} placeholder="Como está o núcleo hoje: o que já foi feito, o que trava, decisões tomadas." /></div>
+      </div>
       {editando && <div className="ajuda" style={{ marginTop: 14 }}>Etapa do núcleo: {inicial.etapa >= TOTAL_NUCLEO ? "concluído" : NUCLEO_ETAPAS[inicial.etapa].nome}. A etapa muda pelo ok dado na página do núcleo.</div>}
       {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 12 }}>{erros.join(". ")}.</div>}
     </Modal>
@@ -3213,7 +3335,7 @@ function ReqCampo({ req, podeEditar, salvar }) {
   );
 }
 
-function PainelEtapa({ p, ctx, usuario, mutar, setToast, setModal, onAbrirAba }) {
+function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAba }) {
   const perm = permissoes(usuario);
   const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
   if (!ativo(p)) {
@@ -3263,6 +3385,7 @@ function PainelEtapa({ p, ctx, usuario, mutar, setToast, setModal, onAbrirAba })
       </div>
       <div style={{ fontSize: 13.5, color: tudoOk ? "var(--ok)" : "var(--warning)", fontWeight: 700, marginTop: 10 }}>{ok} de {contados.length} requisitos cumpridos</div>
       <ListaRequisitos reqs={reqs} podeMarcar={podeEtapa} onAlternar={alternar} onCampo={salvarCampo} onEscolha={() => {}} onAbrirAba={onAbrirAba} />
+      {et.id === "projeto" && db && <TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={podeEtapa} mutar={mutar} setToast={setToast} />}
       <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
         <button className="btn btn-primario" style={{ width: "100%", justifyContent: "center" }} disabled={!tudoOk || !podeEtapa || !!bloqueio} onClick={concluir}>
           <Check size={16} />{p.etapa === TOTAL - 1 ? "Concluir a unidade" : `Concluir e seguir para ${ETAPAS[p.etapa + 1].nome}`}
@@ -3535,6 +3658,111 @@ function ExtrasSecao({ defs, secaoId, form, dis }) {
   return <div className="fg" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px dashed var(--line)" }}>{lista.map((d) => <CampoExtra key={d.id} def={d} form={form} dis={dis} />)}</div>;
 }
 
+/* ---------------- blocos de pessoa e endereço (campos do Integrado) ---------------- */
+// Ficha de uma pessoa. base = caminho no rascunho ("requerente", "conjuge", "corequerentes.0.pessoa", "ocupantes.2.pessoa").
+// papel: "requerente" (todos os campos), "conjuge" (sem PJ e sem status) ou "ocupante" (tudo opcional, só a qualificação conta).
+function BlocoPessoa({ form, base, papel = "requerente", dis, cpfVisivel, perm, mostrarCPF, permitirPJ = false, representantes = [] }) {
+  const x = getPath(form.rascunho, base) || pessoaVazia();
+  const pj = permitirPJ && ehPJ(x);
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const i = idade(x.nascimento);
+  const casado = x.estadoCivil === "Casado(a)";
+  const P = (k) => `${base}.${k}`;
+  return (
+    <div className="fg">
+      {permitirPJ && <Campo form={form} rot="Tipo de pessoa" path={P("tipoPessoa")} opcoes={[{ v: "fisica", t: "Pessoa física" }, { v: "juridica", t: "Pessoa jurídica" }]} vazio="Pessoa física" dis={dis} />}
+      {pj ? (
+        <>
+          <Campo form={form} rot="Razão social" path={P("nome")} span={2} dis={dis} />
+          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : ""} />
+          <Campo form={form} rot="Representante legal" path={P("representante")} opcoes={representantes.length ? representantes : undefined} vazio="Escolha ou informe abaixo" span={representantes.length ? 1 : 2} dis={dis} ajuda={representantes.length ? "Um dos requerentes cadastrados nesta ficha." : "Nome de quem assina pela empresa. Cadastre a pessoa em Outros requerentes para ter a qualificação completa."} />
+          <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
+          <Campo form={form} rot="E-mail" path={P("email")} tipo="email" dis={dis} />
+          {papel === "requerente" && <Campo form={form} rot="Status do cliente" path={P("statusCRM")} opcoes={STATUS_CRM} vazio="Não definido" dis={dis} />}
+          {papel === "requerente" && <Campo form={form} rot="Status financeiro" path={P("statusFinanceiro")} opcoes={STATUS_FINANCEIRO} vazio="Não definido" dis={dis} />}
+        </>
+      ) : (
+        <>
+          <Campo form={form} rot="Nome completo" path={P("nome")} span={2} dis={dis} />
+          <Campo form={form} rot="Sexo" path={P("sexo")} opcoes={["Feminino", "Masculino"]} dis={dis} />
+          <Campo form={form} rot="Nacionalidade" path={P("nacionalidade")} dis={dis} />
+          <Campo form={form} rot="Naturalidade" path={P("naturalidade")} dis={dis} ph="Cidade/UF" />
+          <CampoCPF form={form} rot={papel === "requerente" ? "CPF (obrigatório)" : "CPF"} path={P("cpf")} dis={dis} visivel={cpfVisivel} podeVer={perm.verCPF} onMostrar={mostrarCPF} />
+          <Campo form={form} rot="RG" path={P("rg")} dis={dis} />
+          <Campo form={form} rot="Órgão emissor" path={P("rgOrgao")} dis={dis} />
+          <Campo form={form} rot="UF do emissor" path={P("rgUf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
+          <Campo form={form} rot="Data de nascimento" path={P("nascimento")} tipo="date" dis={dis} erro={x.nascimento && x.nascimento > hojeISO ? "Data no futuro" : ""} ajuda={i === null ? "" : `${i} anos, calculado pela data`} />
+          <Campo form={form} rot="Nome da mãe" path={P("mae")} span={2} dis={dis} />
+          <Campo form={form} rot="Nome do pai" path={P("pai")} span={2} dis={dis} />
+          <Campo form={form} rot="Estado civil" path={P("estadoCivil")} opcoes={ESTADOS_CIVIS} dis={dis} />
+          {papel !== "conjuge" && <Campo form={form} rot="Regime de bens" path={P("regimeBens")} opcoes={REGIMES} dis={dis || !casado} />}
+          {papel !== "conjuge" && <Campo form={form} rot="Data da união" path={P("dataUniao")} tipo="date" dis={dis} erro={x.dataUniao && !x.estadoCivil ? "Informe o estado civil" : ""} />}
+          {papel !== "conjuge" && ["Divorciado(a)", "Viúvo(a)"].includes(x.estadoCivil) && <Campo form={form} rot="Data da separação ou óbito" path={P("dataSeparacao")} tipo="date" dis={dis} />}
+          <Campo form={form} rot="Profissão" path={P("profissao")} dis={dis} />
+          <Campo form={form} rot="Empregador" path={P("empregador")} dis={dis} />
+          <Campo form={form} rot="Renda mensal (R$)" path={P("renda")} im="decimal" dis={dis} />
+          <Campo form={form} rot="Pessoa com deficiência" path={P("deficiencia")} opcoes={[{ v: "nao", t: "Não" }, { v: "sim", t: "Sim" }]} dis={dis} />
+          <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
+          <Campo form={form} rot="Tem WhatsApp?" path={P("whatsapp")} opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} dis={dis} />
+          <Campo form={form} rot="E-mail" path={P("email")} tipo="email" span={2} dis={dis} />
+          {papel === "requerente" && <Campo form={form} rot="Status do cliente" path={P("statusCRM")} opcoes={STATUS_CRM} vazio="Não definido" dis={dis} ajuda="Mesma lista usada no CRM da Integral." />}
+          {papel === "requerente" && <Campo form={form} rot="Status financeiro" path={P("statusFinanceiro")} opcoes={STATUS_FINANCEIRO} vazio="Não definido" dis={dis} ajuda="Será ligado à gestão de pagamentos." />}
+        </>
+      )}
+    </div>
+  );
+}
+function BlocoEndereco({ form, base, dis, aoCopiar, rotuloCopiar }) {
+  const e = getPath(form.rascunho, base) || enderecoVazio();
+  const P = (k) => `${base}.${k}`;
+  return (
+    <>
+      {aoCopiar && !dis && <div style={{ marginBottom: 10 }}><button type="button" className="btn btn-sm" onClick={aoCopiar}><Copy size={13} />{rotuloCopiar}</button></div>}
+      <div className="fg">
+        <Campo form={form} rot="Logradouro" path={P("logradouro")} span={2} dis={dis} />
+        <Campo form={form} rot="Número" path={P("numero")} dis={dis} />
+        <Campo form={form} rot="Complemento" path={P("complemento")} dis={dis} />
+        <Campo form={form} rot="Bairro" path={P("bairro")} dis={dis} />
+        <Campo form={form} rot="Localidade" path={P("localidade")} dis={dis} ph="Loteamento, comunidade ou referência" />
+        <Campo form={form} rot="Município" path={P("municipio")} dis={dis} />
+        <Campo form={form} rot="UF" path={P("uf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
+        <Campo form={form} rot="CEP" path={P("cep")} fmt={fmtCEP} im="numeric" dis={dis} erro={e.cep && so(e.cep).length !== 8 ? "O CEP tem 8 dígitos" : ""} />
+      </div>
+    </>
+  );
+}
+// Lista editável de pessoas ligadas ao processo (outros requerentes ou ocupantes)
+function ListaPessoas({ form, chave, dis, cpfVisivel, perm, mostrarCPF, titulo, vazio, novo, cabecalho }) {
+  const lista = getPath(form.rascunho, chave) || [];
+  const setLista = (nova) => form.set(chave, nova);
+  const [aberto, setAberto] = useState(null);
+  return (
+    <div>
+      {lista.length === 0 && <p className="ajuda" style={{ margin: "0 0 10px" }}>{vazio}</p>}
+      {lista.map((item, i) => {
+        const x = item.pessoa || {};
+        const faltas = faltantesQualificacao(x);
+        const expandido = aberto === item.id;
+        return (
+          <div key={item.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" className="btn-link" style={{ fontWeight: 650, color: "var(--titulo)", textAlign: "left" }} onClick={() => setAberto(expandido ? null : item.id)}>
+                {expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{x.nome || `${titulo} ${i + 1}`}{cabecalho ? cabecalho(item) : ""}
+              </button>
+              <span className="flex items-center gap-2">
+                {faltas.length ? <Tag tipo="pend">Falta {faltas.slice(0, 2).join(", ")}{faltas.length > 2 ? ` +${faltas.length - 2}` : ""}</Tag> : <Tag tipo="ok"><Check size={12} />Qualificação completa</Tag>}
+                {!dis && <button type="button" className="btn-icone" aria-label={`Remover ${x.nome || titulo}`} onClick={() => setLista(lista.filter((y) => y.id !== item.id))}><Trash2 size={14} /></button>}
+              </span>
+            </div>
+            {expandido && <div style={{ marginTop: 10 }}>{novo.render(item, i)}</div>}
+          </div>
+        );
+      })}
+      {!dis && <button type="button" className="btn btn-sm" onClick={() => { const item = novo.criar(); setLista([...lista, item]); setAberto(item.id); }}><Plus size={14} />{novo.rotulo}</button>}
+    </div>
+  );
+}
+
 function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, cpfVisivel, mostrarCPF }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
@@ -3545,96 +3773,131 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
   const nucleoDraft = db.nucleos.find((n) => n.id === pd.nucleoId) || null;
   const alertas = alertasDados(pd, { nucleo: nucleoDraft, duplicado: acharDuplicado(db, pd) });
   const req = rascunho.requerente;
-  const i = idade(req.nascimento);
-  const hojeISO = new Date().toISOString().slice(0, 10);
-  const mostraConj = COM_CONJUGE.includes(req.estadoCivil) || !!rascunho.conjuge.nome;
+  const mostraConj = !ehPJ(req) && (COM_CONJUGE.includes(req.estadoCivil) || !!rascunho.conjuge.nome);
   const sug = sugerirModalidade(pd, nucleoDraft);
-  const cep = rascunho.endereco.cep;
   const disCad = !pode("cadastro");
+  const disImovel = !pode("imovel");
+  const copiarEndereco = (de, para) => form.set(para, clone(getPath(rascunho, de) || enderecoVazio()));
+  // Quem pode representar uma PJ ou um menor: o requerente principal e os outros requerentes pessoa física
+  const representantes = [{ v: "principal", t: `${req.nome || "Requerente principal"} (requerente)` }, ...(rascunho.corequerentes || []).filter((c) => !ehPJ(c.pessoa) && c.tipo !== "menor").map((c) => ({ v: c.id, t: c.pessoa.nome || "Outro requerente sem nome" }))];
 
   const blocos = {
     requerente: (
-<Secao titulo="Requerente">
-        <div className="fg">
-          <Campo form={form} rot="Nome completo" path="requerente.nome" span={2} dis={disCad} />
-          <Campo form={form} rot="Sexo" path="requerente.sexo" opcoes={["Feminino", "Masculino"]} dis={disCad} />
-          <Campo form={form} rot="Nacionalidade" path="requerente.nacionalidade" dis={disCad} />
-          <CampoCPF form={form} rot="CPF (obrigatório)" path="requerente.cpf" dis={disCad} visivel={cpfVisivel} podeVer={perm.verCPF} onMostrar={mostrarCPF} />
-          <Campo form={form} rot="RG" path="requerente.rg" dis={disCad} />
-          <Campo form={form} rot="Órgão emissor" path="requerente.rgOrgao" dis={disCad} />
-          <Campo form={form} rot="Data de nascimento" path="requerente.nascimento" tipo="date" dis={disCad} erro={req.nascimento && req.nascimento > hojeISO ? "Data no futuro" : ""} ajuda={i === null ? "" : `${i} anos, calculado pela data`} />
-          <Campo form={form} rot="Nome da mãe" path="requerente.mae" span={2} dis={disCad} />
-          <Campo form={form} rot="Nome do pai" path="requerente.pai" span={2} dis={disCad} />
-          <Campo form={form} rot="Estado civil" path="requerente.estadoCivil" opcoes={ESTADOS_CIVIS} dis={disCad} />
-          <Campo form={form} rot="Regime de bens" path="requerente.regimeBens" opcoes={REGIMES} dis={disCad || req.estadoCivil !== "Casado(a)"} />
-          <Campo form={form} rot="Data da união" path="requerente.dataUniao" tipo="date" dis={disCad} erro={req.dataUniao && !req.estadoCivil ? "Informe o estado civil" : ""} />
-          <Campo form={form} rot="Profissão" path="requerente.profissao" dis={disCad} />
-          <Campo form={form} rot="Renda mensal (R$)" path="requerente.renda" im="decimal" dis={disCad} />
-          <Campo form={form} rot="Telefone" path="requerente.telefone" im="tel" dis={disCad} />
-          <Campo form={form} rot="E-mail" path="requerente.email" tipo="email" span={2} dis={disCad} />
-          <Campo form={form} rot="Status do cliente" path="requerente.statusCRM" opcoes={STATUS_CRM} vazio="Não definido" dis={disCad} ajuda="Mesma lista usada no CRM da Integral." />
-          <Campo form={form} rot="Status financeiro" path="requerente.statusFinanceiro" opcoes={STATUS_FINANCEIRO} vazio="Não definido" dis={disCad} ajuda="Será ligado à gestão de pagamentos." />
-        </div>
+      <Secao titulo="Requerente" nota={ehPJ(req) ? "Pessoa jurídica: o contrato e a procuração saem em nome da empresa, assinados pelo representante legal." : ""}>
+        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} permitirPJ representantes={representantes.slice(1)} />
         <ExtrasSecao defs={defs} secaoId="requerente" form={form} dis={disCad} />
       </Secao>
     ),
     conjuge: mostraConj ? (
       <Secao titulo="Cônjuge ou companheiro(a)">
-          <div className="fg">
-            <Campo form={form} rot="Nome completo" path="conjuge.nome" span={2} dis={disCad} />
-            <Campo form={form} rot="Sexo" path="conjuge.sexo" opcoes={["Feminino", "Masculino"]} dis={disCad} />
-            <CampoCPF form={form} rot="CPF" path="conjuge.cpf" dis={disCad} visivel={cpfVisivel} podeVer={perm.verCPF} onMostrar={mostrarCPF} />
-            <Campo form={form} rot="RG" path="conjuge.rg" dis={disCad} />
-            <Campo form={form} rot="Órgão emissor" path="conjuge.rgOrgao" dis={disCad} />
-            <Campo form={form} rot="Data de nascimento" path="conjuge.nascimento" tipo="date" dis={disCad} />
-            <Campo form={form} rot="Profissão" path="conjuge.profissao" dis={disCad} />
-            <Campo form={form} rot="Nome da mãe" path="conjuge.mae" span={2} dis={disCad} />
-            <Campo form={form} rot="Renda mensal (R$)" path="conjuge.renda" im="decimal" dis={disCad} />
-          </div>
-          <ExtrasSecao defs={defs} secaoId="conjuge" form={form} dis={disCad} />
-        </Secao>
+        <BlocoPessoa form={form} base="conjuge" papel="conjuge" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+        <ExtrasSecao defs={defs} secaoId="conjuge" form={form} dis={disCad} />
+      </Secao>
     ) : null,
+    corequerentes: (
+      <Secao titulo={`Outros requerentes${(rascunho.corequerentes || []).length ? ` (${rascunho.corequerentes.length})` : ""}`} nota="Herdeiros, coproprietários ou quem mais assina como requerente da mesma unidade. Cada um pode ter cônjuge e tipo próprio, como no Integrado.">
+        <ListaPessoas form={form} chave="corequerentes" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} titulo="Requerente" vazio="Só o requerente principal nesta unidade."
+          cabecalho={(c) => (c.tipo && c.tipo !== "normal" ? ` · ${TIPOS_REQUERENTE.find((t) => t.v === c.tipo)?.t || c.tipo}` : "")}
+          novo={{
+            rotulo: "Adicionar requerente",
+            criar: () => ({ id: uid("cr"), tipo: "normal", representanteId: "", beneficiario: "sim", unidadeId: "", pessoa: pessoaVazia(), conjuge: pessoaVazia() }),
+            render: (c, i) => {
+              const B = `corequerentes.${i}`;
+              const precisaRep = c.tipo === "menor" || c.tipo === "representado";
+              const conj = !ehPJ(c.pessoa) && (COM_CONJUGE.includes(c.pessoa.estadoCivil) || !!c.conjuge?.nome);
+              return (
+                <div className="flex flex-col gap-3">
+                  <div className="fg">
+                    <Campo form={form} rot="Tipo" path={`${B}.tipo`} opcoes={TIPOS_REQUERENTE} vazio="Pessoa física" dis={disCad} />
+                    <Campo form={form} rot="Beneficiário do título?" path={`${B}.beneficiario`} opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} dis={disCad} />
+                    {precisaRep && <Campo form={form} rot="Representante" path={`${B}.representanteId`} opcoes={representantes.filter((r) => r.v !== c.id)} vazio="Escolha o representante" span={2} dis={disCad} ajuda="Quem responde por esta pessoa: pai, mãe, tutor, curador ou procurador, cadastrado nesta ficha." />}
+                    {unidadesDe(pd).length > 1 && <Campo form={form} rot="Unidade" path={`${B}.unidadeId`} opcoes={unidadesDe(pd).map((u, k) => ({ v: u.id, t: codigoUnidade(pd, k) }))} vazio="Todas as unidades" dis={disCad} />}
+                  </div>
+                  <BlocoPessoa form={form} base={`${B}.pessoa`} papel="requerente" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} permitirPJ={c.tipo === "juridica"} representantes={representantes.filter((r) => r.v !== c.id)} />
+                  {conj && (
+                    <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                      <div className="rot" style={{ marginBottom: 8 }}>Cônjuge ou companheiro(a) de {c.pessoa.nome || "requerente"}</div>
+                      <BlocoPessoa form={form} base={`${B}.conjuge`} papel="conjuge" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          }} />
+        <ExtrasSecao defs={defs} secaoId="corequerentes" form={form} dis={disCad} />
+      </Secao>
+    ),
+    ocupantes: (
+      <Secao titulo={`Ocupantes do imóvel${(rascunho.ocupantes || []).length ? ` (${rascunho.ocupantes.length})` : ""}`} nota="Quem mora no imóvel além do requerente e do cônjuge. Nenhum campo é obrigatório, mas a qualificação (nome, CPF, RG, nascimento, mãe, estado civil e profissão) conta na etapa Documental.">
+        <ListaPessoas form={form} chave="ocupantes" dis={!pode("social")} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} titulo="Ocupante" vazio="Nenhum ocupante cadastrado."
+          cabecalho={(o) => (o.parentesco ? ` · ${o.parentesco}` : "")}
+          novo={{
+            rotulo: "Adicionar ocupante",
+            criar: () => ({ id: uid("oc"), parentesco: "", vinculo: "principal", pessoa: pessoaVazia() }),
+            render: (o, i) => (
+              <div className="flex flex-col gap-3">
+                <div className="fg">
+                  <Campo form={form} rot="Parentesco" path={`ocupantes.${i}.parentesco`} opcoes={PARENTESCOS} vazio="Não informado" dis={!pode("social")} />
+                  <Campo form={form} rot="Em relação a" path={`ocupantes.${i}.vinculo`} opcoes={representantes} vazio="Requerente principal" dis={!pode("social")} />
+                </div>
+                <BlocoPessoa form={form} base={`ocupantes.${i}.pessoa`} papel="ocupante" dis={!pode("social")} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+              </div>
+            ),
+          }} />
+        <ExtrasSecao defs={defs} secaoId="ocupantes" form={form} dis={!pode("social")} />
+      </Secao>
+    ),
     endereco: (
-<Secao titulo="Endereço de residência">
-        <div className="fg">
-          <Campo form={form} rot="Logradouro" path="endereco.logradouro" span={2} dis={disCad} />
-          <Campo form={form} rot="Número" path="endereco.numero" dis={disCad} />
-          <Campo form={form} rot="Complemento" path="endereco.complemento" dis={disCad} />
-          <Campo form={form} rot="Bairro" path="endereco.bairro" dis={disCad} />
-          <Campo form={form} rot="Município" path="endereco.municipio" dis={disCad} />
-          <Campo form={form} rot="UF" path="endereco.uf" fmt={(s) => s.toUpperCase().slice(0, 2)} dis={disCad} />
-          <Campo form={form} rot="CEP" path="endereco.cep" fmt={fmtCEP} im="numeric" dis={disCad} erro={cep && so(cep).length !== 8 ? "O CEP tem 8 dígitos" : ""} />
-        </div>
+      <Secao titulo="Endereço de residência" nota="Onde o requerente mora hoje. Se for o próprio imóvel em regularização, copie do endereço do imóvel.">
+        <BlocoEndereco form={form} base="endereco" dis={disCad} aoCopiar={() => copiarEndereco("enderecoImovel", "endereco")} rotuloCopiar="Usar o endereço do imóvel" />
         <ExtrasSecao defs={defs} secaoId="endereco" form={form} dis={disCad} />
       </Secao>
     ),
+    enderecoImovel: (
+      <Secao titulo="Endereço do imóvel" nota="Onde fica a unidade em regularização. Pode ser diferente da residência do requerente.">
+        <BlocoEndereco form={form} base="enderecoImovel" dis={disImovel} aoCopiar={() => copiarEndereco("endereco", "enderecoImovel")} rotuloCopiar="Usar o endereço de residência" />
+        <ExtrasSecao defs={defs} secaoId="enderecoImovel" form={form} dis={disImovel} />
+      </Secao>
+    ),
     imovel: (
-<Secao titulo="Imóvel, remessa e núcleo">
+      <Secao titulo="Imóvel, remessa e núcleo">
         <div className="fg">
           <div>
             <span className="rot">Município</span>
             <div className="inp" style={{ background: "var(--hover)", color: "var(--muted)", display: "flex", alignItems: "center" }}>{municipio ? `${municipio.nome}/${municipio.uf}` : "Não encontrado"}</div>
           </div>
           <div>
-            <label className="rot" htmlFor="remessaId">Remessa{iaPaths.includes("remessaId") ? "" : ""}</label>
+            <label className="rot" htmlFor="remessaId">Remessa</label>
             <select id="remessaId" className="inp" value={rascunho.remessaId} disabled={!pode("cadastro")} onChange={(e) => { const v = e.target.value; setRascunho((r0) => { const c = clone(r0); c.remessaId = v; const nuc = db.nucleos.find((x) => x.id === c.nucleoId); if (nuc && nuc.remessaId && nuc.remessaId !== v) c.nucleoId = ""; return c; }); }}>
               {remessasMun.map((r) => <option key={r.id} value={r.id}>{nomeRemessa(db, r)}{r.titulo ? `, ${r.titulo}` : ""}</option>)}
             </select>
             <div className="ajuda">Todo morador precisa de uma remessa.</div>
           </div>
-          <Campo form={form} rot="Núcleo" path="nucleoId" opcoes={db.nucleos.filter((n) => n.municipioId === p.municipioId && (n.remessaId === rascunho.remessaId || !n.remessaId)).map((n) => ({ v: n.id, t: `${nomeNucleo(n)}${n.remessaId ? "" : " (sem remessa)"}` }))} vazio="Sem núcleo" span={2} dis={!pode("imovel")} ajuda={nucleoDraft && !nucleoDraft.remessaId ? `Ao salvar, o ${nucleoDraft.codigo} será colocado nesta remessa.` : ""} />
-          <Campo form={form} rot="Área declarada no documento (m²)" path="imovel.area" im="decimal" dis={!pode("imovel")} ajuda="A área medida e o memorial de cada unidade ficam na aba Unidade." />
-          <Campo form={form} rot="Comprovante de posse" path="imovel.comprovantePosse" opcoes={POSSE} dis={!pode("imovel")} />
+          <Campo form={form} rot="Núcleo" path="nucleoId" opcoes={db.nucleos.filter((n) => n.municipioId === p.municipioId && (n.remessaId === rascunho.remessaId || !n.remessaId)).map((n) => ({ v: n.id, t: `${nomeNucleo(n)}${n.remessaId ? "" : " (sem remessa)"}` }))} vazio="Sem núcleo" span={2} dis={disImovel} ajuda={nucleoDraft && !nucleoDraft.remessaId ? `Ao salvar, o ${nucleoDraft.codigo} será colocado nesta remessa.` : ""} />
+          <Campo form={form} rot="Área declarada no documento (m²)" path="imovel.area" im="decimal" dis={disImovel} ajuda="A área medida e o memorial de cada unidade ficam na aba Unidade." />
+          <Campo form={form} rot="Comprovante de posse" path="imovel.comprovantePosse" opcoes={POSSE} dis={disImovel} />
+          <Campo form={form} rot="Matrícula ou transcrição de origem" path="imovel.matricula" dis={disImovel} />
+          <Campo form={form} rot="Data de aquisição da posse" path="imovel.aquisicao" tipo="date" dis={disImovel} />
+          <Campo form={form} rot="Objeto" path="imovel.objeto" opcoes={OBJETOS_REURB} vazio="Não definido" dis={disImovel} />
+          <Campo form={form} rot="Instrumento" path="imovel.instrumento" opcoes={INSTRUMENTOS_REURB} vazio="Não definido" dis={disImovel} />
+          <Campo form={form} rot="Ocupa área pública?" path="imovel.areaPublica" opcoes={[{ v: "nao", t: "Não" }, { v: "sim", t: "Sim" }]} dis={disImovel} />
+          <Campo form={form} rot="Imóvel em inventário?" path="imovel.inventario" opcoes={[{ v: "nao", t: "Não" }, { v: "sim", t: "Sim" }]} dis={disImovel} />
         </div>
-        <ExtrasSecao defs={defs} secaoId="imovel" form={form} dis={!pode("imovel")} />
+        <div style={{ marginTop: 12 }}>
+          <label className="rot" htmlFor="imovel.historicoPosse">Histórico da posse{iaPaths.includes("imovel.historicoPosse") && <span style={{ color: "var(--primary-3)", marginLeft: 6 }}>sugerido pela IA</span>}</label>
+          <textarea id="imovel.historicoPosse" className={`inp${iaPaths.includes("imovel.historicoPosse") ? " ia" : ""}`} rows={4} value={rascunho.imovel?.historicoPosse || ""} disabled={disImovel} onChange={(e) => form.set("imovel.historicoPosse", e.target.value)} placeholder="Como a posse começou, de quem foi adquirida, por qual documento e desde quando. A IA preenche ao analisar o comprovante de posse; o agente pode editar." />
+          <div className="ajuda">Entra no requerimento, na declaração de posse e no PRF.</div>
+        </div>
+        <ExtrasSecao defs={defs} secaoId="imovel" form={form} dis={disImovel} />
       </Secao>
     ),
     social: (
-<Secao titulo="Social e modalidade">
+      <Secao titulo="Social e modalidade">
         <div className="fg">
-          <Campo form={form} rot="Pessoas no imóvel" path="social.ocupantes" im="numeric" fmt={(s) => so(s).slice(0, 2)} dis={!pode("social")} />
+          <Campo form={form} rot="Pessoas no imóvel" path="social.ocupantes" im="numeric" fmt={(s) => so(s).slice(0, 2)} dis={!pode("social")} ajuda={`Cadastradas nesta ficha: ${1 + (rascunho.conjuge?.nome ? 1 : 0) + (rascunho.corequerentes || []).length + (rascunho.ocupantes || []).length}`} />
           <Campo form={form} rot="Renda familiar (R$)" path="social.rendaFamiliar" im="decimal" dis={!pode("social")} />
           <Campo form={form} rot="Possui outro imóvel?" path="social.possuiImovel" opcoes={[{ v: "nao", t: "Não" }, { v: "sim", t: "Sim" }]} dis={!pode("social")} />
+          <Campo form={form} rot="Inscrito no CadÚnico?" path="social.cadUnico" opcoes={[{ v: "nao", t: "Não" }, { v: "sim", t: "Sim" }]} dis={!pode("social")} />
           <Campo form={form} rot="Modalidade" path="social.modalidade" opcoes={["REURB-S", "REURB-E"]} vazio="Não definida" dis={!pode("social")} />
         </div>
         {sug.aviso ? (
@@ -4005,41 +4268,156 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
 function gerarQualificacao(p, modo, visivel) {
   const faltas = [];
   const token = (v, nome) => { if (preenchido(v)) return String(v).trim(); faltas.push(nome); return `[${nome}]`; };
+  const minus = (t) => (String(t).startsWith("[") ? t : String(t).toLowerCase());
   const cpfTxt = (c, nome) => { if (!cpfValido(c)) { faltas.push(nome); return `[${nome}]`; } return visivel ? fmtCPF(c) : mascararCPF(c); };
+  const cnpjTxt = (c, nome) => { if (!cnpjValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCNPJ(c); };
   const r = p.requerente; const c = p.conjuge; const casal = temConjuge(p) && c.nome;
+  const outros = (p.corequerentes || []).filter((x) => x.beneficiario !== "nao");
+  const docCurto = (x, rotulo) => (ehPJ(x) ? `inscrita no CNPJ nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}` : `portador(a) do CPF nº ${cpfTxt(x.cpf, `CPF de ${rotulo}`)}`);
   if (modo === "simples") {
     const cods = codigosUnidades(p);
-    let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, portador(a) do CPF nº ${cpfTxt(r.cpf, "CPF do requerente")}`;
+    let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, ${docCurto(r, "requerente")}`;
     if (casal) t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
+    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
     return { texto: `${t}.`, faltas };
   }
-  const nac = (v) => (normalizar(v).startsWith("brasil") ? "brasileiro(a)" : token(v, "nacionalidade").toLowerCase());
-  const pessoa = (x, rotulo, ehReq) => `${token(x.nome, `nome do ${rotulo}`)}, ${nac(x.nacionalidade || "Brasileira")}${ehReq ? `, ${token(x.estadoCivil, "estado civil").toLowerCase()}` : ""}, ${token(x.profissao, `profissão do ${rotulo}`).toLowerCase()}, portador(a) do RG nº ${token(x.rg, `RG do ${rotulo}`)} ${x.rgOrgao || ""}, inscrito(a) no CPF sob o nº ${cpfTxt(x.cpf, `CPF do ${rotulo}`)}, filho(a) de ${token(x.mae, `mãe do ${rotulo}`)}${x.pai ? ` e ${x.pai}` : ""}`;
+  const nac = (v) => (normalizar(v).startsWith("brasil") ? "brasileiro(a)" : minus(token(v, "nacionalidade")));
+  const endTxt = (e, plural) => `${plural ? "residentes e domiciliados" : "residente e domiciliado(a)"} na ${token(e.logradouro, "logradouro")}, nº ${token(e.numero, "número")}${e.complemento ? `, ${e.complemento}` : ""}, bairro ${token(e.bairro, "bairro")}, ${token(e.municipio, "município")}/${token(e.uf, "UF")}, CEP ${so(e.cep).length === 8 ? fmtCEP(e.cep) : token("", "CEP")}`;
+  const pessoa = (x, rotulo, ehReq) => {
+    if (ehPJ(x)) return `${token(x.nome, `razão social de ${rotulo}`)}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}, neste ato representada por ${token(x.representante, `representante de ${rotulo}`)}`;
+    return `${token(x.nome, `nome do ${rotulo}`)}, ${nac(x.nacionalidade || "Brasileira")}${x.naturalidade ? `, natural de ${x.naturalidade}` : ""}${ehReq ? `, ${minus(token(x.estadoCivil, `estado civil de ${rotulo}`))}` : ""}, ${minus(token(x.profissao, `profissão de ${rotulo}`))}, portador(a) do RG nº ${token(x.rg, `RG do ${rotulo}`)} ${x.rgOrgao || ""}${x.rgUf ? `/${x.rgUf}` : ""}, inscrito(a) no CPF sob o nº ${cpfTxt(x.cpf, `CPF do ${rotulo}`)}, filho(a) de ${token(x.mae, `mãe do ${rotulo}`)}${x.pai ? ` e ${x.pai}` : ""}`;
+  };
+  const regime = (x) => (x.estadoCivil === "Casado(a)" ? `, casados sob o regime de ${minus(token(x.regimeBens, "regime de bens"))}` : ", em união estável");
   let t = pessoa(r, "requerente", true);
-  if (casal) t += `, e ${pessoa(c, "cônjuge", false)}${r.estadoCivil === "Casado(a)" ? `, casados sob o regime de ${token(r.regimeBens, "regime de bens").toLowerCase()}` : ", em união estável"}`;
-  const e = p.endereco;
-  t += `, ${casal ? "residentes e domiciliados" : "residente e domiciliado(a)"} na ${token(e.logradouro, "logradouro")}, nº ${token(e.numero, "número")}, bairro ${token(e.bairro, "bairro")}, ${token(e.municipio, "município")}/${token(e.uf, "UF")}, CEP ${so(e.cep).length === 8 ? fmtCEP(e.cep) : token("", "CEP")}.`;
-  return { texto: t.replace(/\s+,/g, ","), faltas };
+  if (casal) t += `, e ${pessoa(c, "cônjuge", false)}${regime(r)}`;
+  t += `, ${endTxt(p.endereco, !!casal)}`;
+  outros.forEach((o, i) => {
+    const rot = o.pessoa.nome || `requerente ${i + 2}`;
+    const conj = !ehPJ(o.pessoa) && COM_CONJUGE.includes(o.pessoa.estadoCivil) && o.conjuge?.nome;
+    t += `; e ${pessoa(o.pessoa, rot, true)}`;
+    if (conj) t += `, e ${pessoa(o.conjuge, `cônjuge de ${rot}`, false)}${regime(o.pessoa)}`;
+    if (o.tipo === "menor" || o.tipo === "representado") { const rep = o.representanteId === "principal" ? r.nome : (p.corequerentes || []).find((k) => k.id === o.representanteId)?.pessoa?.nome; t += `, neste ato representado(a) por ${token(rep, `representante de ${rot}`)}`; }
+    t += `, ${endTxt(p.endereco, !!conj)}`;
+  });
+  return { texto: `${t}.`.replace(/\s+,/g, ",").replace(/\.\./g, "."), faltas };
+}
+// Blocos de qualificação guardados no processo. Os gerados acompanham o cadastro; os migrados do Integrado e os editados à mão ficam como estão.
+const MODOS_QUALIFICACAO = [["simples", "Simples"], ["completa", "Completa"], ["basica", "Básica (Integrado)"], ["memorial", "Memorial"], ["crf", "CRF"], ["compromisso", "Compromisso"], ["topografia", "Topografia"]];
+const qualificacaoVazia = () => ({ textos: {}, origem: {}, faltas: {}, atualizadoEm: "", por: "", desatualizada: false });
+function atualizarQualificacao(p, usuario, forcar = false) {
+  const q = { ...qualificacaoVazia(), ...(p.qualificacao || {}), textos: { ...(p.qualificacao?.textos || {}) }, origem: { ...(p.qualificacao?.origem || {}) }, faltas: { ...(p.qualificacao?.faltas || {}) } };
+  let desatualizada = false;
+  ["simples", "completa"].forEach((modo) => {
+    const editado = q.origem[modo] === "editada" || q.origem[modo] === "migrada";
+    if (editado && !forcar) { desatualizada = true; return; }
+    const { texto, faltas } = gerarQualificacao(p, modo, true);
+    q.textos[modo] = texto; q.faltas[modo] = faltas; q.origem[modo] = "gerada";
+  });
+  q.desatualizada = desatualizada;
+  q.atualizadoEm = new Date().toISOString(); q.por = usuario?.nome || "sistema";
+  return q;
 }
 
-function AbaQualificacao({ p, cpfVisivel, mutar, setToast }) {
+function AbaQualificacao({ p, usuario, perm, cpfVisivel, mutar, setToast }) {
   const [modo, setModo] = useState("simples");
-  const { texto, faltas } = gerarQualificacao(p, modo, cpfVisivel);
+  const [editando, setEditando] = useState(null);
+  const q = p.qualificacao || null;
+  const salvo = q?.textos?.[modo];
+  const origem = q?.origem?.[modo] || "";
+  const gerado = ["simples", "completa"].includes(modo) ? gerarQualificacao(p, modo, cpfVisivel) : null;
+  // Texto mostrado: o salvo (com CPF mascarado se preciso) ou o gerado na hora quando não há nada salvo
+  const mascarar = (t) => (cpfVisivel ? t : String(t || "").replace(/\d{3}\.\d{3}\.\d{3}-\d{2}/g, (c) => mascararCPF(c)));
+  const texto = salvo !== undefined && salvo !== null && salvo !== "" ? mascarar(salvo) : gerado ? gerado.texto : "";
+  const faltas = gerado && (origem === "gerada" || !salvo) ? gerado.faltas : q?.faltas?.[modo] || [];
+  const modosDisponiveis = MODOS_QUALIFICACAO.filter(([k]) => ["simples", "completa"].includes(k) || preenchido(q?.textos?.[k]));
+  const podeEditar = perm.diretor || perm.setor === "comercial" || perm.setor === "juridico" || perm.setor === "posprotocolo";
+  const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
   const copiar = async () => {
     try { await navigator.clipboard.writeText(texto); setToast("Qualificação copiada."); } catch (e) { setToast("Não foi possível copiar. Selecione o texto e copie manualmente."); }
-    mutar((d) => d, "Qualificação copiada", { processoId: p.id, remessaId: p.remessaId, detalhe: modo === "simples" ? "Simples" : "Completa" });
+    mutar((d) => d, "Qualificação copiada", { ...log, detalhe: MODOS_QUALIFICACAO.find(([k]) => k === modo)?.[1] || modo });
   };
+  const regerar = () => {
+    mutar((d) => { const x = d.processos.find((y) => y.id === p.id); x.qualificacao = atualizarQualificacao(x, usuario, true); return d; }, "Qualificação regenerada", { ...log, detalhe: p.codigo });
+    setToast("Qualificação gerada de novo a partir do cadastro.");
+  };
+  const salvarEdicao = () => {
+    const t = (editando || "").trim();
+    mutar((d) => { const x = d.processos.find((y) => y.id === p.id); const qq = { ...qualificacaoVazia(), ...(x.qualificacao || {}) }; qq.textos = { ...qq.textos, [modo]: t }; qq.origem = { ...qq.origem, [modo]: "editada" }; qq.faltas = { ...qq.faltas, [modo]: [] }; qq.atualizadoEm = new Date().toISOString(); qq.por = usuario.nome; x.qualificacao = qq; return d; }, "Qualificação editada à mão", { ...log, detalhe: `${p.codigo}: ${modo}` });
+    setEditando(null); setToast("Texto salvo. Ele não muda mais sozinho; use \"Gerar de novo\" para voltar ao automático.");
+  };
+  const rotuloOrigem = { gerada: "Gerada pelo sistema", editada: "Editada à mão", migrada: "Trazida do Integrado" }[origem] || (salvo ? "Salva" : "Gerada agora, ainda não salva");
   return (
-    <Secao titulo="Qualificação dos beneficiários" nota="Texto montado a partir do cadastro salvo. Atualiza sozinho quando os dados mudam.">
+    <Secao titulo="Qualificação dos beneficiários" nota="Montada pelo sistema a partir do cadastro e salva no processo. Ao salvar o cadastro ela é refeita, exceto os textos editados à mão ou trazidos do Integrado.">
       <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginBottom: 12 }}>
-        <div className="flex gap-1" role="tablist">
-          {[["simples", "Simples"], ["completa", "Completa"]].map(([k, n]) => <button key={k} role="tab" aria-selected={modo === k} className={`btn btn-sm${modo === k ? " btn-primario" : ""}`} onClick={() => setModo(k)}>{n}</button>)}
+        <div className="flex flex-wrap gap-1" role="tablist">
+          {modosDisponiveis.map(([k, n]) => <button key={k} role="tab" aria-selected={modo === k} className={`btn btn-sm${modo === k ? " btn-primario" : ""}`} onClick={() => { setModo(k); setEditando(null); }}>{n}</button>)}
         </div>
-        <button className="btn btn-sm" onClick={copiar}><Copy size={14} />Copiar texto</button>
+        <div className="flex flex-wrap gap-1">
+          <button className="btn btn-sm" onClick={copiar}><Copy size={14} />Copiar texto</button>
+          {podeEditar && editando === null && <button className="btn btn-sm" onClick={() => setEditando(salvo || gerado?.texto || "")}><Pencil size={14} />Editar</button>}
+          {podeEditar && ["simples", "completa"].includes(modo) && <button className="btn btn-sm" onClick={regerar}><RefreshCw size={14} />Gerar de novo</button>}
+        </div>
       </div>
-      <p style={{ margin: 0, padding: 16, fontSize: 15.5, lineHeight: 1.7, background: "var(--hover)", border: "1px solid var(--line)", borderRadius: 12, maxWidth: "78ch" }}>{texto}</p>
+      <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 10 }}>
+        <Tag tipo={origem === "gerada" ? "ok" : origem ? "neutra" : "pend"}>{rotuloOrigem}</Tag>
+        {q?.desatualizada && ["simples", "completa"].includes(modo) && origem !== "gerada" && <Tag tipo="pend"><AlertTriangle size={12} />O cadastro mudou depois deste texto</Tag>}
+        {q?.atualizadoEm && <span className="ajuda" style={{ margin: 0 }}>Atualizada em {dataHoraBR(q.atualizadoEm)}{q.por ? `, por ${q.por}` : ""}</span>}
+      </div>
+      {editando !== null ? (
+        <div>
+          <textarea className="inp memorial-texto" rows={8} value={editando} onChange={(e) => setEditando(e.target.value)} aria-label="Texto da qualificação" />
+          <div className="flex gap-2" style={{ marginTop: 8 }}><button className="btn" onClick={() => setEditando(null)}>Cancelar</button><button className="btn btn-primario" onClick={salvarEdicao}><Check size={15} />Salvar texto</button></div>
+        </div>
+      ) : (
+        <p style={{ margin: 0, padding: 16, fontSize: 15.5, lineHeight: 1.7, background: "var(--hover)", border: "1px solid var(--line)", borderRadius: 12, maxWidth: "78ch", whiteSpace: "pre-wrap" }}>{texto || "Sem texto para este modo."}</p>
+      )}
       {!cpfVisivel && <div className="ajuda">CPFs aparecem mascarados. Use "Mostrar CPFs" no topo do processo para gerar o texto completo.</div>}
       {faltas.length > 0 && <div style={{ marginTop: 10, color: "var(--danger)" }}><strong>Faltam dados:</strong> {Array.from(new Set(faltas)).join(", ")}.</div>}
+    </Secao>
+  );
+}
+
+// Observações por morador (como os comentários do Integrado). Mesmo formato das observações do núcleo.
+function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
+  const [texto, setTexto] = useState("");
+  const [filtro, setFiltro] = useState("todas");
+  const perm = permissoes(usuario);
+  const pode = perm.setor !== "consulta" && !cancelado;
+  const lista = [...(p.observacoes || [])].sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const setores = Array.from(new Set(lista.map((o) => o.setor).filter(Boolean)));
+  const visiveis = filtro === "todas" ? lista : lista.filter((o) => o.setor === filtro);
+  const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
+  const registrar = () => {
+    const t = texto.trim(); if (!t) return;
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || "", texto: t, data: new Date().toISOString(), controle: "editavel" }]; return d; }, "Observação no morador", { ...log, detalhe: `${p.codigo}: ${t.slice(0, 60)}` });
+    setTexto(""); setToast("Observação registrada.");
+  };
+  const remover = (o) => {
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = (q.observacoes || []).filter((y) => y.id !== o.id); return d; }, "Observação removida", { ...log, detalhe: `${p.codigo}: ${o.texto.slice(0, 60)}` });
+  };
+  return (
+    <Secao titulo={`Observações da equipe${lista.length ? ` (${lista.length})` : ""}`} nota="Anotações sobre este morador, visíveis para toda a equipe. As permanentes vieram do Integrado ou de etapas concluídas e não podem ser apagadas.">
+      {pode && (
+        <div className="flex gap-2" style={{ marginBottom: 12 }}>
+          <textarea className="inp" rows={2} value={texto} placeholder="Escreva uma observação" onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) registrar(); }} aria-label="Nova observação" />
+          <button className="btn btn-primario" style={{ alignSelf: "flex-end" }} disabled={!texto.trim()} onClick={registrar}><MessageSquare size={14} />Registrar</button>
+        </div>
+      )}
+      {setores.length > 1 && (
+        <div className="flex flex-wrap gap-1" style={{ marginBottom: 10 }}>
+          {["todas", ...setores].map((s) => <button key={s} className={`btn btn-sm${filtro === s ? " btn-primario" : ""}`} onClick={() => setFiltro(s)}>{s === "todas" ? "Todas" : s}</button>)}
+        </div>
+      )}
+      {visiveis.length === 0 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma observação registrada.</p>}
+      {visiveis.map((o) => (
+        <div key={o.id} className="flex items-start justify-between gap-2" style={{ padding: "9px 0", borderTop: "1px solid var(--line2)" }}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ fontWeight: 650 }}>{o.autor}</strong> <span className="ajuda" style={{ margin: 0 }}>{o.setor ? `${o.setor}, ` : ""}{dataHoraBR(o.data)}{o.origem ? `, ${o.origem}` : ""}{o.controle === "permanente" ? " · permanente" : ""}</span>
+            <div style={{ whiteSpace: "pre-wrap" }}>{o.texto}</div>
+          </div>
+          {pode && o.controle !== "permanente" && (perm.diretor || o.autor === usuario.nome) && <button className="btn-icone" aria-label="Remover observação" onClick={() => remover(o)}><Trash2 size={14} /></button>}
+        </div>
+      ))}
     </Secao>
   );
 }
@@ -4071,9 +4449,13 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   };
   const salvar = () => {
     const invalidos = [];
-    if (!cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório");
+    if (ehPJ(rascunho.requerente)) { if (!cnpjValido(rascunho.requerente.cnpj)) invalidos.push(rascunho.requerente.cnpj ? "CNPJ do requerente" : "CNPJ do requerente, que é obrigatório"); }
+    else if (!cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório");
     if (rascunho.conjuge.cpf && !cpfValido(rascunho.conjuge.cpf)) invalidos.push("CPF do cônjuge");
-    if (rascunho.endereco.cep && so(rascunho.endereco.cep).length !== 8) invalidos.push("CEP");
+    (rascunho.corequerentes || []).forEach((c) => { if (ehPJ(c.pessoa) ? (c.pessoa.cnpj && !cnpjValido(c.pessoa.cnpj)) : (c.pessoa.cpf && !cpfValido(c.pessoa.cpf))) invalidos.push(`documento de ${c.pessoa.nome || "outro requerente"}`); if (c.conjuge?.cpf && !cpfValido(c.conjuge.cpf)) invalidos.push(`CPF do cônjuge de ${c.pessoa.nome || "outro requerente"}`); });
+    (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
+    if (rascunho.endereco.cep && so(rascunho.endereco.cep).length !== 8) invalidos.push("CEP da residência");
+    if (rascunho.enderecoImovel?.cep && so(rascunho.enderecoImovel.cep).length !== 8) invalidos.push("CEP do imóvel");
     if (invalidos.length) { setToast(`Corrija antes de salvar: ${invalidos.join(", ")}.`); return; }
     const remessaNova = remessaDe(db, rascunho.remessaId);
     if (!remessaNova || remessaNova.municipioId !== p.municipioId) { setToast("Escolha uma remessa do município do morador."); return; }
@@ -4092,6 +4474,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       const q = d.processos.find((x) => x.id === p.id);
       SECOES.forEach((k) => { q[k] = clone(rascunho[k]); });
       if (novoCodigo) { q.codigo = novoCodigo; q.numeroCliente = novoNumero; }
+      // A qualificação salva acompanha o cadastro: regenerada a cada alteração, a menos que tenha sido editada à mão (aí só marca como desatualizada)
+      q.qualificacao = atualizarQualificacao(q, usuario);
       if (vincular) d.nucleos.find((x) => x.id === nucleoSel.id).remessaId = rascunho.remessaId;
       return d;
     }, "Cadastro alterado", { processoId: p.id, municipioId: p.municipioId, remessaId: rascunho.remessaId, detalhe: `${nomes.join(", ")}${viaIA ? `. ${viaIA} sugerido(s) pela IA e revisado(s)` : ""}${extrasDetalhe}` });
@@ -4150,7 +4534,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
-              ["qualificacao", "Qualificação", ScrollText, 0],
+              ["qualificacao", "Qualificação", ScrollText, 0, p.qualificacao?.desatualizada ? "desatualizada" : ""],
+              ["observacoes", "Observações", MessageSquare, (p.observacoes || []).length],
               ["historico", "Histórico", History, 0],
             ].map(([id, nome, Icone, contador, nota]) => (
               <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => setAba(id)} title={nome}>
@@ -4175,11 +4560,12 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {aba === "comercial" && <AbaComercialCliente db={db} p={p} usuario={usuario} ir={irComCuidado} mutar={mutar} setToast={setToast} />}
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
           {aba === "campo" && <AbaCampo db={db} p={p} usuario={usuario} ir={irComCuidado} />}
-          {aba === "qualificacao" && <AbaQualificacao p={p} cpfVisivel={cpfVisivel} mutar={mutar} setToast={setToast} />}
+          {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} cpfVisivel={cpfVisivel} mutar={mutar} setToast={setToast} />}
+          {aba === "observacoes" && <AbaObservacoesProcesso p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
           {aba === "historico" && <Secao titulo="Histórico do processo" nota="Registro de quem fez o quê. Valores de CPF não são gravados no histórico."><ListaHistorico itens={db.auditoria.filter((a) => a.processoId === p.id)} vazio="Nenhuma ação registrada ainda." /></Secao>}
         </div>
         <aside className="lateral">
-          <PainelEtapa p={p} ctx={ctx} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} onAbrirAba={setAba} />
+          <PainelEtapa db={db} p={p} ctx={ctx} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} onAbrirAba={setAba} />
         </aside>
       </div>
 
@@ -4254,6 +4640,8 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
               <Tag tipo={teto ? "neutra" : "pend"}>Teto REURB-S: {teto ? `${moeda(teto)}${sm ? ` (${qtdSalarios(teto, sm)} SM)` : ""}` : "não definido"}</Tag>
               {n.responsavel && <Tag>Responsável: {n.responsavel}</Tag>}
+              {n.situacao && n.situacao !== "Ativo" && <Tag tipo="bloq">{n.situacao}</Tag>}
+              {temValor(n.endereco) && <Tag><MapPin size={12} />{[n.endereco.logradouro, n.endereco.bairro, n.endereco.localidade].filter(Boolean).join(", ") || "Endereço cadastrado"}</Tag>}
               {(n.externo?.erp || n.externo?.crm) && <Tag>No ERP: {n.externo.erp || n.externo.crm}</Tag>}
             </div>
           )}
@@ -4303,6 +4691,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         </div>
       )}
       {!n && <div style={{ marginBottom: 14 }}><Aviso>Moradores sem núcleo não passam do Documental. Defina o núcleo na ficha de cada morador.</Aviso></div>}
+      {n && n.situacaoDescricao && <div className="card" style={{ padding: "10px 14px", marginBottom: 14 }}><div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Situação do núcleo</div><div style={{ whiteSpace: "pre-wrap" }}>{n.situacaoDescricao}</div></div>}
 
       {n && <div className="card" style={{ padding: "22px 14px 18px", marginBottom: 16 }}><Trilha estacoes={estacoes} rotulo="Etapas do núcleo" /></div>}
 
@@ -5781,7 +6170,86 @@ function HistoricoGeral({ db }) {
   );
 }
 
-function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, trocarUsuario }) {
+// Importa o pacote gerado a partir do banco do Integrado (sistema anterior). Grava pela RPC compartilhada, em lotes, e pode ser repetido.
+function ConfigImportarIntegrado({ db, usuario, setToast, recarregar }) {
+  const [pacote, setPacote] = useState(null);
+  const [resumo, setResumo] = useState(null);
+  const [progresso, setProgresso] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  const [erro, setErro] = useState("");
+  const [rodando, setRodando] = useState(false);
+  const pararRef = useRef(false);
+  const inputRef = useRef(null);
+  const escolher = async (f) => {
+    setErro(""); setResultado(null); setPacote(null); setResumo(null);
+    if (!f) return;
+    try {
+      // O pacote pode vir compactado (.json.gz); o navegador descompacta sozinho
+      const texto = /\.gz$/i.test(f.name) && typeof DecompressionStream !== "undefined"
+        ? await new Response(f.stream().pipeThrough(new DecompressionStream("gzip"))).text()
+        : await f.text();
+      const pk = JSON.parse(texto); setResumo(validarPacote(pk)); setPacote(pk);
+    } catch (e) { setErro(e.message); }
+  };
+  const importar = async () => {
+    if (!pacote) return;
+    setRodando(true); pararRef.current = false; setErro(""); setResultado(null);
+    try {
+      const r = await importarIntegrado(pacote, { actor: usuario, onProgresso: setProgresso, parar: () => pararRef.current });
+      setResultado(r);
+      setToast(r.interrompido ? "Importação interrompida. Rode de novo para continuar de onde parou." : `Importação concluída: ${r.gravados} registros gravados, ${r.pulados} já existiam.`);
+      if (recarregar) await recarregar();
+    } catch (e) { setErro(e.message); } finally { setRodando(false); }
+  };
+  const pct = progresso && progresso.total ? Math.round((progresso.feitos / progresso.total) * 100) : 0;
+  return (
+    <div className="flex flex-col gap-3">
+      <Secao titulo="Importar os dados do Integrado" nota="Traz municípios, remessas, núcleos, moradores (com requerentes, cônjuges, ocupantes, endereços, documentos, qualificações e observações), representantes e o índice dos formulários do sistema anterior. O arquivo é gerado fora do sistema a partir do banco MySQL do Integrado. Registros que já existem são pulados, então pode repetir sem duplicar.">
+        <input ref={inputRef} type="file" accept=".json,.gz,application/json,application/gzip" style={{ display: "none" }} onChange={(e) => escolher(e.target.files?.[0])} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn" disabled={rodando} onClick={() => inputRef.current?.click()}><Upload size={15} />Escolher o pacote (.json ou .json.gz)</button>
+          {pacote && !rodando && <button className="btn btn-primario" onClick={importar}><DatabaseZap size={15} />Importar {resumo?.total.toLocaleString("pt-BR")} registros</button>}
+          {rodando && <button className="btn btn-perigo" onClick={() => { pararRef.current = true; }}>Parar após o lote atual</button>}
+        </div>
+        {resumo && (
+          <div style={{ marginTop: 12 }}>
+            <div className="ajuda" style={{ margin: "0 0 6px" }}>Pacote gerado em {resumo.gerado ? dataHoraBR(resumo.gerado) : "data desconhecida"}{resumo.origem ? `, origem ${resumo.origem}` : ""}.</div>
+            <table className="tab"><thead><tr><th>Etapa</th><th>Tabela</th><th style={{ textAlign: "right" }}>Registros</th></tr></thead>
+              <tbody>{resumo.fases.map((f) => <tr key={f.nome}><td>{f.nome}</td><td><code>{f.tabela}</code></td><td style={{ textAlign: "right" }}>{f.linhas.toLocaleString("pt-BR")}</td></tr>)}</tbody></table>
+          </div>
+        )}
+        {progresso && (
+          <div style={{ marginTop: 14 }}>
+            <div className="flex justify-between" style={{ fontSize: 13.5 }}><span>{progresso.mensagem}</span><span>{pct}%</span></div>
+            <div style={{ height: 8, background: "var(--pill)", borderRadius: 999, overflow: "hidden", marginTop: 4 }}><div style={{ width: `${pct}%`, height: "100%", background: "var(--primary)", transition: "width .3s" }} /></div>
+            <div className="ajuda" style={{ margin: "4px 0 0" }}>Gravados até agora: {(progresso.gravados || 0).toLocaleString("pt-BR")}. Já existiam: {(progresso.pulados || 0).toLocaleString("pt-BR")}.</div>
+          </div>
+        )}
+        {erro && <div className="msg-erro" style={{ marginTop: 12 }}>{erro}</div>}
+        {resultado && (
+          <div style={{ marginTop: 14 }}>
+            <Tag tipo={resultado.erros.length ? "pend" : "ok"}>{resultado.gravados.toLocaleString("pt-BR")} gravados, {resultado.pulados.toLocaleString("pt-BR")} já existiam{resultado.erros.length ? `, ${resultado.erros.length} lote(s) com erro` : ""}</Tag>
+            {resultado.erros.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <p className="ajuda" style={{ margin: "0 0 6px" }}>Lotes que não entraram (rode a importação de novo depois de corrigir a causa; o que já entrou não se repete):</p>
+                {resultado.erros.slice(0, 10).map((e, i) => <div key={i} className="msg-erro" style={{ margin: "2px 0" }}>{e.fase}, registros {e.de + 1} a {e.ate}: {e.mensagem}</div>)}
+              </div>
+            )}
+          </div>
+        )}
+      </Secao>
+      <Secao titulo="Depois de importar" nota="Passos que ficam por sua conta.">
+        <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+          <li>Confira as etapas dos núcleos marcados como duvidosos na planilha e ajuste pelo Quadro de processos.</li>
+          <li>Suba as planilhas dos formulários (pasta <code>integrado/formularios</code>) no bucket <code>integracao</code> do Storage; o índice já vem no pacote.</li>
+          <li>Os usuários do Integrado que não têm conta no ERP aparecem só como autores nas observações; crie a conta no ERP se precisarem entrar.</li>
+        </ul>
+      </Secao>
+    </div>
+  );
+}
+
+function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, trocarUsuario, recarregar }) {
   const [confirmar, setConfirmar] = useState(false);
   const perm = permissoes(usuario);
   const ABAS = [
@@ -5789,6 +6257,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     perm.config && ["regras", "Regras da IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
     perm.importar && ["previa", "Prévia com dados do ERP", Sparkles],
+    perm.diretor && ["integrado", "Importar do Integrado", HardDriveDownload],
     (perm.config || perm.cadastro) && ["modelos", "Modelos e representantes", ScrollText],
     (perm.config || perm.cadastro) && ["timbrado", "Papel timbrado", ImageIcon],
     ["temas", "Temas", Sparkles],
@@ -5812,6 +6281,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {atual === "requisitos" && <ConfigRequisitos db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "temas" && <ConfigTemas db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "previa" && <ConfigPreviaERP db={db} usuario={usuario} mutar={mutar} setToast={setToast} trocarUsuario={trocarUsuario} />}
+        {atual === "integrado" && <ConfigImportarIntegrado db={db} usuario={usuario} setToast={setToast} recarregar={recarregar} />}
         {atual === "importar" && <PaginaImportar key={db.municipios.length + db.nucleos.length} db={db} ir={ir} mutar={mutar} setToast={setToast} embutido />}
         {atual === "campos" && (perm.config
           ? <PaginaCamposConfig db={db} usuario={usuario} sub={sub} setSub={(x) => ir({ pag: "config", aba: "campos", sub: x })} mutar={mutar} setToast={setToast} />
@@ -7600,7 +8070,31 @@ const DOCS_COMERCIAIS = [
   { id: "dec_renda", nome: "Declaração de renda", precisa: ["nome", "cpf", "renda"] },
   { id: "dec_endereco", nome: "Declaração de residência", precisa: ["nome", "cpf", "endereco"] },
   { id: "dec_posse", nome: "Declaração de posse mansa e pacífica", precisa: ["nome", "cpf", "endereco"] },
+  { id: "distrato", nome: "Distrato do contrato", precisa: ["nome", "cpf", "distrato"] },
 ];
+// Itens do termo de compromisso (Integrado: comp_energia, comp_ligacaoenergia, comp_agua, comp_ligacaoagua, comp_esgoto, comp_drenagem, comp_risco, comp_app)
+const ITENS_COMPROMISSO = [
+  { id: "energia", nome: "Instalação da rede de energia elétrica" }, { id: "ligacaoEnergia", nome: "Ligação de energia na unidade" },
+  { id: "agua", nome: "Instalação da rede de água" }, { id: "ligacaoAgua", nome: "Ligação de água na unidade" },
+  { id: "esgoto", nome: "Esgotamento sanitário" }, { id: "drenagem", nome: "Drenagem pluvial" },
+  { id: "risco", nome: "Eliminação ou mitigação da área de risco" }, { id: "app", nome: "Recuperação da área de preservação permanente" },
+];
+const compromissoVazio = () => ({ itens: {}, prazos: {}, observacao: "", atualizadoEm: "", por: "" });
+const distratoVazio = () => ({ data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
+function textoDevolucao(dt) {
+  if (!dt) return "____________";
+  const total = parseNum(dt.valorDevolucao);
+  if (!(total > 0)) return "Não há valores a devolver.";
+  const qtd = parseInt(dt.parcelas, 10) || 0;
+  const forma = dt.formaDevolucao === "carne" ? "por meio de carnê" : `por PIX${dt.pixChave ? ` (chave ${dt.pixTipo ? `${dt.pixTipo} ` : ""}${dt.pixChave})` : ""}`;
+  if (qtd > 1) return `A CONTRATADA devolverá ${reais(total)} (${porExtensoReais(total)}) em ${qtd} parcelas de ${reais(dt.valorParcela)}, com vencimento todo dia ${dt.diaVencimento || "___"}, ${forma}.`;
+  return `A CONTRATADA devolverá ${reais(total)} (${porExtensoReais(total)}) em parcela única, ${forma}.`;
+}
+function textoCompromissos(c, remessaPrazos) {
+  const itens = ITENS_COMPROMISSO.filter((i) => c?.itens?.[i.id]);
+  if (!itens.length) return "Nenhum compromisso de infraestrutura assumido para esta unidade.";
+  return itens.map((i) => { const prazo = c.prazos?.[i.id] || remessaPrazos?.[i.id]; return `${i.nome}${prazo ? `, no prazo de ${prazo} dias` : ""}`; }).join("; ") + ".";
+}
 // Declarações sugeridas conforme a situação de cada morador
 function documentosSugeridos(db, p) {
   const sugestoes = { contrato: "Base do serviço com o morador", procuracao: "Para a Integral representar o morador na prefeitura e no cartório", requerimento: "Pedido formal de regularização" };
@@ -7609,6 +8103,15 @@ function documentosSugeridos(db, p) {
   if (!p.docs?.some((d) => d.tipo === "comp_residencia" && d.status === "validado")) sugestoes.dec_endereco = "Sem comprovante de residência validado";
   if (!p.docs?.some((d) => d.tipo === "comp_posse" && d.status === "validado")) sugestoes.dec_posse = "Sem documento de posse validado";
   return sugestoes;
+}
+const enderecoLinha = (e) => `${e?.logradouro || "____________"}${e?.numero ? `, nº ${e.numero}` : ""}${e?.complemento ? `, ${e.complemento}` : ""}${e?.bairro ? `, bairro ${e.bairro}` : ""}${e?.localidade ? `, ${e.localidade}` : ""}`;
+function tempoDesde(iso) {
+  if (!iso) return "";
+  const a = idade(iso);
+  if (a === null) return "";
+  if (a >= 1) return `${a} ${a === 1 ? "ano" : "anos"}`;
+  const meses = Math.max(1, Math.round((Date.now() - new Date(`${iso}T12:00:00`).getTime()) / (30 * 864e5)));
+  return `${meses} ${meses === 1 ? "mês" : "meses"}`;
 }
 function dadosDocumento(db, p, usuario) {
   const n = nucleoDe(db, p.nucleoId);
@@ -7622,11 +8125,20 @@ function dadosDocumento(db, p, usuario) {
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
     profissao: p.requerente.profissao || "____________", telefone: p.requerente.telefone || "____________",
     conjuge: p.conjuge?.nome || "", cpfConjuge: fmtCPF(p.conjuge?.cpf || "") || "",
-    endereco: `${p.endereco.logradouro || "____________"}${p.endereco.numero ? `, nº ${p.endereco.numero}` : ""}${p.endereco.complemento ? `, ${p.endereco.complemento}` : ""}${p.endereco.bairro ? `, bairro ${p.endereco.bairro}` : ""}`,
+    endereco: enderecoLinha(p.endereco),
+    enderecoImovel: temValor(p.enderecoImovel) ? enderecoLinha(p.enderecoImovel) : enderecoLinha(p.endereco),
+    historicoPosse: p.imovel?.historicoPosse || "____________",
+    qualificacaoCompleta: gerarQualificacao(p, "completa", true).texto,
+    requerentes: [p.requerente.nome, ...(p.corequerentes || []).map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
+    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
+      ...(p.corequerentes || []).flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
+    dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
+    motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
+    compromissos: textoCompromissos(p.compromisso, n?.prazosCompromisso), observacao_compromisso: p.compromisso?.observacao || "",
     municipio: m ? `${m.nome}/${m.uf}` : "____________", cep: p.endereco.cep || "",
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
     area: un[0]?.area || p.imovel?.area || "____________", tipoPosse: p.imovel?.tipoPosse || "posse",
-    tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || "____________",
+    tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || tempoDesde(p.imovel?.aquisicao) || "____________",
     renda: p.social?.rendaFamiliar ? reais(p.social.rendaFamiliar) : "____________",
     modalidade: p.social?.modalidade || "REURB-S",
     condicoes: c, pagamento: textoPagamento(c),
@@ -7643,6 +8155,7 @@ function faltandoPara(doc, d, p) {
   if (doc.precisa.includes("condicoes") && !d.condicoes) falta.push("forma de pagamento");
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
   if (doc.precisa.includes("procurador") && !(d.advogados || []).length) falta.push("representante cadastrado em Configurações");
+  if (doc.precisa.includes("distrato") && !p.distrato?.registradoEm) falta.push("distrato registrado na seção acima");
   return falta;
 }
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
@@ -7675,7 +8188,8 @@ const MODELOS_DOC = {
     corpo: `{{titulo:REQUERIMENTO DE REGULARIZAÇÃO FUNDIÁRIA URBANA}}
 {{p:Ao Senhor Prefeito Municipal de {{municipio}}.}}
 {{p:{{qualificacao}}, vem respeitosamente requerer a regularização fundiária urbana da unidade que ocupa, na modalidade <strong>{{modalidade}}</strong>, nos termos da Lei Federal 13.465/2017 e da legislação municipal.}}
-{{p:<strong>Dados da unidade:</strong> núcleo {{nucleo}}, código {{unidades}}, situada na {{endereco}}, com área aproximada de {{area}} m², ocupada a título de {{tipoPosse}} há {{tempoPosse}}.}}
+{{p:<strong>Dados da unidade:</strong> núcleo {{nucleo}}, código {{unidades}}, situada na {{enderecoImovel}}, com área aproximada de {{area}} m², ocupada a título de {{tipoPosse}} há {{tempoPosse}}.}}
+{{p:<strong>Histórico da posse:</strong> {{historicoPosse}}}}
 {{p:Declara que não é proprietário de outro imóvel urbano ou rural, que a ocupação é mansa, pacífica e sem oposição, e que as informações prestadas são verdadeiras, sob as penas da lei.}}
 {{p:Nestes termos, pede deferimento.}}
 {{assinatura}}`,
@@ -7704,9 +8218,33 @@ const MODELOS_DOC = {
   dec_posse: {
     nome: "Declaração de posse mansa e pacífica",
     corpo: `{{titulo:DECLARAÇÃO DE POSSE MANSA E PACÍFICA}}
-{{p:{{qualificacao}}, <strong>DECLARA</strong>, sob as penas da lei, que exerce a posse do imóvel situado na {{endereco}}, no núcleo {{nucleo}}, com área aproximada de {{area}} m², de forma mansa, pacífica, contínua e sem oposição de terceiros, há {{tempoPosse}}.}}
+{{p:{{qualificacao}}, <strong>DECLARA</strong>, sob as penas da lei, que exerce a posse do imóvel situado na {{enderecoImovel}}, no núcleo {{nucleo}}, com área aproximada de {{area}} m², de forma mansa, pacífica, contínua e sem oposição de terceiros, há {{tempoPosse}}.}}
+{{p:<strong>Histórico da posse:</strong> {{historicoPosse}}}}
 {{p:Declara ainda que utiliza o imóvel para fins de moradia, que desconhece qualquer ação judicial sobre a área e que não é proprietário de outro imóvel.}}
 {{assinatura_com_conjuge}}`,
+  },
+  distrato: {
+    nome: "Distrato do contrato",
+    corpo: `{{titulo:DISTRATO DO CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE REGULARIZAÇÃO FUNDIÁRIA}}
+{{p:<strong>CONTRATADA:</strong> Integral Soluções em Engenharia, pessoa jurídica de direito privado, com sede em Santa Catarina, neste ato representada por seu responsável técnico.}}
+{{p:<strong>CONTRATANTE:</strong> {{qualificacao}}.}}
+{{p:<strong>Cláusula 1ª. Objeto.</strong> As partes resolvem, de comum acordo, rescindir o contrato de prestação de serviços de regularização fundiária da unidade {{unidades}}, no núcleo {{nucleo}}, em {{municipio}}, firmado em {{dataContrato}}.}}
+{{p:<strong>Cláusula 2ª. Motivo.</strong> {{motivo_distrato}}}}
+{{p:<strong>Cláusula 3ª. Acerto de valores.</strong> {{devolucao}}}}
+{{p:<strong>Cláusula 4ª. Quitação.</strong> Cumprido o acerto acima, as partes dão-se mútua, plena e irrevogável quitação, nada mais tendo a reclamar uma da outra, a qualquer título, em razão do contrato ora rescindido.}}
+{{p:<strong>Cláusula 5ª. Foro.</strong> Fica eleito o foro da comarca de {{comarca_distrato}} para dirimir dúvidas deste distrato.}}
+{{assinatura_com_conjuge}}`,
+  },
+  termo_compromisso: {
+    nome: "Termo de compromisso",
+    corpo: `{{titulo:TERMO DE COMPROMISSO}}
+{{p:<strong>COMPROMISSÁRIO:</strong> {{qualificacao}}.}}
+{{p:<strong>Objeto.</strong> O compromissário, na condição de beneficiário da regularização fundiária urbana da unidade {{unidades}}, situada na {{enderecoImovel}}, no núcleo {{nucleo}}, em {{municipio}}, na modalidade {{modalidade}}, assume os compromissos abaixo, nos termos da Lei Federal 13.465/2017 e do projeto de regularização fundiária aprovado.}}
+{{p:<strong>Compromissos assumidos.</strong> {{compromissos}}}}
+{{p:<strong>Prazos.</strong> Os prazos contam da data de aprovação do projeto pela prefeitura e podem ser prorrogados mediante justificativa aceita pelo município.}}
+{{p:<strong>Descumprimento.</strong> O descumprimento dos compromissos poderá implicar a suspensão do título até a regularização das pendências, sem prejuízo das sanções previstas na legislação municipal.}}
+{{p:{{observacao_compromisso}}}}
+{{assinatura_todos}}`,
   },
 };
 const MARCADORES_DOC = [
@@ -7719,6 +8257,10 @@ const MARCADORES_DOC = [
   ["pagamento", "Texto da forma de pagamento"], ["observacoes_pagamento", "Observações do contrato"],
   ["procuradores", "Representantes escolhidos na procuração"], ["dataExtenso", "Cidade e data por extenso"],
   ["assinatura", "Bloco de assinatura do morador"], ["assinatura_com_conjuge", "Bloco de assinatura com o cônjuge"],
+  ["enderecoImovel", "Endereço do imóvel em regularização"], ["historicoPosse", "Histórico da posse"], ["dataContrato", "Data do contrato assinado"],
+  ["motivo_distrato", "Motivo do distrato"], ["devolucao", "Texto da devolução de valores do distrato"], ["comarca_distrato", "Comarca do distrato"],
+  ["compromissos", "Lista dos compromissos assumidos, com prazos"], ["observacao_compromisso", "Observação do termo de compromisso"],
+  ["requerentes", "Nomes de todos os requerentes da unidade"], ["assinatura_todos", "Bloco de assinatura de todos os requerentes e cônjuges"],
 ];
 // Representantes da empresa que recebem a procuração
 const ADVOGADOS_PADRAO = [];
@@ -7736,11 +8278,20 @@ function blocoAssinatura(d, comConjuge) {
 ${comConjuge && d.conjuge ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${d.conjuge}<br/>CPF ${d.cpfConjuge || "____________"}</div></td>` : ""}
 </tr></table>`;
 }
+function blocoAssinaturaTodos(d) {
+  const lista = d.assinantes && d.assinantes.length ? d.assinantes : [[d.nome, d.cpf]];
+  const celulas = lista.map(([nome, doc]) => `<td style="text-align:center;padding:14px 12px 0;width:${Math.floor(100 / Math.min(lista.length, 2))}%"><div style="border-top:1px solid #000;padding-top:4px">${nome}<br/>${doc ? `CPF/CNPJ ${doc}` : ""}</div></td>`);
+  const linhas = []; for (let i = 0; i < celulas.length; i += 2) linhas.push(`<tr>${celulas.slice(i, i + 2).join("")}</tr>`);
+  return `
+<p style="margin:36px 0 6px;text-align:center">${d.dataExtenso}.</p>
+<table style="width:100%;margin-top:26px">${linhas.join("")}</table>`;
+}
 function valoresDocumento(d, extras = {}) {
-  const qualifica = `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no CPF sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
+  const qualifica = d.qualificacaoCompleta && !/\[[^\]]+\]/.test(d.qualificacaoCompleta) ? d.qualificacaoCompleta.replace(/\.$/, "") : `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no CPF sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
   return {
     ...d,
     qualificacao: qualifica,
+    assinatura_todos: blocoAssinaturaTodos(d),
     trecho_conjuge: d.conjuge ? `, sendo ${d.conjuge}, CPF ${d.cpfConjuge || "____________"}, seu cônjuge ou companheiro(a)` : "",
     trecho_cep: d.cep ? `, CEP ${d.cep}` : "",
     observacoes_pagamento: d.condicoes?.observacoes ? ` ${d.condicoes.observacoes}` : "",
@@ -7802,6 +8353,120 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
       </div>
       {rodape}
     </Secao>
+  );
+}
+
+// Distrato: quando o morador desiste ou a Integral precisa encerrar o contrato. Fica no comercial e gera o documento pelo modelo.
+function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
+  const [f, setF] = useState(() => ({ ...distratoVazio(), ...(p.distrato || {}) }));
+  const [abrir, setAbrir] = useState(!!p.distrato?.registradoEm);
+  useEffect(() => { setF({ ...distratoVazio(), ...(p.distrato || {}) }); }, [JSON.stringify(p.distrato)]); // eslint-disable-line
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const registrado = !!p.distrato?.registradoEm;
+  const sujo = JSON.stringify(f) !== JSON.stringify({ ...distratoVazio(), ...(p.distrato || {}) });
+  const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
+  const calcular = () => { const total = parseNum(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
+  const salvar = () => {
+    if (f.motivo.trim().length < 10) { setToast("Descreva o motivo do distrato com pelo menos 10 caracteres."); return; }
+    const novo = { ...f, motivo: f.motivo.trim(), por: usuario.nome, registradoEm: p.distrato?.registradoEm || new Date().toISOString() };
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
+    setToast("Distrato salvo. Gere o documento e, depois de assinado, altere a situação do morador para Cancelado.");
+  };
+  const desfazer = () => {
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = null; return d; }, "Distrato desfeito", { ...log, detalhe: p.codigo });
+    setAbrir(false); setToast("Distrato removido.");
+  };
+  const gerado = (p.documentosGerados || []).filter((g) => g.tipo === "distrato").slice(-1)[0];
+  if (!abrir) {
+    return (
+      <Secao titulo="Distrato" nota="Use quando o morador quiser sair ou quando a Integral precisar encerrar o contrato. O sistema gera o distrato pelo modelo de Configurações." acao={pode && ativo(p) ? <button className="btn btn-sm" onClick={() => setAbrir(true)}><FileText size={13} />Registrar distrato</button> : null}>
+        <p className="ajuda" style={{ margin: 0 }}>Nenhum distrato registrado para {p.codigo}.</p>
+      </Secao>
+    );
+  }
+  return (
+    <Secao titulo="Distrato" nota="Motivo, devolução de valores e comarca entram no documento. Depois de assinado, altere a situação do morador para Cancelado com o mesmo motivo."
+      acao={registrado ? <Tag tipo="bloq">Registrado em {dataBR(p.distrato.registradoEm)} por {p.distrato.por}</Tag> : <Tag tipo="pend">Em preenchimento</Tag>}>
+      <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+        <div><label className="rot" htmlFor="dt-data">Data</label><input id="dt-data" type="date" className="inp" value={f.data} disabled={!pode} onChange={(e) => set("data", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="dt-com">Comarca</label><input id="dt-com" className="inp" value={f.comarca} disabled={!pode} onChange={(e) => set("comarca", e.target.value)} placeholder="Comarca do foro" /></div>
+        <div><label className="rot" htmlFor="dt-val">Valor a devolver (R$)</label><input id="dt-val" className="inp" inputMode="decimal" value={f.valorDevolucao} disabled={!pode} onChange={(e) => set("valorDevolucao", e.target.value)} onBlur={calcular} /></div>
+        <div><label className="rot" htmlFor="dt-par">Parcelas</label><input id="dt-par" className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} onBlur={calcular} /></div>
+        <div><label className="rot" htmlFor="dt-vp">Valor da parcela (R$)</label><input id="dt-vp" className="inp" inputMode="decimal" value={f.valorParcela} disabled={!pode} onChange={(e) => set("valorParcela", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="dt-dia">Dia de vencimento</label><input id="dt-dia" className="inp" inputMode="numeric" value={f.diaVencimento} disabled={!pode} onChange={(e) => set("diaVencimento", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="dt-forma">Forma de devolução</label><select id="dt-forma" className="inp" value={f.formaDevolucao} disabled={!pode} onChange={(e) => set("formaDevolucao", e.target.value)}><option value="pix">PIX</option><option value="carne">Carnê</option></select></div>
+        {f.formaDevolucao === "pix" && <div><label className="rot" htmlFor="dt-pt">Tipo da chave PIX</label><select id="dt-pt" className="inp" value={f.pixTipo} disabled={!pode} onChange={(e) => set("pixTipo", e.target.value)}><option value="">Escolha</option>{["CPF", "CNPJ", "E-mail", "Telefone", "Aleatória"].map((x) => <option key={x}>{x}</option>)}</select></div>}
+        {f.formaDevolucao === "pix" && <div><label className="rot" htmlFor="dt-pk">Chave PIX</label><input id="dt-pk" className="inp" value={f.pixChave} disabled={!pode} onChange={(e) => set("pixChave", e.target.value)} /></div>}
+      </div>
+      <label className="rot" htmlFor="dt-mot" style={{ marginTop: 12 }}>Motivo do distrato</label>
+      <textarea id="dt-mot" className="inp" rows={3} value={f.motivo} disabled={!pode} onChange={(e) => set("motivo", e.target.value)} placeholder="Por que o contrato está sendo encerrado. Entra no documento." />
+      <div className="faixa-especifica" style={{ marginTop: 12 }}>
+        <span className="ajuda" style={{ margin: 0 }}>{textoDevolucao(f)}</span>
+        <span className="flex flex-wrap gap-2">
+          {pode && <button className="btn btn-primario" disabled={!sujo && registrado} onClick={salvar}><Check size={15} />{registrado ? "Salvar alterações" : "Registrar distrato"}</button>}
+          {registrado && <button className="btn" onClick={onGerar}><FileText size={15} />Gerar documento</button>}
+          {pode && registrado && <button className="btn btn-perigo" onClick={desfazer}>Desfazer distrato</button>}
+          {!registrado && <button className="btn" onClick={() => setAbrir(false)}>Cancelar</button>}
+        </span>
+      </div>
+      {gerado && <div className="ajuda" style={{ marginTop: 8 }}>Documento gerado em {dataHoraBR(gerado.data)} por {gerado.por}.</div>}
+    </Secao>
+  );
+}
+
+// Termo de compromisso: fica na etapa Projeto do morador. Marca os compromissos de infraestrutura e gera o termo pelo modelo, sem depender de IA.
+function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
+  const [f, setF] = useState(() => ({ ...compromissoVazio(), ...(p.compromisso || {}) }));
+  const [previa, setPrevia] = useState(null);
+  useEffect(() => { setF({ ...compromissoVazio(), ...(p.compromisso || {}) }); }, [JSON.stringify(p.compromisso)]); // eslint-disable-line
+  const timbrado = useTimbrado(db);
+  const n = nucleoDe(db, p.nucleoId);
+  const sujo = JSON.stringify(f) !== JSON.stringify({ ...compromissoVazio(), ...(p.compromisso || {}) });
+  const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
+  const alternar = (id) => setF((x) => ({ ...x, itens: { ...x.itens, [id]: !x.itens?.[id] } }));
+  const prazo = (id, v) => setF((x) => ({ ...x, prazos: { ...x.prazos, [id]: so(v).slice(0, 4) } }));
+  const salvar = () => {
+    const novo = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome };
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.compromisso = novo; return d; }, "Compromissos da unidade definidos", { ...log, detalhe: `${p.codigo}: ${ITENS_COMPROMISSO.filter((i) => novo.itens[i.id]).map((i) => i.nome).join(", ") || "nenhum"}` });
+    setToast("Compromissos salvos.");
+  };
+  const gerar = () => {
+    const dados = dadosDocumento(db, { ...p, compromisso: f }, usuario);
+    const html = aplicarTimbrado(montarDocumentoComercial("termo_compromisso", dados, db, {}), timbrado);
+    setPrevia(html);
+  };
+  const baixar = (formato) => {
+    const doc = MODELOS_DOC.termo_compromisso;
+    baixarArquivo(`${p.codigo}-termo-compromisso.${formato === "doc" ? "doc" : "html"}`, documentoWord(previa, `${doc.nome} ${p.codigo}`), formato === "doc" ? "application/msword" : "text/html;charset=utf-8");
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); if (sujo) q.compromisso = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome }; q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: "termo_compromisso", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: ITENS_COMPROMISSO.filter((i) => f.itens?.[i.id]).length + " compromisso(s)" }]; return d; },
+      "Termo de compromisso gerado", { ...log, detalhe: `${p.codigo}` });
+    setToast("Termo de compromisso baixado.");
+  };
+  const marcados = ITENS_COMPROMISSO.filter((i) => f.itens?.[i.id]).length;
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 12 }}>
+      <div className="flex items-center justify-between gap-2"><strong style={{ color: "var(--titulo)" }}>Termo de compromisso</strong><Tag tipo={marcados ? "neutra" : "pend"}>{marcados ? `${marcados} compromisso(s)` : "nenhum marcado"}</Tag></div>
+      <p className="ajuda" style={{ margin: "2px 0 8px" }}>Marque o que o beneficiário se compromete a fazer e o prazo em dias. O termo sai com a qualificação de todos os requerentes.{n?.prazosCompromisso ? " Prazos em branco usam os padrões do núcleo." : ""}</p>
+      {ITENS_COMPROMISSO.map((i) => (
+        <div key={i.id} className="flex items-center gap-2" style={{ padding: "4px 0" }}>
+          <input type="checkbox" id={`tc-${i.id}`} checked={!!f.itens?.[i.id]} disabled={!podeEditar} onChange={() => alternar(i.id)} style={{ width: 16, height: 16, accentColor: "#0F5F5B", flex: "none" }} />
+          <label htmlFor={`tc-${i.id}`} style={{ flex: 1, fontSize: 13.5 }}>{i.nome}</label>
+          {f.itens?.[i.id] && <input className="inp" style={{ width: 82, padding: "4px 8px" }} inputMode="numeric" placeholder="dias" value={f.prazos?.[i.id] || ""} disabled={!podeEditar} onChange={(e) => prazo(i.id, e.target.value)} aria-label={`Prazo em dias para ${i.nome}`} />}
+        </div>
+      ))}
+      <textarea className="inp" rows={2} style={{ marginTop: 8 }} value={f.observacao} disabled={!podeEditar} onChange={(e) => setF((x) => ({ ...x, observacao: e.target.value }))} placeholder="Observação que entra no termo (opcional)" aria-label="Observação do termo" />
+      <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
+        {podeEditar && <button className="btn btn-sm" disabled={!sujo} onClick={salvar}><Check size={14} />Salvar</button>}
+        <button className="btn btn-sm btn-primario" onClick={gerar}><FileText size={14} />Gerar termo</button>
+      </div>
+      {previa && (
+        <Modal titulo="Termo de compromisso" largura={780} onFechar={() => setPrevia(null)}
+          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" onClick={() => baixar("html")}><Download size={15} />HTML</button><button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />Baixar para Word</button></>}>
+          {lacunasDoDocumento(previa).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa).tracos} campo(s) em branco no texto</Tag></div>}
+          <div className="previa-doc" dangerouslySetInnerHTML={{ __html: previa }} />
+        </Modal>
+      )}
+    </div>
   );
 }
 
@@ -7885,6 +8550,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
           </div>
         )} />
 
+      <SecaoDistrato db={db} p={p} usuario={usuario} pode={perm.diretor || perm.setor === "comercial"} mutar={mutar} setToast={setToast} onGerar={() => abrirDoc(DOCS_COMERCIAIS.find((d) => d.id === "distrato"))} />
       <Secao titulo="Documentos" nota="Gerados na hora, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
         <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
@@ -8182,7 +8848,7 @@ function cssDoTema(tema, escopo = ".rb") {
 // Lê o Supabase do ERP Integral direto do navegador, com a chave publicável, e monta a prévia.
 // É só leitura: nada é gravado no ERP.
 // Endereço e chave publicável do Supabase do ERP. Na Vercel, defina VITE_ERP_SUPABASE_URL e VITE_ERP_SUPABASE_KEY.
-const AMBIENTE = import.meta.env || {};
+const AMBIENTE = { ...(import.meta.env || {}), DEMO: (import.meta.env && (import.meta.env.VITE_DEMO === "1" || import.meta.env.DEMO === "1")) || false };
 const ERP_SUPABASE = configERP;
 const SETOR_POR_TIPO_ERP = {
   Administrador: "diretoria", "Diretor Técnico": "diretoria", "Diretor de Projetos": "diretoria",
@@ -10849,7 +11515,7 @@ export default function App() {
   const naoLidasChat = totalNaoLidas(db, usuario);
   const tituloTopo = { home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
-  const props = { db, usuario, ir, mutar, setToast, offline, conexao, comercial };
+  const props = { db, usuario, ir, mutar, setToast, offline, conexao, comercial, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home"].includes(rota.pag);
 
   return (

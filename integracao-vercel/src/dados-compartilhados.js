@@ -91,7 +91,10 @@ export function projetar(base, local) {
     for(const field of ownFields[collection]||[]) if(saved[field]!==undefined) value[field]=saved[field];
     if(collection==='conversas' && !row.entidade_id && saved.entidade)value.entidade=saved.entidade;
     if(collection==='processos') {
-      value.requerente={...view.requerente,...saved.requerente,nome:row.nome,cpf:row.cpf_cnpj||''};
+      // Pessoa jurídica (campo do Integrado): o documento canônico cpf_cnpj vale como CNPJ e o CPF fica vazio.
+      const pj=saved.requerente?.tipoPessoa==='juridica';
+      value.requerente={...view.requerente,...saved.requerente,nome:row.nome,cpf:pj?'':(row.cpf_cnpj||''),cnpj:pj?(row.cpf_cnpj||''):(saved.requerente?.cnpj||'')};
+      if(pj){delete map['requerente.cpf'];map['requerente.cnpj']='cpf_cnpj';}
       if(saved.situacao && (saved.situacao==='Ativo')===row.ativo)value.situacao=saved.situacao;
       const amounts={valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'};
       value.comercial={modalidade:Number(row.valor_entrada)>0?'Entrada e parcelas':'Parcelado sem entrada',reajuste:'Sem reajuste',observacoes:'',...saved.comercial,primeiroVencimento:row.primeiro_vencimento||''};
@@ -227,7 +230,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const m=after.municipios.find(x=>x.id===r.municipioId);
     insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
   }
-  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
+  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(r.municipioId),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
   for(const n of after.nucleos||[]) {
     const prev=(before.nucleos||[]).find(x=>x.id===n.id);
     const id=n.externo?.kanbanId || n.id;
