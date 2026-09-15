@@ -22,7 +22,7 @@ if(new URLSearchParams(location.search).has('calendario')) {
 base.fin_receb_municipios.push({id:id(102),nome:'Segundo município',uf:'SC',prefixo:'SEG'});
 base.fin_receb_remessas.push({id:id(103),municipio_id:id(102),codigo:'SEG01',nome:'Segunda remessa'});
 base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(104),municipio_id:id(102),remessa_id:id(103),nome:'Morador do segundo',codigo:'SEG01_001'});
-if(new URLSearchParams(location.search).has('confrontantes')) {
+if(new URLSearchParams(location.search).has('confrontantes') || new URLSearchParams(location.search).has('prf')) {
   base.fin_receb_clientes[0].cpf_cnpj='52998224725';
   base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:3,nucleoId:id(5),extras:{'2be328c2-7ccd-4448-a942-cfc6f62631fc':'Rua já cadastrada'},checks:{medicao:true,lepac:true,conferencia:true},unidades:[{id:'un1',area:'200',memorial:'Memorial fictício suficientemente longo para validar a etapa.'}],campo:{respostas:{},fotos:[],data:''}}});
 }
@@ -64,6 +64,20 @@ window.fetch=async(input,options={})=>{
   }
   return json({message:`Consulta inesperada no teste: ${url.pathname}`},500);
 };
+if(new URLSearchParams(location.search).has('prf')) {
+  // Captura a saída real de baixarArquivo para inspeção, sem depender do suporte
+  // a downloads de blob do navegador usado na verificação automatizada.
+  const blobs=new Map(), criarURL=URL.createObjectURL.bind(URL);
+  URL.createObjectURL=blob=>{const url=criarURL(blob);blobs.set(url,blob);return url};
+  document.addEventListener('click',async event=>{
+    const a=event.target.closest?.('a[download]'),blob=a&&blobs.get(a.href);if(!blob)return;
+    event.preventDefault();
+    let out=document.getElementById('exportacao-teste');if(!out){out=document.createElement('pre');out.id='exportacao-teste';document.body.append(out)}
+    out.setAttribute('data-nome',a.download);out.setAttribute('data-tipo',blob.type);out.textContent=await blob.text();
+  },true);
+  const {instalarArmazenamento}=await import('../src/armazenamento-local.js');instalarArmazenamento();
+  await window.storage.set('integracao-prf-modelo-v4','<h1>PRF {{municipio.nome}}</h1><p>{{#se:nucleo.nome}}Núcleo {{nucleo.nome}}{{/se}}</p><table><tr><td>{{#cada:unidades}}{{unidade.codigo}}</td><td>{{unidade.nome}}</td><td>{{unidade.cpf}}{{/cada}}</td></tr></table><p>{{bloco.lista_lotes}}</p><p>Responsável: ______</p><mark>Redação alternativa para decisão humana</mark>');
+}
 await import('../src/main.jsx');
 const {agendarArquivo}=await import('../src/arquivos-compartilhados.js');
 const assetButton=document.createElement('button');assetButton.textContent='Verificar arquivo isolado';assetButton.style.cssText='position:fixed;bottom:30px;right:0;z-index:99999;background:white;color:black;padding:4px';

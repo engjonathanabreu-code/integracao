@@ -1,3 +1,4 @@
+import { prepararModeloPRF, contextoPRF, encontrarLacunas, montarPRF, mapaDoModeloPRF } from '../src/modelos-prf.js';
 import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, APELIDOS, substituirCaminhos } from '../src/modelos-html.js';
 const gerar = (html, dados) => expandirLacos(aplicarCondicionais(html, dados), dados);
 const doc = html => new DOMParser().parseFromString(html, 'text/html');
@@ -78,6 +79,28 @@ export function testesModelos(test, assert) {
   test('condicional exclui linhas inteiras do ramo descartado', () => {
     const html=gerar('<table><tr><td>{{#se:ativo}}</td></tr><tr><td>Sim</td></tr><tr><td>{{senao}}</td></tr><tr><td>Não</td></tr><tr><td>{{/se}}</td></tr></table>',{ativo:false});
     assert.equal(doc(html).querySelectorAll('tr').length,1);assert.equal(doc(html).body.textContent,'Não');
+  });
+  test('PRF expande, calcula lacunas e insere blocos legados sem escapar HTML', () => {
+    const html='<h1>{{municipio.nome}}</h1><p>{{#se:modalidadeSocial}}Social{{/se}}</p><table><tr><td>{{#cada:unidades}}{{unidade.nome}}</td><td>{{unidade.cpf}}</td><td>{{unidade.ausente}}{{/cada}}</td></tr></table><p>{{bloco.infraestrutura}}</p><p>Responsável: ______</p><mark>Revisar alternativa</mark>';
+    const valores={'municipio.nome':'Cidade &amp; teste','bloco.infraestrutura':'<table><tr><td>Água</td></tr></table>','nucleo.responsavel':'Equipe teste'};
+    const estrutura=contextoPRF({municipio:{nome:'Cidade & teste'},nucleo:{},unidades:[{nome:'A',cpf:'123',modalidade:'REURB-S'},{nome:'B',cpf:'456',modalidade:'REURB-S'}],cpfDe:()=> '***'});
+    const preparo=prepararModeloPRF(html,{valores,estrutura}),lacunas=encontrarLacunas(preparo.html);
+    const mapa=mapaDoModeloPRF(null,preparo,lacunas);mapa[lacunas.find(l=>!l.explicita).id]='nucleo.responsavel';
+    const resultado=montarPRF(preparo.html,lacunas,mapa,valores), d=doc(resultado.html);
+    assert.equal(d.querySelectorAll('table').length,2);assert.equal(d.querySelectorAll('tr').length,3);
+    assert.ok(d.body.textContent.includes('Social'));assert.ok(d.body.textContent.includes('Equipe teste'));assert.equal(d.querySelector('mark').textContent,'Revisar alternativa');
+    assert.equal(resultado.faltando.length,2);assert.equal(lacunasDoDocumento(resultado.html).marcadores.join(','),'unidade.ausente');
+    assert.ok(!resultado.html.includes('123'));assert.ok(!resultado.html.includes('456'));assert.ok(!resultado.html.includes('#cada'));
+  });
+  test('PRF sem lacunas restantes tem prévia automática e aceita coleção vazia', () => {
+    const dados={valores:{},estrutura:{unidades:[]}};
+    const preparo=prepararModeloPRF('<table><tr><td>{{#cada:unidades}}{{unidade.nome}}</td><td>{{/cada}}</td></tr></table>',dados);
+    const lacunas=encontrarLacunas(preparo.html),mapa=mapaDoModeloPRF(null,preparo,lacunas);
+    assert.ok(mapa);assert.equal(lacunas.length,0);assert.equal(doc(montarPRF(preparo.html,lacunas,mapa,{}).html).querySelectorAll('tr').length,0);
+  });
+  test('PRF inválido retorna aviso sem interromper a página', () => {
+    const preparo=prepararModeloPRF('<p>{{#cada:unidades}}</p>',{valores:{},estrutura:{unidades:[]}});
+    assert.ok(preparo.erro);assert.equal(preparo.html,null);assert.equal(mapaDoModeloPRF(null,preparo,[]),null);
   });
   test('HTML legado não é reserializado', () => {
     const html="<p class='modelo'>{{nome}}<br/>{{cpf}}</p>\n{{p:Texto}}";

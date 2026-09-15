@@ -4,12 +4,13 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import mammoth from 'mammoth';
 import { aplicarCondicionais, expandirLacos, resolverCaminho, marcadorControle, lacunasDoDocumento, ESTILOS_WORD } from '../src/modelos-html.js';
+import { encontrarLacunas } from '../src/modelos-prf.js';
 import { docxRealce } from './docx-realce.js';
 const fonte = readFileSync(new URL('../src/App.jsx', import.meta.url),'utf8');
 const recortar = (inicio,fim) => fonte.slice(fonte.indexOf(inicio),fonte.indexOf(fim,fonte.indexOf(inicio)));
 const contexto = vm.createContext({ aplicarCondicionais, expandirLacos, marcadorControle, paragrafo: t=>`<p>${t}</p>`, valoresDocumento: d=>d });
-vm.runInContext(recortar('function preencherModelo(', '\nconst corpoDoModelo') + '\n' + recortar('const corpoDoModelo', '\nfunction FormaDeVenda') + '\n' + recortar('const MARCADORES_DOC =', '// Representantes da empresa') + '\n' + recortar('const REGEX_LACUNA =','const PISTAS_PRF =') + '\nthis.funcoes={preencherModelo,montarDocumentoComercial,encontrarLacunas,MARCADORES_DOC};',contexto);
-const {preencherModelo,montarDocumentoComercial,encontrarLacunas,MARCADORES_DOC}=contexto.funcoes;
+vm.runInContext(recortar('function preencherModelo(', '\nconst corpoDoModelo') + '\n' + recortar('const corpoDoModelo', '\nfunction FormaDeVenda') + '\n' + recortar('const MARCADORES_DOC =', '// Representantes da empresa') + '\nthis.funcoes={preencherModelo,montarDocumentoComercial,MARCADORES_DOC};',contexto);
+const {preencherModelo,montarDocumentoComercial,MARCADORES_DOC}=contexto.funcoes;
 test('modelo legado mantém exatamente o HTML de todos os marcadores atuais, incluindo os 29 originais',()=>{
  assert.ok(MARCADORES_DOC.length>=29);
  const dados=Object.fromEntries(MARCADORES_DOC.map(([chave],i)=>[chave,i%4===0?'':`<b>Valor ${i} &amp; texto</b>`]));

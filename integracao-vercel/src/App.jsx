@@ -1,4 +1,5 @@
-import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, marcadorControle, ESTILOS_WORD } from './modelos-html.js';
+import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
+import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
@@ -1127,23 +1128,18 @@ function dadosPRF(db, n, opcoes, fotos) {
     "nucleo.protocolo_prefeitura": e(n.campos?.protocoloPrefeitura), "nucleo.responsavel": e(n.responsavel), "data.hoje": dataExtenso(),
     "bloco.infraestrutura": infra, "bloco.tabela_ocupantes": ocupantes, "bloco.lista_lotes": lotes, "bloco.qualificacao_ocupantes": qualif, "bloco.fotos_fachada": fotosHtml,
   };
-  return { valores, ocupantes: ps.length };
+  const estrutura = contextoPRF({ municipio: m, remessa: r, nucleo: n, cpfDe,
+    unidades: linhasUn.map(({ p, u, codigo }) => ({
+      codigo, nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
+      area: u.area || "", memorial: u.memorial || "", loteQuadra: u.loteQuadra || "",
+      lote: u.lote || "", quadra: u.quadra || "", matricula: u.matricula || p.imovel?.matricula || "",
+      logradouro: p.enderecoImovel?.logradouro || p.endereco?.logradouro || "", modalidade: p.social.modalidade || "",
+      requerente: { nome: p.requerente.nome, cpf: p.requerente.cpf }, confrontantes: confrontantesDe(p),
+    })),
+  });
+  return { valores, estrutura, ocupantes: ps.length };
 }
 
-const REGEX_LACUNA = /\{\{\s*([\w.]+)\s*\}\}|_{4,}/g;
-function encontrarLacunas(html) {
-  const lacunas = []; let m; let i = 0;
-  const re = new RegExp(REGEX_LACUNA.source, "g");
-  while ((m = re.exec(html))) {
-    if (m[1] && marcadorControle(m[1])) continue;
-    i++;
-    const textoAntes = html.slice(Math.max(0, m.index - 500), m.index).replace(/<br\s*\/?>/gi, " ").replace(/<\/(p|h\d|div|li|td|tr)>/gi, " | ").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
-    const segmentos = textoAntes.split(/_{4,}|\{\{[^}]*\}\}/);
-    const depois = html.slice(m.index + m[0].length, m.index + m[0].length + 160).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
-    lacunas.push({ id: `L${i}`, inicio: m.index, fim: m.index + m[0].length, explicita: m[1] || null, antes: textoAntes.slice(-100).trim(), trecho: (segmentos[segmentos.length - 1] || "").slice(-70), depois: depois.split(/_{4,}/)[0].slice(0, 50).trim() });
-  }
-  return lacunas;
-}
 const PISTAS_PRF = [
   [/memoriais?\s+descritivos?\s+das\s+unidades/i, "bloco.memoriais_unidades"],
   [/memorial\s+descritivo\s+do\s+n[uú]cleo|per[ií]metro\s+do\s+n[uú]cleo/i, "nucleo.memorial"],
@@ -1217,20 +1213,8 @@ Responda só com JSON no formato {"L1":"chave ou null"}, sem texto fora do JSON.
   lacunas.forEach((l) => { if (l.explicita) mapa[l.id] = l.explicita; });
   return mapa;
 }
-function montarPRF(html, lacunas, mapa, valores) {
-  let saida = html; const faltando = [];
-  [...lacunas].sort((a, b) => b.inicio - a.inicio).forEach((l) => {
-    const chave = mapa[l.id];
-    const v = chave ? valores[chave] : null;
-    let trecho;
-    if (chave && preenchido(v)) trecho = v;
-    else { if (chave) faltando.push({ id: l.id, chave }); trecho = `<span style="background:#fff3cd">${html.slice(l.inicio, l.fim)}</span>`; }
-    saida = saida.slice(0, l.inicio) + trecho + saida.slice(l.fim);
-  });
-  return { html: saida, faltando };
-}
 function documentoWord(corpo, titulo) {
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escaparHtml(titulo)}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.45;margin:2cm}h1{font-size:16pt}h2{font-size:13pt;margin-top:18pt}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px}</style></head><body>${corpo}</body></html>`;
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escaparHtml(titulo)}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.45;margin:2cm}h1{font-size:16pt}h2{font-size:13pt;margin-top:18pt}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px}mark{background:#ffff00;color:inherit}</style></head><body>${corpo}</body></html>`;
 }
 function baixarArquivo(nome, conteudo, tipo) {
   const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
@@ -4847,7 +4831,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   const [nomeModelo, setNomeModelo] = useState(db.prf?.nome || "");
   const [carregando, setCarregando] = useState(true);
   const [cpfCompleto, setCpfCompleto] = useState(false);
-  const [mapa, setMapa] = useState(null);
+  const [mapaSalvo, setMapaSalvo] = useState(null);
   const [origemMapa, setOrigemMapa] = useState("");
   const [estado, setEstado] = useState("ocioso");
   const [erro, setErro] = useState("");
@@ -4872,9 +4856,12 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   if (!n) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const log = { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId };
   const catalogo = catalogoPRF();
-  const lacunas = modelo ? encontrarLacunas(modelo) : [];
   const dados = dadosPRF(db, n, { cpfCompleto: cpfCompleto && perm.verCPF }, fotos);
-  const resultado = modelo && mapa ? montarPRF(modelo, lacunas, mapa, dados.valores) : null;
+  const preparo = prepararModeloPRF(modelo, dados);
+  const lacunas = preparo.html ? encontrarLacunas(preparo.html) : [];
+  const mapa = mapaDoModeloPRF(mapaSalvo, preparo, lacunas);
+  const setMapa = (valor) => setMapaSalvo({ modelo: preparo.html, valores: typeof valor === "function" ? valor(mapa || {}) : valor });
+  const resultado = preparo.html != null && mapa ? montarPRF(preparo.html, lacunas, mapa, dados.valores) : null;
   const pronto = prontidaoPRF(db, n);
   const titulo = `PRF ${nomeRemessa(db, remessaDe(db, n.remessaId))} ${n.codigo}`.trim();
   const preencherIA = async () => {
@@ -4923,11 +4910,11 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
               <button className="btn btn-primario" onClick={preencherIA} disabled={!lacunas.length || estado === "ia"}>{estado === "ia" ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}Preencher com IA</button>
             </span>
           </div>
-          {erro && <div className="msg-erro" role="alert">{erro}</div>}
-          {!lacunas.length && <Aviso>O modelo não tem espaços em branco. Use sublinhados (____) ou chaves como {"{{nucleo.art_prf}}"} onde cada dado deve entrar.</Aviso>}
+          {(erro || preparo.erro) && <div className="msg-erro" role="alert">{erro || preparo.erro}</div>}
+          {!lacunas.length && !preparo.estruturado && <Aviso>O modelo não tem espaços em branco. Use sublinhados (____) ou chaves como {"{{nucleo.art_prf}}"} onde cada dado deve entrar.</Aviso>}
           {resultado && (
             <div className="layout-prf">
-              <Secao titulo="Onde entra cada dado" nota={`${preenchidas} de ${lacunas.length} espaços preenchidos, correspondência por ${origemMapa}. Troque o dado se algo ficou no lugar errado.`}>
+              <Secao titulo="Onde entra cada dado" nota={`${preenchidas} de ${lacunas.length} espaços preenchidos, correspondência por ${origemMapa || "marcadores do modelo"}. Troque o dado se algo ficou no lugar errado.`}>
                 <div className="flex flex-col">
                   {lacunas.map((l) => {
                     const chave = mapa[l.id] || "";
@@ -4937,6 +4924,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
                         <div className="ajuda" style={{ margin: 0 }}>…{l.trecho.replace(/\|/g, " ").trim().slice(-60) || l.antes.slice(-60)} <strong style={{ color: "var(--text)" }}>[espaço]</strong> {l.depois.slice(0, 30)}</div>
                         <select className="inp" style={{ marginTop: 4 }} value={chave} disabled={!!l.explicita} onChange={(e) => setMapa((mp) => ({ ...mp, [l.id]: e.target.value || null }))} aria-label={`Dado do espaço ${l.id}`}>
                           <option value="">Deixar em branco</option>
+                          {chave && !catalogo.some((c) => c.chave === chave) && <option value={chave}>Campo do modelo: {chave}</option>}
                           {catalogo.map((c) => <option key={c.chave} value={c.chave}>{c.descricao}</option>)}
                         </select>
                         {vazio && <div className="ajuda" style={{ margin: "2px 0 0", color: "var(--warning)" }}>Esse dado ainda não está preenchido no sistema.</div>}
@@ -4951,7 +4939,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
                   <button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />{pronto.completo ? "Baixar PRF completo" : "Baixar prévia"} para Word</button>
                 </div>
                 <iframe title="Prévia do PRF" sandbox="" srcDoc={documentoWord(resultado.html, titulo)} style={{ width: "100%", height: 760, border: "1px solid var(--line)", borderRadius: 15, background: "#fff" }} />
-                <p className="ajuda">Espaços destacados em amarelo ficaram sem dado. No arquivo Word, algumas versões não exibem fotos embutidas; o arquivo HTML mostra todas.</p>
+                <p className="ajuda">Marcadores e sublinhados destacados em amarelo ficaram sem dado. Outros trechos amarelos preservam o marca-texto do modelo e precisam de revisão humana. No arquivo Word, algumas versões não exibem fotos embutidas; o arquivo HTML mostra todas.</p>
               </div>
             </div>
           )}

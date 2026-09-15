@@ -116,16 +116,16 @@ function recorte(par, raiz) {
   }
   return range;
 }
-function preencherCaminhos(raiz, dados, proteger) {
+function preencherCaminhos(raiz, dados, proteger, preservar = []) {
   for (const no of marcas(raiz)) {
     const c = chave(no);
-    if (marcadorControle(c) || !c.includes('.')) continue;
+    if (marcadorControle(c) || !c.includes('.') || preservar.includes(c)) continue;
     const valor = resolverCaminho(dados, c);
     const texto = vazio(valor) || typeof valor === 'object' ? proteger('{{' + c + '}}') : String(valor);
     no.replaceWith(raiz.ownerDocument.createTextNode(texto));
   }
 }
-function expandir(raiz, dados, proteger) {
+function expandir(raiz, dados, proteger, preservar) {
   condicionar(raiz, dados);
   while (true) {
     const par = pares(raiz).find(p => p.tipo === 'cada' && !p.pai);
@@ -138,8 +138,8 @@ function expandir(raiz, dados, proteger) {
     for (const item of itens || []) {
       const copia = molde.cloneNode(true), apelido = APELIDOS[par.nome];
       const contexto = { ...dados, item, ...(apelido ? { [apelido]: item } : {}) };
-      expandir(copia, contexto, proteger);
-      preencherCaminhos(copia, contexto, proteger);
+      expandir(copia, contexto, proteger, preservar);
+      preencherCaminhos(copia, contexto, proteger, preservar);
       destino.before(copia);
     }
     const pai = destino.parentNode; destino.remove(); limparVazios(pai, raiz);
@@ -156,20 +156,20 @@ export function aplicarCondicionais(html, dados) {
   if (!/#se\s*:/.test(String(html).replace(/<[^>]*>/g, ''))) return html;
   const doc = documento(html); condicionar(doc.body, dados); restaurar(doc.body); return doc.body.innerHTML;
 }
-export function expandirLacos(html, dados) {
-  if (!/#cada\s*:/.test(String(html).replace(/<[^>]*>/g, ''))) return substituirCaminhos(html, dados);
+export function expandirLacos(html, dados, { preservar = [] } = {}) {
+  if (!/#cada\s*:/.test(String(html).replace(/<[^>]*>/g, ''))) return substituirCaminhos(html, dados, preservar);
   const doc = documento(html), pendentes = [];
   // Protege lacunas do item contra uma segunda resolução no escopo do pai.
   const proteger = texto => { const id = `\uE000lacuna${pendentes.length}\uE001`; pendentes.push([id, texto]); return id; };
-  expandir(doc.body, dados, proteger); preencherCaminhos(doc.body, dados, proteger); restaurar(doc.body);
+  expandir(doc.body, dados, proteger, preservar); preencherCaminhos(doc.body, dados, proteger, preservar); restaurar(doc.body);
   let resultado = doc.body.innerHTML;
   for (const [id, texto] of pendentes) resultado = resultado.split(id).join(texto);
   return resultado;
 }
-export function substituirCaminhos(html, dados) {
+export function substituirCaminhos(html, dados, preservar = []) {
   // Modelos antigos não passam por serialização DOM: mantêm exatamente seu HTML.
   if (!/\{\{[^{}]*\.[^{}]*\}\}/.test(String(html).replace(/<[^>]*>/g, ''))) return html;
-  const doc = documento(html); preencherCaminhos(doc.body, dados, texto => texto); restaurar(doc.body); return doc.body.innerHTML;
+  const doc = documento(html); preencherCaminhos(doc.body, dados, texto => texto, preservar); restaurar(doc.body); return doc.body.innerHTML;
 }
 export function lacunasDoDocumento(html) {
   const texto = typeof DOMParser === 'undefined' ? String(html).replace(/<[^>]+>/g, '') : new DOMParser().parseFromString(html, 'text/html').body.textContent;
