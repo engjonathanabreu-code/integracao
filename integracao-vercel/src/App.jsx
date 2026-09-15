@@ -1,3 +1,4 @@
+import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, marcadorControle, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
@@ -1134,6 +1135,7 @@ function encontrarLacunas(html) {
   const lacunas = []; let m; let i = 0;
   const re = new RegExp(REGEX_LACUNA.source, "g");
   while ((m = re.exec(html))) {
+    if (m[1] && marcadorControle(m[1])) continue;
     i++;
     const textoAntes = html.slice(Math.max(0, m.index - 500), m.index).replace(/<br\s*\/?>/gi, " ").replace(/<\/(p|h\d|div|li|td|tr)>/gi, " | ").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
     const segmentos = textoAntes.split(/_{4,}|\{\{[^}]*\}\}/);
@@ -5910,7 +5912,7 @@ function ConfigPRF({ db, usuario, mutar, setToast }) {
         // O leitor de Word só é baixado quando alguém envia um modelo
         const mammoth = await import("mammoth/mammoth.browser.js");
         const converter = mammoth.convertToHtml || (mammoth.default && mammoth.default.convertToHtml);
-        const res = await converter({ arrayBuffer: await arq.arrayBuffer() });
+        const res = await converter({ arrayBuffer: await arq.arrayBuffer() }, ESTILOS_WORD);
         html = res.value;
       } else if (/\.html?$/i.test(arq.name)) {
         html = await arq.text();
@@ -6998,9 +7000,9 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
         const mammoth = await import("mammoth/mammoth.browser.js").catch(() => null);
         const converter = mammoth ? (mammoth.convertToHtml || mammoth.default?.convertToHtml) : null;
         if (!converter) throw new Error("não foi possível abrir o Word neste navegador");
-        html = (await converter({ arrayBuffer: await arq.arrayBuffer() })).value;
+        html = (await converter({ arrayBuffer: await arq.arrayBuffer() }, ESTILOS_WORD)).value;
       } else html = await arq.text();
-      const limpo = String(html).replace(/<script[\s\S]*?<\/script>/gi, "").trim();
+      const limpo = limparHtml(String(html)).trim();
       if (limpo.length < 40) throw new Error("o arquivo parece vazio");
       await armazenamento.set(chaveModelo, limpo);
       setModeloMun(limpo);
@@ -8154,13 +8156,10 @@ function preencherModelo(corpo, valores) {
 }
 const corpoDoModelo = (db, tipo) => (db?.modelosDoc || {})[tipo] || MODELOS_DOC[tipo]?.corpo || "";
 function montarDocumentoComercial(tipo, d, db, extras) {
-  return preencherModelo(corpoDoModelo(db, tipo), valoresDocumento(d, extras));
-}
-// Campos que ficaram sem preencher no texto final
-function lacunasDoDocumento(html) {
-  const texto = String(html).replace(/<[^>]+>/g, " ");
-  const marcadores = [...String(html).matchAll(/\{\{([a-zA-Z_]+)\}\}/g)].map((x) => x[1]);
-  return { marcadores: Array.from(new Set(marcadores)), tracos: (texto.match(/_{6,}/g) || []).length };
+  const dados = { ...d, ...extras };
+  const condicional = aplicarCondicionais(corpoDoModelo(db, tipo), dados);
+  const expandido = expandirLacos(condicional, dados);
+  return preencherModelo(expandido, valoresDocumento(d, extras));
 }
 
 function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
