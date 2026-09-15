@@ -1,3 +1,4 @@
+import { confrontantesFaltando, campoConfrontante } from './confrontantes.js';
 // Shared rules: the dashboard summary and the resident detail use the same checks.
 const ETAPAS = [
   { id: "mobilizacao", nome: "Mobilização", completo: "Apresentação da REURB e mobilização", grupo: 0 },
@@ -145,10 +146,10 @@ function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
   const desligados = new Set(a.desativados || []);
   const opcionais = new Set(a.opcionais || []);
   const obrigatorios = new Set(a.obrigatorios || []);
-  const base = lista.filter((r) => !desligados.has(r.id)).map((r) => {
+  const base = lista.filter((r) => r.fixo || !desligados.has(r.id)).map((r) => {
     const rotulo = (a.rotulos || {})[r.id];
     const item = { ...r, label: rotulo || r.label };
-    if (opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!p.checks[r.id]; item.ok = true; }
+    if (!r.fixo && opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!p.checks[r.id]; item.ok = true; }
     if (obrigatorios.has(r.id) && item.tipo === "marcador") { item.opcional = false; item.tipo = "manual"; item.ok = !!p.checks[r.id]; }
     return item;
   });
@@ -217,6 +218,8 @@ function requisitosPadrao(etapaId, p, ctx) {
     case "topografia": {
       const temFachada = (p.campo?.fotos || []).some((f) => f.tipo === "fachada");
       const faltamCampo = itensCampoFaltando(p, ctx.checklist || []);
+      const faltamConfrontantes = confrontantesFaltando(p);
+      auto("confrontantes", "Confrontantes preenchidos", !faltamConfrontantes.length, `Preencha ${faltamConfrontantes.join(", ")} no cadastro ou no Top. Campo`, { aba: "cadastro", fixo: true });
       auto("nucleo", "Vinculado a um núcleo", !!ctx.nucleo, "Defina o núcleo no cadastro do imóvel");
       auto("foto_fachada", "Foto de fachada", temFachada, "Registre no Top. Campo do núcleo");
       auto("info_campo", "Informações de campo coletadas", faltamCampo.length === 0, faltamCampo.length ? `Falta no Top. Campo: ${faltamCampo.slice(0, 3).join(", ")}${faltamCampo.length > 3 ? ` e mais ${faltamCampo.length - 3}` : ""}` : "");
@@ -244,7 +247,7 @@ function requisitosPadrao(etapaId, p, ctx) {
       break;
     default:
   }
-  (ctx.campos || []).filter((c) => c.ativo && c.obrigatorioEtapa === etapaId)
+  (ctx.campos || []).filter((c) => c.ativo && !campoConfrontante(c.id) && c.obrigatorioEtapa === etapaId)
     .forEach((c) => auto(`extra_${c.id}`, `${c.rotulo} preenchido`, campoPreenchido(c, p.extras?.[c.id]), "Preencha no cadastro"));
   return R;
 }
@@ -277,7 +280,7 @@ function letraUnidade(p, i) { return unidadesDe(p).length > 1 ? String.fromCharC
 
 function codigoUnidade(p, i) { return `${p.codigo}${letraUnidade(p, i)}`; }
 
-const campoCompleto = (db, p) => p._resumo ? !!p._campoCompleto : (p.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(p, checklistDoMunicipio(db, p.municipioId)).length === 0;
+const campoCompleto = (db, p) => p._resumo ? !!p._campoCompleto : (p.campo?.fotos || []).some((f) => f.tipo === "fachada") && itensCampoFaltando(p, checklistDoMunicipio(db, p.municipioId)).length === 0 && !confrontantesFaltando(p).length;
 
 const ajustesDoMunicipio = (db, municipioId) => (db.ajustesMunicipio || {})[municipioId] || null;
 
