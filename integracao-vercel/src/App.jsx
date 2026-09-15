@@ -1,3 +1,4 @@
+import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
@@ -10350,20 +10351,6 @@ function diasDoMes(ano, mes) {
 }
 const naMinhaAgenda = (u, chave) => (u.agendaPessoal || []).includes(chave);
 const estaOculto = (u, chave) => (u.calendarioOculto || []).includes(chave);
-function ocorrenciasDoEvento(e) {
-  const dias = [];
-  const ini = new Date(e.inicio);
-  const limite = e.recorrenciaAte ? new Date(`${e.recorrenciaAte}T23:59:59`) : null;
-  const passo = e.recorrencia === "semanal" ? 7 : e.recorrencia === "quinzenal" ? 14 : e.recorrencia === "mensal" ? 30 : 0;
-  const duracao = Math.max(0, Math.round((new Date(e.fim) - ini) / DIA_MS));
-  for (let k = 0; k < (passo ? 60 : 1); k++) {
-    const d = new Date(ini); d.setDate(d.getDate() + k * passo);
-    if (limite && d > limite) break;
-    for (let j = 0; j <= duracao; j++) { const x = new Date(d); x.setDate(x.getDate() + j); dias.push(x.toISOString().slice(0, 10)); }
-    if (!passo) break;
-  }
-  return Array.from(new Set(dias));
-}
 const VISOES_CAL = [["dia", "Dia", 1], ["semana", "Semana", 7], ["quinzena", "Quinzena", 14], ["mes", "Mês", 0], ["trimestre", "Trimestre", 0]];
 const HORA_INICIO = 6;
 const HORA_FIM = 21;

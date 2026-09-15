@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ocorrenciasDoEvento} from '../src/calendario-ocorrencias.js';
+process.env.TZ='America/Sao_Paulo';
+const evento=(inicio,fim,extra={})=>ocorrenciasDoEvento({inicio,fim,recorrencia:'nenhuma',...extra});
+test('twelve-hour event stays on its actual date',()=>assert.deepEqual(evento('2026-09-15T08:00:00Z','2026-09-15T20:00:00Z'),['2026-09-15']));
+test('long event within one day never duplicates tomorrow',()=>assert.deepEqual(evento('2026-09-15T00:01:00-03:00','2026-09-15T23:59:00-03:00'),['2026-09-15']));
+test('short overnight event occupies both local dates',()=>assert.deepEqual(evento('2026-09-15T23:00:00-03:00','2026-09-16T01:00:00-03:00'),['2026-09-15','2026-09-16']));
+test('UTC midnight does not change local calendar date',()=>assert.deepEqual(evento('2026-09-16T01:00:00Z','2026-09-16T02:00:00Z'),['2026-09-15']));
+test('exclusive midnight end occupies only previous date',()=>assert.deepEqual(evento('2026-09-15T18:00:00-03:00','2026-09-16T00:00:00-03:00'),['2026-09-15']));
+test('weekly occurrences respect end date and do not add phantom days',()=>assert.deepEqual(evento('2026-09-15T08:00:00Z','2026-09-15T20:00:00Z',{recorrencia:'semanal',recorrenciaAte:'2026-09-29'}),['2026-09-15','2026-09-22','2026-09-29']));
+test('invalid or backwards intervals do not produce dates',()=>{assert.deepEqual(evento('invalid','invalid'),[]);assert.deepEqual(evento('2026-09-16','2026-09-15'),[]);});
