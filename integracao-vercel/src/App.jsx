@@ -1,3 +1,4 @@
+import { filtrarProcessos, municipiosDosProcessos, etapasDosProcessos } from "./processos-filtros.js";
 import ArquivoCadastros, { BotaoArquivar, BotaoArquivo } from "./ArquivoCadastros.jsx";
 import { dadosVisiveis, mapaArquivamento, pacotesVisiveis } from "./arquivamento.js";
 import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
@@ -10348,14 +10349,13 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   const [municipioBusca, setMunicipioBusca] = useState("");
   const [listaAberta, setListaAberta] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
-  const b = normalizar(busca);
-  const lista = db.nucleos.filter((n) => {
-    if (etapa && etapaProcesso(n) !== etapa) return false;
-    if (municipio && n.municipioId !== municipio) return false;
-    if (b && !normalizar(`${rotuloNucleo(db, n)} ${n.nome} ${n.responsavel || ""} ${n.pendencia || ""}`).includes(b)) return false;
-    return true;
-  });
-  const municipios = db.municipios.filter((m) => (!municipio || m.id === municipio) && (lista.some((n) => n.municipioId === m.id) || (db._baseArquivo?.nucleos || []).some(n => n.municipioId === m.id)));
+  const etapas = etapasDosProcessos(ETAPAS_PROCESSO, db.nucleos, etapaProcesso);
+  const filtrados = filtrarProcessos(db.nucleos, { etapa, busca }, etapaProcesso, n => rotuloNucleo(db, n));
+  const lista = filtrados.filter(n => !municipio || n.municipioId === municipio);
+  const municipiosDisponiveis = municipiosDosProcessos(db.municipios, filtrados);
+  const municipios = municipiosDosProcessos(db.municipios, lista);
+  const sugestoes = municipiosDisponiveis.filter(m => !municipioBusca || normalizar(m.nome).includes(normalizar(municipioBusca)));
+  const escolherEtapa = valor => { setEtapa(valor); setMunicipio(""); setMunicipioBusca(""); setListaAberta(false); };
   const atual = aberto ? db.nucleos.find((n) => n.id === aberto) : null;
   const cartao = (n) => {
     const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
@@ -10395,44 +10395,44 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
           </div>
           {listaAberta && !municipio && (
             <div className="lista-busca lista-flutuante" role="listbox" aria-label="Municípios">
-              {db.municipios.filter((m) => !municipioBusca || normalizar(m.nome).includes(normalizar(municipioBusca))).slice(0, 12).map((m) => (
-                <button key={m.id} role="option" aria-selected={false} className="item-busca" onClick={() => { setMunicipio(m.id); setMunicipioBusca(`${m.nome}/${m.uf}`); setListaAberta(false); setAbertos({ [m.id]: true }); }}>{m.nome}/{m.uf} <span className="ajuda" style={{ margin: 0 }}>{db.nucleos.filter((n) => n.municipioId === m.id).length} processo(s)</span></button>
+              {sugestoes.map((m) => (
+                <button key={m.id} role="option" aria-selected={false} className="item-busca" onClick={() => { setMunicipio(m.id); setMunicipioBusca(`${m.nome}/${m.uf}`); setListaAberta(false); setAbertos({ [m.id]: true }); }}>{m.nome}/{m.uf} <span className="ajuda" style={{ margin: 0 }}>{filtrados.filter((n) => n.municipioId === m.id).length} processo(s)</span></button>
               ))}
-              {!db.municipios.some((m) => !municipioBusca || normalizar(m.nome).includes(normalizar(municipioBusca))) && <span className="ajuda" style={{ padding: "8px 10px", display: "block" }}>Nenhum município com esse texto.</span>}
+              {!sugestoes.length && <span className="ajuda" style={{ padding: "8px 10px", display: "block" }}>Nenhum município com processos nesses filtros.</span>}
             </div>
           )}
         </div>
         <span className="ajuda" style={{ margin: 0, alignSelf: "center" }}>{lista.length} processo(s)</span>
         <span className="flex gap-1" style={{ marginLeft: "auto" }}>
           <button className="btn btn-sm" onClick={() => setAbertos(Object.fromEntries(db.municipios.map((m) => [m.id, true])))}><ChevronDown size={14} />Abrir todos</button>
-          <button className="btn btn-sm" onClick={() => setAbertos({})}>Recolher todos</button>
+          <button className="btn btn-sm" onClick={() => setAbertos(Object.fromEntries(db.municipios.map((m) => [m.id, false])))}>Recolher todos</button>
         </span>
       </div>
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }} role="group" aria-label="Filtrar por etapa">
-        <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} onClick={() => setEtapa("")}><Filter size={13} />Todas as etapas</button>
-        {ETAPAS_PROCESSO.map((st) => {
+        <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} onClick={() => escolherEtapa("")}><Filter size={13} />Todas as etapas</button>
+        {etapas.map((st) => {
           const qtd = db.nucleos.filter((n) => etapaProcesso(n) === st && (!municipio || n.municipioId === municipio)).length;
-          return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} onClick={() => setEtapa(etapa === st ? "" : st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
+          return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} onClick={() => escolherEtapa(etapa === st ? "" : st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
       {municipios.map((m) => {
         const doMunicipio = lista.filter((n) => n.municipioId === m.id);
-        const aberto = !!abertos[m.id];
+        const aberto = abertos[m.id] !== false;
         const comPendencia = doMunicipio.filter((n) => n.pendencia).length;
         return (
           <section key={m.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
-            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: !a[m.id] }))} aria-expanded={aberto}>
+            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: !(a[m.id] !== false) }))} aria-expanded={aberto}>
               {aberto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <strong style={{ color: "var(--titulo)", fontSize: 16 }}>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></strong>
                 <span className="ajuda" style={{ display: "block", margin: 0 }}>{doMunicipio.length} processo(s){comPendencia ? `, ${comPendencia} com pendência` : ""}</span>
               </span>
               <span className="flex flex-wrap gap-1">
-                {ETAPAS_PROCESSO.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
+                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
               </span>
             </button>
             {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
-              {ETAPAS_PROCESSO.filter((s) => !etapa || s === etapa).map((s) => {
+              {etapas.filter((s) => !etapa || s === etapa).map((s) => {
                 const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
 
                 return (
