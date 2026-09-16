@@ -1,3 +1,5 @@
+import MemoriaisNucleo from "../memoriais/MemoriaisNucleo.jsx";
+import { MODELO_MEMORIAL_NUCLEO } from "../memoriais/memorialNucleo.js";
 import { filtrarProcessos, municipiosDosProcessos, etapasDosProcessos } from "./processos-filtros.js";
 import ArquivoCadastros, { BotaoArquivar, BotaoArquivo } from "./ArquivoCadastros.jsx";
 import { dadosVisiveis, mapaArquivamento, pacotesVisiveis } from "./arquivamento.js";
@@ -4588,9 +4590,12 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
               </div>
             )}
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
-            {abaAtual === "memoriais" && n && <IntegracaoMemoriais key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
+            {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
+              montarDocumento={(dados) => aplicarTimbrado(montarDocumentoComercial("memorialNucleoVias", dados, db, dados), timbradoMemoriais)}
+              baixarDocumento={(item, html) => baixarArquivo(`${item.codigo}-memorial.doc`, documentoWord(html, `Memorial descritivo ${item.codigo}`), "application/msword")} />
+              <IntegracaoMemoriais key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => aplicarTimbrado(montarDocumentoComercial("memorialDescritivo", dados, db, dados), timbradoMemoriais)}
-              baixarDocumento={(unidade, html) => baixarArquivo(`${unidade.codigo}-memorial-descritivo.doc`, documentoWord(html, `Memorial descritivo ${unidade.codigo}`), "application/msword")} />}
+              baixarDocumento={(unidade, html) => baixarArquivo(`${unidade.codigo}-memorial-descritivo.doc`, documentoWord(html, `Memorial descritivo ${unidade.codigo}`), "application/msword")} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
@@ -7688,7 +7693,7 @@ function AbaMemorialNucleo({ n, usuario, mutar, setToast }) {
   const sujo = texto !== salvo;
   const salvar = () => {
     const t = texto.trim();
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.memorial = t ? { texto: t, atualizadoEm: new Date().toISOString(), por: usuario.nome } : null; return d; },
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.memorial = { ...q.memorial, texto: t, atualizadoEm: new Date().toISOString(), por: usuario.nome }; return d; },
       t ? "Memorial descritivo do núcleo atualizado" : "Memorial descritivo do núcleo apagado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: t ? `${n.codigo}: ${t.length} caracteres` : n.codigo });
     setToast(t ? "Memorial do núcleo salvo. Ele já pode entrar no PRF." : "Memorial do núcleo apagado.");
   };
@@ -8083,6 +8088,7 @@ function faltandoPara(doc, d, p) {
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
 // Modelos padrão. O texto usa marcadores entre chaves, trocados pelos dados do cliente na hora de gerar.
 const MODELOS_DOC = {
+  memorialNucleoVias: { nome: "Memorial descritivo do núcleo e das vias", corpo: MODELO_MEMORIAL_NUCLEO },
   memorialDescritivo: { nome: "Memorial descritivo da unidade imobiliária", corpo: MODELO_MEMORIAL_DESCRITIVO },
   contrato: {
     nome: "Contrato de prestação de serviços",
@@ -9311,7 +9317,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
         )}
         <h3 style={{ fontSize: 14.5, margin: "18px 0 6px" }}>Marcadores disponíveis</h3>
         <div className="grade-marcadores">
-          {[...MARCADORES_DOC, ...MARCADORES_MEMORIAL.map(({ chave, ajuda }) => [chave, ajuda])].map(([chave, desc]) => (
+          {[...MARCADORES_DOC, ["levantamento.nome", "Nome do núcleo ou via levantada"], ...MARCADORES_MEMORIAL.map(({ chave, ajuda }) => [chave, ajuda])].map(([chave, desc]) => (
             <span key={chave} className="marcador"><code>{`{{${chave}}}`}</code><span className="ajuda" style={{ margin: 0 }}>{desc}</span></span>
           ))}
         </div>
