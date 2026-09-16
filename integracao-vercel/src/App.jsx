@@ -11332,6 +11332,9 @@ export default function App() {
   const compartilhado = useDadosCompartilhados({setDb, storage: armazenamento, baseLimpa});
   const [aviso, setAviso] = useState("");
   const [rota, setRota] = useState({ pag: "home" });
+  const [historicoNavegacao, setHistoricoNavegacao] = useState([]);
+  const [atualizandoDados, setAtualizandoDados] = useState(false);
+  const rotaAtual = useRef(rota);
   const [abrindoMunicipio,setAbrindoMunicipio]=useState('');
   const navegacao=useRef(0);
   const [toast, setToast] = useState("");
@@ -11389,22 +11392,37 @@ export default function App() {
   }, [usuarioId]); // eslint-disable-line
 
   const carregarMunicipio=async(id)=>{if(AMBIENTE.DEMO)return db;return compartilhado.loadMunicipio(id);};
-  const ir = async (r) => {
+  const ir = async (r, voltando = false) => {
     const vez=++navegacao.current;setMenuAberto(false);setAbrindoMunicipio('');
     const municipio=municipioDaRota(db,r);
     try {
       if(municipio&&!AMBIENTE.DEMO){setAbrindoMunicipio(db.municipios.find(m=>m.id===municipio)?.nome||'município');await carregarMunicipio(municipio);}
       if(vez!==navegacao.current)return;
-      setRota(r);window.scrollTo(0,0);
+      if (JSON.stringify(rotaAtual.current) !== JSON.stringify(r)) {
+        const anterior = rotaAtual.current;
+        setHistoricoNavegacao((h) => voltando ? h.slice(0, -1) : [...h, anterior]);
+        rotaAtual.current = r;
+        setRota(r);
+      }
+      window.scrollTo(0,0);
     }catch(e){if(vez===navegacao.current)setToast(e.message);}
     finally{if(vez===navegacao.current)setAbrindoMunicipio('');}
+  };
+  const atualizarDados = async () => {
+    if (atualizandoDados) return;
+    setAtualizandoDados(true);
+    try {
+      if (!AMBIENTE.DEMO) await compartilhado.refresh({ force: true, manual: true });
+      setToast("Dados atualizados.");
+    } catch (e) { setToast(e.message || "Não foi possível atualizar os dados. Tente novamente."); }
+    finally { setAtualizandoDados(false); }
   };
   const entrar = async (u) => {
     if (!AMBIENTE.DEMO) {
       if (!temSessao() && !u.offline) throw new Error("Entre com sua conta do ERP para acessar os registros compartilhados.");
       u = await compartilhado.open(u, db);
     }
-    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); setEntrouEm(new Date().toISOString());
+    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setEntrouEm(new Date().toISOString());
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
@@ -11426,7 +11444,7 @@ export default function App() {
     const novo = criarSeed();
     setDb({ ...novo, auditoria: [entrada("Dados de exemplo restaurados")] });
     if (!novo.usuarios.some((u) => u.id === usuarioId)) setUsuarioId(null);
-    setRota({ pag: "home" }); setToast("Dados de exemplo restaurados.");
+    setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setToast("Dados de exemplo restaurados.");
   };
 
   const [entrouEm, setEntrouEm] = useState(() => new Date().toISOString());
@@ -11494,6 +11512,8 @@ export default function App() {
             <div className="flex items-center gap-2">
               {!conexao.online && <button className="pill-offline" onClick={() => ir({ pag: "campoOffline" })}><WifiOff size={14} />Sem internet</button>}
               <span className="pill-papel">{SETORES[usuario.setor].nome}</span>
+              <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label="Voltar à tela anterior" title="Voltar à tela anterior" disabled={!historicoNavegacao.length || !!abrindoMunicipio} onClick={() => ir(historicoNavegacao[historicoNavegacao.length - 1], true)}><ChevronLeft size={18} /></button>
+              <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label={atualizandoDados ? "Atualizando dados" : "Atualizar dados"} title="Atualizar dados" disabled={atualizandoDados || !conexao.online} aria-busy={atualizandoDados} onClick={atualizarDados}><RefreshCw size={18} className={atualizandoDados ? "girando" : undefined} /></button>
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
