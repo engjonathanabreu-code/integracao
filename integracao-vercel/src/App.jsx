@@ -1779,7 +1779,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .opcao-icone{width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font:inherit}
 .rb .opcao-icone:hover{border-color:var(--primary-3);color:var(--primary)}
 .rb .opcao-icone.ativa{background:var(--primary);border-color:var(--primary);color:#fff}
-.rb .grade-calendario.compacta .dia-cal{min-height:52px;padding:4px 2px}
+.rb .grade-calendario.compacta .dia-cal{height:128px;min-height:128px;max-height:128px;padding:4px 2px}
 .rb .grade-calendario.compacta .numero-dia{font-size:11.5px}
 .rb .grade-metas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .rb .meta-card{display:flex;flex-direction:column;gap:5px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;font:inherit;color:inherit;cursor:pointer;box-shadow:var(--sombra)}
@@ -1792,11 +1792,12 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .layout-calendario{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
 .rb .grade-calendario{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .rb .cabecalho-calendario{margin-bottom:4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center}
-.rb .dia-cal{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:74px;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--card);font:inherit;color:inherit;cursor:pointer}
+.rb .dia-cal{display:flex;flex-direction:column;align-items:center;gap:3px;height:168px;min-height:168px;max-height:168px;min-width:0;overflow:hidden;box-sizing:border-box;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--card);font:inherit;color:inherit;cursor:pointer}
 .rb .dia-cal:hover{border-color:var(--primary-3)}
 .rb .dia-cal.fora{opacity:.45}
 .rb .dia-cal.hoje .numero-dia{background:var(--primary);color:#fff;border-radius:999px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center}
 .rb .dia-cal.escolhido{border-color:var(--primary);box-shadow:0 0 0 2px rgba(26,154,146,.25)}
+.rb .evento-resumo-dia{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:normal;text-align:left;width:100%;height:30px;flex:none;line-height:13px;font-size:10px;padding:2px 3px;box-sizing:border-box;border-radius:3px;color:white}
 .rb .numero-dia{font-size:13px;font-weight:700;color:var(--titulo)}
 .rb .risco-evento{width:100%;height:5px;border-radius:3px}
 .rb .linha-etapa{display:flex;align-items:center;gap:12px;padding:12px 14px;text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line)}
@@ -10664,7 +10665,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
                   title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length} itens`}>
                   <span className="numero-dia">{d.getDate()}</span>
-                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} style={{ display: "block", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, textAlign: "left", padding: "2px 3px", borderRadius: 3, background: i.cor, color: "white", opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
+                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} className="evento-resumo-dia" style={{ background: i.cor, opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
                   {itens.length > (visao === "trimestre" ? 2 : 3) && <span className="ajuda" style={{ margin: 0, fontSize: 10 }}>+{itens.length - (visao === "trimestre" ? 2 : 3)}</span>}
                 </button>
               );
