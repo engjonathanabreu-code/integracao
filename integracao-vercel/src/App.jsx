@@ -6860,7 +6860,7 @@ function FichaComercialOffline({ db, pk, cliente, usuario, conexao, comercial, m
           <input id="ncr" className="inp" value={novoCampo.rotulo} placeholder="Ex.: telefone do filho, ponto de referência" onChange={(e) => setNovoCampo((x) => ({ ...x, rotulo: e.target.value }))} />
           <label className="rot" htmlFor="ncv" style={{ marginTop: 12 }}>Informação</label>
           <textarea id="ncv" className="inp" rows={2} value={novoCampo.valor} onChange={(e) => setNovoCampo((x) => ({ ...x, valor: e.target.value }))} />
-          <div className="ajuda" style={{ marginTop: 8 }}>Fica guardado no aparelho. No escritório você escolhe em qual campo do cadastro essa informaç��o entra.</div>
+          <div className="ajuda" style={{ marginTop: 8 }}>Fica guardado no aparelho. No escritório você escolhe em qual campo do cadastro essa informação entra.</div>
         </Modal>
       )}
       {validando && (
@@ -7175,7 +7175,7 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
 /* ---------------- página inicial ---------------- */
 const ACOES_IGNORADAS = ["Entrou no sistema", "Saiu do sistema", "Sessão encerrada por inatividade"];
 const TIPOS_ACAO = {
-  etapas: (a) => a.acao.startsWith("Etapa conclu��da") || a.acao.startsWith("Etapa do núcleo concluída"),
+  etapas: (a) => a.acao.startsWith("Etapa concluída") || a.acao.startsWith("Etapa do núcleo concluída"),
   docs: (a) => a.acao.startsWith("Documento validado"),
   campo: (a) => a.acao.startsWith("Levantamento de campo"),
   cadastros: (a) => a.acao === "Morador cadastrado",
