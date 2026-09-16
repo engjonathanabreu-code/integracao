@@ -2,6 +2,8 @@ import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
 import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
 import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
 import { unirCampos } from "./persistencia-modulos.js";
+import FaixasMetas from "./FaixasMetas.jsx";
+import { ocorreNoDia } from "./calendario-periodos.js";
 import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
 import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
@@ -10597,7 +10599,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
     : visao === "trimestre" ? `${MESES[periodo.ini.getMonth()]} a ${MESES[periodo.fim.getMonth()]} de ${periodo.fim.getFullYear()}`
     : `${periodo.ini.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${periodo.fim.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
   const hoje = agora.toISOString().slice(0, 10);
-  const doDia = todos.filter((i) => i.dia === dia).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+  const doDia = todos.filter((i) => ocorreNoDia(i, dia)).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
   const mudarPeriodo = (n) => {
     if (visao === "mes" || visao === "trimestre") { const passo = visao === "mes" ? 1 : 3; const d = new Date(ref.ano, ref.mes + n * passo, 1); setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: 1 }); setDia(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`); return; }
     const d = new Date(periodo.ini); d.setDate(d.getDate() + n * (visao === "dia" ? 1 : visao === "semana" ? 7 : 14));
@@ -10645,7 +10647,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
               <span />
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
-                const doDiaTodos = todos.filter((i) => i.dia === iso);
+                const doDiaTodos = todos.filter((i) => ocorreNoDia(i, iso));
                 return (
                   <button key={iso} className={`cabecalho-dia${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}>
                     <span>{DIAS_SEMANA[(d.getDay() + 6) % 7]}</span>
@@ -10655,13 +10657,14 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
             <div className="faixa-prazos" style={{ gridTemplateColumns: `52px repeat(${diasSemana.length}, minmax(0, 1fr))` }}>
               <span className="rot" style={{ margin: 0, alignSelf: "center" }}>prazos</span>
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
                 return (
                   <span key={iso} className="celula-prazo">
-                    {todos.filter((i) => i.dia === iso && i.tipo !== "evento").map((i) => (
+                    {todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "evento" && i.tipo !== "meta").map((i) => (
                       <button key={i.id} className="chip-prazo" style={{ background: i.cor }} onClick={() => abrirItem(i)} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</button>
                     ))}
                   </span>
@@ -10674,7 +10677,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
               </div>
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
-                const eventos = todos.filter((i) => i.dia === iso && i.tipo === "evento");
+                const eventos = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo === "evento");
                 return (
                   <div key={iso} className={`coluna-dia${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                     onDoubleClick={(ev) => {
@@ -10706,11 +10709,14 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         ) : (
         <div className="card" style={{ padding: 10 }}>
           <div className="grade-calendario cabecalho-calendario" style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>{DIAS_SEMANA.map((d) => <span key={d}>{d}</span>)}</div>
-          <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>
-            {dias.map((d) => {
+          <div>
+          {Array.from({ length: Math.ceil(dias.length / 7) }, (_, semana) => dias.slice(semana * 7, semana * 7 + 7)).map((diasSemana) => <div key={diasSemana[0].toISOString()}>
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} />
+            <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`, marginBottom: 4 }}>
+            {diasSemana.map((d) => {
               const iso = d.toISOString().slice(0, 10);
               const noMes = noPeriodo(d);
-              const itens = todos.filter((i) => i.dia === iso);
+              const itens = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "meta");
               return (
                 <button key={iso} className={`dia-cal${noMes ? "" : " fora"}${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
@@ -10721,6 +10727,8 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 </button>
               );
             })}
+            </div>
+          </div>)}
           </div>
         </div>
         )}
