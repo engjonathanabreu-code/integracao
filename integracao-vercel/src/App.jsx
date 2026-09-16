@@ -4,6 +4,7 @@ import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
 import { unirCampos } from "./persistencia-modulos.js";
 import FaixasMetas from "./FaixasMetas.jsx";
 import { ocorreNoDia } from "./calendario-periodos.js";
+import { useOrdenacao } from "./use-ordenacao.jsx";
 import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
 import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
@@ -2759,6 +2760,7 @@ function LegendaEtapas() { return (
 ); }
 
 function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
+  const ordem = useOrdenacao("nome");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [municipioPRF, setMunicipioPRF] = useState(null);
   const [uf, setUf] = useState("Todas");
@@ -2788,9 +2790,10 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr><th>Município</th><th>Remessas</th><th>Núcleos</th><th>Moradores</th><th>Com pendência</th><th style={{ minWidth: 170 }}>Andamento</th><th>Última movimentação</th><th>PRF</th></tr></thead>
+          <thead><tr>{ordem.cabecalho("nome", "Município")}{ordem.cabecalho("remessas", "Remessas")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("ultima", "Última movimentação")}<th>PRF</th></tr></thead>
+
           <tbody>
-            {linhas.map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
+            {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
                 <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
@@ -2818,12 +2821,14 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
 }
 
 function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
+  const ordem = useOrdenacao("nome");
   const [aba, setAba] = useState("conteudo");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const m = municipioDe(db, municipioId);
   if (!m) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Município não encontrado.</p></div>;
   const perm = cad.perm;
   const remessas = db.remessas.filter((r) => r.municipioId === m.id).sort((a, b) => a.numero - b.numero);
+  const resumoRemessas = new Map(remessas.map(r => [r.id, resumoMoradores(db, db.processos.filter(p=>p.remessaId === r.id))]));
   const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
   const qtdNucleos = db.nucleos.filter((n) => n.municipioId === m.id).length;
   const rs = resumoMoradores(db, db.processos.filter((p) => p.municipioId === m.id));
@@ -2853,9 +2858,9 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
           <Secao titulo="Remessas">
             <div className="rolagem" style={{ margin: "-4px -18px -18px" }}>
               <table className="tab">
-                <thead><tr><th>Remessa</th><th>Núcleos</th><th>Moradores</th><th>Sem núcleo</th><th>Com pendência</th><th style={{ minWidth: 160 }}>Andamento</th><th>Criada em</th><th><span className="sr-only">Ações</span></th></tr></thead>
+                <thead><tr>{ordem.cabecalho("nome", "Remessa")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("semNucleo", "Sem núcleo")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("criada", "Criada em")}<th><span className="sr-only">Ações</span></th></tr></thead>
                 <tbody>
-                  {remessas.map((r) => {
+                  {ordem.ordenar(remessas, { nome:r=>nomeRemessa(db,r), nucleos:r=>db.nucleos.filter(n=>n.remessaId === r.id).length, moradores:r=>resumoRemessas.get(r.id).ativos, semNucleo:r=>db.processos.filter(p=>p.remessaId === r.id && ativo(p) && !p.nucleoId).length, pendencias:r=>resumoRemessas.get(r.id).ativos ? resumoRemessas.get(r.id).comPend : null, andamento:r=>{ const x=resumoRemessas.get(r.id);return x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null; }, criada:r=>r.criada }).map((r) => {
                     const ps = db.processos.filter((p) => p.remessaId === r.id);
                     const x = resumoMoradores(db, ps);
                     const semNuc = soAtivos(ps).filter((p) => !p.nucleoId).length;
@@ -3287,12 +3292,14 @@ function PainelEtapaNucleo({ db, n, usuario, mutar, setToast, setModal }) {
 
 /* ---------------- listas ---------------- */
 function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo }) {
+  const ordem = useOrdenacao("codigo");
+  const resumos = new Map(nucleos.map(n=>[n.id,resumoMoradores(db,db.processos.filter(p=>p.nucleoId === n.id))]));
   return (
     <div className="card rolagem">
       <table className="tab">
-        <thead><tr><th>Núcleo</th><th>Etapa do núcleo</th><th>Moradores</th><th>Com pendência</th><th>Teto REURB-S</th><th style={{ minWidth: 150 }}>Andamento das unidades</th><th>Origem</th><th><span className="sr-only">Ações</span></th></tr></thead>
+        <thead><tr>{ordem.cabecalho("codigo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa do núcleo")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("teto", "Teto REURB-S")}{ordem.cabecalho("andamento", "Andamento das unidades")}{ordem.cabecalho("origem", "Origem")}<th><span className="sr-only">Ações</span></th></tr></thead>
         <tbody>
-          {nucleos.map((n) => {
+          {ordem.ordenar(nucleos, { codigo:n=>n.codigo, etapa:n=>n.etapa, moradores:n=>resumos.get(n.id).ativos, pendencias:n=>resumos.get(n.id).ativos ? resumos.get(n.id).comPend : null, teto:n=>criterioNucleo(n).teto, andamento:n=>{const x=resumos.get(n.id);return x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null;}, origem:n=>(n.origem || []).join(", ") }).map((n) => {
             const rs = resumoMoradores(db, db.processos.filter((p) => p.nucleoId === n.id));
             const { teto, sm } = criterioNucleo(n);
             return (
@@ -3329,6 +3336,7 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
 }
 
 function TabProcessos({ db, ps, ir, mostrarNucleo }) {
+  const ordem = useOrdenacao("codigo");
   const [busca, setBusca] = useState("");
   const [etapa, setEtapa] = useState("");
   const [situacao, setSituacao] = useState("ativos");
@@ -3357,9 +3365,9 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr><th>Código</th><th>Morador</th><th>CPF</th>{mostrarNucleo && <th>Núcleo</th>}<th>Etapa</th><th>Pendências</th></tr></thead>
+          <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}</tr></thead>
           <tbody>
-            {lista.map((p) => {
+            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).map((p) => {
               const pend = pendencias(db, p);
               const ctx = contexto(db, p);
               const alertas = alertasDados(p, ctx);
