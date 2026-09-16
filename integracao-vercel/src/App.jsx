@@ -10217,6 +10217,7 @@ const etapaProcesso = (n) => n.etapaProcesso || etapaProcessoPadrao(n);
 const diasNaEtapa = (n) => { const d = n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
 
 function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
+  const [novaMeta, setNovaMeta] = useState(false);
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta";
   const [f, setF] = useState({ prioridade: n.prioridade || "Normal", responsavelId: ((db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""))?.id) || "", prazoSLA: n.prazoSLA || "", pendencia: n.pendencia || "", observacaoInterna: n.observacaoInterna || "" });
@@ -10244,7 +10245,7 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
   return (
     <Modal titulo={rotuloNucleo(db, n)} largura={680} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
+      rodape={<>{gerenciaMetas(usuario) && <button className="btn" onClick={() => setNovaMeta(true)}>+ Metas</button>}<button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
         <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaProcesso(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaProcesso(atual)}</Tag>
         <Tag tipo={TAG_PRIORIDADE[atual.prioridade || "Normal"]}>{atual.prioridade || "Normal"}</Tag>
@@ -10280,6 +10281,7 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
       {pode && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
       <h3 style={{ fontSize: 15, margin: "18px 0 6px" }}>Histórico de etapas</h3>
       {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
+      {novaMeta && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNovaMeta(false)} />}
       {andamento && <ModalAndamento db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
     </Modal>
   );
