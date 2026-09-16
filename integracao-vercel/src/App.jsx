@@ -1,3 +1,7 @@
+import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
+import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
+import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
+import { unirCampos } from "./persistencia-modulos.js";
 import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
 import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
@@ -1130,16 +1134,26 @@ function dadosPRF(db, n, opcoes, fotos) {
     "nucleo.protocolo_prefeitura": e(n.campos?.protocoloPrefeitura), "nucleo.responsavel": e(n.responsavel), "data.hoje": dataExtenso(),
     "bloco.infraestrutura": infra, "bloco.tabela_ocupantes": ocupantes, "bloco.lista_lotes": lotes, "bloco.qualificacao_ocupantes": qualif, "bloco.fotos_fachada": fotosHtml,
   };
+  const complemento = marcadoresPRF({ municipio: m, dadosPRF: m?.prf, nucleo: { ...n, dados: n }, moradores: ps.map((p) => ({ ...p, unidades: unidadesDe(p) })), elaboracao: db.empresa });
   const estrutura = contextoPRF({ municipio: m, remessa: r, nucleo: n, cpfDe,
     unidades: linhasUn.map(({ p, u, codigo }) => ({
-      codigo, nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
+      nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
       area: u.area || "", memorial: u.memorial || "", loteQuadra: u.loteQuadra || "",
       lote: u.lote || "", quadra: u.quadra || "", matricula: u.matricula || p.imovel?.matricula || "",
       logradouro: p.enderecoImovel?.logradouro || p.endereco?.logradouro || "", modalidade: p.social.modalidade || "",
       requerente: { nome: p.requerente.nome, cpf: p.requerente.cpf }, confrontantes: confrontantesDe(p),
+      ...(complemento.unidades.find((x) => x.id === u.id) || {}), codigo,
     })),
   });
-  return { valores, estrutura, ocupantes: ps.length };
+  for (const [caminho, valor] of Object.entries(complemento.marcadores)) {
+    valores[caminho] = e(valor);
+    const partes = caminho.split("."); let alvo = estrutura;
+    for (const parte of partes.slice(0, -1)) alvo = alvo[parte] ||= {};
+    alvo[partes.at(-1)] = valor;
+  }
+  estrutura.bibliografia = { ...estrutura.bibliografia, municipio: m?.prf?.bibliografia || [] };
+  return { valores, estrutura, ocupantes: ps.length, faltando: complemento.faltando };
+
 }
 
 const PISTAS_PRF = [
@@ -2737,6 +2751,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
 /* ---------------- páginas da hierarquia ---------------- */
 function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
+  const [municipioPRF, setMunicipioPRF] = useState(null);
   const [uf, setUf] = useState("Todas");
   const [busca, setBusca] = useState("");
   const ufs = ["Todas", ...Array.from(new Set(db.municipios.map((m) => m.uf))).sort()];
@@ -2764,7 +2779,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr><th>Município</th><th>Remessas</th><th>Núcleos</th><th>Moradores</th><th>Com pendência</th><th style={{ minWidth: 170 }}>Andamento</th><th>Última movimentação</th></tr></thead>
+          <thead><tr><th>Município</th><th>Remessas</th><th>Núcleos</th><th>Moradores</th><th>Com pendência</th><th style={{ minWidth: 170 }}>Andamento</th><th>Última movimentação</th><th>PRF</th></tr></thead>
           <tbody>
             {linhas.map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
@@ -2775,6 +2790,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
                 <td>{ativos ? (comPend ? <Tag tipo="pend">{comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
                 <td><BarraEtapas cont={cont} ativos={ativos} /></td>
                 <td style={{ whiteSpace: "nowrap" }}>{ultima ? <><span style={{ fontWeight: 600 }}>{tempoRelativo(ultima.data)}</span><div className="ajuda" style={{ margin: 0 }}>{ultima.acao}</div></> : <span style={{ color: "var(--muted)" }}>sem movimentação</span>}</td>
+                <td><button className="btn btn-sm" onKeyDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMunicipioPRF(m.id); }}><FileText size={14} />Dados do PRF ({pendenciasMunicipioPRF(m.prf || {}).length} pendentes)</button></td>
               </tr>
             ))}
             {!linhas.length && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>Nenhum município encontrado. Limpe a busca ou escolha outra UF.</td></tr>}
@@ -2784,6 +2800,10 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       <div className="flex flex-wrap gap-3" style={{ marginTop: 12, fontSize: 12.5, color: "var(--muted)" }}>
         {[...ETAPAS.map((e) => e.nome), "Unidade pronta"].map((n, i) => <span key={n} className="flex items-center gap-1"><span style={{ width: 10, height: 10, background: COR_ETAPA[i], display: "inline-block", borderRadius: 3 }} />{n}</span>)}
       </div>
+      {municipioPRF && <Modal titulo="Dados do PRF" largura={900} onFechar={() => setMunicipioPRF(null)}><FormularioDadosPRF key={municipioPRF} municipio={municipioDe(db, municipioPRF)} dados={municipioDe(db, municipioPRF)?.prf} podeEditar={cad.perm.estrutura} aoFechar={() => setMunicipioPRF(null)} aoSalvar={(prf) => {
+        if (!cad.perm.estrutura) throw new Error("Sem permissão");
+        return mutar((d) => { const m = municipioDe(d, municipioPRF); m.prf = unirCampos(m.prf, prf); return d; }, "Dados do PRF atualizados", { municipioId: municipioPRF });
+      }} /></Modal>}
       {cad.elemento}
     </div>
   );
@@ -4869,6 +4889,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   const mapa = mapaDoModeloPRF(mapaSalvo, preparo, lacunas);
   const setMapa = (valor) => setMapaSalvo({ modelo: preparo.html, valores: typeof valor === "function" ? valor(mapa || {}) : valor });
   const resultado = preparo.html != null && mapa ? montarPRF(preparo.html, lacunas, mapa, dados.valores) : null;
+  const faltandoPorOrigem = unirCampos(dados.faltando || {}, lacunasPRF(Object.fromEntries((resultado?.faltando || []).map((l) => [l.chave, ""]))));
   const pronto = prontidaoPRF(db, n);
   const titulo = `PRF ${nomeRemessa(db, remessaDe(db, n.remessaId))} ${n.codigo}`.trim();
   const preencherIA = async () => {
@@ -4897,6 +4918,10 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
         </div>
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={pronto.completo ? "ok" : "pend"}>{pronto.completo ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
+      <Secao titulo="Dados que faltam antes de gerar">
+        {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
+        {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
+      </Secao>
       <div style={{ marginBottom: 14 }}>
         {pronto.completo
           ? <Aviso tipo="info">Todos os moradores ativos chegaram à etapa Projeto e os memoriais estão preenchidos: dá para gerar o PRF completo do núcleo.</Aviso>
@@ -5879,6 +5904,17 @@ function ConfigChecklist({ db, mutar, setToast }) {
   );
 }
 
+function CadastroEmpresaPRF({ db, usuario, mutar }) {
+  const [empresa, setEmpresa] = useState(() => ({ ...db.empresa }));
+  const [mensagem, setMensagem] = useState("");
+  const pode = permissoes(usuario).estrutura;
+  return <Secao titulo="Empresa elaboradora" nota="Cadastro único usado no PRF e na CONTRATADA do contrato padrão.">
+    {[['razaoSocial', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço']].map(([chave, rotulo]) => <label key={chave} className="rot">{rotulo}<input className="inp" value={empresa[chave] || ""} disabled={!pode} onChange={(e) => setEmpresa((v) => ({ ...v, [chave]: e.target.value }))} /></label>)}
+    {pode && <button className="btn" onClick={async () => { try { await mutar((d) => { d.empresa = { ...d.empresa, ...empresa }; return d; }, "Empresa elaboradora atualizada"); setMensagem("Empresa salva."); } catch { setMensagem("Não foi possível salvar."); } }}>Salvar empresa</button>}
+    <p role="status">{mensagem}</p>
+  </Secao>;
+}
+
 function ConfigPRF({ db, usuario, mutar, setToast }) {
   const [modelo, setModelo] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -5921,6 +5957,7 @@ function ConfigPRF({ db, usuario, mutar, setToast }) {
   const destacado = modelo ? modelo.replace(new RegExp(REGEX_LACUNA.source, "g"), (m) => `<span style="background:#fff3cd;padding:0 2px">${m}</span>`) : "";
   return (
     <div className="flex flex-col gap-3">
+      <CadastroEmpresaPRF db={db} usuario={usuario} mutar={mutar} />
       <Secao titulo="Modelo de PRF" nota="Suba o PRF padrão da Integral com os espaços em branco no lugar dos dados. O gerador preenche esses espaços com as informações do núcleo, dos moradores, dos lotes, das fotos e da infraestrutura.">
         {!perm.modeloPRF ? <p className="ajuda" style={{ margin: 0 }}>Só o setor Projeto e a Diretoria alteram o modelo.</p> : (
           <>
@@ -7958,6 +7995,7 @@ function dadosDocumento(db, p, usuario) {
   const un = unidadesDe(p);
   const hoje = new Date();
   return {
+    elaboracao: db.empresa || {},
     nome: p.requerente.nome || "____________", cpf: fmtCPF(p.requerente.cpf) || "____________",
     rg: p.requerente.rg || "____________", nacionalidade: p.requerente.nacionalidade || "brasileiro(a)",
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
@@ -8003,7 +8041,7 @@ const MODELOS_DOC = {
   contrato: {
     nome: "Contrato de prestação de serviços",
     corpo: `{{titulo:CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE REGULARIZAÇÃO FUNDIÁRIA}}
-{{p:<strong>CONTRATADA:</strong> Integral Soluções em Engenharia, pessoa jurídica de direito privado, com sede em Santa Catarina, neste ato representada por seu responsável técnico.}}
+{{p:<strong>CONTRATADA:</strong> {{elaboracao.razaoSocial}}, inscrita no CNPJ {{elaboracao.cnpj}}, com sede à {{elaboracao.endereco}}.}}
 {{p:<strong>CONTRATANTE:</strong> {{qualificacao}}.}}
 {{p:<strong>Cláusula 1ª. Objeto.</strong> A CONTRATADA prestará os serviços técnicos necessários à regularização fundiária urbana (REURB) da unidade {{unidades}}, situada no núcleo {{nucleo}}, em {{municipio}}, na modalidade {{modalidade}}, conforme a Lei Federal 13.465/2017.}}
 {{p:<strong>Cláusula 2ª. Serviços.</strong> Estão incluídos o levantamento topográfico da unidade, a elaboração do memorial descritivo, a instrução do processo administrativo, o acompanhamento junto à prefeitura e o encaminhamento ao Registro de Imóveis, até a emissão do título.}}
