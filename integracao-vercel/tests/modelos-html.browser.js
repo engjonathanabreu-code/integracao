@@ -3,6 +3,28 @@ import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, APELIDOS, subst
 const gerar = (html, dados) => expandirLacos(aplicarCondicionais(html, dados), dados);
 const doc = html => new DOMParser().parseFromString(html, 'text/html');
 export function testesModelos(test, assert) {
+  test('laço atravessa cabeçalho e corpo com unidades aninhadas', () => {
+    const modelo='<table><thead class="cabecalho"><tr><th>Fixo</th></tr><tr><th>{{#cada:matriculas}}{{matricula.numero}}</th></tr></thead><tbody><tr><td>{{#cada:matricula.unidades}}{{unidade.nome}}{{/cada}}</td></tr><tr><td>Total {{matricula.numero}}{{/cada}}</td></tr><tr><td>Fim fixo</td></tr></tbody></table>';
+    const html=gerar(modelo,{matriculas:[{numero:'M1',unidades:[{nome:'A'},{nome:'B'}]},{numero:'M2',unidades:[{nome:'C'}]}]});
+    const resultado=doc(html);
+    assert.equal(resultado.body.textContent,'FixoM1ABTotal M1M2CTotal M2Fim fixo');
+    assert.equal(resultado.querySelectorAll('tr').length,8);
+    assert.equal(resultado.querySelectorAll('thead').length,1);
+    assert.equal(resultado.querySelectorAll('tbody.cabecalho th').length,2);
+    assert.equal(resultado.querySelectorAll('tbody tbody, tbody thead').length,0);
+    assert.ok(!html.includes('{{'));
+  });
+  test('laço vazio entre seções remove somente as linhas do modelo', () => {
+    const html=gerar('<table><thead><tr><th>Fixo</th></tr><tr><th>{{#cada:matriculas}}Modelo</th></tr></thead><tbody><tr><td>{{/cada}}</td></tr><tr><td>Fim</td></tr></tbody></table>',{matriculas:[]});
+    assert.equal(doc(html).body.textContent,'FixoFim');assert.equal(doc(html).querySelectorAll('tr').length,2);
+  });
+  test('laço atravessa vários corpos e rodapé sem duplicar linhas externas', () => {
+    const html=gerar('<table><tbody><tr><td>Antes</td></tr><tr><td>{{#cada:unidades}}{{item.nome}}</td></tr></tbody><tbody class="meio"><tr><td>Meio</td></tr></tbody><tfoot><tr><td>Fim{{/cada}}</td></tr><tr><td>Depois</td></tr></tfoot></table>',{unidades:[{nome:'A'},{nome:'B'}]});
+    const resultado=doc(html);
+    assert.equal(resultado.body.textContent,'AntesAMeioFimBMeioFimDepois');
+    assert.equal(resultado.querySelectorAll('tr').length,8);assert.equal(resultado.querySelectorAll('tfoot').length,1);
+    assert.equal(resultado.querySelectorAll('tbody.meio').length,2);
+  });
   test('PRF corrige o rótulo avulso do resumo de outras áreas públicas', () => {
     const modelo='<p>{{#se:ativo}}Sim{{senao}}Não{{/se}}</p><table><tr><td><p><strong>{{se</strong>nao}}</p></td><td><p>{{resumo.outrasAreasPublicas}}</p></td></tr></table>';
     for (const ativo of [true,false]) {
