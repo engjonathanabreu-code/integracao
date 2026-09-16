@@ -10,7 +10,7 @@ export function BotaoArquivar({ colecao, registro }) {
   const arquivo = useContext(ContextoArquivo);
   if (!arquivo?.permitido || !registro) return null;
   const abrir = e => { e.stopPropagation(); arquivo.selecionar({ colecao, id:registro.id }); };
-  return <button type="button" className="btn-icone" style={{ color:'#b47b08', marginLeft:6, verticalAlign:'middle' }} title={`Arquivar ${nomeRegistro(registro, colecao)}`} aria-label={`Arquivar ${nomeRegistro(registro, colecao)}`} onClick={abrir} onKeyDown={e => e.stopPropagation()}><Folder size={18} fill="#f7cc55" /></button>;
+  return <button type="button" className="btn-icone" style={{ color:'var(--primary)', marginLeft:6, verticalAlign:'middle' }} title={`Arquivar ${nomeRegistro(registro, colecao)}`} aria-label={`Arquivar ${nomeRegistro(registro, colecao)}`} onClick={abrir} onKeyDown={e => e.stopPropagation()}><Folder size={18} fill="var(--primary-3)" /></button>;
 }
 
 export function BotaoArquivo({ colecao, municipioId, remessaId, nucleoId, etapa, etapaCliente, geral = false }) {
