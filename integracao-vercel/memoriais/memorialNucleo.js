@@ -22,7 +22,7 @@ export function salvarMemorialNucleo(db, nucleoId, anterior, dados, viaId, por, 
   if (!n) throw new Error('Núcleo não encontrado. Reabra o cadastro.');
   const atual = viaId ? n.memorial?.vias?.find(v => v.id === viaId) : n.memorial;
   // Compara somente o levantamento editado: outras vias e chaves continuam preservadas.
-  const campos = ['vertices', 'area', 'perimetro', 'texto', ...(viaId ? ['nome'] : [])];
+  const campos = ['vertices', 'area', 'perimetro', 'texto', ...(viaId ? ['nome','tipo'] : [])];
   if (campos.some(c => JSON.stringify(atual?.[c]) !== JSON.stringify(anterior?.[c]))) throw new Error('Este levantamento foi alterado. Reabra-o antes de salvar.');
   const { valido } = conferirPoligono(dados.vertices || []);
   if (!valido || !Number.isFinite(dados.area) || dados.area <= 0 || !Number.isFinite(dados.perimetro) || !dados.texto?.trim() || (viaId && !dados.nome?.trim())) throw new Error('Confira nome, vértices e memorial antes de salvar.');

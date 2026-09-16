@@ -1,3 +1,4 @@
+import { TIPOS_AREA_PRF } from "../src/cadastros-prf.js";
 import { useState } from 'react';
 import { interpretarVertices, formatarMedida } from './memoriaisCalculos.js';
 import { calcularMemorialNucleo, salvarMemorialNucleo } from './memorialNucleo.js';
@@ -6,6 +7,7 @@ import { lacunasDoDocumento } from '../src/modelos-html.js';
 
 export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToast, montarDocumento, baixarDocumento, Modal, por }) {
   const [selecao, setSelecao] = useState(null);
+  const [tipo, setTipo] = useState('via');
   const [nome, setNome] = useState('');
   const [entrada, setEntrada] = useState('');
   const [previa, setPrevia] = useState(null);
@@ -17,6 +19,7 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
   const abrir = via => {
     const anterior = via === 'nucleo' ? n.memorial : via;
     setSelecao({ viaId: via === 'nucleo' ? null : via?.id || crypto.randomUUID(), anterior: structuredClone(anterior || null) });
+    setTipo(via?.tipo || 'via');
     setNome(via === 'nucleo' ? `Núcleo ${n.nome || n.codigo}` : via?.nome || '');
     setEntrada('nome\teste\tnorte\tconfrontante\tlongitude\tlatitude\n' + (anterior?.vertices || []).map(v => [v.nome,v.e,v.n,v.confrontante || '',v.longitude || '',v.latitude || ''].join('\t')).join('\n'));
     setMensagem('');
@@ -31,7 +34,7 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
     const config = db.memoriais || {};
     if (config.sistema === 'Geográfica' && lido.vertices.some(v => !v.longitude || !v.latitude)) throw new Error('No sistema geográfico, inclua também as colunas longitude e latitude de cada vértice; Este e Norte continuam necessários para os cálculos.');
     if (!config.responsavel?.nome || !config.responsavel?.registro || (!config.meridiano && config.sistema !== 'Geográfica')) throw new Error('Preencha responsável técnico, registro e meridiano nas configurações da aba Memoriais dos lotes.');
-    return { ...calcularMemorialNucleo(lido.vertices, config), nome: nome.trim() };
+    return { ...calcularMemorialNucleo(lido.vertices, config), nome: nome.trim(), tipo };
   };
   const executar = fn => { try { fn(); } catch(e) { setMensagem(e.message); setToast(e.message); } };
   const salvar = () => executar(() => {
@@ -53,15 +56,16 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
     setPrevia({html,nome});
   });
   return <section className="card" style={{padding:18}}>
-    <h3>Memoriais do núcleo e das vias</h3>
-    <p className="ajuda">Cadastre o contorno completo do núcleo ou de cada rua. Área e perímetro são calculados pelos vértices. O memorial salvo do núcleo também alimenta o PRF.</p>
+    <h3>Memoriais do núcleo, vias e áreas</h3>
+    <p className="ajuda">Cadastre o contorno do núcleo, das vias, APP, risco, áreas públicas e servidões. Cada levantamento permanece separado. Área e perímetro são calculados pelos vértices. O memorial salvo do núcleo também alimenta o PRF.</p>
     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
       <button className="btn" onClick={()=>abrir('nucleo')}>Abrir memorial do núcleo</button>
       {vias.map(v=><button className="btn" key={v.id} onClick={()=>abrir(v)}>{v.nome}</button>)}
-      <button className="btn" disabled={!editar} onClick={()=>abrir(null)}>+ Memorial de via</button>
+      <button className="btn" disabled={!editar} onClick={()=>abrir(null)}>+ Memorial de via ou área</button>
     </div>
     {selecao && <div style={{marginTop:16}}>
-      <label className="rot" htmlFor="nome-levantamento">{selecao.viaId ? 'Nome da rua/via' : 'Levantamento'}</label>
+      <label className="rot" htmlFor="tipo-levantamento">Tipo de área</label><select id="tipo-levantamento" className="inp" value={tipo} disabled={!editar || !selecao.viaId} onChange={e=>setTipo(e.target.value)}>{TIPOS_AREA_PRF.map(([id,nome])=><option key={id} value={id}>{nome}</option>)}</select>
+      <label className="rot" htmlFor="nome-levantamento">{selecao.viaId ? 'Nome da via ou área' : 'Levantamento'}</label>
       <input className="inp" id="nome-levantamento" list="ruas-nucleo" value={nome} disabled={!editar || !selecao.viaId} onChange={e=>setNome(e.target.value)} />
       <datalist id="ruas-nucleo">{ruas.map(r=><option key={r} value={r}/>)}</datalist>
       <label className="rot" htmlFor="vertices-nucleo" style={{marginTop:12}}>Vértices — nome, Este (X), Norte (Y), confrontante</label>

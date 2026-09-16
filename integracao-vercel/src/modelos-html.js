@@ -2,6 +2,7 @@
 // enquanto os marcadores legados continuam com seu preenchimento de HTML original.
 export const ESTILOS_WORD = { styleMap: ["highlight => mark"] };
 export const APELIDOS = {
+  areaApps:"areaApp", areaRiscos:"areaRisco", areaPublicas:"areaPublica", servidaos:"servidao",
   unidades: 'unidade', matriculas: 'matricula', 'matricula.unidades': 'unidade',
   'matricula.logradouros': 'logradouro', 'matricula.remanescentes': 'remanescente',
   'matricula.proprietarios': 'proprietario', unidadesSemEspecializacao: 'unidade',

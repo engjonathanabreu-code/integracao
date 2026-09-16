@@ -1,0 +1,10 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Teste dos cadastros PRF</title><body><output id="resultado">Executando</output><script type="module">
+import {prepararModeloPRF} from '../src/modelos-prf.js';
+import {complementoNucleoPRF} from '../src/cadastros-prf.js';
+const n={cronograma:{redeAgua:true,redeAguaPrazo:'6 meses',drenagem:false}};
+const d=complementoNucleoPRF(n);
+const entrada='<table><tr><td>Água</td><td>{{cronograma.redeAgua}}</td><td>{{cronograma.redeAguaPrazo}}</td></tr><tr><td>Drenagem</td><td>{{cronograma.drenagem}}</td><td>{{cronograma.drenagemPrazo}}</td></tr></table>';
+const r=prepararModeloPRF(entrada,{valores:d.marcadores,estrutura:{...d.estrutura,nucleo:n}});
+if(r.erro || r.html.includes('Drenagem') || !r.html.includes('Água'))throw new Error(r.erro || 'Cronograma incorreto');
+document.getElementById('resultado').textContent='PASSOU: item Não removido; item Sim preservado.';
+</script></body></html>

@@ -1,3 +1,6 @@
+import { InfraestruturaPRF, CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
+import { complementoNucleoPRF, INFRA_PRF } from "./cadastros-prf.js";
+import { separarQuadraLote } from "../municipio-prf/marcadoresPRF.js";
 import MemoriaisNucleo from "../memoriais/MemoriaisNucleo.jsx";
 import { MODELO_MEMORIAL_NUCLEO } from "../memoriais/memorialNucleo.js";
 import { filtrarProcessos, municipiosDosProcessos, etapasDosProcessos } from "./processos-filtros.js";
@@ -1142,6 +1145,8 @@ function dadosPRF(db, n, opcoes, fotos) {
     "nucleo.protocolo_prefeitura": e(n.campos?.protocoloPrefeitura), "nucleo.responsavel": e(n.responsavel), "data.hoje": dataExtenso(),
     "bloco.infraestrutura": infra, "bloco.tabela_ocupantes": ocupantes, "bloco.lista_lotes": lotes, "bloco.qualificacao_ocupantes": qualif, "bloco.fotos_fachada": fotosHtml,
   };
+  const infraestruturaNucleo = INFRA_PRF.filter(([id]) => n.infra?.[id]?.presente != null);
+  if(infraestruturaNucleo.length) valores["bloco.infraestrutura"] += tabela(["Infraestrutura do núcleo", "Situação", "Descrição", "Vias"], infraestruturaNucleo.map(([id,nome]) => { const d=n.infra[id];return [nome,d.presente ? "Sim" : "Não",d.presente ? d.descricao || "" : "",d.presente ? d.vias || "" : ""]; }));
   const complemento = marcadoresPRF({ municipio: m, dadosPRF: m?.prf, nucleo: { ...n, dados: n }, moradores: ps.map((p) => ({ ...p, unidades: unidadesDe(p) })), elaboracao: db.empresa });
   const estrutura = contextoPRF({ municipio: m, remessa: r, nucleo: n, cpfDe,
     unidades: linhasUn.map(({ p, u, codigo }) => ({
@@ -1153,12 +1158,17 @@ function dadosPRF(db, n, opcoes, fotos) {
       ...(complemento.unidades.find((x) => x.id === u.id) || {}), codigo,
     })),
   });
+  const adicional = complementoNucleoPRF(n);
+  Object.assign(complemento.marcadores, adicional.marcadores);
   for (const [caminho, valor] of Object.entries(complemento.marcadores)) {
     valores[caminho] = e(valor);
     const partes = caminho.split("."); let alvo = estrutura;
     for (const parte of partes.slice(0, -1)) alvo = alvo[parte] ||= {};
     alvo[partes.at(-1)] = valor;
   }
+  if(adicional.estrutura.logradouros){const vias=new Map((estrutura.logradouros || []).map(v=>[normalizar(v.nome),v]));for(const v of adicional.estrutura.logradouros)vias.set(normalizar(v.nome),{...vias.get(normalizar(v.nome)),...v});adicional.estrutura.logradouros=[...vias.values()];}
+  Object.assign(estrutura, adicional.estrutura);
+  for (const mat of estrutura.matriculas || []) for (const via of mat.logradouros || []) { const medida=estrutura.logradouros?.find(v=>normalizar(v.nome)===normalizar(via.nome)); if(medida)Object.assign(via,medida); }
   estrutura.bibliografia = { ...estrutura.bibliografia, municipio: m?.prf?.bibliografia || [] };
   return { valores, estrutura, ocupantes: ps.length, faltando: complemento.faltando };
 
@@ -2264,6 +2274,7 @@ function Aviso({ tipo = "pend", children, acao }) {
 const UFS = ["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"];
 
 function ModalMunicipio({ db, inicial, onSalvar, onFechar }) {
+  const [prf, setPrf] = useState(inicial?.prf || {});
   const [nome, setNome] = useState(inicial?.nome || "");
   const [uf, setUf] = useState(inicial?.uf || "SC");
   const [prefixo, setPrefixo] = useState(inicial?.prefixo || "");
@@ -2280,7 +2291,7 @@ function ModalMunicipio({ db, inicial, onSalvar, onFechar }) {
   if (prefDup) erros.push(`O prefixo ${prefixo} já é de ${prefDup.nome}`);
   return (
     <Modal titulo={inicial ? "Editar município" : "Novo município"} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ nome: nome.trim(), uf, prefixo })}>Salvar município</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ nome: nome.trim(), uf, prefixo, prf })}>Salvar município</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "2fr 1fr" }}>
         <div><label className="rot" htmlFor="mnome">Nome</label><input id="mnome" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} /></div>
         <div><label className="rot" htmlFor="muf">UF</label><select id="muf" className="inp" value={uf} onChange={(e) => setUf(e.target.value)}>{UFS.map((u) => <option key={u}>{u}</option>)}</select></div>
@@ -2290,6 +2301,7 @@ function ModalMunicipio({ db, inicial, onSalvar, onFechar }) {
           <div className="ajuda">{editouPrefixo ? "Mesmo prefixo usado no ERP." : "Sugerido pelo nome. Pode trocar."}</div>
         </div>
       </div>
+      <details style={{marginTop:18}} open><summary>Dados do PRF</summary><FormularioDadosPRF municipio={{nome,uf}} dados={prf} podeEditar embutido aoMudar={setPrf}/></details>
       {prefixo && <div className="tag tag-neutra" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}>Clientes da remessa 01 recebem códigos como {prefixo}01_001, {prefixo}01_002. Com mais de uma unidade: {prefixo}01_001A, {prefixo}01_001B.</div>}
       {temClientes && inicial.prefixo !== prefixo && <div className="ajuda" style={{ color: "var(--warning)" }}>Códigos de clientes já cadastrados não mudam. O novo prefixo vale para os próximos cadastros.</div>}
       {erros.length > 0 && nome && <div className="msg-erro" style={{ marginTop: 10 }}>{erros.join(". ")}.</div>}
@@ -2319,6 +2331,7 @@ function ModalRemessa({ db, municipio, inicial, onSalvar, onFechar }) {
 }
 
 function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, onFechar }) {
+  const [infra, setInfra] = useState(inicial?.infra || {});
   const editando = !!inicial;
   const remessas = db.remessas.filter((r) => r.municipioId === municipio.id).sort((a, b) => a.numero - b.numero);
   const [remessaId, setRemessaId] = useState(inicial ? inicial.remessaId || "" : remessaPadrao || "");
@@ -2345,7 +2358,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   const disEstr = !perm.estrutura;
   return (
     <Modal titulo={editando ? `Editar ${nomeNucleo(inicial)}` : "Novo núcleo"} largura={640} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end, situacao, situacaoDescricao: situacaoDescricao.trim(), modalidade, objeto, instrumento })}>Salvar núcleo</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end, situacao, situacaoDescricao: situacaoDescricao.trim(), modalidade, objeto, instrumento, infra })}>Salvar núcleo</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="nrem">Remessa</label>
@@ -2374,6 +2387,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
         <div><label className="rot" htmlFor="nloc">Localidade</label><input id="nloc" className="inp" value={end.localidade} disabled={disEstr} onChange={(e) => setE("localidade", e.target.value)} placeholder="Loteamento, comunidade" /></div>
         <div><label className="rot" htmlFor="ncep">CEP</label><input id="ncep" className="inp" inputMode="numeric" value={end.cep} disabled={disEstr} onChange={(e) => setE("cep", fmtCEP(e.target.value))} /></div>
       </div>
+      <InfraestruturaPRF dados={infra} onChange={setInfra} disabled={disEstr}/>
       <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Situação e enquadramento</h3>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div><label className="rot" htmlFor="nsit">Situação</label><select id="nsit" className="inp" value={situacao} disabled={disEstr} onChange={(e) => setSituacao(e.target.value)}>{["Ativo", "Suspenso", "Cancelado", "Concluído"].map((x) => <option key={x}>{x}</option>)}</select></div>
@@ -2717,7 +2731,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
   const perm = permissoes(usuario);
   const fechar = () => setModal(null);
   const salvarMunicipio = (inicial) => (dados) => {
-    if (inicial) mutar((d) => { Object.assign(d.municipios.find((m) => m.id === inicial.id), dados); return d; }, "Município alterado", { municipioId: inicial.id, detalhe: `${dados.nome}/${dados.uf}` });
+    if (inicial) mutar((d) => { const atual=d.municipios.find((m) => m.id === inicial.id); Object.assign(atual, unirCampos(atual,dados)); return d; }, "Município alterado", { municipioId: inicial.id, detalhe: `${dados.nome}/${dados.uf}` });
     else { const m = { id: uid("m"), ...dados, origem: [], criado: new Date().toISOString() }; mutar((d) => { d.municipios.push(m); return d; }, "Município cadastrado", { municipioId: m.id, detalhe: `${m.nome}/${m.uf}` }); ir({ pag: "municipio", id: m.id }); }
     fechar(); setToast("Município salvo.");
   };
@@ -2729,7 +2743,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
   };
   const salvarNucleo = (municipio, inicial) => (dados) => {
     if (inicial) {
-      mutar((d) => { Object.assign(d.nucleos.find((n) => n.id === inicial.id), dados); return d; }, "Núcleo alterado", { municipioId: municipio.id, remessaId: dados.remessaId, detalhe: `${dados.codigo}${dados.criterio.rendaMaxima ? `, teto REURB-S ${moeda(parseNum(dados.criterio.rendaMaxima))}` : ""}` });
+      mutar((d) => { const atual=d.nucleos.find((n) => n.id === inicial.id); Object.assign(atual, unirCampos(atual,dados)); return d; }, "Núcleo alterado", { municipioId: municipio.id, remessaId: dados.remessaId, detalhe: `${dados.codigo}${dados.criterio.rendaMaxima ? `, teto REURB-S ${moeda(parseNum(dados.criterio.rendaMaxima))}` : ""}` });
     } else {
       const n = { id: uid("n"), municipioId: municipio.id, ...dados, etapa: 0, campos: {}, checks: {}, analiseMatricula: "Pendente", ambiental: "Pendente", risco: "Em análise", origem: [], externo: {} };
       mutar((d) => { d.nucleos.push(n); return d; }, "Núcleo cadastrado", { municipioId: municipio.id, remessaId: n.remessaId, detalhe: `${n.codigo}${n.remessaId ? ` em ${nomeRemessa(db, remessaDe(db, n.remessaId))}` : ", sem remessa"}` });
@@ -4457,6 +4471,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
 
 
 function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToast, comercial }) {
+  const [cronogramaAberto, setCronogramaAberto] = useState(false);
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [modal, setModal] = useState(null);
   const timbradoMemoriais = useTimbrado(db);
@@ -4499,6 +4514,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   }) : [];
   return (
     <div className="contem">
+      {cronogramaAberto && n && <CronogramaFisico n={n} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} onFechar={() => setCronogramaAberto(false)}/>}
       <Migalhas itens={caminho(db, { municipioId: m.id, remessaId: r?.id, nucleoId: n?.id, semNucleo: n ? null : semNucleo })} ir={ir} />
       <div className="cabeca">
         <div>
@@ -4524,6 +4540,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
 
       {n && (
         <div className="acoes-nucleo">
+          <button className="acao-grande" onClick={() => setCronogramaAberto(true)} disabled={n.etapa < 2}><span className="acao-icone"><CalendarDays size={22}/></span><span><strong>Cronograma Físico</strong><span>{n.etapa < 2 ? "Disponível na etapa Projeto" : "Obras e prazos do PRF"}</span></span></button>
           <button className="acao-grande" onClick={() => ir({ pag: "campo", nucleoId: n.id })} disabled={!at.length}>
             <span className="acao-icone"><Camera size={22} /></span>
             <span><strong>Top. Campo</strong><span>{at.length ? `${comCampo} de ${at.length} unidades com campo completo` : "Sem moradores ativos"}</span></span>
@@ -4965,7 +4982,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={pronto.completo ? "ok" : "pend"}>{pronto.completo ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
       <Secao titulo="Dados que faltam antes de gerar">
-        {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
+        {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem.includes("loteQuadra") ? "Cadastro da unidade — campos Quadra e Lote" : origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
         {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
       </Secao>
       <div style={{ marginBottom: 14 }}>
@@ -7599,7 +7616,7 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
   }, [ids]); // eslint-disable-line
   const sujo = JSON.stringify(rasc) !== JSON.stringify(uns);
   const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
-  const setCampo = (i, k, v) => setRasc((r) => r.map((u, j) => (j === i ? { ...u, [k]: v } : u)));
+  const setCampo = (i, k, v) => setRasc((r) => r.map((u, j) => { if(j !== i)return u; if(k === "lote" || k === "quadra"){const separado=separarQuadraLote(u.loteQuadra);const novo={...u,lote:u.lote ?? separado.lote,quadra:u.quadra ?? separado.quadra,[k]:v};return {...novo,loteQuadra:novo.lote && novo.quadra ? `Lote ${novo.lote}, Quadra ${novo.quadra}` : ""};}return {...u,[k]:v}; }));
   const erroArea = (u) => (u.area && !(parseNum(u.area) > 0) ? "Informe um número maior que zero" : "");
   const salvar = () => {
     if (rasc.some(erroArea)) { setToast("Corrija a área antes de salvar."); return; }
@@ -7612,7 +7629,7 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
       if ((antes.memorial || "") !== u.memorial) partes.push(`memorial com ${u.memorial.trim().length} caracteres`);
       if (partes.length) mud.push(`${codigoUnidade(p, i)}: ${partes.join(", ")}`);
     });
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.unidades = clone(rasc); return d; }, "Unidades atualizadas", { ...log, detalhe: mud.join(". ") });
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.unidades = q.unidades.map(atual => {const editada=rasc.find(u=>u.id===atual.id), antes=uns.find(u=>u.id===atual.id);if(!editada || !antes)return atual;const novo={...atual};for(const k of Object.keys(editada))if(JSON.stringify(editada[k])!==JSON.stringify(antes[k])){if(JSON.stringify(atual[k])!==JSON.stringify(antes[k]))throw new Error("A unidade foi alterada. Reabra o cadastro antes de salvar.");novo[k]=clone(editada[k]);}return novo;}); return d; }, "Unidades atualizadas", { ...log, detalhe: mud.join(". ") });
     setToast("Unidades salvas.");
   };
   const adicionar = () => {
@@ -7656,8 +7673,10 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
                 {erroArea(u) ? <div className="msg-erro">{erroArea(u)}</div> : !podeTopo && <div className="ajuda">Preenchido pela Topografia</div>}
               </div>
               <div>
-                <label className="rot" htmlFor={`lote-${u.id}`}>Lote e quadra no projeto</label>
-                <input id={`lote-${u.id}`} className="inp" placeholder="Ex.: Lote 12, Quadra B" value={u.loteQuadra} disabled={!podeProjeto} onChange={(e) => setCampo(i, "loteQuadra", e.target.value)} />
+                <label className="rot" htmlFor={`lote-${u.id}`}>Lote no projeto</label>
+                <input id={`lote-${u.id}`} className="inp" placeholder="Ex.: 12" value={u.lote ?? separarQuadraLote(u.loteQuadra).lote} disabled={!podeProjeto} onChange={(e) => setCampo(i, "lote", e.target.value)} />
+                <label className="rot" htmlFor={`quadra-${u.id}`}>Quadra no projeto</label><input id={`quadra-${u.id}`} className="inp" value={u.quadra ?? separarQuadraLote(u.loteQuadra).quadra} disabled={!podeProjeto} onChange={e => setCampo(i, "quadra", e.target.value)} />
+                {u.loteQuadra && <p className="ajuda">Cadastro anterior: {u.loteQuadra}</p>}
                 {!podeProjeto && <div className="ajuda">Preenchido pelo Projeto</div>}
               </div>
             </div>
