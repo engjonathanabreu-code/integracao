@@ -1569,6 +1569,14 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .nav .btn-nav{width:100%;justify-content:center;background:#E8F2F1;color:var(--primary);border:none}
 .rb .topo{background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 26px;position:sticky;top:0;z-index:30}
 .rb .topo h2{margin:0;font-size:22px;font-weight:700}
+.rb .topo-titulo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.rb .topo-titulo h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb .topo-acoes{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;flex-shrink:0;white-space:nowrap}
+.rb .topo-acoes>div{display:flex;flex-shrink:0}
+.rb .topo-acoes .btn-icone{border-radius:10px;color:var(--primary);background:var(--card)}
+.rb .topo-acoes .btn-icone:hover:not(:disabled){background:var(--pill)}
+@media(max-width:640px){.rb .topo{gap:8px;padding:10px 12px}.rb .topo h2{font-size:18px}.rb .topo-acoes{gap:6px}.rb .topo-acoes .pill-papel{display:none}.rb .topo-acoes .pill-offline{padding:8px}.rb .topo-acoes .pill-offline span{display:none}}
+
 .rb .pill-papel{background:var(--pill);color:var(--primary);font-weight:700;font-size:13px;padding:5px 11px;border-radius:8px}
 .rb .btn-menu{display:none}
 .rb .contem{width:100%;max-width:1720px;margin:0 auto;padding:24px 28px 110px}
@@ -11505,12 +11513,12 @@ export default function App() {
         {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(16,42,42,.4)", zIndex: 60 }} aria-hidden="true" />}
         <div style={{ minWidth: 0 }}>
           <header className="topo">
-            <div className="flex items-center gap-2">
+            <div className="topo-titulo">
               <button className="btn-icone btn-menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Menu size={18} /></button>
               <h2>{tituloTopo}</h2>
             </div>
-            <div className="flex items-center gap-2">
-              {!conexao.online && <button className="pill-offline" onClick={() => ir({ pag: "campoOffline" })}><WifiOff size={14} />Sem internet</button>}
+            <div className="topo-acoes">
+              {!conexao.online && <button className="pill-offline" aria-label="Sem internet" title="Sem internet" onClick={() => ir({ pag: "campoOffline" })}><WifiOff size={14} /><span>Sem internet</span></button>}
               <span className="pill-papel">{SETORES[usuario.setor].nome}</span>
               <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label="Voltar à tela anterior" title="Voltar à tela anterior" disabled={!historicoNavegacao.length || !!abrindoMunicipio} onClick={() => ir(historicoNavegacao[historicoNavegacao.length - 1], true)}><ChevronLeft size={18} /></button>
               <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label={atualizandoDados ? "Atualizando dados" : "Atualizar dados"} title="Atualizar dados" disabled={atualizandoDados || !conexao.online} aria-busy={atualizandoDados} onClick={atualizarDados}><RefreshCw size={18} className={atualizandoDados ? "girando" : undefined} /></button>
