@@ -2,14 +2,16 @@
    Abre a partir do botão na aba Municípios. Renderiza a partir de camposPRF.js:
    campo novo no esquema aparece aqui sozinho. */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useId } from "react";
 import { Check, Plus, Trash2, Loader2, AlertTriangle, FileText } from "lucide-react";
 import { GRUPOS, VAZIO, pendencias } from "./camposPRF.js";
 
 const clonar = (o) => JSON.parse(JSON.stringify(o));
 
 function Campo({ campo, valor, onChange, desabilitado }) {
+  const id = useId();
   const comum = {
+    id,
     className: "inp",
     value: valor || "",
     disabled: desabilitado,
@@ -18,7 +20,7 @@ function Campo({ campo, valor, onChange, desabilitado }) {
   };
   return (
     <div style={{ flex: campo.tipo === "texto" ? "1 1 100%" : "1 1 220px" }}>
-      <label className="rot">
+      <label className="rot" htmlFor={id}>
         {campo.rotulo}{campo.obrigatorio && <span aria-hidden="true"> *</span>}
       </label>
       {campo.tipo === "texto"
@@ -73,9 +75,10 @@ function GrupoLista({ grupo, itens = [], aoMudar, desabilitado }) {
 }
 
 export default function FormularioDadosPRF({
-  municipio, dados: dadosRecebidos, podeEditar = false, aoSalvar, aoFechar,
+  municipio, dados: dadosRecebidos, podeEditar = false, aoSalvar, aoFechar, aoMudar, embutido = false,
 }) {
-  const [dados, setDados] = useState(() => ({ ...VAZIO(), ...clonar(dadosRecebidos || {}) }));
+  const [dados, definirDados] = useState(() => ({ ...VAZIO(), ...clonar(dadosRecebidos || {}) }));
+  const setDados = novo => { definirDados(novo); aoMudar?.(novo); };
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState("");
 
@@ -127,7 +130,7 @@ export default function FormularioDadosPRF({
       ))}
 
       <div className="flex flex-wrap gap-2">
-        {podeEditar && (
+        {podeEditar && !embutido && (
           <button className="btn btn-primario" disabled={salvando} onClick={salvar}>
             {salvando ? <Loader2 size={16} className="girando" /> : <Check size={16} />}Salvar
           </button>

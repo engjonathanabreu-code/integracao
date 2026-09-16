@@ -114,7 +114,7 @@ export function marcadoresPRF({ municipio, dadosPRF, nucleo, moradores = [], ela
     "municipio.planoDiretor.numero": texto(d.planoDiretor?.numero),
     "municipio.planoDiretor.data": dataBR(d.planoDiretor?.data),
     "municipio.planoDiretor.artigoMacrozona": texto(d.planoDiretor?.artigoMacrozona),
-    "municipio.planoDiretor.citacaoMacrozona": texto(macro.citacao),
+    "municipio.planoDiretor.citacaoMacrozona": texto(d.planoDiretor?.citacaoMacrozona || macro.citacao),
     "nucleo.macrozona": texto(macro.nome),
     "nucleo.macrozonaSigla": texto(macro.sigla),
     "nucleo.macrozonaDestinacao": texto(macro.destinacao),
@@ -150,7 +150,8 @@ export function marcadoresPRF({ municipio, dadosPRF, nucleo, moradores = [], ela
   for (const m of moradores) {
     const lista = m?.dados?.unidades || m?.unidades || [];
     for (const u of lista) {
-      const { quadra, lote } = separarQuadraLote(u.loteQuadra);
+      const legado = separarQuadraLote(u.loteQuadra);
+      const quadra = u.quadra ?? legado.quadra, lote = u.lote ?? legado.lote;
       unidades.push({
         id: u.id,
         codigo: texto(m.codigo),
@@ -199,7 +200,7 @@ export function lacunasPRF(marcadores, unidades = []) {
     const origem = origemDoCampo(campo);
     (porOrigem[origem] ||= []).push(campo);
   }
-  const semQuadra = unidades.filter((u) => !u.quadra && !u.lote).length;
+  const semQuadra = unidades.filter((u) => !u.quadra || !u.lote).length;
   if (semQuadra) {
     (porOrigem["Quadra e lote da unidade, hoje num campo só (loteQuadra)"] ||= [])
       .push(`${semQuadra} unidade(s) sem quadra/lote`);

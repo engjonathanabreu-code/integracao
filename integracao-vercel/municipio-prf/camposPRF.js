@@ -19,6 +19,7 @@ export const GRUPOS = [
     campos: [
       { id: "numero", rotulo: "Número da lei", exemplo: "987/2015", obrigatorio: true },
       { id: "data", rotulo: "Data", tipo: "data", obrigatorio: true },
+      { id: "citacaoMacrozona", rotulo: "Citação da macrozona no plano diretor", tipo: "texto" },
       { id: "artigoMacrozona", rotulo: "Artigo que define as macrozonas", exemplo: "12" },
     ],
   },

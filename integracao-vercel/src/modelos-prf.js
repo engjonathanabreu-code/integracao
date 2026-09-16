@@ -1,3 +1,4 @@
+import { removerCronogramaNao } from "./cadastros-prf.js";
 import { aplicarCondicionais, expandirLacos, marcadorControle } from './modelos-html.js';
 import { preenchido } from './requisitos-moradores.js';
 
@@ -32,10 +33,11 @@ function corrigirRotuloResumoPRF(html) {
 // Os offsets da correspondência manual só são calculados DEPOIS da expansão.
 // Marcadores do catálogo antigo preservam seus blocos HTML e sua formatação.
 export function prepararModeloPRF(html, dados) {
-  if (!html || !modeloPRFEstruturado(html, dados.valores)) return { html, estruturado: false, erro: '' };
+  const filtrarCronograma = /cronograma\./.test(html || '') && Object.values(dados.estrutura?.nucleo?.cronograma || {}).includes(false);
+  if (!html || (!filtrarCronograma && !modeloPRFEstruturado(html, dados.valores))) return { html, estruturado: false, erro: '' };
   try {
     const condicional = aplicarCondicionais(corrigirRotuloResumoPRF(html), dados.estrutura);
-    return { html: expandirLacos(condicional, dados.estrutura, { preservar: Object.keys(dados.valores) }), estruturado: true, erro: '' };
+    return { html: expandirLacos(removerCronogramaNao(condicional, dados.estrutura.nucleo || {}), dados.estrutura, { preservar: Object.keys(dados.valores) }), estruturado: true, erro: '' };
   } catch (e) {
     return { html: null, estruturado: true, erro: `Não foi possível preparar o PRF: ${e.message}` };
   }
