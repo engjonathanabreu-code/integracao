@@ -109,7 +109,40 @@ function recorte(par, raiz) {
   const linhaA = a?.closest('tr'), linhaB = b?.closest('tr');
   const celulaA = a?.closest('td,th'), celulaB = b?.closest('td,th');
   if (linhaA && linhaB && linhaA.closest('table') === linhaB.closest('table') && (linhaA !== linhaB || celulaA !== celulaB)) {
-    if (linhaA.parentNode !== linhaB.parentNode) throw new Error('As linhas de um laço devem pertencer à mesma seção da tabela.');
+    if (linhaA.parentNode !== linhaB.parentNode) {
+      // O Word pode pôr a abertura em thead e o fechamento em tbody.
+      // Isola só as linhas do laço em seções completas, para que Range não
+      // reinsira seções dentro de outras seções nem repita linhas externas.
+      let inicio = linhaA.parentElement, fim = linhaB.parentElement;
+      const tabela = linhaA.closest('table');
+      if (inicio.parentNode !== tabela || fim.parentNode !== tabela) throw new Error('Não foi possível identificar as seções da tabela do laço.');
+      if (linhaA.previousSibling) {
+        const trecho = inicio.cloneNode(false); inicio.after(trecho);
+        for (let no = linhaA; no;) { const proximo = no.nextSibling; trecho.append(no); no = proximo; }
+        inicio = trecho;
+      }
+      if (linhaB.nextSibling) {
+        const restante = fim.cloneNode(false); fim.after(restante);
+        while (linhaB.nextSibling) restante.append(linhaB.nextSibling);
+      }
+      // Cabeçalhos/rodapés que fazem parte da repetição viram grupos de linhas
+      // do corpo. As células th, atributos, estilos e linhas ficam intactos.
+      for (let secao = inicio; secao;) {
+        const ultima = secao === fim, proxima = secao.nextSibling;
+        if (/^(THEAD|TFOOT)$/.test(secao.nodeName)) {
+          const corpo = raiz.ownerDocument.createElement('tbody');
+          for (const atributo of secao.attributes) corpo.setAttribute(atributo.name, atributo.value);
+          while (secao.firstChild) corpo.append(secao.firstChild);
+          secao.replaceWith(corpo);
+          if (secao === inicio) inicio = corpo;
+          if (secao === fim) fim = corpo;
+        }
+        if (ultima) break;
+        secao = proxima;
+      }
+      range.setStartBefore(inicio); range.setEndAfter(fim);
+      return range;
+    }
     range.setStartBefore(linhaA); range.setEndAfter(linhaB);
   } else {
     range.setStartBefore(limite(par.inicio)); range.setEndAfter(limite(par.fim));
