@@ -1,3 +1,5 @@
+import ArquivoCadastros, { BotaoArquivar, BotaoArquivo } from "./ArquivoCadastros.jsx";
+import { dadosVisiveis, mapaArquivamento, pacotesVisiveis } from "./arquivamento.js";
 import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
 import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
 import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
@@ -1257,7 +1259,7 @@ function resumoMoradores(db, ps) {
 }
 const codigoNorm = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/\d+/g, (d) => String(parseInt(d, 10)));
 const proximoCodigoNucleo = (db, municipioId, remessaId) => {
-  const doGrupo = db.nucleos.filter((n) => n.municipioId === municipioId && (n.remessaId || null) === (remessaId || null));
+  const doGrupo = (db._baseArquivo || db).nucleos.filter((n) => n.municipioId === municipioId && (n.remessaId || null) === (remessaId || null));
   let i = doGrupo.length + 1;
   while (doGrupo.some((n) => codigoNorm(n.codigo) === codigoNorm(`NUI${pad2(i)}`))) i++;
   return `NUI${pad2(i)}`;
@@ -1285,7 +1287,7 @@ const pad3 = (n) => String(n).padStart(3, "0");
 
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
 function numeroClienteDe(p) { return p.numeroCliente || parseInt(so(String(p.codigo).split("_")[1] || p.codigo), 10) || 0; }
-function proximoNumeroCliente(db, remessaId) { return db.processos.filter((p) => p.remessaId === remessaId).reduce((mx, p) => Math.max(mx, numeroClienteDe(p)), 0) + 1; }
+function proximoNumeroCliente(db, remessaId) { return (db._baseArquivo || db).processos.filter((p) => p.remessaId === remessaId).reduce((mx, p) => Math.max(mx, numeroClienteDe(p)), 0) + 1; }
 function codigoCliente(db, remessaId, numero) {
   const r = remessaDe(db, remessaId); const m = r ? municipioDe(db, r.municipioId) : null;
   return `${m?.prefixo || "MUN"}${pad2(r?.numero || 0)}_${pad3(numero)}`;
@@ -2284,7 +2286,7 @@ function ModalMunicipio({ db, inicial, onSalvar, onFechar }) {
   );
 }
 function ModalRemessa({ db, municipio, inicial, onSalvar, onFechar }) {
-  const doMun = db.remessas.filter((r) => r.municipioId === municipio.id);
+  const doMun = (db._baseArquivo || db).remessas.filter((r) => r.municipioId === municipio.id);
   const [numero, setNumero] = useState(String(inicial?.numero ?? (doMun.reduce((mx, r) => Math.max(mx, r.numero), 0) + 1)));
   const [titulo, setTitulo] = useState(inicial?.titulo || "");
   const n = parseInt(so(numero), 10);
@@ -2322,7 +2324,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   const [instrumento, setInstrumento] = useState(inicial?.instrumento || "");
   const setE = (k, v) => setEnd((x) => ({ ...x, [k]: v }));
   const moradores = inicial ? db.processos.filter((p) => p.nucleoId === inicial.id).length : 0;
-  const dup = db.nucleos.find((n) => n.id !== inicial?.id && n.municipioId === municipio.id && (n.remessaId || "") === remessaId && codigoNorm(n.codigo) === codigoNorm(codigo));
+  const dup = (db._baseArquivo || db).nucleos.find((n) => n.id !== inicial?.id && n.municipioId === municipio.id && (n.remessaId || "") === remessaId && codigoNorm(n.codigo) === codigoNorm(codigo));
   const smN = parseNum(sm), tetoN = parseNum(teto);
   const erros = [];
   if (codigo.trim().length < 2) erros.push("Informe o código do núcleo");
@@ -2778,6 +2780,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       <div className="cabeca">
         <div><h1>Clientes</h1><p>{db.municipios.length} municípios, {tot.nucleos} núcleos e {tot.moradores} moradores ativos. Abra um município para ver remessas, núcleos e moradores.</p></div>
         <div className="flex flex-wrap gap-2">
+          <BotaoArquivo colecao="municipios" />
           {cad.perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "municipio" })}><Plus size={16} />Novo município</button>}
         </div>
       </div>
@@ -2797,7 +2800,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
           <tbody>
             {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
+                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><BotaoArquivar colecao="municipios" registro={m} /><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
@@ -2841,7 +2844,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
       <Migalhas itens={caminho(db, { municipioId: m.id })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></h1>
+          <h1>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span><BotaoArquivar colecao="municipios" registro={m} /></h1>
           <p>{remessas.length} {remessas.length === 1 ? "remessa" : "remessas"}, {qtdNucleos} {qtdNucleos === 1 ? "núcleo" : "núcleos"}, {rs.ativos} {rs.ativos === 1 ? "morador ativo" : "moradores ativos"}{m.prefixo ? `. Prefixo ${m.prefixo}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2857,7 +2860,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
       <div className="flex flex-col gap-3" style={{ display: aba === "regras" ? "none" : undefined }}>
         {!remessas.length && <Aviso tipo="info">{m.nome} ainda não tem remessa. Os núcleos aparecem direto aqui. Crie uma remessa para cadastrar moradores.</Aviso>}
         {remessas.length > 0 && (
-          <Secao titulo="Remessas">
+          <Secao titulo="Remessas" acao={<BotaoArquivo municipioId={m.id} />}>
             <div className="rolagem" style={{ margin: "-4px -18px -18px" }}>
               <table className="tab">
                 <thead><tr>{ordem.cabecalho("nome", "Remessa")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("semNucleo", "Sem núcleo")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("criada", "Criada em")}<th><span className="sr-only">Ações</span></th></tr></thead>
@@ -2868,7 +2871,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
                     const semNuc = soAtivos(ps).filter((p) => !p.nucleoId).length;
                     return (
                       <tr key={r.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "remessa", id: r.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "remessa", id: r.id }); }}>
-                        <td><strong style={{ color: "var(--titulo)" }}>{nomeRemessa(db, r)}</strong>{r.titulo && <div className="ajuda" style={{ margin: 0 }}>{r.titulo}</div>}</td>
+                        <td><strong style={{ color: "var(--titulo)" }}>{nomeRemessa(db, r)}</strong><BotaoArquivar colecao="remessas" registro={r} />{r.titulo && <div className="ajuda" style={{ margin: 0 }}>{r.titulo}</div>}</td>
                         <td>{db.nucleos.filter((n) => n.remessaId === r.id).length}</td>
                         <td><strong style={{ fontWeight: 650 }}>{x.ativos}</strong></td>
                         <td>{semNuc ? <Tag tipo="pend">{semNuc}</Tag> : "0"}</td>
@@ -2918,10 +2921,11 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
       <Migalhas itens={caminho(db, { municipioId: m.id, remessaId: r.id })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{nomeRemessa(db, r)}{r.titulo ? <span style={{ color: "var(--muted)", fontWeight: 600 }}>, {r.titulo}</span> : null}</h1>
+          <h1>{nomeRemessa(db, r)}{r.titulo ? <span style={{ color: "var(--muted)", fontWeight: 600 }}>, {r.titulo}</span> : null}<BotaoArquivar colecao="remessas" registro={r} /></h1>
           <p>{nucleos.length} {nucleos.length === 1 ? "núcleo" : "núcleos"}, {x.ativos} moradores ativos, {x.comPend} com pendência{semNuc ? `, ${semNuc} sem núcleo` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <BotaoArquivo remessaId={r.id} />
           {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && livres.length > 0 && <button className="btn" onClick={() => cad.abrir({ tipo: "trazer", remessa: r })} title="Trazer um núcleo que está sem remessa"><Link2 size={15} />Trazer núcleo sem remessa</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: r.id })}><Plus size={15} />Novo núcleo</button>}
@@ -2932,7 +2936,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
       <div style={{ marginTop: 16 }}>
         {aba === "nucleos" && <TabelaNucleos db={db} nucleos={nucleos} ir={ir} perm={perm} onEditar={(n) => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })} semNucleo={{ qtd: semNuc, abrir: () => ir({ pag: "nucleo", semNucleo: r.id }) }} />}
         {aba === "moradores" && <TabProcessos db={db} ps={ps} ir={ir} mostrarNucleo />}
-        {aba === "quadro" && <TabQuadro db={db} ps={at} ir={ir} />}
+        {aba === "quadro" && <TabQuadro db={db} ps={at} ir={ir} remessaId={r.id} />}
         {aba === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${nomeRemessa(db, r)}`} log={{ municipioId: m.id, remessaId: r.id }} />}
         {aba === "historico" && <Secao titulo="Histórico da remessa"><ListaHistorico itens={db.auditoria.filter((a) => a.remessaId === r.id)} vazio="Nenhuma ação registrada nesta remessa." /></Secao>}
       </div>
@@ -3306,7 +3310,7 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
             const { teto, sm } = criterioNucleo(n);
             return (
               <tr key={n.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "nucleo", id: n.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "nucleo", id: n.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{n.codigo}</strong>{n.nome && <div className="ajuda" style={{ margin: 0 }}>{n.nome}</div>}</td>
+                <td><strong style={{ color: "var(--titulo)" }}>{n.codigo}</strong><BotaoArquivar colecao="nucleos" registro={n} />{n.nome && <div className="ajuda" style={{ margin: 0 }}>{n.nome}</div>}</td>
                 <td><EtapaNucleoTag n={n} /></td>
                 <td><strong style={{ fontWeight: 650 }}>{rs.ativos}</strong></td>
                 <td>{rs.ativos ? (rs.comPend ? <Tag tipo="pend">{rs.comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
@@ -3378,7 +3382,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
               return (
                 <tr key={p.id} className="clic" tabIndex={0} onClick={() => abrir(p)} onKeyDown={(e) => { if (e.key === "Enter") abrir(p); }} style={!ativo(p) ? { opacity: 0.7 } : undefined}>
                   <td style={{ whiteSpace: "nowrap" }}><strong style={{ color: "var(--titulo)" }}>{p.codigo}</strong>{unidadesDe(p).length > 1 && <div className="ajuda" style={{ margin: 0 }}>{unidadesDe(p).length} unidades</div>}</td>
-                  <td><span className="flex items-center gap-2">{p.checks?.liderLocal && <Star size={14} className="estrela-lider" aria-label="Potencial líder local" />}<span>{p.requerente.nome || <span style={{ color: "var(--muted)" }}>Sem nome</span>}</span></span>{p.conjuge.nome && <div className="ajuda" style={{ margin: 0 }}>{p.conjuge.nome}</div>}
+                  <td><span className="flex items-center gap-2">{p.checks?.liderLocal && <Star size={14} className="estrela-lider" aria-label="Potencial líder local" />}<span>{p.requerente.nome || <span style={{ color: "var(--muted)" }}>Sem nome</span>}</span><BotaoArquivar colecao="processos" registro={p} /></span>{p.conjuge.nome && <div className="ajuda" style={{ margin: 0 }}>{p.conjuge.nome}</div>}
                     <div className="flex flex-wrap gap-1" style={{ marginTop: 3 }}>{p.requerente.statusCRM && <Tag tipo={TAG_CRM[p.requerente.statusCRM]}>{p.requerente.statusCRM}</Tag>}{p.requerente.statusFinanceiro && p.requerente.statusFinanceiro !== "Adimplente" && <Tag tipo={TAG_FINANCEIRO[p.requerente.statusFinanceiro]}>{p.requerente.statusFinanceiro}</Tag>}</div></td>
                   <td style={{ whiteSpace: "nowrap" }}>{mascararCPF(p.requerente.cpf)}</td>
                   {mostrarNucleo && <td>{n ? n.codigo : <Tag tipo="pend">Sem núcleo</Tag>}</td>}
@@ -3400,7 +3404,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
   );
 }
 
-function TabQuadro({ db, ps, ir }) {
+function TabQuadro({ db, ps, ir, remessaId, nucleoId }) {
   const colunas = [...ETAPAS.map((e, i) => ({ id: e.id, nome: e.nome, i })), { id: "fim", nome: "Unidade pronta", i: TOTAL }];
   return (
     <div className="quadro">
@@ -3413,7 +3417,7 @@ function TabQuadro({ db, ps, ir }) {
                 <span style={{ width: 30, height: 30, borderRadius: 999, background: c.i < TOTAL ? "var(--primary)" : "var(--ok)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{c.i < TOTAL ? <IconeEtapa id={c.id} tamanho={20} corCheck="#0F5F5B" /> : <Check size={16} />}</span>
                 {c.nome}
               </span>
-              <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{itens.length}</span>
+              <BotaoArquivo colecao="processos" remessaId={remessaId} nucleoId={nucleoId} etapaCliente={c.i} /><span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{itens.length}</span>
             </div>
             {itens.map((p) => {
               const pend = pendencias(db, p).length;
@@ -4345,7 +4349,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       <Migalhas itens={caminho(db, { municipioId: p.municipioId, remessaId: p.remessaId, nucleoId: p.nucleoId || null, semNucleo: p.nucleoId ? null : p.remessaId, final: p.codigo })} ir={irComCuidado} />
       <div className="cabeca">
         <div>
-          <h1>{p.codigo} {p.requerente.nome || "Novo morador"}{p.checks?.liderLocal && <Star size={20} className="estrela-lider" style={{ marginLeft: 8, verticalAlign: "-2px" }} aria-label="Potencial líder local" />}</h1>
+          <h1>{p.codigo} {p.requerente.nome || "Novo morador"}<BotaoArquivar colecao="processos" registro={p} />{p.checks?.liderLocal && <Star size={20} className="estrela-lider" style={{ marginLeft: 8, verticalAlign: "-2px" }} aria-label="Potencial líder local" />}</h1>
           <p>{nomeRemessa(db, r)}, {n ? nomeNucleo(n) : "sem núcleo"}{p.conjuge.nome ? `, com ${p.conjuge.nome}` : ""}{unidadesDe(p).length > 1 ? `. ${unidadesDe(p).length} unidades: ${codigosUnidades(p).join(", ")}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -4480,7 +4484,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       <Migalhas itens={caminho(db, { municipioId: m.id, remessaId: r?.id, nucleoId: n?.id, semNucleo: n ? null : semNucleo })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{titulo}</h1>
+          <h1>{titulo}{n && <BotaoArquivar colecao="nucleos" registro={n} />}</h1>
           <p>{r ? nomeRemessa(db, r) : `${m.nome}, sem remessa`}, {x.ativos} {x.ativos === 1 ? "morador ativo" : "moradores ativos"}{x.ativos ? `, ${x.comPend} com pendência` : ""}{ps.length - at.length ? `, ${ps.length - at.length} fora do processo` : ""}</p>
           {n && (
             <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
@@ -4493,6 +4497,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {n && <BotaoArquivo nucleoId={n.id} />}
           {n && (perm.estrutura || perm.criterio) && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
           {perm.cadastro && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
         </div>
@@ -4555,7 +4560,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
           </div>
           <div style={{ marginTop: 16 }}>
             {abaAtual === "moradores" && <TabProcessos db={db} ps={ps} ir={ir} mostrarNucleo={false} />}
-            {abaAtual === "quadro" && <TabQuadro db={db} ps={at} ir={ir} />}
+            {abaAtual === "quadro" && <TabQuadro db={db} ps={at} ir={ir} nucleoId={n?.id} remessaId={n ? undefined : r?.id} />}
             {abaAtual === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${r ? nomeRemessa(db, r) : m.nome} ${n ? n.codigo : "sem nucleo"}`} log={{ municipioId: m.id, remessaId: r?.id, nucleoId: n?.id }} />}
             {abaAtual === "andamentos" && n && <AbaAndamentos db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "devolutivas" && n && <AbaDevolutivas db={db} n={n} usuario={usuario} ir={ir} setToast={setToast} />}
@@ -10334,7 +10339,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
     if (b && !normalizar(`${rotuloNucleo(db, n)} ${n.nome} ${n.responsavel || ""} ${n.pendencia || ""}`).includes(b)) return false;
     return true;
   });
-  const municipios = db.municipios.filter((m) => lista.some((n) => n.municipioId === m.id));
+  const municipios = db.municipios.filter((m) => (!municipio || m.id === municipio) && (lista.some((n) => n.municipioId === m.id) || (db._baseArquivo?.nucleos || []).some(n => n.municipioId === m.id)));
   const atual = aberto ? db.nucleos.find((n) => n.id === aberto) : null;
   const cartao = (n) => {
     const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
@@ -10342,9 +10347,9 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
     const a = ultimoAndamento(n);
     const atrasado = n.prazoSLA && n.prazoSLA < hoje && etapaProcesso(n) !== "Concluído";
     return (
-      <button key={n.id} className="cartao" onClick={() => setAberto(n.id)}>
+      <div key={n.id} role="button" tabIndex={0} className="cartao" onClick={() => setAberto(n.id)} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setAberto(n.id); } }}>
         <span className="flex flex-wrap items-start justify-between gap-1">
-          <strong style={{ color: "var(--titulo)" }}>{n.codigo}{n.nome ? ` ${n.nome}` : ""}</strong>
+          <strong style={{ color: "var(--titulo)" }}>{n.codigo}{n.nome ? ` ${n.nome}` : ""}</strong><BotaoArquivar colecao="nucleos" registro={n} />
           {n.prioridade && n.prioridade !== "Normal" && <Tag tipo={TAG_PRIORIDADE[n.prioridade]}><Flag size={11} />{n.prioridade}</Tag>}
         </span>
         <span className="ajuda" style={{ margin: 0, display: "block" }}>{ativos.length} morador(es){n.responsavel ? `, ${n.responsavel}` : ", sem responsável atribuído"}</span>
@@ -10354,7 +10359,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
           {dias !== null && <span><Clock size={11} /> {dias} dia(s) na etapa</span>}
           {n.prazoSLA && <span style={{ color: atrasado ? "var(--danger)" : undefined }}>Prazo {dataBR(n.prazoSLA)}</span>}
         </span>
-      </button>
+      </div>
     );
   };
   return (
@@ -10412,13 +10417,13 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
             {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
               {ETAPAS_PROCESSO.filter((s) => !etapa || s === etapa).map((s) => {
                 const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
-                if (!itens.length && etapa) return null;
+
                 return (
                   <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px" }}>
                     <div className="cabeca-coluna">
                       <span className="icone-coluna"><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={19} cor="currentColor" corCheck="currentColor" /></span>
                       <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: "var(--titulo)", fontSize: 13.5 }}>{s}</span>
-                      <span className="contagem-coluna">{itens.length}</span>
+                      <BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /><span className="contagem-coluna">{itens.length}</span>
                     </div>
                     {itens.map(cartao)}
                     {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
@@ -11441,7 +11446,8 @@ export default function App() {
   const naoLidasChat = totalNaoLidas(db, usuario);
   const tituloTopo = { home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
-  const props = { db, usuario, ir, mutar, setToast, offline, conexao, comercial, recarregar: compartilhado.refresh };
+  const mapaArquivo = mapaArquivamento(db);
+  const props = { db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home"].includes(rota.pag);
 
   return (
@@ -11483,6 +11489,8 @@ export default function App() {
           </header>
           {!AMBIENTE.DEMO && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
           {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
+          <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
+          <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : <div className="pagina"><h1>Início</h1><p role="status">{compartilhado.summaryError||'Atualizando pendências e contagens. Você já pode abrir um município pelo menu Clientes.'}</p>{compartilhado.summaryError&&<button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button>}</div>)}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
@@ -11499,9 +11507,10 @@ export default function App() {
           {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} />}
           {rota.pag === "campo" && <PaginaCampo key={`${rota.nucleoId}_${rota.processoId || ""}`} {...props} nucleoId={rota.nucleoId} processoId={rota.processoId} />}
           {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} />}
-          {rota.pag === "importar" && perm.importar && <PaginaConfig {...props} aba="importar" restaurar={restaurar} />}
-          {rota.pag === "config" && (perm.config || perm.modeloPRF) && <PaginaConfig {...props} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
+          {rota.pag === "importar" && perm.importar && <PaginaConfig {...props} db={db} aba="importar" restaurar={restaurar} />}
+          {rota.pag === "config" && (perm.config || perm.modeloPRF) && <PaginaConfig {...props} db={db} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
           </Protecao>
+          </ArquivoCadastros>
         </div>
       </div>
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
