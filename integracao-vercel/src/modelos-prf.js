@@ -6,12 +6,35 @@ export function modeloPRFEstruturado(html, valores) {
   return [...texto.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(([, c]) => marcadorControle(c) || (c.includes('.') && !Object.hasOwn(valores, c.trim())));
 }
 
+// Compatibilidade com Modelo_PRF_INTEGRACAO.docx: no resumo de áreas,
+// o rótulo de outras áreas públicas veio como um {{senao}} avulso.
+// Corrige apenas essa célula reconhecível e fora de qualquer bloco. Não
+// descarta controles desconhecidos nem modifica o modelo armazenado.
+function corrigirRotuloResumoPRF(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  let alterado = false;
+  for (const linha of doc.querySelectorAll('tr')) {
+    const celulas = [...linha.cells];
+    if (celulas.length !== 2 || !/^\s*\{\{\s*senao\s*\}\}\s*$/.test(celulas[0].textContent) || !/^\s*\{\{\s*resumo\.outrasAreasPublicas\s*\}\}\s*$/.test(celulas[1].textContent)) continue;
+    const antes = doc.createRange(); antes.selectNodeContents(doc.body); antes.setEndBefore(celulas[0]);
+    const pilha = []; let valido = true;
+    for (const [, chave] of antes.toString().matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+      if (/^#(se|cada):/.test(chave)) pilha.push(chave.startsWith('#se:') ? 'se' : 'cada');
+      else if (chave === '/se' || chave === '/cada') { if (pilha.pop() !== chave.slice(1)) valido = false; }
+      else if (chave === 'senao' && pilha.at(-1) !== 'se') valido = false;
+    }
+    if (!valido || pilha.length) continue;
+    celulas[0].textContent = 'Outras áreas públicas'; alterado = true;
+  }
+  return alterado ? doc.body.innerHTML : html;
+}
+
 // Os offsets da correspondência manual só são calculados DEPOIS da expansão.
 // Marcadores do catálogo antigo preservam seus blocos HTML e sua formatação.
 export function prepararModeloPRF(html, dados) {
   if (!html || !modeloPRFEstruturado(html, dados.valores)) return { html, estruturado: false, erro: '' };
   try {
-    const condicional = aplicarCondicionais(html, dados.estrutura);
+    const condicional = aplicarCondicionais(corrigirRotuloResumoPRF(html), dados.estrutura);
     return { html: expandirLacos(condicional, dados.estrutura, { preservar: Object.keys(dados.valores) }), estruturado: true, erro: '' };
   } catch (e) {
     return { html: null, estruturado: true, erro: `Não foi possível preparar o PRF: ${e.message}` };

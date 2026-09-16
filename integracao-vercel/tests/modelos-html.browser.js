@@ -3,6 +3,37 @@ import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, APELIDOS, subst
 const gerar = (html, dados) => expandirLacos(aplicarCondicionais(html, dados), dados);
 const doc = html => new DOMParser().parseFromString(html, 'text/html');
 export function testesModelos(test, assert) {
+  test('PRF corrige o rótulo avulso do resumo de outras áreas públicas', () => {
+    const modelo='<p>{{#se:ativo}}Sim{{senao}}Não{{/se}}</p><table><tr><td><p><strong>{{se</strong>nao}}</p></td><td><p>{{resumo.outrasAreasPublicas}}</p></td></tr></table>';
+    for (const ativo of [true,false]) {
+      const preparo=prepararModeloPRF(modelo,{valores:{},estrutura:{ativo,resumo:{outrasAreasPublicas:25}}});
+      assert.equal(preparo.erro,'');
+      const resultado=doc(preparo.html);
+      assert.equal(resultado.querySelector('td').textContent,'Outras áreas públicas');
+      assert.equal(resultado.querySelectorAll('td')[1].textContent,'25');
+      assert.equal(resultado.querySelector('p').textContent,ativo?'Sim':'Não');
+      assert.ok(modelo.includes('{{se</strong>nao}}'));
+    }
+  });
+  test('PRF mantém a lacuna de área e não altera rótulos já corrigidos', () => {
+    const modelo='<table><tr><td>{{senao}}</td><td>{{resumo.outrasAreasPublicas}}</td></tr></table>';
+    const preparo=prepararModeloPRF(modelo,{valores:{},estrutura:{}});
+    assert.equal(preparo.erro,'');
+    assert.equal(lacunasDoDocumento(preparo.html).marcadores.join(','),'resumo.outrasAreasPublicas');
+    assert.equal(prepararModeloPRF(preparo.html,{valores:{},estrutura:{}}).html,preparo.html);
+  });
+  test('PRF não corrige senao válido na mesma linha de outras áreas públicas', () => {
+    const modelo='<p>{{#se:ativo}}Sim</p><table><tr><td>{{senao}}</td><td>{{resumo.outrasAreasPublicas}}</td></tr></table><p>{{/se}}</p>';
+    const preparo=prepararModeloPRF(modelo,{valores:{},estrutura:{ativo:true}});
+    assert.equal(preparo.erro,'');assert.equal(doc(preparo.html).body.textContent,'Sim');
+    assert.ok(!preparo.html.includes('Outras áreas públicas'));
+  });
+  test('PRF continua bloqueando senao avulso ou duplicado em outros trechos', () => {
+    for (const modelo of ['<p>{{#se:ativo}}Sim{{/se}}{{senao}}</p>','<p>{{#se:ativo}}Sim{{senao}}Não{{senao}}Outro{{/se}}</p>']) {
+      const preparo=prepararModeloPRF(modelo,{valores:{},estrutura:{ativo:true}});
+      assert.ok(preparo.erro.includes('senao'));assert.equal(preparo.html,null);
+    }
+  });
   test('três moradores clonam a linha inteira', () => {
     const html = gerar('<table><tr><td>{{#cada:unidades}}{{unidade.nome}}</td><td>{{unidade.quadra}}{{/cada}}</td></tr></table>', {unidades:[{nome:'A',quadra:1},{nome:'B',quadra:2},{nome:'C',quadra:3}]});
     assert.equal(doc(html).querySelectorAll('tr').length, 3); assert.equal(doc(html).body.textContent, 'A1B2C3'); assert.ok(!html.includes('{{'));
