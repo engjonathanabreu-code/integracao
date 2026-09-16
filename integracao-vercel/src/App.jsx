@@ -3209,7 +3209,6 @@ function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAb
       </div>
       <div style={{ fontSize: 13.5, color: tudoOk ? "var(--ok)" : "var(--warning)", fontWeight: 700, marginTop: 10 }}>{ok} de {contados.length} requisitos cumpridos</div>
       <ListaRequisitos reqs={reqs} podeMarcar={podeEtapa} onAlternar={alternar} onCampo={salvarCampo} onEscolha={() => {}} onAbrirAba={onAbrirAba} />
-      {et.id === "projeto" && db && <TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={podeEtapa} mutar={mutar} setToast={setToast} />}
       <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
         <button className="btn btn-primario" style={{ width: "100%", justifyContent: "center" }} disabled={!tudoOk || !podeEtapa || !!bloqueio} onClick={concluir}>
           <Check size={16} />{p.etapa === TOTAL - 1 ? "Concluir a unidade" : `Concluir e seguir para ${ETAPAS[p.etapa + 1].nome}`}
@@ -8014,6 +8013,7 @@ function dadosDocumento(db, p, usuario) {
       ...(p.corequerentes || []).flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
+    qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
     compromissos: textoCompromissos(p.compromisso, n?.prazosCompromisso), observacao_compromisso: p.compromisso?.observacao || "",
     municipio: m ? `${m.nome}/${m.uf}` : "____________", cep: p.endereco.cep || "",
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
@@ -8195,9 +8195,12 @@ function preencherModelo(corpo, valores) {
 const corpoDoModelo = (db, tipo) => (db?.modelosDoc || {})[tipo] || MODELOS_DOC[tipo]?.corpo || "";
 function montarDocumentoComercial(tipo, d, db, extras) {
   const dados = { ...d, ...extras };
+  if (tipo === "termo_compromisso") dados.qualificacao = d.qualificacaoCompromisso || "{{qualificacao}}";
   const condicional = aplicarCondicionais(corpoDoModelo(db, tipo), dados);
   const expandido = expandirLacos(condicional, dados);
-  return preencherModelo(expandido, valoresDocumento(d, extras));
+  const valores = valoresDocumento(d, extras);
+  if (tipo === "termo_compromisso") valores.qualificacao = escaparHtml(d.qualificacaoCompromisso || "{{qualificacao}}");
+  return preencherModelo(expandido, valores);
 }
 
 function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
@@ -8294,6 +8297,7 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
 
 // Termo de compromisso: fica na etapa Projeto do morador. Marca os compromissos de infraestrutura e gera o termo pelo modelo, sem depender de IA.
 function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
+  const bloqueio = p.etapa < 4 ? "Disponível quando o morador chegar à etapa Projeto." : !p.qualificacaoRequerente?.quali_compromisso?.trim() ? "Preencha a qualificação de compromisso no cadastro do morador." : "";
   const [f, setF] = useState(() => ({ ...compromissoVazio(), ...(p.compromisso || {}) }));
   const [previa, setPrevia] = useState(null);
   useEffect(() => { setF({ ...compromissoVazio(), ...(p.compromisso || {}) }); }, [JSON.stringify(p.compromisso)]); // eslint-disable-line
@@ -8309,6 +8313,7 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
     setToast("Compromissos salvos.");
   };
   const gerar = () => {
+    if (bloqueio) { setToast(bloqueio); return; }
     const dados = dadosDocumento(db, { ...p, compromisso: f }, usuario);
     const html = aplicarTimbrado(montarDocumentoComercial("termo_compromisso", dados, db, {}), timbrado);
     setPrevia(html);
@@ -8335,8 +8340,9 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
       <textarea className="inp" rows={2} style={{ marginTop: 8 }} value={f.observacao} disabled={!podeEditar} onChange={(e) => setF((x) => ({ ...x, observacao: e.target.value }))} placeholder="Observação que entra no termo (opcional)" aria-label="Observação do termo" />
       <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
         {podeEditar && <button className="btn btn-sm" disabled={!sujo} onClick={salvar}><Check size={14} />Salvar</button>}
-        <button className="btn btn-sm btn-primario" onClick={gerar}><FileText size={14} />Gerar termo</button>
+        <button className="btn btn-sm btn-primario" disabled={!!bloqueio} onClick={gerar}><FileText size={14} />Gerar termo</button>
       </div>
+      {bloqueio && <p role="status" className="ajuda">{bloqueio}</p>}
       {previa && (
         <Modal titulo="Termo de compromisso" largura={780} onFechar={() => setPrevia(null)}
           rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" onClick={() => baixar("html")}><Download size={15} />HTML</button><button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />Baixar para Word</button></>}>
@@ -8428,6 +8434,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
           </div>
         )} />
 
+      <Secao titulo="Termo de compromisso"><TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={(perm.diretor || perm.setor === "projeto") && ativo(p) && p.etapa >= 4} mutar={mutar} setToast={setToast} /></Secao>
       <SecaoDistrato db={db} p={p} usuario={usuario} pode={perm.diretor || perm.setor === "comercial"} mutar={mutar} setToast={setToast} onGerar={() => abrirDoc(DOCS_COMERCIAIS.find((d) => d.id === "distrato"))} />
       <Secao titulo="Documentos" nota="Gerados na hora, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
