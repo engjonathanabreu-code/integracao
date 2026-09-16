@@ -2735,6 +2735,12 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
 }
 
 /* ---------------- páginas da hierarquia ---------------- */
+function LegendaEtapas() { return (
+<div className="flex flex-wrap gap-3" style={{ marginTop: 12, fontSize: 12.5, color: "var(--muted)" }}>
+        {[...ETAPAS.map((e) => e.nome), "Unidade pronta"].map((n, i) => <span key={n} className="flex items-center gap-1"><span style={{ width: 10, height: 10, background: COR_ETAPA[i], display: "inline-block", borderRadius: 3 }} />{n}</span>)}
+      </div>
+); }
+
 function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [uf, setUf] = useState("Todas");
@@ -2781,9 +2787,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
           </tbody>
         </table>
       </div>
-      <div className="flex flex-wrap gap-3" style={{ marginTop: 12, fontSize: 12.5, color: "var(--muted)" }}>
-        {[...ETAPAS.map((e) => e.nome), "Unidade pronta"].map((n, i) => <span key={n} className="flex items-center gap-1"><span style={{ width: 10, height: 10, background: COR_ETAPA[i], display: "inline-block", borderRadius: 3 }} />{n}</span>)}
-      </div>
+      <LegendaEtapas />
       {cad.elemento}
     </div>
   );
@@ -2849,6 +2853,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
             </div>
           </Secao>
         )}
+        {remessas.length > 0 && <LegendaEtapas />}
         {semRemessa.length > 0 && (
           <div>
             <h3 style={{ margin: "8px 0 4px", fontSize: 17 }}>{remessas.length ? "Núcleos sem remessa" : "Núcleos"}</h3>
@@ -2900,6 +2905,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
         {aba === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${nomeRemessa(db, r)}`} log={{ municipioId: m.id, remessaId: r.id }} />}
         {aba === "historico" && <Secao titulo="Histórico da remessa"><ListaHistorico itens={db.auditoria.filter((a) => a.remessaId === r.id)} vazio="Nenhuma ação registrada nesta remessa." /></Secao>}
       </div>
+      <LegendaEtapas />
       {cad.elemento}
     </div>
   );
