@@ -10,3 +10,8 @@ export function segmentosMetas(itens, dias) {
     return [{ item, coluna: indices[0] + 1, largura: indices.at(-1) - indices[0] + 1 }];
   });
 }
+
+// O filtro de metas preserva reuniões e etapas dos planos.
+export function filtrarMetasCalendario(itens, filtro) {
+  return itens.filter(item => item.tipo !== 'meta' || !filtro || (filtro === 'atrasadas' ? item.atrasada : !item.atrasada));
+}
