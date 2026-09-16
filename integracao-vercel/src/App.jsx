@@ -3,7 +3,7 @@ import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF
 import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
 import { unirCampos } from "./persistencia-modulos.js";
 import FaixasMetas from "./FaixasMetas.jsx";
-import { ocorreNoDia } from "./calendario-periodos.js";
+import { ocorreNoDia, filtrarMetasCalendario } from "./calendario-periodos.js";
 import { useOrdenacao } from "./use-ordenacao.jsx";
 import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
 import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
@@ -1807,6 +1807,8 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .pilula-semana span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;opacity:.8}
 .rb .cartao-titulo{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:none;background:none;padding:0;font:inherit;color:inherit;cursor:pointer}
 .rb .layout-calendario{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.rb .filtros-calendario{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-bottom:12px}
+.rb .filtros-calendario>div{flex:1 1 180px;min-width:0}
 .rb .grade-calendario{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .rb .cabecalho-calendario{margin-bottom:4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center}
 .rb .dia-cal{display:flex;flex-direction:column;align-items:center;gap:3px;height:168px;min-height:168px;max-height:168px;min-width:0;overflow:hidden;box-sizing:border-box;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--card);font:inherit;color:inherit;cursor:pointer}
@@ -10579,6 +10581,9 @@ function ModalEditarAgenda({ agenda, onFechar, onSalvar }) {
 function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
+  const [filtroMetas, setFiltroMetas] = useState("");
+  const [metaAberta, setMetaAberta] = useState(null);
+  const [metaEditando, setMetaEditando] = useState(null);
   const [agendaEditando, setAgendaEditando] = useState(null);
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
@@ -10596,7 +10601,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const alternarAgenda = (chave) => mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); const lista = u.agendaPessoal || []; u.agendaPessoal = lista.includes(chave) ? lista.filter((x) => x !== chave) : [...lista, chave]; return d; }, "Agenda pessoal alterada", { detalhe: chave });
   const ocultar = (chave, titulo) => { mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); u.calendarioOculto = [...(u.calendarioOculto || []), chave]; return d; }, "Item ocultado do calendário", { detalhe: titulo }); setToast("Item ocultado do seu calendário."); };
   const mostrar = (chave) => mutar((d) => { const u = d.usuarios.find((x) => x.id === usuario.id); u.calendarioOculto = (u.calendarioOculto || []).filter((x) => x !== chave); return d; }, "Item voltou ao calendário", { detalhe: chave });
-  const todos = itensDoCalendario(db, usuario, {usuarioId: filtroUsuario, setor: filtroSetor}).filter((i) => !(i.tipo === "evento" && agendasOcultas.includes(i.evento.agendaId)));
+  const todos = filtrarMetasCalendario(itensDoCalendario(db, usuario, {usuarioId: filtroUsuario, setor: filtroSetor}), filtroMetas).filter((i) => !(i.tipo === "evento" && agendasOcultas.includes(i.evento.agendaId)));
   const setoresFiltro = [...new Set([...(db.usuarios || []).map(u => setorCalendario(u.setor)), ...(db.metas || []).map(m => setorCalendario(m.setor))])].filter(Boolean).sort();
   const rotuloSetor = valor => SETORES[valor]?.nome || (db.metas || []).find(m => setorCalendario(m.setor) === valor)?.setor || valor;
   const periodo = periodoDaVisao(visao, ref);
@@ -10622,7 +10627,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   };
   const abrirItem = (i) => {
     if (i.tipo === "evento") setEvento(i.evento);
-    else if (i.tipo === "meta") { const n = nucleoDe(db, (i.meta.nucleos || [])[0]); ir(n ? { pag: "nucleo", id: n.id, aba: "metas" } : { pag: "metas" }); }
+    else if (i.tipo === "meta") { cardDia.fechar(); setMetaAberta(i.meta.id); }
     else ir({ pag: "plano", id: i.plano.id });
   };
   return (
@@ -10645,13 +10650,14 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
           ))}
         </span>
       </div>
-      {podeGerenciar ? <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}>
+      {podeGerenciar ? <div className="filtros-calendario">
         <div><label className="rot" htmlFor="cal-setor">Setor</label><select id="cal-setor" className="inp" value={filtroSetor} onChange={(e) => { setFiltroSetor(e.target.value); setFiltroUsuario(""); }}><option value="">Todos os setores</option>{setoresFiltro.map(setor => <option key={setor} value={setor}>{rotuloSetor(setor)}</option>)}</select></div>
         <div><label className="rot" htmlFor="cal-usuario">Usuário / agente</label><select id="cal-usuario" className="inp" value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)}><option value="">{filtroSetor ? "Todo o setor" : "Todos os usuários"}</option>{(db.usuarios || []).filter(u => !filtroSetor || setorCalendario(u.setor) === filtroSetor).map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}</select></div>
+        <div><label className="rot" htmlFor="cal-metas">Metas</label><select id="cal-metas" className="inp" value={filtroMetas} onChange={(e) => setFiltroMetas(e.target.value)}><option value="">Ativas e atrasadas</option><option value="ativas">Ativas no prazo</option><option value="atrasadas">Atrasadas</option></select></div>
         <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(usuario.id); }}>Minhas metas e etapas</button>
-        {(filtroSetor || filtroUsuario) && <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(""); }}>Limpar filtros</button>}
+        {(filtroSetor || filtroUsuario || filtroMetas) && <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(""); setFiltroMetas(""); }}>Limpar filtros</button>}
       </div>
-      : <p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p>}
+      : <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}><div><label className="rot" htmlFor="cal-metas">Metas</label><select id="cal-metas" className="inp" value={filtroMetas} onChange={(e) => setFiltroMetas(e.target.value)}><option value="">Ativas e atrasadas</option><option value="ativas">Ativas no prazo</option><option value="atrasadas">Atrasadas</option></select></div><p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p></div>}
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
       <div className="layout-calendario" style={cardDia.aberto ? undefined : {gridTemplateColumns:"minmax(0,1fr)"}}>
         {colunasHora ? (
@@ -10725,20 +10731,25 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         <div className="card" style={{ padding: 10 }}>
           <div className="grade-calendario cabecalho-calendario" style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>{DIAS_SEMANA.map((d) => <span key={d}>{d}</span>)}</div>
           <div>
-          {Array.from({ length: Math.ceil(dias.length / 7) }, (_, semana) => dias.slice(semana * 7, semana * 7 + 7)).map((diasSemana) => <div key={diasSemana[0].toISOString()}>
-            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} />
+          {Array.from({ length: Math.ceil(dias.length / 7) }, (_, semana) => dias.slice(semana * 7, semana * 7 + 7)).map((diasSemana) => <div key={diasSemana[0].toISOString()} style={{ position: "relative" }}>
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} noMes limite={2} />
             <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`, marginBottom: 4 }}>
             {diasSemana.map((d) => {
               const iso = d.toISOString().slice(0, 10);
               const noMes = noPeriodo(d);
               const itens = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "meta");
+              const metasSemana = todos.filter(i => i.tipo === "meta" && diasSemana.some(d => ocorreNoDia(i, d.toISOString().slice(0, 10))));
+              const metasOcultas = metasSemana.slice(2).filter(i => ocorreNoDia(i, iso)).length;
+              const limiteEventos = visao === "trimestre" ? 1 : 2;
+              const excedentes = Math.max(0, itens.length - limiteEventos) + metasOcultas;
               return (
                 <button key={iso} className={`dia-cal${noMes ? "" : " fora"}${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
-                  title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length} itens`}>
+                  title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length + metasSemana.filter(i => ocorreNoDia(i, iso)).length} itens`}>
                   <span className="numero-dia">{d.getDate()}</span>
-                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} className="evento-resumo-dia" style={{ background: i.cor, opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
-                  {itens.length > (visao === "trimestre" ? 2 : 3) && <span className="ajuda" style={{ margin: 0, fontSize: 10 }}>+{itens.length - (visao === "trimestre" ? 2 : 3)}</span>}
+                  {!!metasSemana.length && <span aria-hidden="true" style={{ height: Math.min(2, metasSemana.length) * 27 + 5, flex: "none" }} />}
+                  {itens.slice(0, limiteEventos).map((i) => <span key={i.id} className="evento-resumo-dia" style={{ background: i.cor, opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
+                  {excedentes > 0 && <span className="ajuda" style={{ margin: 0, fontSize: 10 }}>+{excedentes} · ver dia</span>}
                 </button>
               );
             })}
@@ -10773,6 +10784,8 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         </Secao>
         </div>}
       </div>
+      {metaAberta && <ModalDetalheMeta db={db} metaId={metaAberta} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { setMetaEditando(db.metas.find(m => m.id === metaAberta)); setMetaAberta(null); }} onFechar={() => setMetaAberta(null)} />}
+      {metaEditando && <ModalMetaERP db={db} meta={metaEditando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => { setMetaAberta(metaEditando.id); setMetaEditando(null); }} />}
       {agendaEditando && podeGerenciar && <ModalEditarAgenda key={agendaEditando.id} agenda={agendaEditando} onFechar={() => setAgendaEditando(null)} onSalvar={(dados) => {
         mutar(d => { Object.assign(d.agendas.find(a => a.id === agendaEditando.id), dados); return d; }, "Agenda editada", {detalhe: dados.nome});
         setAgendaEditando(null); setToast("Agenda atualizada. Acompanhe a confirmação de gravação.");
