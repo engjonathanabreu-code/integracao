@@ -6308,6 +6308,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   const [sujo, setSujo] = useState(false);
   const [sair, setSair] = useState(null);
   const [buscaUnidade, setBuscaUnidade] = useState("");
+  const [buscaNucleo, setBuscaNucleo] = useState("");
   const [escolha, setEscolha] = useState("");
   const [baixando, setBaixando] = useState(false);
   const [removerPk, setRemoverPk] = useState(null);
@@ -6416,6 +6417,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   // Lista de núcleos no aparelho e pré-carregamento
   const candidatos = db.nucleos.filter((n) => db.processos.some((p) => p.nucleoId === n.id && ativo(p)))
     .sort((a, b) => (a.etapa === 1 ? 0 : 1) - (b.etapa === 1 ? 0 : 1) || rotuloNucleo(db, a).localeCompare(rotuloNucleo(db, b)));
+  const encontrados = candidatos.filter((n) => normalizar(`${n.nome || ""} ${n.nomeIntegrado || ""} ${n.codigo || ""} ${rotuloNucleo(db, n)}`).includes(normalizar(buscaNucleo)));
   const naoBaixados = candidatos.filter((n) => !pacotes[n.id]);
   return (
     <div className="offline">
@@ -6457,12 +6459,14 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
       {perm.campo && (
         <>
           <h2 style={{ fontSize: 18, margin: "24px 0 10px" }}>Pré-carregar núcleo</h2>
+          <label className="flex items-center gap-2" style={{ marginBottom: 10 }}><Search size={18} /><input className="inp" aria-label="Buscar núcleo por nome ou código" placeholder="Buscar núcleo por nome ou código" value={buscaNucleo} onChange={(e) => { setBuscaNucleo(e.target.value); setEscolha(""); }} /></label>
+          {!encontrados.length && <p role="status">Nenhum núcleo encontrado.</p>}
           <div className="card" style={{ padding: 16 }}>
             {!conexao.online ? <p style={{ margin: 0, color: "var(--warning)", fontWeight: 600 }}>Precisa de internet para pré-carregar. Faça isso antes de sair para o campo.</p> : !naoBaixados.length ? <p className="ajuda" style={{ margin: 0 }}>Todos os núcleos com moradores ativos já estão no aparelho.</p> : (
               <div className="flex flex-wrap gap-2">
                 <select className="inp" style={{ flex: "1 1 260px", minHeight: 48, fontSize: 16 }} value={escolha} onChange={(e) => setEscolha(e.target.value)} aria-label="Núcleo para pré-carregar">
                   <option value="">Escolha o núcleo que vai visitar</option>
-                  {naoBaixados.map((n) => <option key={n.id} value={n.id}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
+                  {encontrados.map((n) => <option key={n.id} value={n.id} disabled={!!pacotes[n.id]}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{pacotes[n.id] ? " — já baixado" : n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
                 </select>
                 <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } setBaixando(false); }}>
                   {baixando ? <Loader2 size={16} className="girando" /> : <HardDriveDownload size={18} />}Pré-carregar
