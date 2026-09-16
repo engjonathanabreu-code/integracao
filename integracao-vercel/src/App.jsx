@@ -1,3 +1,5 @@
+import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
+import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
 import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
@@ -4396,6 +4398,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
 function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToast, comercial }) {
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [modal, setModal] = useState(null);
+  const timbradoMemoriais = useTimbrado(db);
   const n = nucleoId ? nucleoDe(db, nucleoId) : null;
   const r = n ? remessaDe(db, n.remessaId) : remessaDe(db, semNucleo);
   const m = n ? municipioDe(db, n.municipioId) : r ? municipioDe(db, r.municipioId) : null;
@@ -4416,6 +4419,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       ["mapa", "Mapa", MapPin, 0, !n.geo && "sem área"],
       ["comercial", "Comercial", Wallet, 0, n.comercial ? "" : "a definir", n.comercial ? resumoCondicoes(n.comercial) : ""],
       ["memorial", "Memorial", ScrollText, 0, n.memorial?.texto ? "" : "vazio"],
+      ["memoriais", "Memoriais", FileText, 0, n.etapa < 1 ? "libera na Topografia" : ""],
       ["metas", "Metas", Target, metasAbertas],
       ["historico", "Histórico", History, 0],
     ]
@@ -4502,7 +4506,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         <div>
           <div className="abas abas-destaque" role="tablist">
             {ABAS.map(([id, nome, Icone, contador, nota, detalhe]) => (
-              <button key={id} role="tab" className="aba" aria-selected={abaAtual === id} onClick={() => setAba(id)} title={detalhe || (nota ? `${nome}: ${nota}` : nome)}>
+              <button key={id} role="tab" className="aba" aria-selected={abaAtual === id} disabled={id === "memoriais" && n?.etapa < 1} onClick={() => setAba(id)} title={detalhe || (nota ? `${nome}: ${nota}` : nome)}>
                 {Icone ? <Icone size={15} /> : null}
                 <span>{nome}</span>
                 {contador > 0 && <span className="conta-aba">{contador}</span>}
@@ -4523,6 +4527,9 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
               </div>
             )}
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
+            {abaAtual === "memoriais" && n && <IntegracaoMemoriais key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
+              montarDocumento={(dados) => aplicarTimbrado(montarDocumentoComercial("memorialDescritivo", dados, db, dados), timbradoMemoriais)}
+              baixarDocumento={(unidade, html) => baixarArquivo(`${unidade.codigo}-memorial-descritivo.doc`, documentoWord(html, `Memorial descritivo ${unidade.codigo}`), "application/msword")} />}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
@@ -7992,6 +7999,7 @@ function faltandoPara(doc, d, p) {
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
 // Modelos padrão. O texto usa marcadores entre chaves, trocados pelos dados do cliente na hora de gerar.
 const MODELOS_DOC = {
+  memorialDescritivo: { nome: "Memorial descritivo da unidade imobiliária", corpo: MODELO_MEMORIAL_DESCRITIVO },
   contrato: {
     nome: "Contrato de prestação de serviços",
     corpo: `{{titulo:CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE REGULARIZAÇÃO FUNDIÁRIA}}
@@ -9212,7 +9220,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
         )}
         <h3 style={{ fontSize: 14.5, margin: "18px 0 6px" }}>Marcadores disponíveis</h3>
         <div className="grade-marcadores">
-          {MARCADORES_DOC.map(([chave, desc]) => (
+          {[...MARCADORES_DOC, ...MARCADORES_MEMORIAL.map(({ chave, ajuda }) => [chave, ajuda])].map(([chave, desc]) => (
             <span key={chave} className="marcador"><code>{`{{${chave}}}`}</code><span className="ajuda" style={{ margin: 0 }}>{desc}</span></span>
           ))}
         </div>
