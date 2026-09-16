@@ -19,6 +19,6 @@ export function processosParaPendencias({clientes,complementos}) {
 export function resumirMoradores(carga,contexto) {
   const processos=processosParaPendencias(carga),db={...contexto,processos};
   return processos.map(p=>({id:p.id,financeiroRef:p.financeiroRef,municipioId:p.municipioId,remessaId:p.remessaId,nucleoId:p.nucleoId||'',codigo:p.codigo,etapa:p.etapa,situacao:p.situacao,
-    _resumo:true,_compartilhado:true,_pendencias:pendencias(db,p).length,_campoCompleto:campoCompleto(db,p),
+    extras:{arquivamento:p.extras?.arquivamento},_resumo:true,_compartilhado:true,_pendencias:pendencias(db,p).length,_campoCompleto:campoCompleto(db,p),
     docs:(p.docs||[]).filter(d=>d.status==='recebido').map(d=>({status:d.status,data:d.data})),requerente:{nome:'',cpf:''}}));
 }

@@ -1,3 +1,4 @@
+import { alterarArquivamento, dadosVisiveis } from '../src/arquivamento.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,blank,id} from './fixture.js';
@@ -69,4 +70,16 @@ test('file queue survives offline reopen, uploads immutably, and downloads on an
   const later=await prepararArmazenamento({...s,base:b},s.db);assert.deepEqual(later.operations[0].expected.dados,b.integracao_arquivos[0].dados);const final=apply(b,later.operations);await confirmarArquivos(later.sent,final);assert.equal(arquivosPendentes(),false);
   fecharArquivos();data.clear();await abrirArquivos(actor,final,storage);assert.equal(await obterArquivo('integracao-prf-modelo-v4'),'<p>Novo PRF</p>');
  } finally {fecharArquivos();definirSessao(null);globalThis.fetch=originalFetch;}
+});
+
+test('arquivamento dos quatro cadastros grava somente complementos próprios e sobrevive outro dispositivo',()=>{
+ for (const colecao of ['municipios','remessas','nucleos','processos']) {
+  const estado=projetar(fixture(),blank()), depois=copy(estado.db), ator={...depois.usuarios[0],setor:'diretoria',ativo:true};
+  const id=depois[colecao][0].id;alterarArquivamento(depois,colecao,id,true,ator);
+  const ops=prepararEdicao(estado.db,depois,estado,ator);
+  assert(ops.length>0);assert(ops.every(o=>o.table.startsWith('integracao_') && !o.remove));
+  const outro=projetar(apply(estado.base,ops),blank()).db;
+  assert.equal(outro[colecao].find(r=>r.id===id).extras.arquivamento.ativo,true);
+  assert.equal(dadosVisiveis(outro)[colecao].some(r=>r.id===id),false);
+ }
 });
