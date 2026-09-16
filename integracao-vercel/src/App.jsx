@@ -1,3 +1,4 @@
+import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import { InfraestruturaPRF, CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
 import { complementoNucleoPRF, INFRA_PRF } from "./cadastros-prf.js";
 import { separarQuadraLote } from "../municipio-prf/marcadoresPRF.js";
@@ -9479,7 +9480,7 @@ function zoomParaLimites(limites, largura, altura) {
   return ZOOM_MIN;
 }
 
-function Mapa({ centro, zoom, camada = "satelite", poligonos = [], pinos = [], altura = 460, modoPino = false, onMover, onZoom, onClicarMapa, onClicarPino }) {
+function Mapa({ centro, zoom, camada = "satelite", poligonos = [], feicoes = [], pinos = [], altura = 460, modoPino = false, onMover, onZoom, onClicarMapa, onClicarPino }) {
   const caixa = useRef(null);
   const [tamanho, setTamanho] = useState({ largura: 800, altura });
   const arrasto = useRef(null);
@@ -9534,6 +9535,7 @@ function Mapa({ centro, zoom, camada = "satelite", poligonos = [], pinos = [], a
         {blocos.map((b) => <img key={b.chave} src={b.url} alt="" draggable={false} style={{ position: "absolute", left: b.esq, top: b.topo, width: TAMANHO_BLOCO, height: TAMANHO_BLOCO }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />)}
         <svg width={largura} height={altura} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden="true">
           {poligonos.map((p, i) => <polygon key={i} points={p.map(paraTela).map(([x, y]) => `${x},${y}`).join(" ")} fill="rgba(26,154,146,.22)" stroke="#5FD3BF" strokeWidth="3" strokeLinejoin="round" />)}
+          {feicoes.map(f => { const pontos=f.poligono.map(paraTela);const x=pontos.reduce((s,p)=>s+p[0],0)/pontos.length,y=pontos.reduce((s,p)=>s+p[1],0)/pontos.length;return <g key={f.id}><polygon points={pontos.map(p=>p.join(',')).join(' ')} fill={f.vinculo?'rgba(26,154,146,.25)':'rgba(240,185,60,.18)'} stroke={f.vinculo?'#0F766E':'#947422'} strokeWidth="2"/><text x={x} y={y} textAnchor="middle" fill="#073b37" stroke="white" strokeWidth="3" paintOrder="stroke" fontSize="12" fontWeight="700">{f.codigo}</text>{zoom>=18&&pontos.map(([vx,vy],i)=><g key={i}><circle cx={vx} cy={vy} r="3" fill="#0f766e"/><text x={vx+5} y={vy-5} fontSize="10" stroke="white" strokeWidth="2" paintOrder="stroke">{f.vertices[i].nome}</text></g>)}</g>;})}
         </svg>
         {pinos.map((p) => {
           const [x, y] = paraTela([p.lng, p.lat]);
@@ -9572,6 +9574,13 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const entrada = useRef(null);
   const caixaRef = useRef(null);
   useEffect(() => { if (geo?.centro) { setCentro(geo.centro); setZoom(zoomParaLimites(geo.limites, caixaRef.current?.clientWidth || 900, 460)); } }, [geo?.importadoEm]); // eslint-disable-line
+  useEffect(() => {
+    const pontos=n.levantamentoGeoJSON?.feicoes?.flatMap(f=>f.poligono) || [];
+    if(!pontos.length)return;
+    const limites=pontos.reduce((b,[lng,lat])=>({sul:Math.min(b.sul,lat),norte:Math.max(b.norte,lat),oeste:Math.min(b.oeste,lng),leste:Math.max(b.leste,lng)}),{sul:Infinity,norte:-Infinity,oeste:Infinity,leste:-Infinity});
+    setCentro({lat:(limites.sul+limites.norte)/2,lng:(limites.oeste+limites.leste)/2});
+    setZoom(zoomParaLimites(limites,caixaRef.current?.clientWidth || 900,460));
+  }, [n.levantamentoGeoJSON?.importadoEm]); // eslint-disable-line
   const enviar = async (arq) => {
     setErro("");
     if (!arq) return;
@@ -9620,6 +9629,7 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const alvo = modoPino ? ativos.find((p) => p.id === modoPino) : null;
   return (
     <div className="flex flex-col gap-3" ref={caixaRef}>
+      <ImportadorGeoJSON db={db} n={n} perm={perm} mutar={mutar} por={usuario.nome} setToast={setToast} onVer={f=>{setCentro({lng:f.poligono.reduce((s,p)=>s+p[0],0)/f.poligono.length,lat:f.poligono.reduce((s,p)=>s+p[1],0)/f.poligono.length});setZoom(19);}} />
       <Secao titulo="Área do núcleo" nota="Envie o KMZ ou KML com a delimitação e marque cada morador dentro dela. As imagens são de satélite."
         acao={pode && (geo
           ? <span className="flex gap-2"><button className="btn btn-sm" onClick={baixarKML}><Download size={13} />Baixar KML</button><button className="btn btn-sm" onClick={() => entrada.current?.click()}><Upload size={13} />Trocar arquivo</button></span>
@@ -9647,7 +9657,7 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
 
       {alvo && <Aviso tipo="info">Clique no mapa para marcar onde fica {alvo.codigo}, {alvo.requerente.nome || "sem nome"}. <button className="btn-link" onClick={() => setModoPino("")}>Cancelar</button></Aviso>}
 
-      <Mapa centro={centro} zoom={zoom} camada={camada} poligonos={geo?.poligonos || []} pinos={pinos} modoPino={!!modoPino}
+      <Mapa centro={centro} zoom={zoom} camada={camada} poligonos={geo?.poligonos || []} feicoes={n.levantamentoGeoJSON?.feicoes || []} pinos={pinos} modoPino={!!modoPino}
         onMover={setCentro} onZoom={setZoom} onClicarMapa={colocarPino} onClicarPino={(p) => ir({ pag: "processo", id: p.id })} />
 
       <Secao titulo="Moradores no mapa" nota="Clique em Marcar e depois no ponto onde fica a unidade. O pino abre a ficha do morador.">
