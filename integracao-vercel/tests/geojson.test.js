@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { lerGeoJSON, prepararFeicoes, salvarImportacao, vincularFeicao, utmParaMapa } from '../geojson/levantamento.js';
+import { complementoNucleoPRF } from '../src/cadastros-prf.js';
+const arquivo=()=>({type:'FeatureCollection',crs:{type:'name',properties:{name:'urn:ogc:def:crs:EPSG::31982'}},features:[{type:'Feature',properties:{Lote:'Lote teste',Codprocess:'TESTE_001'},geometry:{type:'Polygon',coordinates:[[[500000,7000000],[500020,7000000],[500020,7000010],[500000,7000010],[500000,7000000]]]}}]});
+const preparar=(d=arquivo(),campo='Lote')=>prepararFeicoes(lerGeoJSON(JSON.stringify(d)),campo);
+const banco=()=>({nucleos:[{id:'n',etapa:1,outro:'preservar',memorial:{chave:'preservar'}}],processos:[{id:'p',nucleoId:'n',situacao:'Ativo',requerente:{nome:'Teste'},unidades:[{id:'u',caracteristicas:'preservar',memorial:'anterior'},{id:'irma',outro:123}]}]});
+test('GeoJSON reconhece códigos alternativos, remove só fechamento e calcula retângulo',()=>{
+ const p=preparar();assert.equal(p.feicoes.length,1);assert.equal(p.feicoes[0].vertices.length,4);assert.equal(p.feicoes[0].area,200);assert.equal(p.feicoes[0].perimetro,60);assert.equal(p.feicoes[0].vertices[0].azimuteDecimal,90);assert.equal(preparar(arquivo(),'Codprocess').feicoes[0].codigo,'TESTE_001');
+});
+test('inversa UTM mantém meridiano central e hemisfério',()=>{const [lng,lat]=utmParaMapa(500000,7000000,22);assert.ok(Math.abs(lng+51)<1e-10);assert.ok(lat<-27&&lat>-28);});
+test('pontos comuns compartilham nome, sem fundir pontos apenas próximos',()=>{const a=arquivo();a.features.push(structuredClone(a.features[0]));a.features[1].properties.Lote='Outro';const fs=preparar(a).feicoes;assert.equal(fs[0].vertices[0].nome,fs[1].vertices[0].nome);});
+test('códigos vazios ou duplicados, SRC ausente e graus não são importados',()=>{
+ const a=arquivo();a.features[0].properties.Lote='';assert.throws(()=>preparar(a),/vazio/);
+ const b=arquivo();b.features.push(structuredClone(b.features[0]));assert.throws(()=>preparar(b),/repetido/);
+ const c=arquivo();delete c.crs;assert.throws(()=>preparar(c),/SRC/);
+ const d=arquivo();d.crs.properties.name='EPSG:4326';assert.throws(()=>preparar(d),/graus/);
+});
+test('furos, multipartes, autointerseção e anel aberto não perdem geometria silenciosamente',()=>{
+ const a=arquivo();a.features[0].geometry.coordinates.push(a.features[0].geometry.coordinates[0]);assert.throws(()=>preparar(a),/furos/);
+ const b=arquivo();b.features[0].geometry={type:'MultiPolygon',coordinates:[b.features[0].geometry.coordinates,b.features[0].geometry.coordinates]};assert.throws(()=>preparar(b),/partes/);
+ const c=arquivo();[c.features[0].geometry.coordinates[0][1],c.features[0].geometry.coordinates[0][2]]=[c.features[0].geometry.coordinates[0][2],c.features[0].geometry.coordinates[0][1]];assert.throws(()=>preparar(c),/cruza/);
+ const d=arquivo();d.features[0].geometry.coordinates[0].pop();assert.throws(()=>preparar(d),/fechado/);
+});
+test('importação é aditiva e não altera morador nem substitui levantamento já existente',()=>{
+ const db=banco(),antes=structuredClone(db.processos);salvarImportacao(db,'n',preparar(),'Agente');assert.deepEqual(db.processos,antes);assert.equal(db.nucleos[0].outro,'preservar');assert.throws(()=>salvarImportacao(db,'n',preparar(),'Outro'),/já possui/);
+});
+test('vínculo preenche memorial da unidade preservando demais chaves e unidades',()=>{
+ const db=banco();salvarImportacao(db,'n',preparar(),'Agente');const f=structuredClone(db.nucleos[0].levantamentoGeoJSON.feicoes[0]),antes=structuredClone(db.processos[0].unidades[0]);
+ vincularFeicao(db,'n',f,{tipo:'unidade',moradorId:'p',unidadeId:'u'},antes,'Agente');const u=db.processos[0].unidades[0];assert.equal(u.area,200);assert.equal(u.caracteristicas,'preservar');assert.deepEqual(db.processos[0].unidades[1],{id:'irma',outro:123});assert.match(u.memorial,/SIRGAS 2000/);assert.equal(db.nucleos[0].levantamentoGeoJSON.feicoes[0].vinculo.por,'Agente');assert.throws(()=>vincularFeicao(db,'n',f,{tipo:'app'},null,'Agente'),/já vinculada/);
+});
+test('edição concorrente de memorial é bloqueada',()=>{const db=banco();salvarImportacao(db,'n',preparar(),'A');const antes=structuredClone(db.processos[0].unidades[0]);db.processos[0].unidades[0].memorial='Revisado';assert.throws(()=>vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo:'unidade',moradorId:'p',unidadeId:'u'},antes,'A'),/mudou/);assert.equal(db.processos[0].unidades[0].memorial,'Revisado');});
+test('APP, risco, via, área pública e servidão alimentam dados do PRF',()=>{
+ for(const tipo of ['app','risco','via','publica','servidao']){const db=banco();salvarImportacao(db,'n',preparar(),'A');vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo,nome:'Área teste'},null,'A');const n=db.nucleos[0];assert.equal(n.memorial.vias[0].area,200);assert.equal(n.memorial.chave,'preservar');assert.ok(JSON.stringify(complementoNucleoPRF(n)).includes('200'));}
+});
+test('antes ou depois da Topografia não importa',()=>{for(const etapa of [0,2,3]){const db=banco();db.nucleos[0].etapa=etapa;assert.throws(()=>salvarImportacao(db,'n',preparar(),'A'),/Topografia/);}});
