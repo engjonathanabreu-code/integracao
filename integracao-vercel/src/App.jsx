@@ -107,6 +107,7 @@ function permissoes(u) {
     criterio: dir || s === "comercial",
     nucleos: dir,
     campo: dir || s === "topografia",
+    campoOffline: !!u,
     prf: dir || s === "projeto",
     modeloPRF: dir || s === "projeto",
     config: dir, importar: dir, usuarios: dir,
@@ -4862,7 +4863,7 @@ function PaginaCampo({ db, usuario, nucleoId, processoId, ir, mutar, setToast, o
       <Migalhas itens={caminho(db, { municipioId: n.municipioId, remessaId: n.remessaId, nucleoId: n.id, final: "Top. Campo" })} ir={irCuidado} />
       <div className="cabeca">
         <div><h1>Top. Campo, {nomeNucleo(n)}</h1><p>Checklist e fotos de cada unidade. Os itens da lista são configurados em Campos do cadastro.</p></div>
-        {perm.campo && offline && (offline.pacotes[n.id]
+        {perm.campoOffline && offline && (offline.pacotes[n.id]
           ? <button className="btn" onClick={() => irCuidado({ pag: "campoOffline", nucleoId: n.id })}><Smartphone size={16} />Abrir no campo offline</button>
           : <button className="btn" disabled={!conexao?.online} onClick={async () => { if (await offline.baixar(n)) irCuidado({ pag: "campoOffline", nucleoId: n.id }); }}><HardDriveDownload size={16} />Levar para campo sem internet</button>)}
         <select className="inp" style={{ maxWidth: 320 }} value={selId} onChange={(e) => escolher(e.target.value)} aria-label="Unidade">
@@ -6452,7 +6453,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
           <span className={`tag ${conexao.online ? "tag-ok" : "tag-pend"}`}>{conexao.online ? <Wifi size={13} /> : <WifiOff size={13} />}{conexao.online ? "Com internet" : "Sem internet"}</span>
         </div>
         {un.conflito && <div style={{ marginBottom: 12 }}><Aviso>Esta unidade tem conflito. Resolva na lista de unidades antes de editar de novo.</Aviso></div>}
-        <FormCampo key={un.id} db={{ checklistCampo: pk.checklist }} p={pseudo} n={{ id: pk.nucleoId }} usuario={usuario} pode={perm.campo && !un.conflito} mutar={() => {}} setToast={setToast} onSujo={setSujo}
+        <FormCampo key={un.id} db={{ checklistCampo: pk.checklist }} p={pseudo} n={{ id: pk.nucleoId }} usuario={usuario} pode={perm.campoOffline && !un.conflito} mutar={() => {}} setToast={setToast} onSujo={setSujo}
           rotuloSalvar={conexao.online ? "Salvar e enviar" : "Salvar no aparelho"}
           onGravar={(campo) => offline.gravarUnidade(pk.nucleoId, un.id, campo)}
           onProximo={proxima ? () => irCuidado(() => setAberta(proxima.id)) : null}
@@ -6557,7 +6558,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
         })}
       </div>
 
-      {perm.campo && (
+      {perm.campoOffline && (
         <>
           <h2 style={{ fontSize: 18, margin: "24px 0 10px" }}>Pré-carregar núcleo</h2>
           <label className="flex items-center gap-2" style={{ marginBottom: 10 }}><Search size={18} /><input className="inp" aria-label="Buscar núcleo por nome ou código" placeholder="Buscar núcleo por nome ou código" value={buscaNucleo} onChange={(e) => { setBuscaNucleo(e.target.value); setEscolha(""); }} /></label>
@@ -6949,7 +6950,7 @@ function ComercialOffline({ db, usuario, comercial, conexao, ir, mutar, setToast
   const [telefoneNovo, setTelefoneNovo] = useState("");
   const [remover, setRemover] = useState(null);
   const perm = permissoes(usuario);
-  const podeComercial = perm.diretor || perm.setor === "comercial";
+  const podeComercial = perm.campoOffline;
   const { pacotes } = comercial;
   const lista = Object.values(pacotes);
   const pk = remessaAberta ? pacotes[remessaAberta] : null;
@@ -11534,7 +11535,7 @@ export default function App() {
           {navItem(rota.pag === "planos" || rota.pag === "plano", <ClipboardList size={18} />, "Planos de trabalho", { pag: "planos" })}
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
-          {(perm.campo || perm.cadastro) && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
+          {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
           {(perm.config || perm.modeloPRF) && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
