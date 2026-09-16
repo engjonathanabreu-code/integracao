@@ -19,7 +19,10 @@ export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().to
     const dia=dataPrazo(meta.prazo),responsaveis=meta.responsaveis || [];
     if(!dia || encerrado(meta.status) || !corresponde(responsaveis,meta.setor))continue;
     const atrasada=dia<hoje;
-    itens.push({tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:atrasada?'#B63A3A':'#B87912',atrasada});
+    const inicioInformado=dataPrazo(meta.semana_inicio) || dataPrazo(meta.criadoEm) || dia;
+    const inicio=inicioInformado > dia ? dia : inicioInformado;
+    const fim=atrasada ? hoje : dia;
+    itens.push({inicio,fim,tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:atrasada?'#B63A3A':'#B87912',atrasada});
   }
   for(const plano of db.planos || []) {
     if(encerrado(plano.status))continue;

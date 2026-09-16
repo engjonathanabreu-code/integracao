@@ -212,7 +212,6 @@ function requisitosPadrao(etapaId, p, ctx) {
       auto("doc_comp_renda", "Comprovante de renda validado", docOk(p, "comp_renda"), docStatusTexto(p, "comp_renda"));
       auto("teto_nucleo", "Teto de renda do núcleo definido", !!criterioNucleo(ctx.nucleo).teto, ctx.nucleo ? `Defina o teto no cadastro do ${ctx.nucleo.codigo}` : "Defina o núcleo no cadastro do imóvel");
       auto("modalidade", "Modalidade definida", ["REURB-S", "REURB-E"].includes(p.social.modalidade), "Escolha REURB-S ou REURB-E no cadastro");
-      manual("parecer", "Parecer social emitido");
       break;
     }
     case "topografia": {
@@ -243,6 +242,7 @@ function requisitosPadrao(etapaId, p, ctx) {
       break;
     }
     case "prefeitura":
+      manual("parecer", "Parecer social emitido");
       manual("semExigencias", "Unidade sem exigências pendentes da prefeitura");
       break;
     default:

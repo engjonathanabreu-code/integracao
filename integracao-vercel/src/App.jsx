@@ -1,3 +1,9 @@
+import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
+import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
+import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
+import { unirCampos } from "./persistencia-modulos.js";
+import FaixasMetas from "./FaixasMetas.jsx";
+import { ocorreNoDia } from "./calendario-periodos.js";
 import IntegracaoMemoriais from "../memoriais/IntegracaoMemoriais.jsx";
 import { MODELO_MEMORIAL_DESCRITIVO, MARCADORES_MEMORIAL } from "../memoriais/modeloMemorial.js";
 import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontrarLacunas, montarPRF } from './modelos-prf.js';
@@ -1130,16 +1136,26 @@ function dadosPRF(db, n, opcoes, fotos) {
     "nucleo.protocolo_prefeitura": e(n.campos?.protocoloPrefeitura), "nucleo.responsavel": e(n.responsavel), "data.hoje": dataExtenso(),
     "bloco.infraestrutura": infra, "bloco.tabela_ocupantes": ocupantes, "bloco.lista_lotes": lotes, "bloco.qualificacao_ocupantes": qualif, "bloco.fotos_fachada": fotosHtml,
   };
+  const complemento = marcadoresPRF({ municipio: m, dadosPRF: m?.prf, nucleo: { ...n, dados: n }, moradores: ps.map((p) => ({ ...p, unidades: unidadesDe(p) })), elaboracao: db.empresa });
   const estrutura = contextoPRF({ municipio: m, remessa: r, nucleo: n, cpfDe,
     unidades: linhasUn.map(({ p, u, codigo }) => ({
-      codigo, nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
+      nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
       area: u.area || "", memorial: u.memorial || "", loteQuadra: u.loteQuadra || "",
       lote: u.lote || "", quadra: u.quadra || "", matricula: u.matricula || p.imovel?.matricula || "",
       logradouro: p.enderecoImovel?.logradouro || p.endereco?.logradouro || "", modalidade: p.social.modalidade || "",
       requerente: { nome: p.requerente.nome, cpf: p.requerente.cpf }, confrontantes: confrontantesDe(p),
+      ...(complemento.unidades.find((x) => x.id === u.id) || {}), codigo,
     })),
   });
-  return { valores, estrutura, ocupantes: ps.length };
+  for (const [caminho, valor] of Object.entries(complemento.marcadores)) {
+    valores[caminho] = e(valor);
+    const partes = caminho.split("."); let alvo = estrutura;
+    for (const parte of partes.slice(0, -1)) alvo = alvo[parte] ||= {};
+    alvo[partes.at(-1)] = valor;
+  }
+  estrutura.bibliografia = { ...estrutura.bibliografia, municipio: m?.prf?.bibliografia || [] };
+  return { valores, estrutura, ocupantes: ps.length, faltando: complemento.faltando };
+
 }
 
 const PISTAS_PRF = [
@@ -1779,7 +1795,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .opcao-icone{width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font:inherit}
 .rb .opcao-icone:hover{border-color:var(--primary-3);color:var(--primary)}
 .rb .opcao-icone.ativa{background:var(--primary);border-color:var(--primary);color:#fff}
-.rb .grade-calendario.compacta .dia-cal{min-height:52px;padding:4px 2px}
+.rb .grade-calendario.compacta .dia-cal{height:128px;min-height:128px;max-height:128px;padding:4px 2px}
 .rb .grade-calendario.compacta .numero-dia{font-size:11.5px}
 .rb .grade-metas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .rb .meta-card{display:flex;flex-direction:column;gap:5px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;font:inherit;color:inherit;cursor:pointer;box-shadow:var(--sombra)}
@@ -1792,11 +1808,12 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .layout-calendario{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
 .rb .grade-calendario{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .rb .cabecalho-calendario{margin-bottom:4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center}
-.rb .dia-cal{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:74px;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--card);font:inherit;color:inherit;cursor:pointer}
+.rb .dia-cal{display:flex;flex-direction:column;align-items:center;gap:3px;height:168px;min-height:168px;max-height:168px;min-width:0;overflow:hidden;box-sizing:border-box;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--card);font:inherit;color:inherit;cursor:pointer}
 .rb .dia-cal:hover{border-color:var(--primary-3)}
 .rb .dia-cal.fora{opacity:.45}
 .rb .dia-cal.hoje .numero-dia{background:var(--primary);color:#fff;border-radius:999px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center}
 .rb .dia-cal.escolhido{border-color:var(--primary);box-shadow:0 0 0 2px rgba(26,154,146,.25)}
+.rb .evento-resumo-dia{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:normal;text-align:left;width:100%;height:30px;flex:none;line-height:13px;font-size:10px;padding:2px 3px;box-sizing:border-box;border-radius:3px;color:white}
 .rb .numero-dia{font-size:13px;font-weight:700;color:var(--titulo)}
 .rb .risco-evento{width:100%;height:5px;border-radius:3px}
 .rb .linha-etapa{display:flex;align-items:center;gap:12px;padding:12px 14px;text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line)}
@@ -2743,6 +2760,7 @@ function LegendaEtapas() { return (
 
 function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
+  const [municipioPRF, setMunicipioPRF] = useState(null);
   const [uf, setUf] = useState("Todas");
   const [busca, setBusca] = useState("");
   const ufs = ["Todas", ...Array.from(new Set(db.municipios.map((m) => m.uf))).sort()];
@@ -2770,7 +2788,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr><th>Município</th><th>Remessas</th><th>Núcleos</th><th>Moradores</th><th>Com pendência</th><th style={{ minWidth: 170 }}>Andamento</th><th>Última movimentação</th></tr></thead>
+          <thead><tr><th>Município</th><th>Remessas</th><th>Núcleos</th><th>Moradores</th><th>Com pendência</th><th style={{ minWidth: 170 }}>Andamento</th><th>Última movimentação</th><th>PRF</th></tr></thead>
           <tbody>
             {linhas.map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
@@ -2781,6 +2799,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
                 <td>{ativos ? (comPend ? <Tag tipo="pend">{comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
                 <td><BarraEtapas cont={cont} ativos={ativos} /></td>
                 <td style={{ whiteSpace: "nowrap" }}>{ultima ? <><span style={{ fontWeight: 600 }}>{tempoRelativo(ultima.data)}</span><div className="ajuda" style={{ margin: 0 }}>{ultima.acao}</div></> : <span style={{ color: "var(--muted)" }}>sem movimentação</span>}</td>
+                <td><button className="btn btn-sm" onKeyDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMunicipioPRF(m.id); }}><FileText size={14} />Dados do PRF ({pendenciasMunicipioPRF(m.prf || {}).length} pendentes)</button></td>
               </tr>
             ))}
             {!linhas.length && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>Nenhum município encontrado. Limpe a busca ou escolha outra UF.</td></tr>}
@@ -2788,6 +2807,11 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
         </table>
       </div>
       <LegendaEtapas />
+      {municipioPRF && <Modal titulo="Dados do PRF" largura={900} onFechar={() => setMunicipioPRF(null)}><FormularioDadosPRF key={municipioPRF} municipio={municipioDe(db, municipioPRF)} dados={municipioDe(db, municipioPRF)?.prf} podeEditar={cad.perm.estrutura} aoFechar={() => setMunicipioPRF(null)} aoSalvar={(prf) => {
+        if (!cad.perm.estrutura) throw new Error("Sem permissão");
+        return mutar((d) => { const m = municipioDe(d, municipioPRF); m.prf = unirCampos(m.prf, prf); return d; }, "Dados do PRF atualizados", { municipioId: municipioPRF });
+      }} /></Modal>}
+
       {cad.elemento}
     </div>
   );
@@ -3195,7 +3219,6 @@ function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAb
       </div>
       <div style={{ fontSize: 13.5, color: tudoOk ? "var(--ok)" : "var(--warning)", fontWeight: 700, marginTop: 10 }}>{ok} de {contados.length} requisitos cumpridos</div>
       <ListaRequisitos reqs={reqs} podeMarcar={podeEtapa} onAlternar={alternar} onCampo={salvarCampo} onEscolha={() => {}} onAbrirAba={onAbrirAba} />
-      {et.id === "projeto" && db && <TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={podeEtapa} mutar={mutar} setToast={setToast} />}
       <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
         <button className="btn btn-primario" style={{ width: "100%", justifyContent: "center" }} disabled={!tudoOk || !podeEtapa || !!bloqueio} onClick={concluir}>
           <Check size={16} />{p.etapa === TOTAL - 1 ? "Concluir a unidade" : `Concluir e seguir para ${ETAPAS[p.etapa + 1].nome}`}
@@ -4875,6 +4898,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   const mapa = mapaDoModeloPRF(mapaSalvo, preparo, lacunas);
   const setMapa = (valor) => setMapaSalvo({ modelo: preparo.html, valores: typeof valor === "function" ? valor(mapa || {}) : valor });
   const resultado = preparo.html != null && mapa ? montarPRF(preparo.html, lacunas, mapa, dados.valores) : null;
+  const faltandoPorOrigem = unirCampos(dados.faltando || {}, lacunasPRF(Object.fromEntries((resultado?.faltando || []).map((l) => [l.chave, ""]))));
   const pronto = prontidaoPRF(db, n);
   const titulo = `PRF ${nomeRemessa(db, remessaDe(db, n.remessaId))} ${n.codigo}`.trim();
   const preencherIA = async () => {
@@ -4903,6 +4927,10 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
         </div>
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={pronto.completo ? "ok" : "pend"}>{pronto.completo ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
+      <Secao titulo="Dados que faltam antes de gerar">
+        {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
+        {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
+      </Secao>
       <div style={{ marginBottom: 14 }}>
         {pronto.completo
           ? <Aviso tipo="info">Todos os moradores ativos chegaram à etapa Projeto e os memoriais estão preenchidos: dá para gerar o PRF completo do núcleo.</Aviso>
@@ -5885,6 +5913,17 @@ function ConfigChecklist({ db, mutar, setToast }) {
   );
 }
 
+function CadastroEmpresaPRF({ db, usuario, mutar }) {
+  const [empresa, setEmpresa] = useState(() => ({ ...db.empresa }));
+  const [mensagem, setMensagem] = useState("");
+  const pode = permissoes(usuario).estrutura;
+  return <Secao titulo="Empresa elaboradora" nota="Cadastro único usado no PRF e na CONTRATADA do contrato padrão.">
+    {[['razaoSocial', 'Razão social'], ['cnpj', 'CNPJ'], ['endereco', 'Endereço']].map(([chave, rotulo]) => <label key={chave} className="rot">{rotulo}<input className="inp" value={empresa[chave] || ""} disabled={!pode} onChange={(e) => setEmpresa((v) => ({ ...v, [chave]: e.target.value }))} /></label>)}
+    {pode && <button className="btn" onClick={async () => { try { await mutar((d) => { d.empresa = { ...d.empresa, ...empresa }; return d; }, "Empresa elaboradora atualizada"); setMensagem("Empresa salva."); } catch { setMensagem("Não foi possível salvar."); } }}>Salvar empresa</button>}
+    <p role="status">{mensagem}</p>
+  </Secao>;
+}
+
 function ConfigPRF({ db, usuario, mutar, setToast }) {
   const [modelo, setModelo] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -5927,6 +5966,7 @@ function ConfigPRF({ db, usuario, mutar, setToast }) {
   const destacado = modelo ? modelo.replace(new RegExp(REGEX_LACUNA.source, "g"), (m) => `<span style="background:#fff3cd;padding:0 2px">${m}</span>`) : "";
   return (
     <div className="flex flex-col gap-3">
+      <CadastroEmpresaPRF db={db} usuario={usuario} mutar={mutar} />
       <Secao titulo="Modelo de PRF" nota="Suba o PRF padrão da Integral com os espaços em branco no lugar dos dados. O gerador preenche esses espaços com as informações do núcleo, dos moradores, dos lotes, das fotos e da infraestrutura.">
         {!perm.modeloPRF ? <p className="ajuda" style={{ margin: 0 }}>Só o setor Projeto e a Diretoria alteram o modelo.</p> : (
           <>
@@ -6314,6 +6354,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   const [sujo, setSujo] = useState(false);
   const [sair, setSair] = useState(null);
   const [buscaUnidade, setBuscaUnidade] = useState("");
+  const [buscaNucleo, setBuscaNucleo] = useState("");
   const [escolha, setEscolha] = useState("");
   const [baixando, setBaixando] = useState(false);
   const [removerPk, setRemoverPk] = useState(null);
@@ -6422,6 +6463,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   // Lista de núcleos no aparelho e pré-carregamento
   const candidatos = db.nucleos.filter((n) => db.processos.some((p) => p.nucleoId === n.id && ativo(p)))
     .sort((a, b) => (a.etapa === 1 ? 0 : 1) - (b.etapa === 1 ? 0 : 1) || rotuloNucleo(db, a).localeCompare(rotuloNucleo(db, b)));
+  const encontrados = candidatos.filter((n) => normalizar(`${n.nome || ""} ${n.nomeIntegrado || ""} ${n.codigo || ""} ${rotuloNucleo(db, n)}`).includes(normalizar(buscaNucleo)));
   const naoBaixados = candidatos.filter((n) => !pacotes[n.id]);
   return (
     <div className="offline">
@@ -6463,12 +6505,14 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
       {perm.campo && (
         <>
           <h2 style={{ fontSize: 18, margin: "24px 0 10px" }}>Pré-carregar núcleo</h2>
+          <label className="flex items-center gap-2" style={{ marginBottom: 10 }}><Search size={18} /><input className="inp" aria-label="Buscar núcleo por nome ou código" placeholder="Buscar núcleo por nome ou código" value={buscaNucleo} onChange={(e) => { setBuscaNucleo(e.target.value); setEscolha(""); }} /></label>
+          {!encontrados.length && <p role="status">Nenhum núcleo encontrado.</p>}
           <div className="card" style={{ padding: 16 }}>
             {!conexao.online ? <p style={{ margin: 0, color: "var(--warning)", fontWeight: 600 }}>Precisa de internet para pré-carregar. Faça isso antes de sair para o campo.</p> : !naoBaixados.length ? <p className="ajuda" style={{ margin: 0 }}>Todos os núcleos com moradores ativos já estão no aparelho.</p> : (
               <div className="flex flex-wrap gap-2">
                 <select className="inp" style={{ flex: "1 1 260px", minHeight: 48, fontSize: 16 }} value={escolha} onChange={(e) => setEscolha(e.target.value)} aria-label="Núcleo para pré-carregar">
                   <option value="">Escolha o núcleo que vai visitar</option>
-                  {naoBaixados.map((n) => <option key={n.id} value={n.id}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
+                  {encontrados.map((n) => <option key={n.id} value={n.id} disabled={!!pacotes[n.id]}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{pacotes[n.id] ? " — já baixado" : n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
                 </select>
                 <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } setBaixando(false); }}>
                   {baixando ? <Loader2 size={16} className="girando" /> : <HardDriveDownload size={18} />}Pré-carregar
@@ -7964,6 +8008,7 @@ function dadosDocumento(db, p, usuario) {
   const un = unidadesDe(p);
   const hoje = new Date();
   return {
+    elaboracao: db.empresa || {},
     nome: p.requerente.nome || "____________", cpf: fmtCPF(p.requerente.cpf) || "____________",
     rg: p.requerente.rg || "____________", nacionalidade: p.requerente.nacionalidade || "brasileiro(a)",
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
@@ -7978,6 +8023,7 @@ function dadosDocumento(db, p, usuario) {
       ...(p.corequerentes || []).flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
+    qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
     compromissos: textoCompromissos(p.compromisso, n?.prazosCompromisso), observacao_compromisso: p.compromisso?.observacao || "",
     municipio: m ? `${m.nome}/${m.uf}` : "____________", cep: p.endereco.cep || "",
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
@@ -8009,7 +8055,7 @@ const MODELOS_DOC = {
   contrato: {
     nome: "Contrato de prestação de serviços",
     corpo: `{{titulo:CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE REGULARIZAÇÃO FUNDIÁRIA}}
-{{p:<strong>CONTRATADA:</strong> Integral Soluções em Engenharia, pessoa jurídica de direito privado, com sede em Santa Catarina, neste ato representada por seu responsável técnico.}}
+{{p:<strong>CONTRATADA:</strong> {{elaboracao.razaoSocial}}, inscrita no CNPJ {{elaboracao.cnpj}}, com sede à {{elaboracao.endereco}}.}}
 {{p:<strong>CONTRATANTE:</strong> {{qualificacao}}.}}
 {{p:<strong>Cláusula 1ª. Objeto.</strong> A CONTRATADA prestará os serviços técnicos necessários à regularização fundiária urbana (REURB) da unidade {{unidades}}, situada no núcleo {{nucleo}}, em {{municipio}}, na modalidade {{modalidade}}, conforme a Lei Federal 13.465/2017.}}
 {{p:<strong>Cláusula 2ª. Serviços.</strong> Estão incluídos o levantamento topográfico da unidade, a elaboração do memorial descritivo, a instrução do processo administrativo, o acompanhamento junto à prefeitura e o encaminhamento ao Registro de Imóveis, até a emissão do título.}}
@@ -8159,9 +8205,12 @@ function preencherModelo(corpo, valores) {
 const corpoDoModelo = (db, tipo) => (db?.modelosDoc || {})[tipo] || MODELOS_DOC[tipo]?.corpo || "";
 function montarDocumentoComercial(tipo, d, db, extras) {
   const dados = { ...d, ...extras };
+  if (tipo === "termo_compromisso") dados.qualificacao = d.qualificacaoCompromisso || "{{qualificacao}}";
   const condicional = aplicarCondicionais(corpoDoModelo(db, tipo), dados);
   const expandido = expandirLacos(condicional, dados);
-  return preencherModelo(expandido, valoresDocumento(d, extras));
+  const valores = valoresDocumento(d, extras);
+  if (tipo === "termo_compromisso") valores.qualificacao = escaparHtml(d.qualificacaoCompromisso || "{{qualificacao}}");
+  return preencherModelo(expandido, valores);
 }
 
 function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
@@ -8258,6 +8307,7 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
 
 // Termo de compromisso: fica na etapa Projeto do morador. Marca os compromissos de infraestrutura e gera o termo pelo modelo, sem depender de IA.
 function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
+  const bloqueio = p.etapa < 4 ? "Disponível quando o morador chegar à etapa Projeto." : !p.qualificacaoRequerente?.quali_compromisso?.trim() ? "Preencha a qualificação de compromisso no cadastro do morador." : "";
   const [f, setF] = useState(() => ({ ...compromissoVazio(), ...(p.compromisso || {}) }));
   const [previa, setPrevia] = useState(null);
   useEffect(() => { setF({ ...compromissoVazio(), ...(p.compromisso || {}) }); }, [JSON.stringify(p.compromisso)]); // eslint-disable-line
@@ -8273,6 +8323,7 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
     setToast("Compromissos salvos.");
   };
   const gerar = () => {
+    if (bloqueio) { setToast(bloqueio); return; }
     const dados = dadosDocumento(db, { ...p, compromisso: f }, usuario);
     const html = aplicarTimbrado(montarDocumentoComercial("termo_compromisso", dados, db, {}), timbrado);
     setPrevia(html);
@@ -8299,8 +8350,9 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
       <textarea className="inp" rows={2} style={{ marginTop: 8 }} value={f.observacao} disabled={!podeEditar} onChange={(e) => setF((x) => ({ ...x, observacao: e.target.value }))} placeholder="Observação que entra no termo (opcional)" aria-label="Observação do termo" />
       <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
         {podeEditar && <button className="btn btn-sm" disabled={!sujo} onClick={salvar}><Check size={14} />Salvar</button>}
-        <button className="btn btn-sm btn-primario" onClick={gerar}><FileText size={14} />Gerar termo</button>
+        <button className="btn btn-sm btn-primario" disabled={!!bloqueio} onClick={gerar}><FileText size={14} />Gerar termo</button>
       </div>
+      {bloqueio && <p role="status" className="ajuda">{bloqueio}</p>}
       {previa && (
         <Modal titulo="Termo de compromisso" largura={780} onFechar={() => setPrevia(null)}
           rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" onClick={() => baixar("html")}><Download size={15} />HTML</button><button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />Baixar para Word</button></>}>
@@ -8392,6 +8444,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
           </div>
         )} />
 
+      <Secao titulo="Termo de compromisso"><TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={(perm.diretor || perm.setor === "projeto") && ativo(p) && p.etapa >= 4} mutar={mutar} setToast={setToast} /></Secao>
       <SecaoDistrato db={db} p={p} usuario={usuario} pode={perm.diretor || perm.setor === "comercial"} mutar={mutar} setToast={setToast} onGerar={() => abrirDoc(DOCS_COMERCIAIS.find((d) => d.id === "distrato"))} />
       <Secao titulo="Documentos" nota="Gerados na hora, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
@@ -10185,6 +10238,7 @@ const etapaProcesso = (n) => n.etapaProcesso || etapaProcessoPadrao(n);
 const diasNaEtapa = (n) => { const d = n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
 
 function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
+  const [novaMeta, setNovaMeta] = useState(false);
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta";
   const [f, setF] = useState({ prioridade: n.prioridade || "Normal", responsavelId: ((db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""))?.id) || "", prazoSLA: n.prazoSLA || "", pendencia: n.pendencia || "", observacaoInterna: n.observacaoInterna || "" });
@@ -10212,7 +10266,7 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
   return (
     <Modal titulo={rotuloNucleo(db, n)} largura={680} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
+      rodape={<>{gerenciaMetas(usuario) && <button className="btn" onClick={() => setNovaMeta(true)}>+ Metas</button>}<button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
         <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaProcesso(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaProcesso(atual)}</Tag>
         <Tag tipo={TAG_PRIORIDADE[atual.prioridade || "Normal"]}>{atual.prioridade || "Normal"}</Tag>
@@ -10248,6 +10302,7 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
       {pode && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
       <h3 style={{ fontSize: 15, margin: "18px 0 6px" }}>Histórico de etapas</h3>
       {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
+      {novaMeta && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNovaMeta(false)} />}
       {andamento && <ModalAndamento db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
     </Modal>
   );
@@ -10551,7 +10606,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
     : visao === "trimestre" ? `${MESES[periodo.ini.getMonth()]} a ${MESES[periodo.fim.getMonth()]} de ${periodo.fim.getFullYear()}`
     : `${periodo.ini.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${periodo.fim.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
   const hoje = agora.toISOString().slice(0, 10);
-  const doDia = todos.filter((i) => i.dia === dia).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+  const doDia = todos.filter((i) => ocorreNoDia(i, dia)).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
   const mudarPeriodo = (n) => {
     if (visao === "mes" || visao === "trimestre") { const passo = visao === "mes" ? 1 : 3; const d = new Date(ref.ano, ref.mes + n * passo, 1); setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: 1 }); setDia(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`); return; }
     const d = new Date(periodo.ini); d.setDate(d.getDate() + n * (visao === "dia" ? 1 : visao === "semana" ? 7 : 14));
@@ -10599,7 +10654,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
               <span />
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
-                const doDiaTodos = todos.filter((i) => i.dia === iso);
+                const doDiaTodos = todos.filter((i) => ocorreNoDia(i, iso));
                 return (
                   <button key={iso} className={`cabecalho-dia${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}>
                     <span>{DIAS_SEMANA[(d.getDay() + 6) % 7]}</span>
@@ -10609,13 +10664,14 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
             <div className="faixa-prazos" style={{ gridTemplateColumns: `52px repeat(${diasSemana.length}, minmax(0, 1fr))` }}>
               <span className="rot" style={{ margin: 0, alignSelf: "center" }}>prazos</span>
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
                 return (
                   <span key={iso} className="celula-prazo">
-                    {todos.filter((i) => i.dia === iso && i.tipo !== "evento").map((i) => (
+                    {todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "evento" && i.tipo !== "meta").map((i) => (
                       <button key={i.id} className="chip-prazo" style={{ background: i.cor }} onClick={() => abrirItem(i)} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</button>
                     ))}
                   </span>
@@ -10628,7 +10684,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
               </div>
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
-                const eventos = todos.filter((i) => i.dia === iso && i.tipo === "evento");
+                const eventos = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo === "evento");
                 return (
                   <div key={iso} className={`coluna-dia${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                     onDoubleClick={(ev) => {
@@ -10660,21 +10716,26 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         ) : (
         <div className="card" style={{ padding: 10 }}>
           <div className="grade-calendario cabecalho-calendario" style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>{DIAS_SEMANA.map((d) => <span key={d}>{d}</span>)}</div>
-          <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>
-            {dias.map((d) => {
+          <div>
+          {Array.from({ length: Math.ceil(dias.length / 7) }, (_, semana) => dias.slice(semana * 7, semana * 7 + 7)).map((diasSemana) => <div key={diasSemana[0].toISOString()}>
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} />
+            <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`, marginBottom: 4 }}>
+            {diasSemana.map((d) => {
               const iso = d.toISOString().slice(0, 10);
               const noMes = noPeriodo(d);
-              const itens = todos.filter((i) => i.dia === iso);
+              const itens = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "meta");
               return (
                 <button key={iso} className={`dia-cal${noMes ? "" : " fora"}${iso === dia ? " escolhido" : ""}${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                   onDoubleClick={() => { if (perm.setor !== "consulta") { setDia(iso); setNovoEm({ dia: iso, hora: "" }); } }}
                   title="Um clique abre o dia. Dois cliques criam um evento." aria-label={`${d.getDate()} de ${MESES[d.getMonth()]}, ${itens.length} itens`}>
                   <span className="numero-dia">{d.getDate()}</span>
-                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} style={{ display: "block", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, textAlign: "left", padding: "2px 3px", borderRadius: 3, background: i.cor, color: "white", opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
+                  {itens.slice(0, visao === "trimestre" ? 2 : 3).map((i) => <span key={i.id} className="evento-resumo-dia" style={{ background: i.cor, opacity: i.cancelado ? 0.4 : 1 }} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</span>)}
                   {itens.length > (visao === "trimestre" ? 2 : 3) && <span className="ajuda" style={{ margin: 0, fontSize: 10 }}>+{itens.length - (visao === "trimestre" ? 2 : 3)}</span>}
                 </button>
               );
             })}
+            </div>
+          </div>)}
           </div>
         </div>
         )}
