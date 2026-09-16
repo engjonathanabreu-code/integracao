@@ -18,3 +18,11 @@ test('todo núcleo tem uma coluna mesmo com etapa importada fora do padrão', ()
   assert.equal(cards.length,nucleos.length);
   assert.equal(new Set(cards.map(n=>n.id)).size,nucleos.length);
 });
+
+test('cada etapa exclui todos os municípios sem núcleo correspondente', () => {
+  for (const etapa of ['Comercial', 'Topografia', 'Etapa importada', 'Projetos']) {
+    const lista = filtrarProcessos(nucleos, { etapa }, etapaDe, n => n.id);
+    const exibidos = municipiosDosProcessos(municipios, lista);
+    assert.deepEqual(exibidos.map(m => m.id).sort(), [...new Set(nucleos.filter(n => n.etapa === etapa).map(n => n.municipioId))].sort());
+  }
+});

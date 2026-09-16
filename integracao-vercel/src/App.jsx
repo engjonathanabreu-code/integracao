@@ -10409,10 +10409,10 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
         </span>
       </div>
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }} role="group" aria-label="Filtrar por etapa">
-        <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} onClick={() => escolherEtapa("")}><Filter size={13} />Todas as etapas</button>
+        <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} aria-pressed={etapa === ""} onClick={() => escolherEtapa("")}><Filter size={13} />Todas as etapas</button>
         {etapas.map((st) => {
           const qtd = db.nucleos.filter((n) => etapaProcesso(n) === st && (!municipio || n.municipioId === municipio)).length;
-          return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} onClick={() => escolherEtapa(etapa === st ? "" : st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
+          return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} aria-pressed={etapa === st} onClick={() => escolherEtapa(st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
       {municipios.map((m) => {
