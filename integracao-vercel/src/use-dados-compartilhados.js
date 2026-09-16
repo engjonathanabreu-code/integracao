@@ -155,12 +155,20 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     publish(next);pending.current=true;setStatus('Alterações pendentes');saveDraft().catch(e=>setError(e.message));
     clearTimeout(timer.current);timer.current=setTimeout(flush,700);
   };
-  const refresh=async({force=false}={})=>{
+  const refresh=async({force=false,manual=false}={})=>{
     if(!force&&Date.now()-lastRefresh.current<120000)return;
-    if(!actor.current||opening.current||!server.current||busy.current||pending.current||!temSessao()||!navigator.onLine||document.visibilityState==='hidden')return;
+    if(manual) {
+      if(!navigator.onLine)throw new Error('Conecte-se à internet para atualizar os dados.');
+      if(!actor.current||!server.current||!temSessao())throw new Error('Não há conexão autenticada disponível para atualizar os dados.');
+      if(opening.current||busy.current)throw new Error('Há uma sincronização em andamento. Aguarde e tente novamente.');
+      if(pending.current)await flush();
+      if(pending.current)throw new Error('Há alterações aguardando gravação. Elas foram preservadas; resolva o aviso de sincronização antes de atualizar.');
+    }
+    if(!actor.current||opening.current||!server.current||busy.current||pending.current||!temSessao()||!navigator.onLine||(!manual&&document.visibilityState==='hidden'))return;
     busy.current=true;const gen=generation.current;
-    try {const base=await carregarBase(current.current);if(gen!==generation.current||pending.current)return;await abrirArquivos(actor.current,base,storage);const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');atualizarResumo();}
-    catch(e){setError(e.message);} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
+    try {const base=await carregarBase(current.current);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');atualizarResumo();}
+    catch(e){setError(e.message);if(manual)throw e;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
+    if(manual)await atualizarResumo();
   };
   const close=()=>{saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
