@@ -2795,12 +2795,12 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr>{ordem.cabecalho("nome", "Município")}{ordem.cabecalho("remessas", "Remessas")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("ultima", "Última movimentação")}<th>PRF</th></tr></thead>
+          <thead><tr>{ordem.cabecalho("nome", "Município")}{ordem.cabecalho("remessas", "Remessas")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("ultima", "Última movimentação")}<th>PRF</th><th><span className="sr-only">Ações</span></th></tr></thead>
 
           <tbody>
             {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><BotaoArquivar colecao="municipios" registro={m} /><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
+                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
@@ -2808,9 +2808,10 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
                 <td><BarraEtapas cont={cont} ativos={ativos} /></td>
                 <td style={{ whiteSpace: "nowrap" }}>{ultima ? <><span style={{ fontWeight: 600 }}>{tempoRelativo(ultima.data)}</span><div className="ajuda" style={{ margin: 0 }}>{ultima.acao}</div></> : <span style={{ color: "var(--muted)" }}>sem movimentação</span>}</td>
                 <td><button className="btn btn-sm" onKeyDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMunicipioPRF(m.id); }}><FileText size={14} />Dados do PRF ({pendenciasMunicipioPRF(m.prf || {}).length} pendentes)</button></td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}><BotaoArquivar colecao="municipios" registro={m} /></td>
               </tr>
             ))}
-            {!linhas.length && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>Nenhum município encontrado. Limpe a busca ou escolha outra UF.</td></tr>}
+            {!linhas.length && <tr><td colSpan={9} style={{ color: "var(--muted)" }}>Nenhum município encontrado. Limpe a busca ou escolha outra UF.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2844,7 +2845,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
       <Migalhas itens={caminho(db, { municipioId: m.id })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span><BotaoArquivar colecao="municipios" registro={m} /></h1>
+          <h1>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></h1>
           <p>{remessas.length} {remessas.length === 1 ? "remessa" : "remessas"}, {qtdNucleos} {qtdNucleos === 1 ? "núcleo" : "núcleos"}, {rs.ativos} {rs.ativos === 1 ? "morador ativo" : "moradores ativos"}{m.prefixo ? `. Prefixo ${m.prefixo}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2853,6 +2854,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
           {perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "remessa", municipio: m })}><Plus size={15} />Nova remessa</button>}
+          <BotaoArquivar colecao="municipios" registro={m} />
         </div>
       </div>
 
@@ -2871,14 +2873,14 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
                     const semNuc = soAtivos(ps).filter((p) => !p.nucleoId).length;
                     return (
                       <tr key={r.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "remessa", id: r.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "remessa", id: r.id }); }}>
-                        <td><strong style={{ color: "var(--titulo)" }}>{nomeRemessa(db, r)}</strong><BotaoArquivar colecao="remessas" registro={r} />{r.titulo && <div className="ajuda" style={{ margin: 0 }}>{r.titulo}</div>}</td>
+                        <td><strong style={{ color: "var(--titulo)" }}>{nomeRemessa(db, r)}</strong>{r.titulo && <div className="ajuda" style={{ margin: 0 }}>{r.titulo}</div>}</td>
                         <td>{db.nucleos.filter((n) => n.remessaId === r.id).length}</td>
                         <td><strong style={{ fontWeight: 650 }}>{x.ativos}</strong></td>
                         <td>{semNuc ? <Tag tipo="pend">{semNuc}</Tag> : "0"}</td>
                         <td>{x.ativos ? (x.comPend ? <Tag tipo="pend">{x.comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
                         <td><BarraEtapas cont={x.cont} ativos={x.ativos} /></td>
                         <td>{dataBR(r.criada)}</td>
-                        <td onClick={(e) => e.stopPropagation()}>{perm.estrutura && <button className="btn-icone" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })} aria-label={`Editar ${nomeRemessa(db, r)}`}><Pencil size={14} /></button>}</td>
+                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{perm.estrutura && <button className="btn-icone" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })} aria-label={`Editar ${nomeRemessa(db, r)}`}><Pencil size={14} /></button>}<BotaoArquivar colecao="remessas" registro={r} /></td>
                       </tr>
                     );
                   })}
@@ -2921,7 +2923,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
       <Migalhas itens={caminho(db, { municipioId: m.id, remessaId: r.id })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{nomeRemessa(db, r)}{r.titulo ? <span style={{ color: "var(--muted)", fontWeight: 600 }}>, {r.titulo}</span> : null}<BotaoArquivar colecao="remessas" registro={r} /></h1>
+          <h1>{nomeRemessa(db, r)}{r.titulo ? <span style={{ color: "var(--muted)", fontWeight: 600 }}>, {r.titulo}</span> : null}</h1>
           <p>{nucleos.length} {nucleos.length === 1 ? "núcleo" : "núcleos"}, {x.ativos} moradores ativos, {x.comPend} com pendência{semNuc ? `, ${semNuc} sem núcleo` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2930,6 +2932,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
           {perm.estrutura && livres.length > 0 && <button className="btn" onClick={() => cad.abrir({ tipo: "trazer", remessa: r })} title="Trazer um núcleo que está sem remessa"><Link2 size={15} />Trazer núcleo sem remessa</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: r.id })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id })}><UserPlus size={15} />Novo morador</button>}
+          <BotaoArquivar colecao="remessas" registro={r} />
         </div>
       </div>
       <div className="abas" role="tablist">{ABAS.map(([id, nome]) => <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => setAba(id)}>{nome}</button>)}</div>
@@ -3310,7 +3313,7 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
             const { teto, sm } = criterioNucleo(n);
             return (
               <tr key={n.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "nucleo", id: n.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "nucleo", id: n.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{n.codigo}</strong><BotaoArquivar colecao="nucleos" registro={n} />{n.nome && <div className="ajuda" style={{ margin: 0 }}>{n.nome}</div>}</td>
+                <td><strong style={{ color: "var(--titulo)" }}>{n.codigo}</strong>{n.nome && <div className="ajuda" style={{ margin: 0 }}>{n.nome}</div>}</td>
                 <td><EtapaNucleoTag n={n} /></td>
                 <td><strong style={{ fontWeight: 650 }}>{rs.ativos}</strong></td>
                 <td>{rs.ativos ? (rs.comPend ? <Tag tipo="pend">{rs.comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
@@ -3318,9 +3321,10 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
                 <td><BarraEtapas cont={rs.cont} ativos={rs.ativos} /></td>
                 <td><OrigemTags origem={n.origem} /></td>
                 <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: "nowrap" }}>
-                  <span className="flex gap-1">
+                  <span className="flex gap-1" style={{ justifyContent: "flex-end" }}>
                     {onVincular && perm.estrutura && <button className="btn btn-sm" onClick={() => onVincular(n)}><Link2 size={13} />Pôr em remessa</button>}
                     {(perm.estrutura || perm.criterio) && <button className="btn-icone" onClick={() => onEditar(n)} aria-label={`Editar ${n.codigo}`}><Pencil size={14} /></button>}
+                    <BotaoArquivar colecao="nucleos" registro={n} />
                   </span>
                 </td>
               </tr>
@@ -3371,7 +3375,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}</tr></thead>
+          <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}<th><span className="sr-only">Ações</span></th></tr></thead>
           <tbody>
             {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).map((p) => {
               const pend = pendencias(db, p);
@@ -3382,7 +3386,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
               return (
                 <tr key={p.id} className="clic" tabIndex={0} onClick={() => abrir(p)} onKeyDown={(e) => { if (e.key === "Enter") abrir(p); }} style={!ativo(p) ? { opacity: 0.7 } : undefined}>
                   <td style={{ whiteSpace: "nowrap" }}><strong style={{ color: "var(--titulo)" }}>{p.codigo}</strong>{unidadesDe(p).length > 1 && <div className="ajuda" style={{ margin: 0 }}>{unidadesDe(p).length} unidades</div>}</td>
-                  <td><span className="flex items-center gap-2">{p.checks?.liderLocal && <Star size={14} className="estrela-lider" aria-label="Potencial líder local" />}<span>{p.requerente.nome || <span style={{ color: "var(--muted)" }}>Sem nome</span>}</span><BotaoArquivar colecao="processos" registro={p} /></span>{p.conjuge.nome && <div className="ajuda" style={{ margin: 0 }}>{p.conjuge.nome}</div>}
+                  <td><span className="flex items-center gap-2">{p.checks?.liderLocal && <Star size={14} className="estrela-lider" aria-label="Potencial líder local" />}<span>{p.requerente.nome || <span style={{ color: "var(--muted)" }}>Sem nome</span>}</span></span>{p.conjuge.nome && <div className="ajuda" style={{ margin: 0 }}>{p.conjuge.nome}</div>}
                     <div className="flex flex-wrap gap-1" style={{ marginTop: 3 }}>{p.requerente.statusCRM && <Tag tipo={TAG_CRM[p.requerente.statusCRM]}>{p.requerente.statusCRM}</Tag>}{p.requerente.statusFinanceiro && p.requerente.statusFinanceiro !== "Adimplente" && <Tag tipo={TAG_FINANCEIRO[p.requerente.statusFinanceiro]}>{p.requerente.statusFinanceiro}</Tag>}</div></td>
                   <td style={{ whiteSpace: "nowrap" }}>{mascararCPF(p.requerente.cpf)}</td>
                   {mostrarNucleo && <td>{n ? n.codigo : <Tag tipo="pend">Sem núcleo</Tag>}</td>}
@@ -3393,10 +3397,11 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
                       {ativo(p) && alertas.length > 0 && <Tag tipo="bloq"><AlertTriangle size={12} />{alertas.length} {alertas.length === 1 ? "alerta" : "alertas"}</Tag>}
                     </div>
                   </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}><BotaoArquivar colecao="processos" registro={p} /></td>
                 </tr>
               );
             })}
-            {!lista.length && <tr><td colSpan={mostrarNucleo ? 6 : 5} style={{ color: "var(--muted)" }}>{ps.length ? "Nenhum morador com esses filtros." : "Nenhum morador cadastrado aqui ainda."}</td></tr>}
+            {!lista.length && <tr><td colSpan={mostrarNucleo ? 7 : 6} style={{ color: "var(--muted)" }}>{ps.length ? "Nenhum morador com esses filtros." : "Nenhum morador cadastrado aqui ainda."}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -4350,7 +4355,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       <Migalhas itens={caminho(db, { municipioId: p.municipioId, remessaId: p.remessaId, nucleoId: p.nucleoId || null, semNucleo: p.nucleoId ? null : p.remessaId, final: p.codigo })} ir={irComCuidado} />
       <div className="cabeca">
         <div>
-          <h1>{p.codigo} {p.requerente.nome || "Novo morador"}<BotaoArquivar colecao="processos" registro={p} />{p.checks?.liderLocal && <Star size={20} className="estrela-lider" style={{ marginLeft: 8, verticalAlign: "-2px" }} aria-label="Potencial líder local" />}</h1>
+          <h1>{p.codigo} {p.requerente.nome || "Novo morador"}{p.checks?.liderLocal && <Star size={20} className="estrela-lider" style={{ marginLeft: 8, verticalAlign: "-2px" }} aria-label="Potencial líder local" />}</h1>
           <p>{nomeRemessa(db, r)}, {n ? nomeNucleo(n) : "sem núcleo"}{p.conjuge.nome ? `, com ${p.conjuge.nome}` : ""}{unidadesDe(p).length > 1 ? `. ${unidadesDe(p).length} unidades: ${codigosUnidades(p).join(", ")}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -4358,6 +4363,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {p.requerente.statusFinanceiro && <Tag tipo={TAG_FINANCEIRO[p.requerente.statusFinanceiro]}>{p.requerente.statusFinanceiro}</Tag>}
           {perm.situacao ? <button className={`btn btn-sm${cancelado ? " btn-perigo" : ""}`} onClick={() => setModal({ tipo: "situacao" })}>Situação: {p.situacao}</button> : <Tag tipo={cancelado ? "bloq" : "ok"}>{p.situacao}</Tag>}
           {perm.verCPF && <button className="btn btn-sm" onClick={mostrarCPF}>{cpfVisivel ? <EyeOff size={14} /> : <Eye size={14} />}{cpfVisivel ? "Ocultar CPFs" : "Mostrar CPFs"}</button>}
+          <BotaoArquivar colecao="processos" registro={p} />
         </div>
       </div>
 
@@ -4485,7 +4491,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       <Migalhas itens={caminho(db, { municipioId: m.id, remessaId: r?.id, nucleoId: n?.id, semNucleo: n ? null : semNucleo })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{titulo}{n && <BotaoArquivar colecao="nucleos" registro={n} />}</h1>
+          <h1>{titulo}</h1>
           <p>{r ? nomeRemessa(db, r) : `${m.nome}, sem remessa`}, {x.ativos} {x.ativos === 1 ? "morador ativo" : "moradores ativos"}{x.ativos ? `, ${x.comPend} com pendência` : ""}{ps.length - at.length ? `, ${ps.length - at.length} fora do processo` : ""}</p>
           {n && (
             <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
@@ -4501,6 +4507,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
           {n && <BotaoArquivo nucleoId={n.id} />}
           {n && (perm.estrutura || perm.criterio) && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
           {perm.cadastro && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
+          {n && <BotaoArquivar colecao="nucleos" registro={n} />}
         </div>
       </div>
 
@@ -10350,7 +10357,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
     return (
       <div key={n.id} role="button" tabIndex={0} className="cartao" onClick={() => setAberto(n.id)} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setAberto(n.id); } }}>
         <span className="flex flex-wrap items-start justify-between gap-1">
-          <strong style={{ color: "var(--titulo)" }}>{n.codigo}{n.nome ? ` ${n.nome}` : ""}</strong><BotaoArquivar colecao="nucleos" registro={n} />
+          <strong style={{ color: "var(--titulo)" }}>{n.codigo}{n.nome ? ` ${n.nome}` : ""}</strong>
           {n.prioridade && n.prioridade !== "Normal" && <Tag tipo={TAG_PRIORIDADE[n.prioridade]}><Flag size={11} />{n.prioridade}</Tag>}
         </span>
         <span className="ajuda" style={{ margin: 0, display: "block" }}>{ativos.length} morador(es){n.responsavel ? `, ${n.responsavel}` : ", sem responsável atribuído"}</span>
@@ -10360,6 +10367,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
           {dias !== null && <span><Clock size={11} /> {dias} dia(s) na etapa</span>}
           {n.prazoSLA && <span style={{ color: atrasado ? "var(--danger)" : undefined }}>Prazo {dataBR(n.prazoSLA)}</span>}
         </span>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}><BotaoArquivar colecao="nucleos" registro={n} /></div>
       </div>
     );
   };
