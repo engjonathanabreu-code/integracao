@@ -3411,13 +3411,13 @@ function TabQuadro({ db, ps, ir, remessaId, nucleoId }) {
       {colunas.map((c) => {
         const itens = ps.filter((p) => p.etapa === c.i);
         return (
-          <div key={c.i} className="quadro-col">
+          <div key={c.i} className="quadro-col" style={{ display: "flex", flexDirection: "column" }}>
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2" style={{ fontWeight: 700, color: "var(--titulo)" }}>
                 <span style={{ width: 30, height: 30, borderRadius: 999, background: c.i < TOTAL ? "var(--primary)" : "var(--ok)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{c.i < TOTAL ? <IconeEtapa id={c.id} tamanho={20} corCheck="#0F5F5B" /> : <Check size={16} />}</span>
                 {c.nome}
               </span>
-              <BotaoArquivo colecao="processos" remessaId={remessaId} nucleoId={nucleoId} etapaCliente={c.i} /><span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{itens.length}</span>
+              <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{itens.length}</span>
             </div>
             {itens.map((p) => {
               const pend = pendencias(db, p).length;
@@ -3429,6 +3429,7 @@ function TabQuadro({ db, ps, ir, remessaId, nucleoId }) {
               );
             })}
             {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum morador</div>}
+                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="processos" remessaId={remessaId} nucleoId={nucleoId} etapaCliente={c.i} /></div>
           </div>
         );
       })}
@@ -10419,14 +10420,15 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
                 const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
 
                 return (
-                  <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px" }}>
+                  <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px", display: "flex", flexDirection: "column" }}>
                     <div className="cabeca-coluna">
                       <span className="icone-coluna"><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={19} cor="currentColor" corCheck="currentColor" /></span>
                       <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: "var(--titulo)", fontSize: 13.5 }}>{s}</span>
-                      <BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /><span className="contagem-coluna">{itens.length}</span>
+                      <span className="contagem-coluna">{itens.length}</span>
                     </div>
                     {itens.map(cartao)}
                     {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
+                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /></div>
                   </div>
                 );
               })}
