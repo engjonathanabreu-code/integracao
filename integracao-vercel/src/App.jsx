@@ -1,3 +1,4 @@
+import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import { InfraestruturaPRF, CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
 import { complementoNucleoPRF, INFRA_PRF } from "./cadastros-prf.js";
@@ -8752,29 +8753,26 @@ function ComercialEmCampoNucleo({ db, n, usuario, comercial, ir, setToast }) {
 
 /* ---------------- papel timbrado ---------------- */
 const CHAVE_TIMBRE = "integracao-timbrado-v1-";
-const MARGENS_PADRAO = { topo: 18, base: 16, lateral: 22 };
-const timbradoVazio = () => ({ cabecalho: null, rodape: null, margens: { ...MARGENS_PADRAO }, ativo: true });
-// Lê as imagens guardadas no aparelho e devolve prontas para entrar no documento
+// O modelo incluído fica pronto imediatamente, inclusive para exportação offline.
 function useTimbrado(db) {
-  const [imagens, setImagens] = useState({ cabecalho: null, rodape: null });
-  const config = db?.timbrado || timbradoVazio();
-  const chaves = `${config.cabecalho?.chave || ""}|${config.rodape?.chave || ""}`;
+  const config = configTimbrado(db?.timbrado);
+  const versao = versaoTimbrado(config);
+  const [carregadas, setCarregadas] = useState(null);
   useEffect(() => {
     let vivo = true;
-    const ler = (item) => (item?.chave ? armazenamento.get(item.chave).catch(() => null) : Promise.resolve(null));
-    Promise.all([ler(config.cabecalho), ler(config.rodape)]).then(([c, r]) => { if (vivo) setImagens({ cabecalho: c, rodape: r }); });
+    const ler = (item, lugar) => item?.chave
+      ? armazenamento.get(item.chave).catch(() => null)
+      : Promise.resolve(imagemPadrao(item, lugar));
+    Promise.all([ler(config.cabecalho, "cabecalho"), ler(config.rodape, "rodape")]).then(([cabecalho, rodape]) => {
+      if (vivo) setCarregadas({ versao, imagens: { cabecalho, rodape } });
+    });
     return () => { vivo = false; };
-  }, [chaves]); // eslint-disable-line
-  return { ...config, imagens, temTimbre: !!(config.ativo && (imagens.cabecalho || imagens.rodape)) };
-}
-function aplicarTimbrado(html, timbrado) {
-  if (!timbrado || !timbrado.ativo) return html;
-  const { imagens, margens } = timbrado;
-  const m = { ...MARGENS_PADRAO, ...(margens || {}) };
-  const cabecalho = imagens?.cabecalho ? `<div style="text-align:center;margin:0 0 ${m.topo}mm"><img src="${imagens.cabecalho}" style="width:100%;max-width:100%" alt="" /></div>` : "";
-  const rodape = imagens?.rodape ? `<div style="text-align:center;margin:${m.base}mm 0 0"><img src="${imagens.rodape}" style="width:100%;max-width:100%" alt="" /></div>` : "";
-  if (!cabecalho && !rodape) return html;
-  return `<div style="padding:0 ${m.lateral}mm">${cabecalho}${html}${rodape}</div>`;
+  }, [versao]); // eslint-disable-line
+  const imagens = carregadas?.versao === versao ? carregadas.imagens : {
+    cabecalho: imagemPadrao(config.cabecalho, "cabecalho"),
+    rodape: imagemPadrao(config.rodape, "rodape"),
+  };
+  return { ...config, imagens, temTimbre: config.ativo !== false && !!(imagens.cabecalho || imagens.rodape) };
 }
 
 const TEMAS = [
@@ -9176,8 +9174,8 @@ function ConfigTimbrado({ db, usuario, mutar, setToast }) {
   const [remover, setRemover] = useState(null);
   const entradaCab = useRef(null);
   const entradaRod = useRef(null);
-  const config = db.timbrado || timbradoVazio();
-  const gravar = (fn, acao, detalhe) => mutar((d) => { d.timbrado = { ...timbradoVazio(), ...(d.timbrado || {}) }; fn(d.timbrado); return d; }, acao, { detalhe });
+  const config = configTimbrado(db.timbrado);
+  const gravar = (fn, acao, detalhe) => mutar((d) => { d.timbrado = { ...configTimbrado(d.timbrado) }; fn(d.timbrado); return d; }, acao, { detalhe });
   const enviar = async (arq, lugar) => {
     setErro("");
     if (!arq) return;
@@ -9214,12 +9212,13 @@ function ConfigTimbrado({ db, usuario, mutar, setToast }) {
           {item ? <Tag tipo="ok"><Check size={12} />{item.nome}</Tag> : <Tag>não enviado</Tag>}
         </div>
         {imagem && <div className="previa-timbre"><img src={imagem} alt={`Prévia do ${titulo.toLowerCase()}`} /></div>}
-        {item && <div className="ajuda" style={{ margin: "6px 0 0" }}>{item.largura} por {item.altura} px, proporção {proporcao(item)}. Enviado por {item.por} em {dataBR(item.enviadoEm)}.</div>}
+        {item && <div className="ajuda" style={{ margin: "6px 0 0" }}>{item.largura} por {item.altura} px, proporção {proporcao(item)}. {item.modelo === "integral-2026" ? "Modelo Integral 2026 incluído no sistema." : `Enviado por ${item.por} em ${dataBR(item.enviadoEm)}.`}</div>}
         {alerta && <div style={{ color: "var(--warning)", fontSize: 13, marginTop: 6 }}>{alerta}</div>}
         {pode && (
           <div className="flex flex-wrap gap-2" style={{ marginTop: 10 }}>
             <input ref={entrada} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }} onChange={(e) => enviar(e.target.files?.[0], lugar)} />
             <button className="btn btn-sm btn-primario" onClick={() => entrada.current?.click()}><Upload size={13} />{item ? "Trocar imagem" : "Enviar imagem"}</button>
+            {imagem && <a className="btn btn-sm btn-secundario" href={imagem} download={`integral-2026-${lugar}.png`}><Download size={13} />Baixar imagem</a>}
             {item && <button className="btn btn-sm btn-perigo" onClick={() => setRemover(lugar)}><Trash2 size={13} />Remover</button>}
           </div>
         )}
@@ -9242,6 +9241,10 @@ function ConfigTimbrado({ db, usuario, mutar, setToast }) {
             </label>
           )}
         </div>
+        {pode && <button className="btn btn-secundario" style={{ marginTop: 12 }} onClick={() => {
+          gravar((t) => { Object.assign(t, timbradoPadrao(), { margens: t.margens || { ...MARGENS_PADRAO } }); }, "Papel timbrado Integral 2026 aplicado", "Cabeçalho e rodapé oficiais");
+          setToast("Timbrado Integral 2026 aplicado aos próximos documentos.");
+        }}><ImageIcon size={16} />Usar timbrado Integral 2026</button>}
         {erro && <div className="msg-erro" role="alert">{erro}</div>}
       </Secao>
 
