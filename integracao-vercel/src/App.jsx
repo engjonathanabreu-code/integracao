@@ -2056,30 +2056,15 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 `;
 
 /* ---------------- identidade visual ---------------- */
-// Marca Integração: ponto central ligado a três pontos, simétrica no eixo vertical, traços no estilo das ondas da logo Integral
-const MARCA_CAMINHOS = ["M53.80 45.60 L53.80 44.48 L53.80 43.35 L53.80 42.23 L53.80 41.10 L53.80 39.98 L53.80 38.86 L53.80 37.73 L53.80 36.61 L53.80 35.49 L53.80 34.36 L53.80 33.24 L53.80 32.11 L53.80 30.99 L53.80 29.87 L53.80 28.74 L53.80 27.62 L53.80 26.50 L53.80 25.37 L53.80 24.25 L53.80 23.12 L53.80 22.00 L53.67 21.02 L53.29 20.10 L52.69 19.31 L51.90 18.71 L50.98 18.33 L50.00 18.20 L49.02 18.33 L48.10 18.71 L47.31 19.31 L46.71 20.10 L46.33 21.02 L46.20 22.00 L46.20 23.12 L46.20 24.25 L46.20 25.37 L46.20 26.50 L46.20 27.62 L46.20 28.74 L46.20 29.87 L46.20 30.99 L46.20 32.11 L46.20 33.24 L46.20 34.36 L46.20 35.49 L46.20 36.61 L46.20 37.73 L46.20 38.86 L46.20 39.98 L46.20 41.10 L46.20 42.23 L46.20 43.35 L46.20 44.48 L46.20 45.60 L46.33 46.58 L46.71 47.50 L47.31 48.29 L48.10 48.89 L49.02 49.27 L50.00 49.40 L50.98 49.27 L51.90 48.89 L52.69 48.29 L53.29 47.50 L53.67 46.58 Z", "M35.04 57.23 L33.89 57.43 L32.73 57.65 L31.58 57.90 L30.42 58.17 L29.26 58.47 L28.11 58.81 L26.96 59.18 L25.81 59.58 L24.67 60.02 L23.54 60.50 L22.42 61.02 L21.31 61.59 L20.22 62.21 L19.14 62.87 L18.10 63.59 L17.08 64.35 L16.08 65.17 L15.14 66.03 L14.22 66.96 L13.36 67.92 L12.55 68.92 L11.74 70.04 L11.07 71.12 L10.44 72.21 L9.87 73.32 L9.34 74.44 L8.86 75.57 L8.42 76.71 L8.01 77.86 L7.64 79.01 L7.31 80.16 L7.17 81.14 L7.29 82.13 L7.66 83.05 L8.26 83.84 L9.04 84.45 L9.96 84.84 L10.94 84.97 L11.92 84.85 L12.84 84.48 L13.64 83.88 L14.25 83.10 L14.63 82.19 L14.91 81.23 L15.22 80.28 L15.54 79.35 L15.90 78.44 L16.28 77.55 L16.69 76.68 L17.13 75.83 L17.59 75.01 L18.09 74.22 L18.57 73.55 L19.14 72.85 L19.75 72.17 L20.39 71.53 L21.07 70.91 L21.77 70.33 L22.51 69.77 L23.29 69.24 L24.08 68.75 L24.91 68.29 L25.76 67.85 L26.63 67.44 L27.53 67.06 L28.44 66.71 L29.37 66.38 L30.32 66.08 L31.28 65.80 L32.26 65.55 L33.24 65.31 L34.23 65.10 L35.24 64.91 L36.26 64.74 L37.21 64.45 L38.05 63.93 L38.73 63.21 L39.20 62.34 L39.43 61.37 L39.40 60.38 L39.12 59.43 L38.59 58.58 L37.87 57.90 L37.00 57.43 L36.03 57.20 Z", "M63.74 64.74 L64.76 64.91 L65.77 65.10 L66.76 65.31 L67.74 65.55 L68.72 65.80 L69.68 66.08 L70.63 66.38 L71.56 66.71 L72.47 67.06 L73.37 67.44 L74.24 67.85 L75.09 68.29 L75.92 68.75 L76.71 69.24 L77.49 69.77 L78.23 70.33 L78.93 70.91 L79.61 71.53 L80.25 72.17 L80.86 72.85 L81.43 73.55 L81.91 74.22 L82.41 75.01 L82.87 75.83 L83.31 76.68 L83.72 77.55 L84.10 78.44 L84.46 79.35 L84.78 80.28 L85.09 81.23 L85.37 82.19 L85.75 83.10 L86.36 83.88 L87.16 84.48 L88.08 84.85 L89.06 84.97 L90.04 84.84 L90.96 84.45 L91.74 83.84 L92.34 83.05 L92.71 82.13 L92.83 81.14 L92.69 80.16 L92.36 79.01 L91.99 77.86 L91.58 76.71 L91.14 75.57 L90.66 74.44 L90.13 73.32 L89.56 72.21 L88.93 71.12 L88.26 70.04 L87.45 68.92 L86.64 67.92 L85.78 66.96 L84.86 66.03 L83.92 65.17 L82.92 64.35 L81.90 63.59 L80.86 62.87 L79.78 62.21 L78.69 61.59 L77.58 61.02 L76.46 60.50 L75.33 60.02 L74.19 59.58 L73.04 59.18 L71.89 58.81 L70.74 58.47 L69.58 58.17 L68.42 57.90 L67.27 57.65 L66.11 57.43 L64.96 57.23 L63.97 57.20 L63.00 57.43 L62.13 57.90 L61.41 58.58 L60.88 59.43 L60.60 60.38 L60.57 61.37 L60.80 62.34 L61.27 63.21 L61.95 63.93 L62.79 64.45 Z"];
-const MARCA_PONTOS = [[50, 60, 8.2], [50, 9, 6.8], [9, 94, 6.8], [91, 94, 6.8]];
+// Identidade Conexão: três braços fluidos conectam pessoas, território e informação.
 function MarcaIntegracao({ tamanho = 36, clara = false }) {
-  const id = useRef(uid("marca")).current;
-  const [c1, c2] = clara ? ["#FFFFFF", "#CFEDEF"] : ["#2B7480", "#6CB6BE"];
-  return (
-    <svg width={tamanho} height={tamanho} viewBox="-2.30 -0.80 104.60 104.60" role="img" aria-label="Integração" style={{ flex: "none" }}>
-      <defs><linearGradient id={id} x1="50" y1="100.8" x2="50" y2="2.2" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor={c1} /><stop offset="1" stopColor={c2} /></linearGradient></defs>
-      {MARCA_CAMINHOS.map((d, k) => <path key={k} d={d} fill={`url(#${id})`} />)}
-      {MARCA_PONTOS.map(([x, y, r]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={r} fill={`url(#${id})`} />)}
-    </svg>
-  );
+  return <svg width={tamanho} height={tamanho} viewBox="0 0 104 104" role="img" aria-label="Integração" style={{ flex: "none", color: clara ? "#FFFFFF" : "#105553" }}><path d="M43 25 C59 30 62 34 62 48 C63 62 73 67 82 77 C69 69 57 72 49 60 C44 51 43 37 43 25Z" fill="currentColor" /><path d="M42 43 C40 56 37 59 28 65 C19 71 18 76 20 89 C33 80 44 77 45 64 C46 57 43 48 42 43Z" fill="#69D6BE" /><path d="M34 83 C46 74 58 72 69 76 C82 80 86 91 78 96 C68 102 57 81 34 83Z" fill="currentColor" /><circle cx="52" cy="14" r="9" fill="currentColor"/><circle cx="10" cy="87" r="8" fill="#69D6BE"/><circle cx="94" cy="91" r="8" fill="currentColor"/></svg>;
 }
-function LogoIntegracao({ clara = false, tamanho = 36, texto = 20, subtitulo = true }) {
-  return (
-    <span className="flex items-center gap-2">
-      <MarcaIntegracao tamanho={tamanho} clara={clara} />
-      <span style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-        <span style={{ fontWeight: 500, fontSize: texto, letterSpacing: "0.05em", color: clara ? "#FFFFFF" : "#333333" }}>INTEGRAÇÃO</span>
-        {subtitulo && <span style={{ fontStyle: "italic", fontSize: Math.max(10.5, texto * 0.54), marginTop: 5, color: clara ? "rgba(255,255,255,.8)" : "#4B4B4D", letterSpacing: 0 }}>Regularização fundiária</span>}
-      </span>
-    </span>
-  );
+function LogoIntegracao({ clara = false, tamanho = 36, texto = 20 }) {
+  return <span className="logo-integracao" role="img" aria-label="Integração" style={{ display: "inline-flex", alignItems: "center", gap: 9, maxWidth: "100%", color: clara ? "#FFFFFF" : "#105553" }}>
+    <span aria-hidden="true" style={{ display: "flex" }}><MarcaIntegracao tamanho={tamanho} clara={clara} /></span>
+    <span aria-hidden="true" style={{ fontFamily: "NunitoMarca, sans-serif", fontWeight: 850, fontSize: texto, lineHeight: 1.2, letterSpacing: "0.01em" }}>INTEGRAÇÃO</span>
+  </span>;
 }
 function LogoIntegral({ altura = 36, branca = false }) {
   const [falhou, setFalhou] = useState(false);
@@ -4587,7 +4572,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       ["pendencias", "Pendências", AlertTriangle, pendenciasNucleo(db, n).length],
       ["andamentos", "Andamentos", ListTodo, (n.andamentos || []).length],
       ["devolutivas", "Devolutivas", Reply, devolutivasDoNucleo(db, n.id).length],
-      ["mapa", "Mapa", MapPin, 0, !n.geo && "sem área"],
+      ["mapa", "Mapa", MapPin, 0, !(n.geo?.poligonos?.length || n.levantamentoGeoJSON?.feicoes?.length) && "sem área"],
       ["comercial", "Comercial", Wallet, 0, n.comercial ? "" : "a definir", n.comercial ? resumoCondicoes(n.comercial) : ""],
       ["memorial", "Memorial", ScrollText, 0, n.memorial?.texto ? "" : "vazio"],
       ["memoriais", "Memoriais", FileText, 0, n.etapa < 1 ? "libera na Topografia" : ""],
@@ -4595,7 +4580,8 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       ["historico", "Histórico", History, 0],
     ]
     : [["moradores", "Moradores", Users, 0], ["quadro", "Quadro", Columns3, 0], ["pendencias", "Pendências", AlertTriangle, 0]];
-  const abaAtual = ABAS.some(([id]) => id === aba) ? aba : "moradores";
+  const temMapa = !!(n?.geo?.poligonos?.length || n?.levantamentoGeoJSON?.feicoes?.length);
+  const abaAtual = ABAS.some(([id]) => id === aba) ? aba : temMapa ? "mapa" : "moradores";
   const setAba = (a) => ir(n ? { pag: "nucleo", id: n.id, aba: a } : { pag: "nucleo", semNucleo, aba: a });
   const titulo = n ? nomeNucleo(n) : "Moradores sem núcleo";
   const comCampo = at.filter((p) => campoCompleto(db, p)).length;
@@ -5689,8 +5675,7 @@ function Login({ usuarios, onEntrar, aviso, progresso }) {
     <div className="login-pagina">
       <ChuvaLogin />
       <div className="login-cartao">
-        <div style={{ display: "flex", justifyContent: "center" }}><LogoIntegral altura={62} /></div>
-        <h1 className="login-titulo">Integração</h1>
+        <h1 style={{ display: "flex", justifyContent: "center", margin: "0 0 28px" }}><LogoIntegracao tamanho={60} texto={27} /></h1>
         {aviso && <div className="login-aviso" role="alert"><Lock size={13} />{aviso}</div>}
         <div onKeyDown={aoTeclar}>
           <label className="login-rot" htmlFor="login-email">E-mail</label>
@@ -11968,7 +11953,7 @@ export default function App() {
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
           {rota.pag === "municipio" && <PaginaMunicipio key={rota.id} {...props} municipioId={rota.id} />}
           {rota.pag === "remessa" && <PaginaRemessa key={rota.id} {...props} remessaId={rota.id} aba={rota.aba || "nucleos"} />}
-          {rota.pag === "nucleo" && <PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba || "moradores"} />}
+          {rota.pag === "nucleo" && <PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba} />}
           {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} />}
           {rota.pag === "campo" && <PaginaCampo key={`${rota.nucleoId}_${rota.processoId || ""}`} {...props} nucleoId={rota.nucleoId} processoId={rota.processoId} />}
           {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} />}

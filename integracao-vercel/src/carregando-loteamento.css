@@ -1,28 +1,12 @@
-.loteamento-carregando {
-  min-height: min(65vh, 560px);
-  display: grid;
-  place-items: center;
-  padding: clamp(12px, 4vw, 48px);
-  color: var(--primary, #0F5F5B);
-}
-.loteamento-carregando svg { display: block; width: min(100%, 700px); height: auto; overflow: visible; }
-.loteamento-traco { stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; animation: loteamento-desenhar 8s ease-in-out infinite both; animation-delay: var(--atraso, 0s); }
-.loteamento-limite { opacity: .25; stroke-width: 1.5; }
-.loteamento-rua { stroke-width: 3; }
-.loteamento-lote { opacity: .3; stroke-width: 1.2; }
-.loteamento-eixo { stroke: currentColor; opacity: .2; stroke-dasharray: 5 9; stroke-width: 1.5; }
-.loteamento-casa { animation: loteamento-surgir 8s ease-in-out infinite both; animation-delay: var(--atraso); }
-.loteamento-casa .loteamento-traco { animation-delay: var(--atraso); }
-.loteamento-telhado { fill: #BFE0D4; opacity: .65; }
-.loteamento-arvore { animation: loteamento-brotar 8s ease-in-out infinite both; animation-delay: var(--atraso); }
-.loteamento-carro { animation: loteamento-passear 8s ease-in-out infinite both; }
-.loteamento-lapis { animation: loteamento-riscar 4s ease-in-out infinite; transform-origin: 570px 330px; }
-@keyframes loteamento-desenhar { 0%, 8% { stroke-dashoffset: 100; } 48%, 83% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 100; } }
-@keyframes loteamento-surgir { 0%, 12% { opacity: 0; } 32%, 80% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes loteamento-brotar { 0%, 20% { opacity: 0; transform: scale(.3); } 38% { opacity: 1; transform: scale(1.12); } 44%, 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.8); } }
-@keyframes loteamento-passear { 0%, 42% { opacity: 0; transform: translateX(0); } 48% { opacity: 1; } 82% { opacity: 1; transform: translateX(422px); } 90%, 100% { opacity: 0; transform: translateX(422px); } }
-@keyframes loteamento-riscar { 0%, 100% { transform: translate(0, 0) rotate(-5deg); } 50% { transform: translate(8px, -8px) rotate(5deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .loteamento-carregando * { animation: none !important; }
-  .loteamento-traco { stroke-dashoffset: 0; }
-}
+.loteamento-carregando{min-height:min(65vh,560px);display:grid;place-items:center;padding:clamp(12px,4vw,48px);color:#105553}
+.loteamento-carregando svg{display:block;width:min(100%,700px);height:auto;overflow:visible}
+.loteamento-projeto{transform-origin:center;animation:loteamento-ondular 8s ease-in-out infinite}
+.loteamento-terreno{fill:#69d6be;opacity:.09}
+.loteamento-traco{stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:100;animation:loteamento-desenhar 9s ease-in-out infinite both;animation-delay:var(--atraso,0s)}
+.loteamento-limite{opacity:.22;stroke-width:1.5}.loteamento-rua{stroke-width:3;stroke:#319e8d}.loteamento-lote{opacity:.27;stroke-width:1.2}
+.loteamento-casa{animation:loteamento-surgir 9s ease-in-out infinite both;animation-delay:var(--atraso)}.loteamento-casa .loteamento-traco{animation-delay:var(--atraso)}
+.loteamento-telhado{fill:#69d6be;opacity:.4}.loteamento-arvore{fill:#69d6be;animation:loteamento-surgir 9s ease-in-out infinite both;animation-delay:var(--atraso)}
+@keyframes loteamento-desenhar{0%,5%{stroke-dashoffset:100}48%,85%{stroke-dashoffset:0}100%{stroke-dashoffset:100}}
+@keyframes loteamento-surgir{0%,10%{opacity:0}34%,83%{opacity:1}100%{opacity:0}}
+@keyframes loteamento-ondular{0%,100%{transform:translateY(3px) rotate(-.6deg)}50%{transform:translateY(-5px) rotate(.6deg)}}
+@media(prefers-reduced-motion:reduce){.loteamento-carregando *{animation:none!important}.loteamento-traco{stroke-dashoffset:0}.loteamento-fluxo{display:none}}

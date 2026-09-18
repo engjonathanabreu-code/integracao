@@ -1,40 +1,23 @@
 import './carregando-loteamento.css';
 
-const lotes = [
-  [94, 74], [182, 74], [270, 74], [402, 74], [490, 74],
-  [94, 254], [182, 254], [270, 254], [402, 254], [490, 254],
-];
-
+const casas = [[138,150,-12],[236,119,-5],[350,133,12],[471,170,15],[531,252,-8],[408,296,-12],[290,268,12],[167,286,-8]];
 export default function CarregandoLoteamento() {
   return <div className="loteamento-carregando" role="status" aria-label="Carregando o início">
     <svg viewBox="0 0 680 430" fill="none" aria-hidden="true" focusable="false">
-      <defs>
-        <pattern id="loteamento-grade" width="22" height="22" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="1" fill="currentColor" opacity=".12" />
-        </pattern>
-      </defs>
-      <rect x="38" y="28" width="604" height="374" rx="32" fill="url(#loteamento-grade)" />
       <g className="loteamento-projeto">
-        <path className="loteamento-traco loteamento-limite" pathLength="100" d="M76 58H590Q608 58 608 76V350Q608 368 590 368H76Q58 368 58 350V76Q58 58 76 58Z" />
-        <path className="loteamento-traco loteamento-rua" style={{'--atraso':'.15s'}} pathLength="100" d="M58 186H344V58M608 186H380V58M58 230H344V368M608 230H380V368" />
-        <path className="loteamento-eixo" d="M70 208H594M362 72V352" />
-        {lotes.map(([x,y], i) => <g key={`${x}-${y}`}>
-          <path className="loteamento-traco loteamento-lote" style={{'--atraso':`${.25+i*.09}s`}} pathLength="100" d={`M${x-10} ${y-8}h78v106h-78Z`} />
-          <g className="loteamento-casa" style={{'--atraso':`${.6+i*.13}s`}}>
-            <path className="loteamento-telhado" d={`M${x+4} ${y+32}l24-20 24 20-24 20Z`} />
-            <path className="loteamento-traco" pathLength="100" d={`M${x+4} ${y+32}l24-20 24 20-24 20ZM${x+4} ${y+32}v25l24 20 24-20V${y+32}M${x+28} ${y+52}v25M${x+35} ${y+71}V${y+57}l9-7v14`} />
+        <path className="loteamento-terreno" d="M80 178C66 79 199 49 315 73S548 88 591 204S529 368 398 354S105 389 80 278Z" />
+        <path className="loteamento-traco loteamento-limite" pathLength="100" d="M80 178C66 79 199 49 315 73S548 88 591 204S529 368 398 354S105 389 80 278Z" />
+        {[0,1].map(i=><path key={i} className="loteamento-traco loteamento-rua" pathLength="100" style={{'--atraso':`${i*.2}s`}} d={i?'M93 231C195 167 240 197 336 239S510 276 582 226':'M87 204C189 140 247 169 348 212S505 249 574 199'} />)}
+        <path className="loteamento-traco loteamento-rua" pathLength="100" style={{'--atraso':'.5s'}} d="M334 80C302 131 293 159 309 196M359 84C328 136 322 164 335 207M239 207C215 251 231 303 261 353M266 216C244 256 255 307 286 355" />
+        {casas.map(([x,y,r],i)=><g key={i} transform={`translate(${x} ${y}) rotate(${r})`}>
+          <path className="loteamento-traco loteamento-lote" pathLength="100" style={{'--atraso':`${.5+i*.12}s`}} d="M-34-27Q0-36 35-23L38 26Q0 36-35 25Z" />
+          <g className="loteamento-casa" style={{'--atraso':`${.9+i*.16}s`}}>
+            <path className="loteamento-telhado" d="M-18-3Q-7-17 0-19Q8-16 18-3L0 9Z" />
+            <path className="loteamento-traco" pathLength="100" d="M-18-3Q-7-17 0-19Q8-16 18-3L0 9ZM-18-3V13L0 25L18 13V-3M0 9V25" />
           </g>
         </g>)}
-        {[[79,166],[167,166],[255,166],[430,166],[558,166],[79,344],[167,344],[430,344],[558,344]].map(([x,y],i) => <g className="loteamento-arvore" key={`${x}-${y}`} style={{'--atraso':`${1.5+i*.08}s`,transformOrigin:`${x}px ${y}px`}}>
-          <path d={`M${x} ${y}v9`} stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <circle cx={x} cy={y-4} r="7" fill="#91C8AA" />
-          <path d={`M${x} ${y-7}v7`} stroke="#0F5F5B" strokeWidth="1.5" strokeLinecap="round" />
-        </g>)}
-        <g className="loteamento-carro"><rect x="110" y="196" width="18" height="9" rx="4.5" fill="#D9A64D" /><path d="M116 198v5" stroke="#FFF9EB" strokeWidth="2" /></g>
-      </g>
-      <g className="loteamento-lapis" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m554 335 29-29 8 8-29 29-12 4Z" fill="#F4D598" />
-        <path d="m550 347 4-12 8 8ZM579 310l8 8" />
+        {[[108,266],[195,100],[401,105],[556,298],[342,324]].map(([x,y],i)=><circle key={i} className="loteamento-arvore" cx={x} cy={y} r="8" style={{'--atraso':`${1.5+i*.2}s`}} />)}
+        <circle r="4" fill="#105553" className="loteamento-fluxo"><animateMotion dur="7s" repeatCount="indefinite" path="M90 218C192 154 244 183 342 225S508 262 578 212" /></circle>
       </g>
     </svg>
   </div>;

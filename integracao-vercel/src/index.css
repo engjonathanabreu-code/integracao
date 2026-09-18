@@ -1,3 +1,4 @@
+@font-face{font-family:NunitoMarca;src:url("/fonts/nunito.ttf") format("truetype");font-weight:200 1000;font-style:normal;font-display:swap;}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
