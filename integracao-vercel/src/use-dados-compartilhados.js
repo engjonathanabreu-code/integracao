@@ -1,6 +1,6 @@
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
-import {temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
+import {invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const current=useRef(null), server=useRef(null), actor=useRef(null), busy=useRef(false), pending=useRef(false), timer=useRef(null), generation=useRef(0);
@@ -178,7 +178,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     busy.current=true;const gen=generation.current;
     try {const base=await carregarBase(current.current);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');atualizarResumo();}
     catch(e){setError(e.message);if(manual)throw e;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
-    if(manual)await atualizarResumo();
+    if(manual){invalidarIndiceClientes();await atualizarResumo();}
   };
   const close=()=>{saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{

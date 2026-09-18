@@ -7,7 +7,13 @@ export const configERP = {
   chave: import.meta.env?.VITE_ERP_SUPABASE_KEY || 'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4',
 };
 let session = null, refreshing = null;
-export function definirSessao(dados) { session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
+let indiceClientes = null, indiceJob = null, indiceGeracao = 0, indiceCarregadoEm = 0;
+const VALIDADE_INDICE_MS = 5 * 60 * 1000;
+export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceJob = null; indiceCarregadoEm = 0; }
+export function obterIndiceClientes() { return session ? indiceClientes : null; }
+export function definirSessao(dados) {
+  if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) invalidarIndiceClientes();
+  session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
 export async function requisicao(path, options = {}) {
   if (!session) throw new Error('Entre novamente com sua conta para acessar os dados compartilhados.');
@@ -420,7 +426,9 @@ export function prepararEdicao(before,after,state,actor) {
 }
 export async function gravarOperacoes(operations,pedido) {
   if(!operations.length) return {aliases:{}};
-  return requisicao('rpc/integracao_gravar',{method:'POST',body:JSON.stringify({operacoes:operations,pedido})});
+  const result = await requisicao('rpc/integracao_gravar',{method:'POST',body:JSON.stringify({operacoes:operations,pedido})});
+  if (operations.some(op => ['fin_receb_clientes','integracao_moradores','integracao_municipios','integracao_remessas','integracao_nucleos','integracao_complementos'].includes(op.table))) invalidarIndiceClientes();
+  return result;
 }
 
 export async function lerArquivoERP(chave) {
@@ -464,8 +472,21 @@ export async function prepararArquivos(before,after,storage,actor) {
   return operations;
 }
 
-// Directory fetched only when a client search is opened, under the caller's RLS.
-export async function lerIndiceClientes() {
+// Reuse the directory across modal mounts; never persist it outside this session.
+export function lerIndiceClientes() {
+  if (!session) return Promise.reject(new Error('Entre novamente para buscar clientes.'));
+  if (indiceClientes && Date.now() - indiceCarregadoEm < VALIDADE_INDICE_MS) return Promise.resolve(indiceClientes);
+  if (indiceJob) return indiceJob;
+  const geracao = indiceGeracao;
+  const job = carregarIndiceClientes().then(result => {
+    if (geracao !== indiceGeracao) throw new Error('Os dados da busca mudaram. Tente novamente.');
+    indiceClientes = result; indiceCarregadoEm = Date.now();
+    return result;
+  }).finally(() => { if (indiceJob === job) indiceJob = null; });
+  indiceJob = job;
+  return job;
+}
+async function carregarIndiceClientes() {
   const clientesJob = lerTabela('fin_receb_clientes', 'id,nome,codigo,municipio_id,remessa_id');
   const complementosJob = (async () => {
     const rows = [];

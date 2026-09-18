@@ -1,6 +1,6 @@
 import {useEffect, useId, useMemo, useRef, useState} from 'react';
 import {Search} from 'lucide-react';
-import {lerIndiceClientes} from './dados-compartilhados.js';
+import {lerIndiceClientes, obterIndiceClientes} from './dados-compartilhados.js';
 import {filtrarClientes, reunirClientes} from './busca-clientes.js';
 
 // Same input used by the previous municipality step and both client searches.
@@ -14,7 +14,7 @@ export function CampoBusca(props) {
 export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFocus=false, emModal=false}) {
   const id = useId();
   const [busca, setBusca] = useState('');
-  const [indice, setIndice] = useState(null);
+  const [indice, setIndice] = useState(() => demo ? {clientes:[], complementos:[]} : obterIndiceClientes());
   const [erro, setErro] = useState('');
   const [tentativa, setTentativa] = useState(0);
   const [aberto, setAberto] = useState(false);
@@ -53,6 +53,6 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
       {!resultados.length && <div className="ajuda" style={{padding:10}}>{indice ? 'Nenhum cliente encontrado.' : erro ? 'Busca indisponível.' : 'Carregando clientes…'}</div>}
     </div>}
     <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : !indice && !erro ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : 'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
-    {erro && <div role="alert" className="msg-erro">{erro} {!indice && <button className="btn btn-sm" onClick={() => setTentativa(v => v+1)}>Tentar novamente</button>}</div>}
+    {erro && <div role="alert" className="msg-erro">{erro} <button className="btn btn-sm" onClick={() => setTentativa(v => v+1)}>Tentar novamente</button></div>}
   </div>;
 }
