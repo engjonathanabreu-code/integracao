@@ -51,7 +51,7 @@ const LOGO_INTEGRAL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbgAAAFECAY
 const CHAVE_STORAGE = "integracao-reurb-v4";
 const CHAVE_MODELO_PRF = "integracao-prf-modelo-v4";
 const PREFIXO_FOTO = "integracao-foto-v4-";
-const LIMITE_OCIOSO_MS = 15 * 60 * 1000;
+const LIMITE_OCIOSO_MS = 2 * 60 * 60 * 1000;
 const OCULTAR_CPF_MS = 2 * 60 * 1000;
 // O envio para a IA passa por uma função da Vercel, com limite de 4,5 MB por pedido
 const MAX_ARQUIVO = 25 * 1024 * 1024;
@@ -11799,7 +11799,7 @@ export default function App() {
     const iv = setInterval(() => {
       if (Date.now() - ultimoUso.current > LIMITE_OCIOSO_MS) {
         mutar((d) => d, "Sessão encerrada por inatividade");
-        compartilhado.close(); setUsuarioId(null); setAviso("Sessão encerrada depois de 15 minutos sem uso. Entre de novo.");
+        compartilhado.close(); setUsuarioId(null); setAviso("Sessão encerrada depois de 2 horas sem uso. Entre de novo.");
       }
     }, 20000);
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
