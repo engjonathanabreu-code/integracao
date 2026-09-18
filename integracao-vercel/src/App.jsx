@@ -7888,12 +7888,13 @@ function AbaAndamentos({ db, n, usuario, mutar, setToast }) {
 
 /* ---------------- metas de toda a equipe ---------------- */
 /* ---------------- busca com lupa ---------------- */
-function BuscaItem({ id, rotulo, itens, valor, onEscolher, placeholder = "Digite para buscar", ajuda }) {
+function BuscaItem({ id, rotulo, itens, valor, onEscolher, placeholder = "Digite para buscar", ajuda, mostrarTodos = false }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const escolhido = itens.find(([v]) => v === valor);
   const b = normalizar(busca);
-  const filtrados = b ? itens.filter(([, t]) => normalizar(t).includes(b)).slice(0, 30) : itens.slice(0, 30);
+  const compativeis = b ? itens.filter(([, t]) => normalizar(t).includes(b)) : itens;
+  const filtrados = mostrarTodos ? compativeis : compativeis.slice(0, 30);
   return (
     <div>
       <label className="rot" htmlFor={id}>{rotulo}</label>
@@ -8153,7 +8154,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
   const [etapa1, setEtapa1] = useState(meta?.devolutiva?.analiseIA?.etapa1 || null);
   const [etapa2, setEtapa2] = useState(meta?.devolutiva?.analiseIA?.etapa2 || null);
   const [salvando, setSalvando] = useState(false);
-  const opcoesNucleo = (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`]);
+  const opcoesNucleo = (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`]).sort((a, b) => a[1].localeCompare(b[1], "pt-BR", { numeric: true, sensitivity: "base" }));
 
   const validarArquivos = (lista) => {
     const arr = Array.from(lista);
@@ -8249,7 +8250,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>1. Devolutiva recebida</h3>
         {nova ? (
           <div style={{ marginBottom: 10 }}>
-            <BuscaItem id="adnu" rotulo="Núcleo (obrigatório)" itens={opcoesNucleo} valor={nucleoId} onEscolher={setNucleoId} placeholder="Buscar por município, remessa ou núcleo" />
+            <BuscaItem id="adnu" mostrarTodos ajuda="Todos os núcleos cadastrados e não arquivados, mesmo sem metas." rotulo="Núcleo (obrigatório)" itens={opcoesNucleo} valor={nucleoId} onEscolher={setNucleoId} placeholder="Buscar por município, remessa ou núcleo" />
           </div>
         ) : (
           <div className="ajuda" style={{ marginBottom: 10 }}>Núcleo: <strong>{nucleoDe(db, nucleoId) ? rotuloNucleo(db, nucleoDe(db, nucleoId)) : "—"}</strong></div>
