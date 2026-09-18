@@ -1,6 +1,6 @@
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
-import {temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
+import {temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const current=useRef(null), server=useRef(null), actor=useRef(null), busy=useRef(false), pending=useRef(false), timer=useRef(null), generation=useRef(0);
@@ -11,6 +11,13 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const municipios=useRef(new Set()), opening=useRef(false), municipalityLoads=useRef(new Map());
   const carregarBase=async(seed)=>{
     const base=await lerBase({municipios:[...municipios.current]});
+    // Keep opened clients without a municipality available during refresh/save.
+    const avulsos=(seed?.processos||[]).filter(p=>!p.municipioId&&!p._resumo&&p._compartilhado);
+    for(const cliente of avulsos){
+      const carga=await lerFichaCliente(cliente);
+      base.fin_receb_clientes.push(...carga.clientes.filter(c=>!base.fin_receb_clientes.some(x=>x.id===c.id)));
+      base.integracao_moradores.push(...carga.complementos.filter(e=>!base.integracao_moradores.some(x=>x.registro_id===e.registro_id)));
+    }
     base._moradoresResumo=server.current?.base._moradoresResumo||[];
     lastRefresh.current=Date.now();return base;
   };
@@ -116,34 +123,37 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     })();summaryJob.current=job;
     job.finally(()=>{if(summaryJob.current===job)summaryJob.current=null;});return job;
   };
-  const loadMunicipio=async(id)=>{
-    if(municipios.current.has(id))return current.current;
-    if(municipalityLoads.current.has(id))return municipalityLoads.current.get(id);
+  const loadMunicipio=async(id,cliente=null)=>{
+    const individual=!id && cliente;
+    const chave=individual ? `cliente:${cliente.id}` : id;
+    if(individual && current.current?.processos.some(p=>p.id===cliente.id&&!p._resumo))return current.current;
+    if(!individual && municipios.current.has(id))return current.current;
+    if(municipalityLoads.current.has(chave))return municipalityLoads.current.get(chave);
     const gen=generation.current;
     const job=(async()=>{
       if(!temSessao()){
-        if(!municipios.current.has(id)&&(server.current?.base._moradoresResumo||current.current?.processos.some(p=>p.municipioId===id&&p._resumo)))throw new Error('Conecte-se para baixar os moradores deste município.');
-        municipios.current.add(id);return current.current;
+        if(!municipios.current.has(chave)&&(server.current?.base._moradoresResumo||current.current?.processos.some(p=>p.municipioId===id&&p._resumo)))throw new Error('Conecte-se para baixar os moradores deste município.');
+        if(!individual)municipios.current.add(id);return current.current;
       }
       const started=Date.now();
       while(busy.current){if(Date.now()-started>35000)throw new Error('Aguarde a sincronização terminar e tente abrir o município novamente.');await new Promise(r=>setTimeout(r,50));if(gen!==generation.current)throw new Error('Sessão encerrada.');}
       busy.current=true;
       try {
-        const carga=await lerMoradoresMunicipio(id);
+        const carga=individual ? await lerFichaCliente(cliente) : await lerMoradoresMunicipio(id);
         if(gen!==generation.current)throw new Error('Sessão encerrada.');
         const prior=server.current;
         const clientIds=new Set(carga.clientes.map(c=>c.id)),extraIds=new Set(carga.complementos.map(e=>e.registro_id));
         const base={...prior.base,
-          fin_receb_clientes:[...prior.base.fin_receb_clientes.filter(c=>c.municipio_id!==id&&!clientIds.has(c.id)),...carga.clientes],
-          integracao_moradores:[...(prior.base.integracao_moradores||[]).filter(e=>!extraIds.has(e.registro_id)&&e.dados?.municipioId!==id),...carga.complementos]};
+          fin_receb_clientes:[...prior.base.fin_receb_clientes.filter(c=>(individual||c.municipio_id!==id)&&!clientIds.has(c.id)),...carga.clientes],
+          integracao_moradores:[...(prior.base.integracao_moradores||[]).filter(e=>!extraIds.has(e.registro_id)&&(individual||e.dados?.municipioId!==id)),...carga.complementos]};
         const state=projetar(base,prior.db);
         const merged=mesclarEdicoes(prior.db,current.current,state.db);
-        server.current=state;publish(merged);municipios.current.add(id);
+        server.current=state;publish(merged);if(!individual)municipios.current.add(id);
         await saveDraft();return current.current;
       } finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
     })();
-    municipalityLoads.current.set(id,job);
-    try {return await job;} finally {municipalityLoads.current.delete(id);}
+    municipalityLoads.current.set(chave,job);
+    try {return await job;} finally {municipalityLoads.current.delete(chave);}
   };
   const mutate=(fn,entry)=>{
     if(!current.current || !server.current) throw new Error('Os dados compartilhados ainda estão carregando.');

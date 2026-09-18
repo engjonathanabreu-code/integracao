@@ -26,6 +26,11 @@ if(new URLSearchParams(location.search).has('confrontantes') || new URLSearchPar
   base.fin_receb_clientes[0].cpf_cnpj='52998224725';
   base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:3,nucleoId:id(5),extras:{'2be328c2-7ccd-4448-a942-cfc6f62631fc':'Rua já cadastrada'},checks:{medicao:true,lepac:true,conferencia:true},unidades:[{id:'un1',area:'200',memorial:'Memorial fictício suficientemente longo para validar a etapa.'}],campo:{respostas:{},fotos:[],data:''}}});
 }
+if(new URLSearchParams(location.search).has('busca')) {
+  base.fin_receb_clientes[0].nome='João da Silva';
+  base.fin_receb_clientes.push({id:id(201),nome:'João Comércio Ltda',codigo:'TST02_002',municipio_id:id(2),remessa_id:null,ativo:true}, {id:id(202),nome:'João Avulso',codigo:'AVU_003',municipio_id:null,remessa_id:null,ativo:true});
+  base.integracao_moradores.push({colecao:'processos',registro_id:id(201),referencia_tabela:'fin_receb_clientes',referencia_id:id(201),dados:{requerente:{tipoPessoa:'juridica'}}});
+}
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const original=window.fetch.bind(window);let writes=0;
@@ -60,6 +65,8 @@ window.fetch=async(input,options={})=>{
   const table=url.pathname.endsWith('/rpc/integracao_eventos')?'erp_eventos':url.pathname.split('/').at(-1);
   if(table in base) {
     let rows=base[table];const id=url.searchParams.get('id');if(id?.startsWith('eq.'))rows=rows.filter(r=>r.id===id.slice(3));
+    for(const k of ['referencia_id','registro_id','colecao']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3)); }
+    if(table==='integracao_moradores' && url.searchParams.get('select')?.includes('nome:dados')) rows=rows.map(e=>({registro_id:e.registro_id,referencia_id:e.referencia_id,nome:e.dados?.requerente?.nome,tipoPessoa:e.dados?.requerente?.tipoPessoa,municipioId:e.dados?.municipioId,remessaId:e.dados?.remessaId,nucleoId:e.dados?.nucleoId,codigo:e.dados?.codigo,arquivamento:e.dados?.extras?.arquivamento}));
     const offset=Number(url.searchParams.get('offset')||0);return json(rows.slice(offset,offset+Number(url.searchParams.get('limit')||500)));
   }
   return json({message:`Consulta inesperada no teste: ${url.pathname}`},500);

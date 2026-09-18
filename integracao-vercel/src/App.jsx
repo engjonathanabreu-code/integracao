@@ -1,3 +1,5 @@
+import CarregandoLoteamento from './CarregandoLoteamento.jsx';
+import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import { InfraestruturaPRF, CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
@@ -2942,7 +2944,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   );
 }
 
-function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
+function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirCliente }) {
   const ordem = useOrdenacao("nome");
   const [aba, setAba] = useState("conteudo");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
@@ -2976,6 +2978,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast }) {
 
       {aba === "regras" && <AbaRegrasMunicipio db={db} municipio={m} usuario={usuario} mutar={mutar} setToast={setToast} />}
       <div className="flex flex-col gap-3" style={{ display: aba === "regras" ? "none" : undefined }}>
+        <BuscaClientes key={m.id} db={db} municipioId={m.id} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} />
         {!remessas.length && <Aviso tipo="info">{m.nome} ainda não tem remessa. Os núcleos aparecem direto aqui. Crie uma remessa para cadastrar moradores.</Aviso>}
         {remessas.length > 0 && (
           <Secao titulo="Remessas" acao={<BotaoArquivo municipioId={m.id} />}>
@@ -7601,7 +7604,8 @@ function DashboardGeral({ db, ir }) {
   );
 }
 
-function PaginaHome({ db, usuario, ir, offline, conexao }) {
+function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
+  const [buscaClientes, setBuscaClientes] = useState(false);
   const [verTodas, setVerTodas] = useState(false);
   const perm = permissoes(usuario);
   const pend = pendenciasDoUsuario(db, usuario);
@@ -7646,8 +7650,10 @@ function PaginaHome({ db, usuario, ir, offline, conexao }) {
       </div>
       {(!conexao.online || offline.pendentes > 0 || offline.conflitos > 0) && <div style={{ marginBottom: 14 }}><StatusConexao conexao={conexao} offline={offline} compacto /></div>}
       {perm.setor === "topografia" && <PainelTopografiaHome db={db} ir={ir} offline={offline} conexao={conexao} />}
-      {atalhos.length > 0 && (
+      {(
+
         <div className="acoes-nucleo" style={{ marginTop: perm.setor === "topografia" ? 14 : 0 }}>
+          <button className="acao-grande" onClick={() => setBuscaClientes(true)}><span className="acao-icone"><Search size={22} /></span><span><strong>Buscar cliente</strong><span>PF ou PJ por nome ou código</span></span></button>
           {atalhos.map((a) => (
             <button key={a.titulo} className="acao-grande" disabled={!a.rota} onClick={() => a.rota && ir(a.rota)}>
               <span className="acao-icone">{a.icone}</span>
@@ -7657,6 +7663,7 @@ function PaginaHome({ db, usuario, ir, offline, conexao }) {
           ))}
         </div>
       )}
+      {buscaClientes && <Modal titulo="Buscar cliente" onFechar={() => setBuscaClientes(false)}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} autoFocus emModal /></Modal>}
       <div className="layout-home">
         <Secao titulo="Suas pendências" nota="Em ordem cronológica: o que está esperando há mais tempo aparece primeiro. Metas aparecem pelo prazo.">
           {!pend.length && <p style={{ margin: 0, color: "var(--muted)" }}>Nenhuma pendência para você agora.</p>}
@@ -11870,7 +11877,13 @@ export default function App() {
   const tituloTopo = { home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
-  const props = { db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const abrirCliente = async (cliente) => {
+    const carregado = AMBIENTE.DEMO ? db : await compartilhado.loadMunicipio(cliente.municipioId, cliente);
+    const ficha = carregado.processos.find(p => p.id === cliente.id || (cliente.financeiroRef && p.financeiroRef === cliente.financeiroRef));
+    if (!ficha || ficha._resumo) throw new Error('Não foi possível carregar a ficha deste cliente. Tente novamente.');
+    await ir({ pag: "processo", id: ficha.id, aba: "cadastro" });
+  };
+  const props = { abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home"].includes(rota.pag);
 
   return (
@@ -11912,12 +11925,12 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
+          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
           {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
-          {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : <div className="pagina"><h1>Início</h1><p role="status">{compartilhado.summaryError||'Atualizando pendências e contagens. Você já pode abrir um município pelo menu Clientes.'}</p>{compartilhado.summaryError&&<button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button>}</div>)}
+          {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : compartilhado.summaryError ? <div className="contem"><p role="alert">{compartilhado.summaryError}</p><button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button></div> : <CarregandoLoteamento />)}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
           {rota.pag === "metas" && <PaginaMetas {...props} />}

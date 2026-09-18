@@ -463,3 +463,30 @@ export async function prepararArquivos(before,after,storage,actor) {
   }
   return operations;
 }
+
+// Directory fetched only when a client search is opened, under the caller's RLS.
+export async function lerIndiceClientes() {
+  const clientesJob = lerTabela('fin_receb_clientes', 'id,nome,codigo,municipio_id,remessa_id');
+  const complementosJob = (async () => {
+    const rows = [];
+    // Explicit JSON projections avoid downloading documents, CPF or financial data.
+    const select = 'registro_id,referencia_id,nome:dados->requerente->>nome,tipoPessoa:dados->requerente->>tipoPessoa,municipioId:dados->>municipioId,remessaId:dados->>remessaId,nucleoId:dados->>nucleoId,codigo:dados->>codigo,arquivamento:dados->extras->arquivamento';
+    for (let offset = 0; ; offset += 500) {
+      const page = await requisicao(`integracao_moradores?select=${encodeURIComponent(select)}&colecao=eq.processos&order=registro_id&limit=500&offset=${offset}`);
+      rows.push(...page.map(e => ({registro_id:e.registro_id, referencia_id:e.referencia_id, dados:{municipioId:e.municipioId, remessaId:e.remessaId, nucleoId:e.nucleoId, codigo:e.codigo, extras:{arquivamento:e.arquivamento}, requerente:{nome:e.nome, tipoPessoa:e.tipoPessoa}}})));
+      if (page.length < 500) return rows;
+    }
+  })();
+  const [clientes, complementos] = await Promise.all([clientesJob, complementosJob]);
+  return {clientes, complementos};
+}
+
+export async function lerFichaCliente(cliente) {
+  const filtro = cliente.financeiroRef ? `referencia_id=eq.${encodeURIComponent(cliente.financeiroRef)}` : `registro_id=eq.${encodeURIComponent(cliente.id)}`;
+  const [clientes, complementos] = await Promise.all([
+    cliente.financeiroRef ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(cliente.financeiroRef)}`) : [],
+    requisicao(`integracao_moradores?colecao=eq.processos&${filtro}`),
+  ]);
+  if (!clientes.length && !complementos.length) throw new Error('Cliente indisponível para esta conta.');
+  return {clientes, complementos};
+}
