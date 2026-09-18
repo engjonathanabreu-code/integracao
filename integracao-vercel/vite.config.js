@@ -20,7 +20,7 @@ function guardarParaOffline() {
       const versao = Date.now().toString(36);
       const texto = readFileSync(caminho, "utf8")
         .replace('"__ARQUIVOS__"', arquivos.map((a) => JSON.stringify(a)).join(", "))
-        .replace('"integracao-v1"', `"integracao-${versao}"`);
+        .replace(/const CACHE = "[^"]+";/, `const CACHE = "integracao-${versao}";`);
       writeFileSync(caminho, texto);
     },
   };

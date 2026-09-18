@@ -1,6 +1,6 @@
 // Guarda o sistema no aparelho para abrir sem internet. Os dados ficam no IndexedDB, não aqui.
 const CACHE = "integracao-conexao-v2";
-const ESSENCIAIS = ["/", "/index.html", "/manifest.webmanifest", "/icone-192.png", "/fonts/nunito.ttf", "/favicon.svg", "__ARQUIVOS__"];
+const ESSENCIAIS = ["/", "/index.html", "/manifest.webmanifest", "/icone-192.png", "/fonts/nunito.ttf", "/favicon.svg?v=conexao-3", "/favicon-32.png?v=conexao-3", "__ARQUIVOS__"];
 
 self.addEventListener("install", (evento) => {
   evento.waitUntil(caches.open(CACHE).then((c) => c.addAll(ESSENCIAIS)).then(() => self.skipWaiting()));
