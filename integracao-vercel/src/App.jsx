@@ -989,6 +989,66 @@ Orientações:
   if (i < 0 || f < 0) throw new Error("a resposta veio sem os dados esperados");
   return JSON.parse(texto.slice(i, f + 1));
 }
+const MAX_LOTE_DEVOLUTIVA = 6;
+const CATEGORIAS_ANALISE_DEVOLUTIVA = { pessoas: "Dados de pessoas", areas: "Áreas", memoriais: "Memoriais descritivos", lei: "Lei", decreto: "Decreto", tabela_planta: "Tabela dentro de planta", vertices: "Vértices dentro de planta", nome_lote: "Nome de lote dentro de planta", outro: "Outro" };
+async function blocosDeArquivosIA(arquivos) {
+  const blocos = [];
+  for (const bruto of arquivos) {
+    const arquivo = await prepararParaIA(bruto);
+    const base64 = await lerBase64(arquivo);
+    blocos.push(arquivo.type === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+      : { type: "image", source: { type: "base64", media_type: arquivo.type, data: base64 } });
+  }
+  return blocos;
+}
+async function chamarIA(content, maxTokens = 4000) {
+  const resp = await fetch(URL_IA, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_tokens: maxTokens, messages: [{ role: "user", content }] }),
+  });
+  if (!resp.ok) { let msg = `o serviço respondeu com código ${resp.status}`; try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) { /* resposta sem JSON */ } throw new Error(msg); }
+  const dados = await resp.json();
+  const texto = (dados.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").replace(/```json|```/g, "").trim();
+  const i = texto.indexOf("{"); const f = texto.lastIndexOf("}");
+  if (i < 0 || f < 0) throw new Error("a resposta veio sem os dados esperados");
+  return JSON.parse(texto.slice(i, f + 1));
+}
+// Etapa 1: lê a devolutiva recebida do município e lista o que precisa ser alterado
+async function analisarTeorDevolutivaIA(arquivos, textoLivre) {
+  if (!arquivos.length && !textoLivre?.trim()) throw new Error("anexe ao menos um arquivo ou cole o texto da devolutiva");
+  const blocos = arquivos.length ? await blocosDeArquivosIA(arquivos) : [];
+  const listaCategorias = Object.entries(CATEGORIAS_ANALISE_DEVOLUTIVA).map(([k, v]) => `${k} (${v})`).join(", ");
+  const instrucao = `Você é analista técnico sênior de regularização fundiária (REURB) no Brasil, trabalhando para a Integral Soluções em Engenharia.
+Leia a devolutiva recebida da prefeitura/órgão sobre um núcleo de REURB${arquivos.length ? " (documento(s) anexado(s))" : ""}${textoLivre?.trim() ? " e o texto abaixo, colado pelo técnico" : ""}.
+${textoLivre?.trim() ? `Texto da devolutiva:\n"""\n${textoLivre.trim()}\n"""\n` : ""}
+Identifique, com o máximo de detalhe possível, cada ponto que o município pediu para alterar ou corrigir, cobrindo especialmente estas categorias quando aparecerem: ${listaCategorias}. Preste atenção especial a exigências sobre dados de pessoas (nomes, estado civil, filiação), áreas e metragens, memoriais descritivos, referências a leis e decretos, e tudo relativo a plantas: tabelas dentro da planta, coordenadas/vértices e nomes de lotes.
+Para cada exigência identificada, gere um item com a categoria mais próxima da lista acima, uma descrição objetiva do que precisa ser alterado, e o resultado esperado depois da correção.
+Se houver trechos da devolutiva que você não conseguiu interpretar com segurança (texto ilegível, referência ambígua, exigência confusa), NÃO invente: liste esses trechos em "naoIdentificado" para o técnico revisar manualmente.
+Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
+{"resumo":"até 40 palavras resumindo a devolutiva","itens":[{"categoria":"pessoas|areas|memoriais|lei|decreto|tabela_planta|vertices|nome_lote|outro","descricao":"o que o município pediu para alterar","statusEsperado":"o que deve constar depois de corrigido"}],"naoIdentificado":["trecho ou ponto que não deu para interpretar com segurança"]}
+Escreva em português do Brasil, direto e sem jargão desnecessário.`;
+  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+}
+// Etapa 2: confere se a resposta/documentos corrigidos atendem ao que a etapa 1 apontou
+async function analisarRespostaDevolutivaIA(itensEtapa1, arquivosResposta) {
+  if (!arquivosResposta.length) throw new Error("anexe ao menos um documento da resposta enviada ao município");
+  const blocos = await blocosDeArquivosIA(arquivosResposta);
+  const listaItens = (itensEtapa1 || []).map((it, idx) => `${idx + 1}. [id:${it.id}] (${CATEGORIAS_ANALISE_DEVOLUTIVA[it.categoria] || it.categoria}) ${it.descricao} — esperado: ${it.statusEsperado || "sem detalhe"}`).join("\n");
+  const instrucao = `Você é analista técnico sênior de regularização fundiária (REURB) no Brasil, trabalhando para a Integral Soluções em Engenharia.
+Uma devolutiva da prefeitura pediu as alterações abaixo. Agora foram anexados os documentos/plantas já revisados pelo núcleo em resposta a essa devolutiva.
+Exigências da devolutiva a conferir:
+${listaItens || "(nenhum item registrado)"}
+
+Analise os documentos anexados (podem incluir memoriais, tabelas dentro de plantas, vértices/coordenadas, nomes de lotes, dados de pessoas, áreas, referências a lei/decreto) e, para CADA exigência da lista acima, diga se foi corrigida, não foi corrigida, ou se não é possível verificar com o material enviado.
+Se não conseguir confirmar um item com segurança (documento não contempla aquele ponto, informação ilegível, etc.), use status "nao_verificavel" e explique o motivo em "observacao" — não presuma que foi corrigido sem evidência clara no documento.
+Se encontrar, nos documentos, alguma alteração relevante que não estava na lista de exigências, cite em "naoIdentificado" para o técnico avaliar.
+Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
+{"resumo":"até 40 palavras resumindo a conferência","itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
+Escreva em português do Brasil, direto e sem jargão desnecessário.`;
+  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+}
 function simularAnalise(tipo, p, regras) {
   const t = tipo === "auto" ? "identidade" : tipo;
   const r = p.requerente;
@@ -2797,11 +2857,13 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   const [municipioPRF, setMunicipioPRF] = useState(null);
   const [uf, setUf] = useState("Todas");
   const [busca, setBusca] = useState("");
+  const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
   const ufs = ["Todas", ...Array.from(new Set(db.municipios.map((m) => m.uf))).sort()];
   const linhas = db.municipios
     .filter((m) => (uf === "Todas" || m.uf === uf) && normalizar(`${m.nome} ${m.prefixo}`).includes(normalizar(busca)))
     .map((m) => ({ m, remessas: db.remessas.filter((r) => r.municipioId === m.id).length, nucleos: db.nucleos.filter((n) => n.municipioId === m.id).length, ultima: db.auditoria.find((a) => a.municipioId === m.id && a.usuarioId), ...resumoMoradores(db, db.processos.filter((p) => p.municipioId === m.id)) }))
     .sort((a, b) => a.m.nome.localeCompare(b.m.nome));
+  const sugestoes = busca ? linhas.slice(0, 8) : [];
   const tot = { nucleos: db.nucleos.length, moradores: soAtivos(db.processos).length };
   return (
     <div className="contem">
@@ -2818,7 +2880,33 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
         </div>
         <div style={{ flex: "1 1 240px", maxWidth: 360, position: "relative" }}>
           <Search size={16} style={{ position: "absolute", left: 11, top: 11, color: "var(--muted)" }} />
-          <input className="inp" style={{ paddingLeft: 34 }} placeholder="Buscar município ou prefixo" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar município" />
+          <input
+            className="inp"
+            style={{ paddingLeft: 34 }}
+            placeholder="Buscar município ou prefixo"
+            value={busca}
+            onChange={(e) => { setBusca(e.target.value); setSugestoesAbertas(true); }}
+            onFocus={() => setSugestoesAbertas(true)}
+            onBlur={() => setTimeout(() => setSugestoesAbertas(false), 150)}
+            aria-label="Buscar município"
+            autoComplete="off"
+          />
+          {sugestoesAbertas && busca && (
+            <div className="lista-busca" role="listbox" aria-label="Sugestões de município" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 5 }}>
+              {sugestoes.map(({ m }) => (
+                <button
+                  key={m.id}
+                  role="option"
+                  className="item-busca"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setSugestoesAbertas(false); setBusca(""); ir({ pag: "municipio", id: m.id }); }}
+                >
+                  {m.nome}{m.prefixo ? ` — ${m.prefixo}` : ""} <span style={{ color: "var(--muted)" }}>({m.uf})</span>
+                </button>
+              ))}
+              {!sugestoes.length && <span className="ajuda" style={{ padding: "8px 10px", display: "block" }}>Nada encontrado com esse texto.</span>}
+            </div>
+          )}
         </div>
       </div>
       <div className="card rolagem">
@@ -4602,7 +4690,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "quadro" && <TabQuadro db={db} ps={at} ir={ir} nucleoId={n?.id} remessaId={n ? undefined : r?.id} />}
             {abaAtual === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${r ? nomeRemessa(db, r) : m.nome} ${n ? n.codigo : "sem nucleo"}`} log={{ municipioId: m.id, remessaId: r?.id, nucleoId: n?.id }} />}
             {abaAtual === "andamentos" && n && <AbaAndamentos db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
-            {abaAtual === "devolutivas" && n && <AbaDevolutivas db={db} n={n} usuario={usuario} ir={ir} setToast={setToast} />}
+            {abaAtual === "devolutivas" && n && <AbaDevolutivas db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "comercial" && n && (
               <div className="flex flex-col gap-3">
                 <AbaComercialNucleo db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />
@@ -7929,9 +8017,11 @@ const ORIGENS_DEVOLUTIVA = ["Prefeitura", "ORI"];
 const PREFIXO_ARQ_DEV = "integracao-devolutiva-v1-";
 const devolutivasDoNucleo = (db, nucleoId) => (db.metas || []).filter((m) => m.devolutiva && (m.associacao_id === nucleoId || (m.nucleos || []).includes(nucleoId)));
 
-function AbaDevolutivas({ db, n, usuario, ir, setToast }) {
+function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
   const lista = devolutivasDoNucleo(db, n.id).sort((a, b) => (b.devolutiva?.chegada || "").localeCompare(a.devolutiva?.chegada || ""));
   const hoje = new Date().toISOString().slice(0, 10);
+  const [analisando, setAnalisando] = useState(null);
+  const [relatorio, setRelatorio] = useState(null);
   const baixar = async (arq) => {
     try {
       const dataUrl = await armazenamento.get(arq.chave);
@@ -7940,11 +8030,14 @@ function AbaDevolutivas({ db, n, usuario, ir, setToast }) {
     } catch (e) { setToast("Não foi possível abrir o arquivo."); }
   };
   return (
-    <Secao titulo={`Devolutivas (${lista.length})`} nota="Toda devolutiva da prefeitura ou do cartório registrada como meta aparece aqui, com o arquivo recebido.">
+    <Secao titulo={`Devolutivas (${lista.length})`} nota="Toda devolutiva da prefeitura ou do cartório registrada como meta aparece aqui, com o arquivo recebido e o relatório da análise de IA.">
       {!lista.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma devolutiva registrada neste núcleo.</p>}
       {lista.map((m, i) => {
         const d = m.devolutiva;
         const vencida = d.prazo && d.prazo < hoje && m.status !== "Concluído";
+        const etapa1 = d.analiseIA?.etapa1;
+        const etapa2 = d.analiseIA?.etapa2;
+        const contagemEtapa2 = etapa2 ? etapa2.itens.reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {}) : null;
         return (
           <div key={m.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <div className="flex flex-wrap items-center gap-2">
@@ -7957,15 +8050,267 @@ function AbaDevolutivas({ db, n, usuario, ir, setToast }) {
               Chegou em {dataBR(d.chegada)}{d.prazo ? `, prazo para responder até ${dataBR(d.prazo)}` : ", sem prazo"}.
               {(m.responsaveis || []).length ? ` Responsável: ${(m.responsaveis || []).map((id) => (db.usuarios || []).find((u) => u.id === id)?.nome).filter(Boolean).join(", ")}.` : ""}
             </div>
+            {(etapa1 || etapa2) && (
+              <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
+                {etapa1 && <Tag tipo="neutra"><Sparkles size={12} />{etapa1.itens.length} item(ns) a corrigir</Tag>}
+                {etapa2 && (
+                  <>
+                    {!!contagemEtapa2.corrigido && <Tag tipo="ok">{contagemEtapa2.corrigido} corrigido(s)</Tag>}
+                    {!!contagemEtapa2.nao_corrigido && <Tag tipo="bloq">{contagemEtapa2.nao_corrigido} não corrigido(s)</Tag>}
+                    {!!contagemEtapa2.nao_verificavel && <Tag tipo="pend">{contagemEtapa2.nao_verificavel} não verificável(is)</Tag>}
+                  </>
+                )}
+                {(!!etapa1?.naoIdentificado?.length || !!etapa2?.naoIdentificado?.length) && <Tag tipo="bloq">Revisar manualmente</Tag>}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
               {(m.arquivos || []).map((a) => <button key={a.id} className="btn btn-sm" onClick={() => baixar(a)}><Paperclip size={13} />{a.nome}</button>)}
               {!(m.arquivos || []).length && <span className="ajuda" style={{ margin: 0 }}>Sem arquivo anexado.</span>}
+              {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorio(m)}><Sparkles size={13} />Ver relatório da IA</button>}
+              {gerenciaMetas(usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{etapa2 ? "Reanalisar resposta" : "Analisar resposta"}</button>}
               <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "metas" })}>Abrir a meta</button>
             </div>
           </div>
         );
       })}
+      {analisando && <ModalAnaliseDevolutiva db={db} meta={analisando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnalisando(null)} />}
+      {relatorio && <ModalRelatorioDevolutiva meta={relatorio} onFechar={() => setRelatorio(null)} />}
     </Secao>
+  );
+}
+
+function ModalRelatorioDevolutiva({ meta, onFechar }) {
+  const etapa1 = meta.devolutiva?.analiseIA?.etapa1;
+  const etapa2 = meta.devolutiva?.analiseIA?.etapa2;
+  return (
+    <Modal titulo={`Relatório da IA — ${meta.titulo}`} largura={680} onFechar={onFechar} rodape={<button className="btn" onClick={onFechar}>Fechar</button>}>
+      {etapa1 && (
+        <div style={{ marginBottom: 16 }}>
+          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>Etapa 1 — Teor da devolutiva</h3>
+          <p style={{ margin: "0 0 8px" }}>{etapa1.resumo}</p>
+          {etapa1.itens.map((it) => (
+            <div key={it.id} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+              <Tag tipo="neutra">{CATEGORIAS_ANALISE_DEVOLUTIVA[it.categoria] || it.categoria}</Tag>
+              <div style={{ marginTop: 4 }}>{it.descricao}</div>
+              {it.statusEsperado && <div className="ajuda" style={{ margin: "2px 0 0" }}>Esperado: {it.statusEsperado}</div>}
+            </div>
+          ))}
+          {!!etapa1.naoIdentificado?.length && (
+            <div className="msg-erro" style={{ marginTop: 10 }}>
+              <strong>A IA não conseguiu identificar com segurança (revisar manualmente):</strong>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa1.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+      {etapa2 && (
+        <div>
+          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>Etapa 2 — Conferência da resposta</h3>
+          <p style={{ margin: "0 0 8px" }}>{etapa2.resumo}</p>
+          {etapa2.itens.map((it, i) => {
+            const original = (etapa1?.itens || []).find((x) => x.id === it.refItemId);
+            const tagTipo = it.status === "corrigido" ? "ok" : it.status === "nao_corrigido" ? "bloq" : "pend";
+            const rotuloStatus = it.status === "corrigido" ? "Corrigido" : it.status === "nao_corrigido" ? "Não corrigido" : "Não foi possível verificar";
+            return (
+              <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+                <Tag tipo={tagTipo}>{rotuloStatus}</Tag>
+                <div style={{ marginTop: 4 }}>{original?.descricao || "Item da devolutiva"}</div>
+                {it.observacao && <div className="ajuda" style={{ margin: "2px 0 0" }}>{it.observacao}</div>}
+              </div>
+            );
+          })}
+          {!!etapa2.naoIdentificado?.length && (
+            <div className="msg-erro" style={{ marginTop: 10 }}>
+              <strong>Pontos para o técnico revisar manualmente:</strong>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa2.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+      {!etapa1 && !etapa2 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma análise de IA registrada ainda.</p>}
+    </Modal>
+  );
+}
+
+function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }) {
+  const nova = !meta;
+  const [nucleoId, setNucleoId] = useState(meta?.associacao_id || "");
+  const [chegada, setChegada] = useState(meta?.devolutiva?.chegada || new Date().toISOString().slice(0, 10));
+  const [prazo, setPrazo] = useState(meta?.devolutiva?.prazo || "");
+  const [textoLivre, setTextoLivre] = useState("");
+  const [arquivosEtapa1, setArquivosEtapa1] = useState([]);
+  const [arquivosEtapa2, setArquivosEtapa2] = useState([]);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [etapa1, setEtapa1] = useState(meta?.devolutiva?.analiseIA?.etapa1 || null);
+  const [etapa2, setEtapa2] = useState(meta?.devolutiva?.analiseIA?.etapa2 || null);
+  const [salvando, setSalvando] = useState(false);
+  const opcoesNucleo = (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`]);
+
+  const validarArquivos = (lista) => {
+    const arr = Array.from(lista);
+    if (arr.length > MAX_LOTE_DEVOLUTIVA) { setErro(`Envie no máximo ${MAX_LOTE_DEVOLUTIVA} arquivos por vez.`); return null; }
+    const grande = arr.find((a) => a.size > MAX_ARQUIVO);
+    if (grande) { setErro(`"${grande.name}" passa do tamanho permitido.`); return null; }
+    setErro("");
+    return arr;
+  };
+
+  const rodarEtapa1 = async () => {
+    if (!nucleoId) { setErro("Selecione o núcleo antes de analisar."); return; }
+    setErro(""); setCarregando("etapa1");
+    try {
+      const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1, textoLivre);
+      setEtapa1({ geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map((it) => ({ ...it, id: uid("iv") })), naoIdentificado: resultado.naoIdentificado || [], arquivosAnalisados: arquivosEtapa1.map((a) => ({ nome: a.name })) });
+      setEtapa2(null);
+    } catch (e) { setErro(e.message); } finally { setCarregando(false); }
+  };
+
+  const rodarEtapa2 = async () => {
+    setErro(""); setCarregando("etapa2");
+    try {
+      const resultado = await analisarRespostaDevolutivaIA(etapa1?.itens || [], arquivosEtapa2);
+      setEtapa2({ geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: resultado.itens || [], naoIdentificado: resultado.naoIdentificado || [], arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
+    } catch (e) { setErro(e.message); } finally { setCarregando(false); }
+  };
+
+  const podeSalvar = !!nucleoId && !!etapa1 && !salvando;
+
+  const salvar = async () => {
+    setSalvando(true); setErro("");
+    try {
+      const gravarLote = async (arquivos) => {
+        const anexos = [];
+        for (const a of arquivos) {
+          const base64 = await lerBase64(a);
+          const anexo = { id: uid("ar"), nome: a.name, tipo: a.type || "application/octet-stream", tamanho: a.size, chave: `${PREFIXO_ARQ_DEV}${uid("k")}`, por: usuario.nome, data: new Date().toISOString() };
+          await armazenamento.set(anexo.chave, `data:${anexo.tipo};base64,${base64}`);
+          anexos.push(anexo);
+        }
+        return anexos;
+      };
+      const anexosEtapa1 = await gravarLote(arquivosEtapa1);
+      const anexosEtapa2 = await gravarLote(arquivosEtapa2);
+      const nucleo = nucleoDe(db, nucleoId);
+      const devolutiva = {
+        origem: meta?.devolutiva?.origem || "Prefeitura",
+        chegada, prazo,
+        analiseIA: {
+          etapa1: etapa1 ? { ...etapa1, arquivosAnalisados: [...(meta?.devolutiva?.analiseIA?.etapa1?.arquivosAnalisados || []), ...anexosEtapa1.map((a) => ({ nome: a.nome, chave: a.chave }))] } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
+          etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: [...(meta?.devolutiva?.analiseIA?.etapa2?.arquivosAnalisados || []), ...anexosEtapa2.map((a) => ({ nome: a.nome, chave: a.chave }))] } : (meta?.devolutiva?.analiseIA?.etapa2 || null),
+        },
+      };
+      if (nova) {
+        const m = {
+          id: uid("mt"), erpId: null,
+          titulo: `Devolutiva - ${nucleo ? rotuloNucleo(db, nucleo) : "núcleo"} - ${dataBR(chegada)}`,
+          observacoes: textoLivre.trim(),
+          semana_inicio: semanaISO(), prazo: prazo || "", status: META_STATUS[0], setor: "",
+          associacao_tipo: "nucleo", associacao_id: nucleoId,
+          responsaveis: [], icone: "",
+          devolutiva,
+          criadoPor: usuario.id, nucleos: [nucleoId],
+          checklist: [], comentarios: [], historico: [],
+          arquivos: [...anexosEtapa1, ...anexosEtapa2],
+        };
+        mutar((d) => {
+          d.metas.unshift(m);
+          registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
+          if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência da resposta) gerada.", usuario);
+          return d;
+        }, "Devolutiva: análise de IA", { detalhe: m.titulo });
+        setToast("Devolutiva registrada com o relatório da IA.");
+      } else {
+        mutar((d) => {
+          const q = d.metas.find((x) => x.id === meta.id);
+          q.devolutiva = devolutiva;
+          q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
+          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? "Etapa 2 (conferência da resposta) gerada." : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
+          return d;
+        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo });
+        setToast("Relatório da IA atualizado.");
+      }
+      onFechar();
+    } catch (e) { setErro(`Não foi possível salvar: ${e.message}`); } finally { setSalvando(false); }
+  };
+
+  return (
+    <Modal titulo={nova ? "Análise de Devolutivas" : `Análise de Devolutivas — ${meta.titulo}`} largura={720} onFechar={onFechar}
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!podeSalvar} onClick={salvar}>{salvando ? <Loader2 size={16} className="girando" /> : null}Salvar</button></>}>
+      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+        <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>1. Devolutiva recebida</h3>
+        {nova ? (
+          <div style={{ marginBottom: 10 }}>
+            <BuscaItem id="adnu" rotulo="Núcleo (obrigatório)" itens={opcoesNucleo} valor={nucleoId} onEscolher={setNucleoId} placeholder="Buscar por município, remessa ou núcleo" />
+          </div>
+        ) : (
+          <div className="ajuda" style={{ marginBottom: 10 }}>Núcleo: <strong>{nucleoDe(db, nucleoId) ? rotuloNucleo(db, nucleoDe(db, nucleoId)) : "—"}</strong></div>
+        )}
+        <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div><label className="rot" htmlFor="adch">Data de chegada</label><input id="adch" type="date" className="inp" value={chegada} onChange={(e) => setChegada(e.target.value)} /></div>
+          <div><label className="rot" htmlFor="adpz">Prazo final (opcional)</label><input id="adpz" type="date" className="inp" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
+        </div>
+        <label className="rot" htmlFor="adarq" style={{ marginTop: 10 }}>Arquivos da devolutiva (PDF ou imagem)</label>
+        <input id="adarq" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa1(arr); }} />
+        <label className="rot" htmlFor="adtxt" style={{ marginTop: 10 }}>Ou cole o texto da devolutiva (opcional)</label>
+        <textarea id="adtxt" className="inp" rows={3} value={textoLivre} onChange={(e) => setTextoLivre(e.target.value)} placeholder="Cole aqui o texto recebido, se não houver arquivo digital" />
+        <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa1"} onClick={rodarEtapa1}>{carregando === "etapa1" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar teor da devolutiva</button>
+
+        {etapa1 && (
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}>
+            <p style={{ margin: "0 0 8px" }}>{etapa1.resumo}</p>
+            {etapa1.itens.map((it) => (
+              <div key={it.id} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+                <Tag tipo="neutra">{CATEGORIAS_ANALISE_DEVOLUTIVA[it.categoria] || it.categoria}</Tag>
+                <div style={{ marginTop: 4 }}>{it.descricao}</div>
+                {it.statusEsperado && <div className="ajuda" style={{ margin: "2px 0 0" }}>Esperado: {it.statusEsperado}</div>}
+              </div>
+            ))}
+            {!!etapa1.naoIdentificado?.length && (
+              <div className="msg-erro" style={{ marginTop: 10 }}>
+                <strong>A IA não conseguiu identificar com segurança (revisar manualmente):</strong>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa1.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {etapa1 && (
+        <div className="card" style={{ padding: 14 }}>
+          <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>2. Resposta enviada ao município (opcional agora, pode ser feita depois)</h3>
+          <label className="rot" htmlFor="adarq2">Arquivos da resposta / documentos corrigidos</label>
+          <input id="adarq2" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa2(arr); }} />
+          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa2" || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar resposta enviada</button>
+
+          {etapa2 && (
+            <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}>
+              <p style={{ margin: "0 0 8px" }}>{etapa2.resumo}</p>
+              {etapa2.itens.map((it, i) => {
+                const original = (etapa1.itens || []).find((x) => x.id === it.refItemId);
+                const tagTipo = it.status === "corrigido" ? "ok" : it.status === "nao_corrigido" ? "bloq" : "pend";
+                const rotuloStatus = it.status === "corrigido" ? "Corrigido" : it.status === "nao_corrigido" ? "Não corrigido" : "Não foi possível verificar";
+                return (
+                  <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+                    <Tag tipo={tagTipo}>{rotuloStatus}</Tag>
+                    <div style={{ marginTop: 4 }}>{original?.descricao || "Item da devolutiva"}</div>
+                    {it.observacao && <div className="ajuda" style={{ margin: "2px 0 0" }}>{it.observacao}</div>}
+                  </div>
+                );
+              })}
+              {!!etapa2.naoIdentificado?.length && (
+                <div className="msg-erro" style={{ marginTop: 10 }}>
+                  <strong>Pontos para o técnico revisar manualmente:</strong>
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa2.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {erro && <div className="msg-erro" style={{ marginTop: 12 }}>{erro}</div>}
+    </Modal>
   );
 }
 
@@ -10088,6 +10433,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [detalhe, setDetalhe] = useState(null);
   const [editando, setEditando] = useState(null);
+  const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
   const [osModal, setOsModal] = useState(null);
   const [osAberta, setOsAberta] = useState(null);
@@ -10138,6 +10484,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
         <button className={`btn btn-sm${tela === "ativas" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "ativas" ? "home" : "ativas")}>Metas Ativas</button>
         <button className="btn btn-sm" onClick={() => setCompacto((x) => !x)} title="Alterna entre a visão condensada e a detalhada">{compacto ? <><Eye size={13} />Detalhado</> : <><ListTodo size={13} />Condensado</>}</button>
         {gerencia && <button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Setor</button>}
+        {gerencia && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva("nova")}><Sparkles size={14} />Análise de Devolutivas</button>}
         {gerencia && <button className="btn btn-sm btn-primario" onClick={() => setEditando("nova")}><Plus size={14} />Nova Meta</button>}
       </span>
     </div>
@@ -10273,6 +10620,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
 
       {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = db.metas.find((x) => x.id === detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
+      {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} onFechar={() => setSetorModal(null)} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} onFechar={() => setOsModal(null)} />}
     </div>
