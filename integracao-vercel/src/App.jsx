@@ -1,3 +1,4 @@
+import {solicitarConclusaoMeta, recusarConclusaoMeta, totalRecusasMeta, totalRecusasUsuario} from './recusas-metas.js';
 import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
@@ -5871,7 +5872,7 @@ function ConfigUsuarios({ db, usuario, mutar, setToast }) {
             </div>
             <div className="flex flex-wrap gap-1" style={{ marginTop: 10 }}>
               <Tag tipo="neutra">{SETORES[u.setor]?.nome || "Sem setor"}</Tag>
-              <Tag>{u.funcao}</Tag>
+              <Tag>{u.funcao}</Tag><Tag tipo="pend">{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s) de aprovação</Tag>
               {u.origem === "ERP" && <Tag>ERP{u.tipoERP ? `: ${u.tipoERP}` : ""}</Tag>}
             </div>
             <div className="ajuda" style={{ margin: "8px 0 0" }}>{estaOnline(u) ? "No sistema agora. " : u.ultimaAtividade ? `Visto por último em ${dataHoraBR(u.ultimaAtividade)}. ` : ""}{acoesDe(u)} ação(ões) registrada(s){u.senhaAlteradaEm ? `. Senha alterada em ${dataBR(u.senhaAlteradaEm)}` : ""}</div>
@@ -10085,7 +10086,7 @@ function rotuloAssociacao(db, m) {
 }
 const nucleoDaMeta = (db, m) => (m.associacao_tipo === "nucleo" ? nucleoDe(db, m.associacao_id) : nucleoDe(db, (m.nucleos || [])[0]));
 function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
-  const item = { id: uid("h"), acao, descricao: descricao || "", autor: usuario.nome, data: new Date().toISOString() };
+  const item = { id: uid("h"), acao, descricao: descricao || "", autor: usuario.nome, autorId: usuario.id, data: new Date().toISOString() };
   const q = d.metas.find((x) => x.id === m.id);
   if (q) q.historico = [item, ...(q.historico || [])];
   return item;
@@ -10180,6 +10181,8 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       if (JSON.stringify(f.responsaveis) !== JSON.stringify(meta.responsaveis || [])) mud.push("responsáveis");
       mutar((d) => {
         const q = d.metas.find((x) => x.id === meta.id);
+        if (q.status === "Aguardando aprovação" && base.status === "Em andamento") recusarConclusaoMeta(q,usuario,"Conclusão devolvida para ajustes pela edição da meta.",uid("h"),new Date().toISOString(),d.usuarios);
+        if (base.status !== "Aguardando aprovação") q.solicitacaoConclusao = null;
         Object.assign(q, base);
         q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
         const antesChecklist = q.checklist || [];
@@ -10267,6 +10270,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [item, setItem] = useState("");
   const [comentario, setComentario] = useState("");
   const [excluir, setExcluir] = useState(false);
+  const [recusando, setRecusando] = useState(false);
+  const [motivoRecusa, setMotivoRecusa] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
   const entradaArquivo = useRef(null);
@@ -10276,8 +10281,22 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const colabora = podeColaborarMeta(m, usuario);
   const nomeUsuario = (id) => (db.usuarios || []).find((u) => u.id === id)?.nome || "Usuário removido";
   const alterar = (fn, acao, descricao) => mutar((d) => { const q = d.metas.find((x) => x.id === m.id); fn(q, d); registrarHistoricoMeta(d, q, acao, descricao, usuario); return d; }, `Meta: ${acao.toLowerCase()}`, { detalhe: `${m.titulo}${descricao ? `: ${descricao}` : ""}` });
-  const concluir = () => { alterar((q) => { q.status = "Aguardando aprovação"; }, "Conclusão solicitada", `${usuario.nome} informou que a meta foi concluída e enviou para aprovação.`); mutar((d) => { novaNotificacao(d, { titulo: `Conclusão solicitada: ${m.titulo}`, texto: `${usuario.nome} enviou para aprovação.`, rota: { pag: "metas" }, setores: ["diretoria"] }); return d; }); setToast("Meta enviada para aprovação."); onFechar(); };
-  const aprovar = () => { alterar((q) => { q.status = "Concluído"; }, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`); mutar((d) => { novaNotificacao(d, { titulo: `Conclusão aprovada: ${m.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: m.responsaveis }); return d; }); setToast("Conclusão aprovada."); onFechar(); };
+  const concluir = () => {
+    const id = uid("h"), data = new Date().toISOString();
+    mutar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !solicitarConclusaoMeta(q,usuario,id,data)) return d;
+      novaNotificacao(d,{titulo:`Conclusão solicitada: ${q.titulo}`,texto:`${usuario.nome} enviou para aprovação.`,rota:{pag:"metas"},setores:["diretoria"]});return d;
+    }, "Meta: conclusão solicitada", {detalhe:m.titulo});
+    setToast("Meta enviada para aprovação."); onFechar();
+  };
+  const recusar = () => {
+    const id = uid("h"), data = new Date().toISOString();
+    mutar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !recusarConclusaoMeta(q,usuario,motivoRecusa,id,data,d.usuarios)) return d;
+      const solicitante=q.recusasConclusao.at(-1).solicitanteId;
+      novaNotificacao(d,{titulo:`Conclusão recusada: ${q.titulo}`,texto:motivoRecusa.trim(),rota:{pag:"metas"},usuarios:[...new Set([...(q.responsaveis||[]),...(solicitante?[solicitante]:[])])]});return d;
+    }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`});
+    setToast("Recusa registrada. A meta voltou para Em andamento."); onFechar();
+  };
+  const aprovar = () => { alterar((q) => { q.status = "Concluído"; q.solicitacaoConclusao = null; }, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`); mutar((d) => { novaNotificacao(d, { titulo: `Conclusão aprovada: ${m.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: m.responsaveis }); return d; }); setToast("Conclusão aprovada."); onFechar(); };
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
     if (!arq) return;
@@ -10310,9 +10329,15 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     : vePendenteAprovacao(m) && respMeta(m, usuario) ? <Tag tipo="pend">Aguardando aprovação</Tag> : null;
   return (
     <Modal titulo={m.titulo} largura={680} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" onClick={onEditar}><Pencil size={15} />Editar</button>}{acaoConclusao}</>}>
+      rodape={<><button className="btn" onClick={onFechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
+      {recusando && <section className="bloco-modal" aria-label="Recusar conclusão">
+        <label className="rot" htmlFor="motivo-recusa-meta">Motivo da recusa</label>
+        <textarea id="motivo-recusa-meta" className="inp" rows={3} autoFocus value={motivoRecusa} onChange={e=>setMotivoRecusa(e.target.value)} />
+        <p className="ajuda">A meta voltará para Em andamento. Esta recusa contará uma vez para a meta e para quem solicitou a aprovação.</p>
+        <div className="flex gap-2"><button className="btn" onClick={()=>setRecusando(false)}>Cancelar recusa</button><button className="btn btn-perigo" disabled={!motivoRecusa.trim()} onClick={recusar}>Confirmar recusa</button></div>
+      </section>}
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
-        <Tag>{rotuloAssociacao(db, m)}</Tag><Tag tipo={TAG_META[m.status]}>{m.status}</Tag><Tag>{m.setor || "Sem setor"}</Tag>
+        <Tag>{rotuloAssociacao(db, m)}</Tag><Tag tipo={TAG_META[m.status]}>{m.status}</Tag><Tag>{m.setor || "Sem setor"}</Tag><Tag tipo={totalRecusasMeta(m) ? "pend" : "neutra"}>{totalRecusasMeta(m)} recusa(s) de aprovação</Tag>
         {m.devolutiva && <Tag tipo="pend"><Reply size={12} />Devolutiva {m.devolutiva.origem}, chegou em {dataBR(m.devolutiva.chegada)}</Tag>}
         {nucleo && <button className="btn btn-sm" onClick={() => { onFechar(); ir({ pag: "nucleo", id: nucleo.id }); }}>Abrir processo</button>}
       </div>
@@ -10416,6 +10441,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         <span className="meta-card-rodape">
           <span className="flex flex-wrap items-center gap-2">
             <span className="chip-setor">{m.setor || "Sem setor"}</span>
+            <span className="tag tag-pend" title="Cada recusa de conclusão conta uma vez. Reenviar não aumenta o total." aria-label={`${totalRecusasMeta(m)} recusas de aprovação`}><Undo2 size={12} />{totalRecusasMeta(m)} recusa(s)</span>
             {(m.checklist || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><ListTodo size={12} /> {feitos}/{m.checklist.length}</span>}
             {(m.comentarios || []).length > 0 && !compacto && <span className="ajuda" style={{ margin: 0 }}><MessageSquare size={12} /> {m.comentarios.length}</span>}
             {(m.arquivos || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><Paperclip size={12} /> {m.arquivos.length}</span>}
@@ -10524,7 +10550,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
                 <button key={u.id} className="card" style={{ padding: 14, textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }} onClick={() => setColaborador(u)}>
                   <strong style={{ color: "var(--titulo)" }}>{u.nome}</strong>
                   <div className="ajuda" style={{ margin: "2px 0 6px" }}>{SETORES[u.setor]?.nome}</div>
-                  <div className="flex flex-wrap gap-2"><Tag tipo="pend">{act.length} ativa(s)</Tag>{late.length > 0 && <Tag tipo="bloq">{late.length} em atraso</Tag>}<Tag tipo="ok">{done.length} concluída(s)</Tag></div>
+                  <div className="flex flex-wrap gap-2"><Tag tipo="pend">{act.length} ativa(s)</Tag>{late.length > 0 && <Tag tipo="bloq">{late.length} em atraso</Tag>}<Tag tipo="ok">{done.length} concluída(s)</Tag><Tag tipo="pend">{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s) de aprovação</Tag></div>
                 </button>
               );
             })}
@@ -10565,7 +10591,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
                 <div key={u.id} className="quadro-col" style={{ minWidth: 300, width: 300 }}>
                   <div className="flex items-center justify-between gap-2">
                     <span style={{ fontWeight: 700, color: "var(--titulo)" }}>{u.nome}<span className="ajuda" style={{ display: "block", margin: 0 }}>{SETORES[u.setor]?.nome}</span></span>
-                    <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{suas.length}</span>
+                    <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{suas.length}<span className="ajuda" style={{display:"block"}}>{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s)</span></span>
                   </div>
                   <div className="flex flex-col gap-2" style={{ marginTop: 8 }}>
                     {suas.map((m, i) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} acoesOrdem={{ primeiro: i === 0, ultimo: i === suas.length - 1, mover: (dir) => moverNaColuna(suas, i, dir) }} />)}
