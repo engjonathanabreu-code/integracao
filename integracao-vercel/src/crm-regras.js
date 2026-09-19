@@ -4,7 +4,7 @@ export function acessoCRM(u) {
   const tipo = normalizarCRM(u?.tipoERP || u?.tipo);
   const admin = u?.ativo !== false && ['administrador', 'diretor tecnico', 'diretor de projetos'].includes(tipo);
   const ativo = !!u && u.ativo !== false;
-  return {admin, comercial: ativo && (admin || tipo === 'comercial'), pos: ativo && (admin || tipo === 'pos-protocolo'), marketing: ativo && (admin || tipo === 'marketing')};
+  return {admin, comercial: ativo && (admin || tipo === 'comercial'), pos: ativo && (admin || tipo === 'pos-protocolo'), marketing: ativo && (admin || ['marketing','pos-protocolo'].includes(tipo))};
 }
 // Remove only an exact, known code; never discard the first token of a person's name.
 export function nomeSemPrefixo(nome, codigo) {
