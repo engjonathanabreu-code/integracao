@@ -2,7 +2,9 @@
 import {resumirMoradores} from '../src/resumo-moradores.js';
 import {compactarResumo} from '../src/resumo-transporte.js';
 import {fixture,id} from './fixture.js';
+import {instalarCRMFixture} from './crm-browser-fixture.js';
 const base=fixture();base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
+const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 if(new URLSearchParams(location.search).has('calendario')) {
   const hoje=new Date().toISOString().slice(0,10);
   base.profiles.push({id:id(70),nome:'Ana Topografia',tipo:'Topografia',ativo:true},{id:id(71),nome:'Bia Projetos',tipo:'Projetos',ativo:true});
@@ -42,6 +44,7 @@ window.fetch=async(input,options={})=>{
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
+  if(crmFixture){const result=crmFixture(url,options,json);if(result!==undefined)return result;}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});
   if(url.pathname.includes('/storage/v1/object/')) {
     const path=url.pathname.split('/integracao/')[1];

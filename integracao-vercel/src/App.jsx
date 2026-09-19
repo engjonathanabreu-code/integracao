@@ -1,3 +1,8 @@
+import CRM, {HistoricoAtendimento} from './CRM.jsx';
+import GestaoSemanal from './GestaoSemanal.jsx';
+import Marketing from './Marketing.jsx';
+import Andamentos from './Andamentos.jsx';
+import {acessoCRM, ETAPAS_CRM} from './crm-regras.js';
 import {solicitarConclusaoMeta, recusarConclusaoMeta, totalRecusasMeta, totalRecusasUsuario} from './recusas-metas.js';
 import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
@@ -137,7 +142,7 @@ const TOTAL_NUCLEO = NUCLEO_ETAPAS.length;
 // Azul na mobilização e contrato, turquesa na análise e topografia, verde do projeto à unidade pronta. Tons claros e escuros se alternam para separar etapas vizinhas.
 const COR_ETAPA = ["#8DBDF0", "#2563B8", "#12A8C4", "#5FD3BF", "#0E7C66", "#8CCB5E", "#2F6B2F"];
 const SITUACOES = ["Ativo", "Inativo", "Cancelado", "Banido"];
-const STATUS_CRM = ["Novo", "Contato feito", "Proposta enviada", "Negociação", "Cliente Ativo", "Perdido"];
+const STATUS_CRM = [...ETAPAS_CRM, "Novo", "Contato feito", "Proposta enviada", "Cliente Ativo", "Perdido"];
 const STATUS_FINANCEIRO = ["Adimplente", "3 atrasado", "6+ atrasado", "Total Atrasado"];
 const TAG_FINANCEIRO = { Adimplente: "ok", "3 atrasado": "pend", "6+ atrasado": "bloq", "Total Atrasado": "bloq" };
 const TAG_CRM = { "Cliente Ativo": "ok", Perdido: "bloq", "Negociação": "pend", "Proposta enviada": "pend" };
@@ -1363,10 +1368,11 @@ function montarMorador(db, municipioId, dados) {
   const np = processoVazio(municipioId, dados.remessaId, codigoCliente(db, dados.remessaId, numero));
   np.numeroCliente = numero;
   np.unidades = Array.from({ length: Math.max(1, dados.qtdUnidades || 1) }, () => ({ id: uid("un"), area: "", memorial: "", loteQuadra: "" }));
-  np.nucleoId = dados.nucleoId || "";
+  np.nucleoId = "";
   np.requerente.nome = dados.nome.trim();
   np.requerente.telefone = dados.telefone.trim();
   np.requerente.cpf = dados.cpf;
+  np.requerente.statusCRM = "Cliente novo";
   np.endereco.municipio = m?.nome || ""; np.endereco.uf = m?.uf || "";
   np.enderecoImovel.municipio = m?.nome || ""; np.enderecoImovel.uf = m?.uf || "";
   return np;
@@ -2471,7 +2477,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const remessas = db.remessas.filter((r) => r.municipioId === municipio.id).sort((a, b) => a.numero - b.numero);
   const [passo, setPasso] = useState(1);
   const [remessaId, setRemessaId] = useState(remessaPadrao || remessas[0]?.id || "");
-  const [nucleoId, setNucleoId] = useState(nucleoPadrao || "");
+  const [nucleoId, setNucleoId] = useState("");
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [cpf, setCpf] = useState("");
@@ -2514,7 +2520,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const atualizarItem = (id, mud) => { filaRef.current = filaRef.current.map((i) => (i.id === id ? { ...i, ...mud } : i)); setFila(filaRef.current); };
   const definirRascunho = (np) => { rascunhoRef.current = np; setRascunho(np); };
   const avancar = () => {
-    const np = montarMorador(db, municipio.id, { remessaId, nucleoId, nome, telefone, cpf, qtdUnidades });
+    const np = montarMorador(db, municipio.id, { remessaId, nucleoId: acessoCRM(usuario).comercial ? "" : nucleoId, nome, telefone, cpf, qtdUnidades });
     definirRascunho(np);
     setPasso(2);
   };
@@ -2627,7 +2633,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label className="rot" htmlFor="mnuc">Núcleo</label>
-            <select id="mnuc" className="inp" value={nucleoId} onChange={(e) => setNucleoId(e.target.value)}>
+            <select id="mnuc" className="inp" value="" disabled title="Novos clientes entram sem núcleo. O vínculo pode ser definido posteriormente.">
               <option value="">Sem núcleo por enquanto</option>
               {nucleos.map((n) => <option key={n.id} value={n.id}>{nomeNucleo(n)}{n.remessaId ? "" : " (sem remessa)"}</option>)}
             </select>
@@ -2968,6 +2974,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
         </div>
         <div className="flex flex-wrap gap-2">
           <button className={`btn btn-sm${aba === "regras" ? " btn-primario" : ""}`} onClick={() => setAba(aba === "regras" ? "conteudo" : "regras")}><ClipboardList size={14} />Regras{temAjusteAlgum ? " (específicas)" : ""}</button>
+          {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}>Atendimentos à prefeitura</button>}
           {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
@@ -4506,6 +4513,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["cadastro", "Cadastro", UserPlus, 0, sujo ? "não salvo" : ""],
               ["unidades", "Unidade" + (unidadesDe(p).length > 1 ? "s" : ""), MapPin, unidadesDe(p).length > 1 ? unidadesDe(p).length : 0],
               ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
+              ["atendimentosCRM", "Atendimentos", MessageSquare, 0],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
               ["qualificacao", "Qualificação", ScrollText, 0, p.qualificacao?.desatualizada ? "desatualizada" : ""],
@@ -4531,7 +4539,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </span>
             </div>
           )}
-          {aba === "comercial" && <AbaComercialCliente db={db} p={p} usuario={usuario} ir={irComCuidado} mutar={mutar} setToast={setToast} />}
+          {aba === "atendimentosCRM" && <HistoricoAtendimento usuario={usuario} clienteId={p.financeiroRef || p.id} />}
+      {aba === "comercial" && <AbaComercialCliente db={db} p={p} usuario={usuario} ir={irComCuidado} mutar={mutar} setToast={setToast} />}
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
           {aba === "campo" && <AbaCampo db={db} p={p} usuario={usuario} ir={irComCuidado} />}
           {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} cpfVisivel={cpfVisivel} mutar={mutar} setToast={setToast} />}
@@ -7867,7 +7876,7 @@ function AbaAndamentos({ db, n, usuario, mutar, setToast }) {
   const lista = n.andamentos || [];
   return (
     <Secao titulo="Andamentos do processo" nota="Mesmo registro do kanban de processos do ERP: o que foi feito, a situação e o que contar ao morador."
-      acao={perm.setor !== "consulta" && <button className="btn btn-sm btn-primario" onClick={() => setNovo(true)}><Plus size={14} />Novo andamento</button>}>
+      acao={acessoCRM(usuario).pos && <button className="btn btn-sm btn-primario" onClick={() => setNovo(true)}><Plus size={14} />Novo andamento</button>}>
       {!lista.length && <p className="ajuda" style={{ margin: 0 }}>Nenhum andamento registrado.</p>}
       {lista.map((a, i) => (
         <div key={a.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
@@ -10812,7 +10821,7 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
           <div className="ajuda" style={{ margin: 0 }}>{dataHoraBR(a.data)}, por {a.por}</div>
         </div>
       ))}
-      {pode && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
+      {acessoCRM(usuario).pos && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
       <h3 style={{ fontSize: 15, margin: "18px 0 6px" }}>Histórico de etapas</h3>
       {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
       {novaMeta && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNovaMeta(false)} />}
@@ -11961,7 +11970,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
+  const tituloTopo = { crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Atendimentos à prefeitura", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -11982,6 +11991,8 @@ export default function App() {
           {navItem(rota.pag === "home", <Home size={18} />, "Início", { pag: "home" })}
           {navItem(naHierarquia, <Users size={18} />, "Clientes", { pag: "municipios" })}
           {navItem(rota.pag === "processos", <Columns3 size={18} />, "Processos", { pag: "processos" })}
+          {acessoCRM(usuario).comercial && navItem(rota.pag === "crm", <Users size={18} />, "CRM", {pag:"crm"})}
+          {acessoCRM(usuario).marketing && navItem(rota.pag === "marketing", <Target size={18} />, "Marketing", {pag:"marketing"})}
           {navItem(rota.pag === "metas", <Target size={18} />, "Metas", { pag: "metas" })}
           {navItem(rota.pag === "planos" || rota.pag === "plano", <ClipboardList size={18} />, "Planos de trabalho", { pag: "planos" })}
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
@@ -12019,7 +12030,13 @@ export default function App() {
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : compartilhado.summaryError ? <div className="contem"><p role="alert">{compartilhado.summaryError}</p><button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button></div> : <CarregandoLoteamento />)}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
+          {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
+          {rota.pag === "crm" && <CRM {...props} />}
+          {rota.pag === "marketing" && <Marketing {...props} />}
+          {rota.pag === "andamentos" && <Andamentos {...props} />}
+          {rota.pag === "semanal" && <GestaoSemanal {...props} />}
+          {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
           {rota.pag === "metas" && <PaginaMetas {...props} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
