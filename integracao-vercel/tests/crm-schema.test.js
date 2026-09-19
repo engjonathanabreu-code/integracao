@@ -31,7 +31,8 @@ export async function prepararBanco(){
  insert into fin_receb_clientes(id,nome) values('${uuid(20)}','Cadastro preservado');
  insert into fin_receb_municipios(id,nome,uf) values('${uuid(30)}','Taió','SC');
  insert into processos_kanban(id,nucleo) values('${uuid(40)}','Núcleo exemplo');`);
- await db.exec(migration);return db;
+ await db.exec(migration);
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));return db;
 }
 async function como(db,id,sql){await db.exec(`set role authenticated;set request.jwt.claim.sub='${uuid(id)}';`);try{return await db.query(sql);}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
 test('estrutura e RLS funcionam em PostgreSQL isolado sem migrar dados',async()=>{
@@ -123,5 +124,17 @@ test('Gestão Semanal aprova exclusão sem apagar histórico e checklist não co
  await assert.rejects(()=>como(db,4,'delete from integracao_semanal_registros'));
  const security=(await db.query("select relname,relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and relkind='r' and (relname like 'integracao_crm_%' or relname like 'integracao_semanal_%' or relname like 'integracao_marketing_%')")).rows;
  assert.ok(security.every(t=>t.relrowsecurity));
+ }finally{await db.close();}
+});
+test('Marketing municipal preserva autoria e datas importadas, sem duplicar nem aceitar dois vínculos',async()=>{
+ const db=await prepararBanco();try{
+ await db.exec(`insert into integracao_marketing_projetos(id,municipio_id,origem_id,origem_dados) values('${uuid(80)}','${uuid(30)}','crm:municipio','{"municipio":"Taió"}');
+ insert into integracao_marketing_etapas(id,fase_numero,fase_nome,codigo,ordem,titulo) values('${uuid(81)}',1,'Comercial','1',1,'Atendimento');
+ insert into integracao_marketing_progresso(projeto_id,etapa_id,concluida,concluida_em,concluida_por,origem_id) values('${uuid(80)}','${uuid(81)}',true,'2026-08-01T12:00:00Z','${uuid(5)}','crm:etapa');`);
+ const p=(await como(db,5,'select * from integracao_marketing_progresso')).rows[0];
+ assert.equal(p.concluida_por,uuid(5));assert.equal(new Date(p.concluida_em).toISOString(),'2026-08-01T12:00:00.000Z');
+ await assert.rejects(()=>como(db,5,`insert into integracao_marketing_projetos(municipio_id) values('${uuid(30)}')`));
+ await assert.rejects(()=>como(db,5,`insert into integracao_marketing_projetos(municipio_id,nucleo_id) values('${uuid(30)}','${uuid(40)}')`));
+ assert.equal((await como(db,2,'select * from integracao_marketing_projetos')).rows.length,0);
  }finally{await db.close();}
 });
