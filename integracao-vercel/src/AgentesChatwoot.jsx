@@ -1,0 +1,10 @@
+import {useState} from 'react';
+import {listarCRM,criarCRM,editarCRM} from './crm-api.js';
+import {acessoCRM} from './crm-regras.js';
+import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
+export default function AgentesChatwoot({usuario,db}){
+ const admin=acessoCRM(usuario).admin,[form,setForm]=useState({instalacao:'',conta_id:'',agente_id:'',usuario_id:''});
+ const m=useModulo(()=>admin?listarCRM('integracao_crm_agentes'):Promise.resolve([]),[usuario?.id]);
+ if(!admin)return null;
+ return <section className="crm-painel"><h2>Agentes do Chatwoot</h2><p>Associe os agentes externos aos comerciais do Integração. Contatos sem agente mapeado ficam disponíveis à administração para distribuição.</p><EstadoModulo modulo={m}/><form className="crm-form" onSubmit={async e=>{e.preventDefault();const {id,...data}=form;if(await m.executar(()=>id?editarCRM('integracao_crm_agentes',id,data):criarCRM('integracao_crm_agentes',data)))setForm({instalacao:'',conta_id:'',agente_id:'',usuario_id:''});}}>{[['instalacao','Identificador da instalação'],['conta_id','ID da conta'],['agente_id','ID do agente']].map(([key,label])=><CampoCRM nome={label} key={key}><input className="inp" required value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})} pattern={key==='instalacao'?undefined:'[0-9]+'}/></CampoCRM>)}<CampoCRM nome="Comercial no Integração"><select className="inp" required value={form.usuario_id} onChange={e=>setForm({...form,usuario_id:e.target.value})}><option value="">Selecione</option>{db.usuarios.filter(u=>u.ativo&&u.tipoERP==='Comercial').map(u=><option key={u.id} value={u.erpRef}>{u.nome}</option>)}</select></CampoCRM><button className="btn btn-primario" disabled={m.ocupado}>Salvar associação</button></form>{m.dados?.map(a=><article className="crm-card" key={a.id}><p>{a.instalacao} · Conta {a.conta_id} · Agente {a.agente_id} → {db.usuarios.find(u=>u.erpRef===a.usuario_id)?.nome||'Comercial'}</p><button className="btn" onClick={()=>setForm(a)}>Editar</button></article>)}</section>;
+}

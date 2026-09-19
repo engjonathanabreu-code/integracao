@@ -37,6 +37,20 @@ export async function lerTabela(tabela, campos = '*', filtro = '') {
     all.push(...page); if (page.length < 500) return all;
   }
 }
+export async function enviarArquivoSemanal(semana, arquivo) {
+  if(!arquivo||arquivo.size>25*1024*1024)throw new Error('Escolha um arquivo de até 25 MB.');
+  await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
+  const caminho=`${semana}/${crypto.randomUUID()}/${arquivo.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+  const r=await fetch(`${configERP.url}/storage/v1/object/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':arquivo.type||'application/octet-stream','x-upsert':'false'},body:arquivo});
+  if(!r.ok)throw new Error('Não foi possível enviar o arquivo.');
+  return caminho;
+}
+export async function abrirArquivoSemanal(caminho) {
+  await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
+  const r=await fetch(`${configERP.url}/storage/v1/object/sign/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});
+  if(!r.ok)throw new Error('Sem acesso ao arquivo.');
+  const body=await r.json();return `${configERP.url}/storage/v1${body.signedURL}`;
+}
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
 export async function lerBase({municipios=[]}={}) {
