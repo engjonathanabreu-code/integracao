@@ -68,10 +68,10 @@ const documentoValido = (x) => (ehPJ(x) ? cnpjValido(x.cnpj) : cpfValido(x.cpf))
 
 const docBloqueado = (d) => !!d?.regras?.some((r) => r.gravidade === "bloqueia" && r.resultado === "nao_atende");
 
-const docOk = (p, tipo) => p.docs.some((d) => d.tipo === tipo && d.status === "validado");
+const docOk = (p, tipo) => (p.docs || []).some((d) => d.tipo === tipo && d.status === "validado");
 
 function docStatusTexto(p, tipo) {
-  const d = [...p.docs].reverse().find((x) => x.tipo === tipo);
+  const d = [...(p.docs || [])].reverse().find((x) => x.tipo === tipo);
   if (!d) return "Não enviado";
   if (d.status === "validado") return "";
   if (d.status === "rejeitado") return "Rejeitado, envie outro arquivo";
@@ -149,14 +149,14 @@ function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
   const base = lista.filter((r) => r.fixo || !desligados.has(r.id)).map((r) => {
     const rotulo = (a.rotulos || {})[r.id];
     const item = { ...r, label: rotulo || r.label };
-    if (!r.fixo && opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!p.checks[r.id]; item.ok = true; }
-    if (obrigatorios.has(r.id) && item.tipo === "marcador") { item.opcional = false; item.tipo = "manual"; item.ok = !!p.checks[r.id]; }
+    if (!r.fixo && opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!(p.checks || {})[r.id]; item.ok = true; }
+    if (obrigatorios.has(r.id) && item.tipo === "marcador") { item.opcional = false; item.tipo = "manual"; item.ok = !!(p.checks || {})[r.id]; }
     return item;
   });
   (a.extras || []).forEach((e) => {
-    if (e.tipo === "campo") base.push({ id: e.id, label: e.label, ok: preenchido(p.campos[e.id]), tipo: "campo", valor: p.campos[e.id] || "", placeholder: e.ajuda || "" });
-    else if (e.opcional) base.push({ id: e.id, label: e.label, ok: true, tipo: "marcador", marcado: !!p.checks[e.id], opcional: true, ajuda: e.ajuda || "" });
-    else base.push({ id: e.id, label: e.label, ok: !!p.checks[e.id], tipo: "manual", ajuda: e.ajuda || "" });
+    if (e.tipo === "campo") base.push({ id: e.id, label: e.label, ok: preenchido((p.campos || {})[e.id]), tipo: "campo", valor: (p.campos || {})[e.id] || "", placeholder: e.ajuda || "" });
+    else if (e.opcional) base.push({ id: e.id, label: e.label, ok: true, tipo: "marcador", marcado: !!(p.checks || {})[e.id], opcional: true, ajuda: e.ajuda || "" });
+    else base.push({ id: e.id, label: e.label, ok: !!(p.checks || {})[e.id], tipo: "manual", ajuda: e.ajuda || "" });
   });
   return base;
 }
@@ -174,9 +174,9 @@ function requisitosEtapa(etapaId, p, ctx) {
 function requisitosPadrao(etapaId, p, ctx) {
   const R = [];
   const auto = (id, label, ok, detalhe = "", extra = {}) => R.push({ id, label, ok: !!ok, tipo: "auto", detalhe: ok ? "" : detalhe, ...extra });
-  const manual = (id, label, extra = {}) => R.push({ id, label, ok: !!p.checks[id], tipo: "manual", ...extra });
-  const campo = (id, label, placeholder) => R.push({ id, label, ok: preenchido(p.campos[id]), tipo: "campo", valor: p.campos[id] || "", placeholder });
-  const marcador = (id, label, ajuda) => R.push({ id, label, ok: true, tipo: "marcador", marcado: !!p.checks[id], opcional: true, ajuda });
+  const manual = (id, label, extra = {}) => R.push({ id, label, ok: !!(p.checks || {})[id], tipo: "manual", ...extra });
+  const campo = (id, label, placeholder) => R.push({ id, label, ok: preenchido((p.campos || {})[id]), tipo: "campo", valor: (p.campos || {})[id] || "", placeholder });
+  const marcador = (id, label, ajuda) => R.push({ id, label, ok: true, tipo: "marcador", marcado: !!(p.checks || {})[id], opcional: true, ajuda });
   switch (etapaId) {
     case "mobilizacao": {
       const temTelefone = so(p.requerente.telefone).length >= 10;
@@ -199,7 +199,7 @@ function requisitosPadrao(etapaId, p, ctx) {
       if (temConjuge(p)) { const fc = faltantesPessoa(p.conjuge, false); auto("dados_conj", "Dados pessoais do cônjuge", fc.length === 0, `Falta ${fc.join(", ")}`); }
       (p.corequerentes || []).forEach((cr, i) => { const fx = faltantesPessoa(cr.pessoa, true); auto(`dados_coreq_${cr.id}`, `Dados de ${cr.pessoa.nome || `requerente ${i + 2}`}`, fx.length === 0, `Falta ${fx.join(", ")}`); });
       { const fo = (p.ocupantes || []).filter((o) => faltantesQualificacao(o.pessoa).length).map((o) => o.pessoa.nome || "ocupante sem nome"); if ((p.ocupantes || []).length) auto("dados_ocup", "Qualificação dos ocupantes", fo.length === 0, `Falta completar ${fo.slice(0, 3).join(", ")}${fo.length > 3 ? ` e mais ${fo.length - 3}` : ""}`); }
-      const e = p.endereco; const fe = [];
+      const e = p.endereco || {}; const fe = [];
       if (!e.logradouro) fe.push("logradouro"); if (!e.numero) fe.push("número"); if (!e.bairro) fe.push("bairro");
       if (!e.municipio) fe.push("município"); if (!e.uf) fe.push("UF"); if (so(e.cep).length !== 8) fe.push("CEP");
       auto("endereco", "Endereço de residência", fe.length === 0, `Falta ${fe.join(", ")}`);
@@ -207,11 +207,11 @@ function requisitosPadrao(etapaId, p, ctx) {
       if (temConjuge(p)) tipos.splice(1, 0, "identidade_conjuge");
       tipos.forEach((t) => auto(`doc_${t}`, `${DOC_TIPOS[t]} validado`, docOk(p, t), docStatusTexto(p, t)));
       auto("sem_duplicidade", "Sem cadastro duplicado na remessa", !ctx.duplicado, ctx.duplicado ? `Mesmo ${ctx.duplicado.motivo} do ${ctx.duplicado.codigo}` : "");
-      auto("renda", "Composição familiar e renda", (parseNum(p.social.ocupantes) || 0) > 0 && parseNum(p.social.rendaFamiliar) !== null, "Informe pessoas no imóvel e renda familiar");
-      auto("declaracao", "Declaração sobre outro imóvel", p.social.possuiImovel !== "", "Registre se a família possui outro imóvel");
+      auto("renda", "Composição familiar e renda", (parseNum(p.social?.ocupantes) || 0) > 0 && parseNum(p.social?.rendaFamiliar) !== null, "Informe pessoas no imóvel e renda familiar");
+      auto("declaracao", "Declaração sobre outro imóvel", (p.social?.possuiImovel ?? "") !== "", "Registre se a família possui outro imóvel");
       auto("doc_comp_renda", "Comprovante de renda validado", docOk(p, "comp_renda"), docStatusTexto(p, "comp_renda"));
       auto("teto_nucleo", "Teto de renda do núcleo definido", !!criterioNucleo(ctx.nucleo).teto, ctx.nucleo ? `Defina o teto no cadastro do ${ctx.nucleo.codigo}` : "Defina o núcleo no cadastro do imóvel");
-      auto("modalidade", "Modalidade definida", ["REURB-S", "REURB-E"].includes(p.social.modalidade), "Escolha REURB-S ou REURB-E no cadastro");
+      auto("modalidade", "Modalidade definida", ["REURB-S", "REURB-E"].includes(p.social?.modalidade), "Escolha REURB-S ou REURB-E no cadastro");
       break;
     }
     case "topografia": {

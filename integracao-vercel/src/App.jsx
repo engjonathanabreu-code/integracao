@@ -9347,10 +9347,13 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const [etapa, setEtapa] = useState(ETAPAS[0].id);
   const [novo, setNovo] = useState(null);
   const [restaurar, setRestaurar] = useState(false);
-  // Um morador de exemplo só para listar os requisitos daquela etapa
-  const exemplo = db.processos.find((p) => ETAPAS[p.etapa]?.id === etapa) || db.processos[0];
-  const ctx = exemplo ? contexto(db, exemplo) : { nucleo: null, campos: [], checklist: [], ajustesReq: {} };
-  const padrao = exemplo ? requisitosPadrao(etapa, exemplo, ctx) : [];
+  // Um morador de exemplo só para listar os requisitos daquela etapa.
+  // Resumos vindos do banco compartilhado (_resumo) não têm checks/campos/endereço, então
+  // só servem cadastros completos; sem nenhum, usa um morador vazio para montar a lista.
+  const completos = db.processos.filter((p) => !p._resumo);
+  const exemplo = completos.find((p) => ETAPAS[p.etapa]?.id === etapa) || completos[0] || processoVazio("", "", "EXEMPLO");
+  const ctx = contexto(db, exemplo);
+  const padrao = requisitosPadrao(etapa, exemplo, ctx);
   const a = (db.ajustesRequisitos || {})[etapa] || {};
   const desligados = new Set(a.desativados || []);
   const opcionais = new Set(a.opcionais || []);
