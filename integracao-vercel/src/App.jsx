@@ -2974,7 +2974,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
         </div>
         <div className="flex flex-wrap gap-2">
           <button className={`btn btn-sm${aba === "regras" ? " btn-primario" : ""}`} onClick={() => setAba(aba === "regras" ? "conteudo" : "regras")}><ClipboardList size={14} />Regras{temAjusteAlgum ? " (específicas)" : ""}</button>
-          {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}>Atendimentos à prefeitura</button>}
+          {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}>Andamentos</button>}
           {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
@@ -11970,7 +11970,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Atendimentos à prefeitura", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
+  const tituloTopo = { crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
