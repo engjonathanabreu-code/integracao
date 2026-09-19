@@ -7,6 +7,13 @@ export function instalarCRMFixture(base) {
  base.integracao_crm_tarefas=[];base.integracao_crm_atendimentos=[];base.integracao_crm_conversas=[];base.integracao_crm_mensagens=[];base.integracao_crm_agentes=[];
  base.integracao_semanal_municipios=[{id:id(210),municipio_id:id(2),nucleo_id:id(5),semana_padrao:1,ativo:true,telefone:'4733330000',observacoes:'Retorno semanal'}];
  for(const t of ['semanas','registros','arquivos','exclusoes'])base['integracao_semanal_'+t]=[];
+ if(new URLSearchParams(location.search).has('semanal')){
+  const cidades=[["Araranguá","SC",1],["Barracão","PR",1],["Braço do Trombudo","SC",1],["Chapadão do Lageado","SC",1],["Ibirama","SC",1],["Joinville","SC",1],["José Boiteux","SC",1],["Mafra","SC",1],["Major Vieira","SC",1],["Navegantes","SC",1],["Salete","SC",1],["Blumenau","SC",2],["Camboriú","SC",2],["Ilhota","SC",2],["Mirim Doce","SC",2],["Presidente Getúlio","SC",2],["Presidente Nereu","SC",2],["Rio do Campo","SC",2],["São José do Ouro","RS",2],["Vitor Meireles","SC",2],["Witmarsum","SC",2],["Águas Mornas","SC",3],["Capão Bonito do Sul","RS",3],["Caçapava","SP",3],["Doutor Pedrinho","SC",3],["Gaspar","SC",3],["Guaratinguetá","SP",3],["Guaratuba","PR",3],["São João Batista","SC",3],["Agrolândia","SC",3],["São Simão","SP",3],["Taió","SC",3],["Aurora","SC",4],["Imbuia","SC",4],["Lontras","SC",4],["Morro Agudo","SP",4],["Rio do Sul","SC",4],["Santa Terezinha","SC",4],["Trombudo Central","SC",4]];
+  base.fin_receb_municipios.push(...cidades.map(([nome,uf],i)=>({id:id(300+i),nome,uf})));
+  base.integracao_semanal_municipios=cidades.map(([, ,semana_padrao],i)=>({id:id(400+i),municipio_id:id(300+i),semana_padrao,ativo:true}));
+  base.integracao_semanal_semanas=[0,1].map(i=>({id:id(500+i),municipio_id:id(400+i),ano:2026,mes:9,semana:1,concluido:true}));
+  base.integracao_semanal_registros=[0,1].map(i=>({id:id(510+i),semana_id:id(500+i),comentario:'Registro fictício para conferir o layout.',created_at:'2026-09-01T14:30:00Z'}));
+ }
  base.integracao_marketing_etapas=[{id:id(220),fase_numero:1,fase_nome:'Boas-vindas',codigo:'M1',ordem:1,titulo:'Apresentar equipe',descricao:'Mensagem inicial no grupo de moradores.'},{id:id(221),fase_numero:2,fase_nome:'Acompanhamento',codigo:'M2',ordem:1,titulo:'Atualizar moradores'}];
  base.integracao_marketing_projetos=[{id:id(222),nucleo_id:id(5),ativo:true}];base.integracao_marketing_progresso=[];base.integracao_nucleo_ia=[];
  base.processos_kanban_andamentos=[{id:id(230),processo_id:id(5),status:'Topografia',status_operacional:'Em andamento',descricao_cliente:'Levantamento em conferência.',observacao_interna:'Nota interna de teste',data_atualizacao:'2026-09-19',visivel_ia:false}];

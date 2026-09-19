@@ -32,7 +32,8 @@ export async function prepararBanco(){
  insert into fin_receb_municipios(id,nome,uf) values('${uuid(30)}','Taió','SC');
  insert into processos_kanban(id,nucleo) values('${uuid(40)}','Núcleo exemplo');`);
  await db.exec(migration);
- await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));return db;
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919154451_semanal_origem.sql',import.meta.url),'utf8'));return db;
 }
 async function como(db,id,sql){await db.exec(`set role authenticated;set request.jwt.claim.sub='${uuid(id)}';`);try{return await db.query(sql);}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
 test('estrutura e RLS funcionam em PostgreSQL isolado sem migrar dados',async()=>{
@@ -136,5 +137,16 @@ test('Marketing municipal preserva autoria e datas importadas, sem duplicar nem 
  await assert.rejects(()=>como(db,5,`insert into integracao_marketing_projetos(municipio_id) values('${uuid(30)}')`));
  await assert.rejects(()=>como(db,5,`insert into integracao_marketing_projetos(municipio_id,nucleo_id) values('${uuid(30)}','${uuid(40)}')`));
  assert.equal((await como(db,2,'select * from integracao_marketing_projetos')).rows.length,0);
+ }finally{await db.close();}
+});
+test('Gestão Semanal conserva município ambíguo em revisão e autoria histórica sem inventar vínculo',async()=>{
+ const db=await prepararBanco();try{
+ await db.exec(`insert into integracao_semanal_municipios(id,semana_padrao,origem_id,origem_dados) values('${uuid(90)}',1,'crm:pendente','{"nome":"Barracão","estado":"PR"}');
+ insert into integracao_semanal_semanas(id,municipio_id,ano,mes,semana,concluido,concluido_em,origem_id) values('${uuid(91)}','${uuid(90)}',2026,9,1,true,'2026-09-01T12:00:00Z','crm:semana');
+ insert into integracao_semanal_registros(semana_id,comentario,created_by,created_at,origem_dados) values('${uuid(91)}','Relato original',null,'2026-09-01T11:59:00Z','{"autor_nome":"Autor do CRM"}');`);
+ const c=(await como(db,4,'select * from integracao_semanal_municipios')).rows[0];assert.equal(c.municipio_id,null);assert.equal(c.origem_dados.estado,'PR');
+ const r=(await como(db,4,'select * from integracao_semanal_registros')).rows[0];assert.equal(r.created_by,null);assert.equal(r.origem_dados.autor_nome,'Autor do CRM');assert.equal(new Date(r.created_at).toISOString(),'2026-09-01T11:59:00.000Z');
+ await assert.rejects(()=>como(db,4,'insert into integracao_semanal_municipios(semana_padrao) values(2)'));
+ assert.equal((await como(db,2,'select * from integracao_semanal_registros')).rows.length,0);
  }finally{await db.close();}
 });
