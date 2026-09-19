@@ -33,7 +33,8 @@ export async function prepararBanco(){
  insert into processos_kanban(id,nucleo) values('${uuid(40)}','Núcleo exemplo');`);
  await db.exec(migration);
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));
- await db.exec(readFileSync(new URL('../supabase/migrations/20260919154451_semanal_origem.sql',import.meta.url),'utf8'));return db;
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919154451_semanal_origem.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919161336_crm_importacao_funil.sql',import.meta.url),'utf8'));return db;
 }
 async function como(db,id,sql){await db.exec(`set role authenticated;set request.jwt.claim.sub='${uuid(id)}';`);try{return await db.query(sql);}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
 test('estrutura e RLS funcionam em PostgreSQL isolado sem migrar dados',async()=>{
@@ -148,5 +149,14 @@ test('Gestão Semanal conserva município ambíguo em revisão e autoria histór
  const r=(await como(db,4,'select * from integracao_semanal_registros')).rows[0];assert.equal(r.created_by,null);assert.equal(r.origem_dados.autor_nome,'Autor do CRM');assert.equal(new Date(r.created_at).toISOString(),'2026-09-01T11:59:00.000Z');
  await assert.rejects(()=>como(db,4,'insert into integracao_semanal_municipios(semana_padrao) values(2)'));
  assert.equal((await como(db,2,'select * from integracao_semanal_registros')).rows.length,0);
+ }finally{await db.close();}
+});
+test('importar card perdido conserva cadastro e expõe origem apenas ao responsável',async()=>{
+ const db=await prepararBanco();try{
+ await db.exec(`insert into integracao_moradores(colecao,registro_id,referencia_id,dados) values('processos','${uuid(20)}','${uuid(20)}','{"requerente":{"statusCRM":"Legado","telefone":"original"}}');
+ insert into integracao_crm_cards(cliente_id,responsavel_id,status,origem_id,origem_dados) values('${uuid(20)}','${uuid(2)}','Perdido','crm:teste','{"status":"Perdido","observacoes":"Nota original"}') on conflict(origem_id) do nothing;`);
+ const row=(await como(db,2,'select * from integracao_crm_funil')).rows[0];assert.equal(row.status,'Perdido');assert.equal(row.origem_dados.observacoes,'Nota original');assert.equal(row.telefone,'original');
+ assert.equal((await db.query('select dados from integracao_moradores')).rows[0].dados.requerente.statusCRM,'Legado');
+ assert.equal((await como(db,3,'select * from integracao_crm_funil')).rows.length,0);
  }finally{await db.close();}
 });
