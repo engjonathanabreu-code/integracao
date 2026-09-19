@@ -34,9 +34,41 @@ export async function prepararBanco(){
  await db.exec(migration);
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919154451_semanal_origem.sql',import.meta.url),'utf8'));
- await db.exec(readFileSync(new URL('../supabase/migrations/20260919161336_crm_importacao_funil.sql',import.meta.url),'utf8'));return db;
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919161336_crm_importacao_funil.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919172538_marketing_grupos_rotina.sql',import.meta.url),'utf8'));return db;
 }
 async function como(db,id,sql){await db.exec(`set role authenticated;set request.jwt.claim.sub='${uuid(id)}';`);try{return await db.query(sql);}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
+test('grupos de marketing preservam progressos, restringem acesso e não simulam envio ao WhatsApp',async()=>{
+ const db=await prepararBanco();try{
+ const g=(await como(db,5,`insert into integracao_marketing_grupos(municipio_id,nome,link) values('${uuid(30)}','Grupo de teste','https://chat.whatsapp.com/Teste123') returning id`)).rows[0].id;
+ await como(db,5,`insert into integracao_marketing_atualizacoes(grupo_id,texto,enviar_ao_grupo) values('${g}','Progresso autorizado',true)`);
+ const a=(await como(db,1,'select * from integracao_marketing_atualizacoes')).rows[0];assert.equal(a.enviado_em,null);assert.equal(a.created_by,uuid(5));
+ await assert.rejects(()=>como(db,5,`update integracao_marketing_atualizacoes set enviado_em=now()`));
+ await assert.rejects(()=>como(db,5,`insert into integracao_marketing_atualizacoes(grupo_id,texto,enviado_em) values('${g}','Envio falso',now())`));
+ for(const id of [2,4,6]){assert.equal((await como(db,id,'select * from integracao_marketing_grupos')).rows.length,0);await assert.rejects(()=>como(db,id,`insert into integracao_marketing_grupos(municipio_id,nome) values('${uuid(30)}','Negado')`));}
+ await como(db,5,`update integracao_marketing_grupos set ativo=false where id='${g}'`);
+ assert.equal((await como(db,5,'select count(*) from integracao_marketing_atualizacoes')).rows[0].count,1);
+ await assert.rejects(()=>como(db,5,`insert into integracao_marketing_atualizacoes(grupo_id,texto) values('${g}','Grupo removido')`));
+ await assert.rejects(()=>como(db,1,`delete from integracao_marketing_grupos where id='${g}'`));
+ await como(db,1,`update integracao_marketing_grupos set ativo=true where id='${g}'`);
+ await assert.rejects(()=>como(db,5,`update integracao_marketing_grupos set link='javascript:alert(1)' where id='${g}'`));
+ }finally{await db.close();}
+});
+test('rotina mensal valida quatro semanas e checklist antes de concluir, preservando meses e permissões',async()=>{
+ const db=await prepararBanco();try{
+ const c=(await como(db,5,`insert into integracao_marketing_rotina(ano,mes,semana,titulo,checklist) values(2026,9,2,'Publicação','[{"texto":"Revisar","concluido":false}]') returning id`)).rows[0].id;
+ await assert.rejects(()=>como(db,5,`update integracao_marketing_rotina set status='Concluído' where id='${c}'`));
+ await assert.rejects(()=>como(db,5,`update integracao_marketing_rotina set checklist='[{"texto":"Inválido"}]' where id='${c}'`));
+ await assert.rejects(()=>como(db,5,`update integracao_marketing_rotina set semana=5 where id='${c}'`));
+ await como(db,5,`update integracao_marketing_rotina set checklist='[{"texto":"Revisar","concluido":true}]',status='Concluído',semana=4 where id='${c}'`);
+ await como(db,1,`insert into integracao_marketing_rotina(ano,mes,semana,titulo) values(2026,10,1,'Outubro')`);
+ assert.equal((await como(db,5,'select count(*) from integracao_marketing_rotina where mes=9')).rows[0].count,1);
+ assert.equal((await como(db,2,'select * from integracao_marketing_rotina')).rows.length,0);
+ await assert.rejects(()=>como(db,4,`insert into integracao_marketing_rotina(ano,mes,semana,titulo) values(2026,9,1,'Negado')`));
+ await como(db,5,`update integracao_marketing_rotina set ativo=false where id='${c}'`);
+ assert.equal((await como(db,5,`select status from integracao_marketing_rotina where id='${c}'`)).rows[0].status,'Concluído');
+ }finally{await db.close();}
+});
 test('estrutura e RLS funcionam em PostgreSQL isolado sem migrar dados',async()=>{
  const db=await prepararBanco();try{
  assert.equal((await db.query('select count(*) from integracao_crm_cards')).rows[0].count,0);

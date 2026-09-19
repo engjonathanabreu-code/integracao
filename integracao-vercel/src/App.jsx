@@ -39,7 +39,7 @@ import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
 import {
-  FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
+  Radio, FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
   Loader2, Ban, Download, Lock, Copy, Undo2, Plus, X, SlidersHorizontal, Menu, ArrowUp, Star,
   ArrowDown, Pencil, Trash2, Fingerprint, Database, MapPin, ChevronRight, ChevronDown, Link2, UserPlus, DatabaseZap,
   Bell, Users, Camera, Target, ScrollText, ClipboardCheck, MessageSquare, Crosshair, RefreshCw, Image as ImageIcon, Settings, GripVertical, Home, Calendar, CalendarDays, ListTodo, Columns3, Send, Flag, ClipboardList, Wallet, Building2, FolderOpen, Filter, Wifi, WifiOff, CloudUpload, Smartphone, TrendingUp, TrendingDown, BarChart3, Clock, HardDriveDownload,
@@ -11992,7 +11992,7 @@ export default function App() {
           {navItem(naHierarquia, <Users size={18} />, "Clientes", { pag: "municipios" })}
           {navItem(rota.pag === "processos", <Columns3 size={18} />, "Processos", { pag: "processos" })}
           {acessoCRM(usuario).comercial && navItem(rota.pag === "crm", <Users size={18} />, "CRM", {pag:"crm"})}
-          {acessoCRM(usuario).marketing && navItem(rota.pag === "marketing", <Target size={18} />, "Marketing", {pag:"marketing"})}
+          {acessoCRM(usuario).marketing && navItem(rota.pag === "marketing", <Radio size={18} />, "Marketing", {pag:"marketing"})}
           {navItem(rota.pag === "metas", <Target size={18} />, "Metas", { pag: "metas" })}
           {navItem(rota.pag === "planos" || rota.pag === "plano", <ClipboardList size={18} />, "Planos de trabalho", { pag: "planos" })}
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
