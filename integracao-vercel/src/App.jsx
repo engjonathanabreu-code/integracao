@@ -1,3 +1,4 @@
+import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
 import GestaoSemanal from './GestaoSemanal.jsx';
 import Marketing from './Marketing.jsx';
@@ -7847,21 +7848,20 @@ const responsavelDe = (db, n) => (db.usuarios || []).find((u) => normalizar(u.no
 
 function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar }) {
   const ult = ultimoAndamento(n);
-  const [f, setF] = useState({ status: ult?.status || "Documental", operacional: ult?.operacional || "Em andamento", descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
+  const [f, setF] = useState({ status: etapaProcesso(n), descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const valido = f.descricaoCliente.trim().length >= 5;
   const salvar = () => {
-    const item = { id: uid("an"), ...f, descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
+    const item = { id: uid("an"), ...f, status: etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
     mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.pendencia = f.observacao.trim(); return d; },
-      "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${f.status}, ${f.operacional}` });
+      "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${etapaProcesso(n)}` });
     setToast("Andamento registrado."); onFechar();
   };
   return (
     <Modal titulo={`Novo andamento, ${n.codigo}`} largura={560} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!valido} onClick={salvar}>Registrar andamento</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div><label className="rot" htmlFor="anst">Status</label><select id="anst" className="inp" value={f.status} onChange={(e) => set("status", e.target.value)}>{ANDAMENTO_STATUS.map((s) => <option key={s}>{s}</option>)}</select></div>
-        <div><label className="rot" htmlFor="anop">Situação operacional</label><select id="anop" className="inp" value={f.operacional} onChange={(e) => set("operacional", e.target.value)}>{ANDAMENTO_OPERACIONAL.map((s) => <option key={s}>{s}</option>)}</select></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={etapaProcesso(n)} readOnly /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anpv">Previsão</label><input id="anpv" type="date" className="inp" value={f.previsao} onChange={(e) => set("previsao", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="ands">O que contar ao morador</label><textarea id="ands" className="inp" rows={3} value={f.descricaoCliente} onChange={(e) => set("descricaoCliente", e.target.value)} placeholder="Texto em linguagem simples, que pode ser repassado." /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica só para a equipe. Também vira a pendência do processo." /></div>
@@ -7881,7 +7881,7 @@ function AbaAndamentos({ db, n, usuario, mutar, setToast }) {
       {lista.map((a, i) => (
         <div key={a.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
           <div className="flex flex-wrap items-center gap-2">
-            <Tag tipo="neutra">{a.status}</Tag><Tag tipo={a.operacional === "Concluído" ? "ok" : a.operacional === "Pausado" ? "bloq" : "pend"}>{a.operacional}</Tag>
+            <Tag tipo="neutra">{a.status}</Tag>
             {a.previsao && <span className="ajuda" style={{ margin: 0 }}>Previsão {dataBR(a.previsao)}</span>}
           </div>
           <div style={{ marginTop: 4 }}>{a.descricaoCliente}</div>
@@ -10750,13 +10750,10 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
 /* ---------------- Processos, kanban do ERP ---------------- */
 // Portado de processos-kanban.js: etapas, agrupamento por município, dias na etapa,
 // movimentação com registro no histórico e observações internas por setor.
-const ETAPAS_PROCESSO = ["Comercial", "Coleta Documental", "Análise Documental", "Topografia", "Projetos", "Protocolo", "Andamento", "Concluído"];
 const ICONE_ETAPA_PROCESSO = { Comercial: "mobilizacao", "Coleta Documental": "contrato", "Análise Documental": "documental", Topografia: "topografia", Projetos: "projeto", Protocolo: "prefeitura", Andamento: "crf", "Concluído": "matricula" };
 const PRIORIDADES_PROCESSO = ["Baixa", "Normal", "Alta", "Urgente"];
 const TAG_PRIORIDADE = { Urgente: "bloq", Alta: "pend", Normal: "neutra", Baixa: "neutra" };
 // Etapa do kanban correspondente à etapa de REURB do núcleo, usada só quando o processo ainda não foi movido
-const etapaProcessoPadrao = (n) => ETAPAS_PROCESSO[[2, 3, 4, 5, 6][Math.min(n.etapa, 4)]] || "Comercial";
-const etapaProcesso = (n) => n.etapaProcesso || etapaProcessoPadrao(n);
 const diasNaEtapa = (n) => { const d = n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
 
 function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
