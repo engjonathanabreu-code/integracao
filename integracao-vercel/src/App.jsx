@@ -2975,7 +2975,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
         </div>
         <div className="flex flex-wrap gap-2">
           <button className={`btn btn-sm${aba === "regras" ? " btn-primario" : ""}`} onClick={() => setAba(aba === "regras" ? "conteudo" : "regras")}><ClipboardList size={14} />Regras{temAjusteAlgum ? " (específicas)" : ""}</button>
-          {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}>Andamentos</button>}
+          {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}><History size={17} aria-hidden="true"/>Andamentos</button>}
           {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
@@ -12027,7 +12027,7 @@ export default function App() {
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : compartilhado.summaryError ? <div className="contem"><p role="alert">{compartilhado.summaryError}</p><button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button></div> : <CarregandoLoteamento />)}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
-          {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}>Gestão Semanal</button>}</div>}
+          {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
           {rota.pag === "crm" && <CRM {...props} />}
           {rota.pag === "marketing" && <Marketing {...props} />}
