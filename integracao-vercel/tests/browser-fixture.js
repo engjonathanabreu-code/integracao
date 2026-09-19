@@ -68,7 +68,8 @@ window.fetch=async(input,options={})=>{
   const table=url.pathname.endsWith('/rpc/integracao_eventos')?'erp_eventos':url.pathname.split('/').at(-1);
   if(table in base) {
     let rows=base[table];const id=url.searchParams.get('id');if(id?.startsWith('eq.'))rows=rows.filter(r=>r.id===id.slice(3));
-    for(const k of ['referencia_id','registro_id','colecao']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3)); }
+    for(const k of ['referencia_id','registro_id','colecao']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3));if(filtro?.startsWith('in.('))rows=rows.filter(r=>filtro.slice(4,-1).split(',').includes(r[k])); }
+    if(table==='integracao_moradores' && url.searchParams.get('select')==='referencia_id,nucleo_id:dados->>nucleoId')rows=rows.map(e=>({referencia_id:e.referencia_id,nucleo_id:e.dados?.nucleoId}));
     if(table==='integracao_moradores' && url.searchParams.get('select')?.includes('nome:dados')) rows=rows.map(e=>({registro_id:e.registro_id,referencia_id:e.referencia_id,nome:e.dados?.requerente?.nome,tipoPessoa:e.dados?.requerente?.tipoPessoa,municipioId:e.dados?.municipioId,remessaId:e.dados?.remessaId,nucleoId:e.dados?.nucleoId,codigo:e.dados?.codigo,arquivamento:e.dados?.extras?.arquivamento}));
     const offset=Number(url.searchParams.get('offset')||0);return json(rows.slice(offset,offset+Number(url.searchParams.get('limit')||500)));
   }
