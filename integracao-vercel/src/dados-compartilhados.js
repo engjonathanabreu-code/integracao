@@ -33,7 +33,8 @@ export async function requisicao(path, options = {}) {
 export async function lerTabela(tabela, campos = '*', filtro = '') {
   const all = [];
   for (let offset = 0; ; offset += 500) {
-    const page = await requisicao(`${tabela}?select=${encodeURIComponent(campos)}${filtro}&order=id&limit=500&offset=${offset}`);
+    const ordem = compositeOrder[tabela] || (tabelasProprias.includes(tabela)||tabela==='integracao_arquivos'?'colecao,registro_id':'id');
+    const page = await requisicao(`${tabela}?select=${encodeURIComponent(campos)}${filtro}&order=${ordem}&limit=500&offset=${offset}`);
     all.push(...page); if (page.length < 500) return all;
   }
 }
