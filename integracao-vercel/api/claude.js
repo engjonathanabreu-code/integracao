@@ -3,7 +3,7 @@
 export const config = { maxDuration: 60 };
 
 const MODELO = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-const MAX_TOKENS = 4000;
+const MAX_TOKENS = 8000;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {

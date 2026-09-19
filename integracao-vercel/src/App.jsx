@@ -1034,23 +1034,37 @@ Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSO
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
   return chamarIA([...blocos, { type: "text", text: instrucao }]);
 }
-// Etapa 2: confere se a resposta/documentos corrigidos atendem ao que a etapa 1 apontou
-async function analisarRespostaDevolutivaIA(itensEtapa1, arquivosResposta) {
-  if (!arquivosResposta.length) throw new Error("anexe ao menos um documento da resposta enviada ao município");
-  const blocos = await blocosDeArquivosIA(arquivosResposta);
+// Etapa 2: a mesma IA recebe a devolutiva original (arquivos e/ou texto) e o trabalho já corrigido,
+// confere item a item o que a etapa 1 apontou e diz o que ainda falta fazer antes de responder ao município.
+async function analisarRespostaDevolutivaIA({ itensEtapa1, arquivosOriginais = [], textoOriginal = "", arquivosResposta = [] }) {
+  if (!arquivosResposta.length) throw new Error("anexe ao menos um documento do trabalho corrigido");
+  const temOriginal = arquivosOriginais.length > 0 || !!textoOriginal?.trim();
+  const blocosOriginais = arquivosOriginais.length ? await blocosDeArquivosIA(arquivosOriginais) : [];
+  const blocosResposta = await blocosDeArquivosIA(arquivosResposta);
   const listaItens = (itensEtapa1 || []).map((it, idx) => `${idx + 1}. [id:${it.id}] (${CATEGORIAS_ANALISE_DEVOLUTIVA[it.categoria] || it.categoria}) ${it.descricao} — esperado: ${it.statusEsperado || "sem detalhe"}`).join("\n");
   const instrucao = `Você é analista técnico sênior de regularização fundiária (REURB) no Brasil, trabalhando para a Integral Soluções em Engenharia.
-Uma devolutiva da prefeitura pediu as alterações abaixo. Agora foram anexados os documentos/plantas já revisados pelo núcleo em resposta a essa devolutiva.
-Exigências da devolutiva a conferir:
+Uma devolutiva da prefeitura/órgão pediu alterações num núcleo de REURB. A equipe executou as correções e agora precisa saber se o trabalho está pronto para ser reenviado ou se ainda falta algo.
+${temOriginal ? `Os PRIMEIROS ${arquivosOriginais.length ? `${arquivosOriginais.length} documento(s) anexado(s)` : "trecho(s) abaixo"} são a DEVOLUTIVA ORIGINAL. ${arquivosOriginais.length && blocosResposta.length ? `Os ${blocosResposta.length} documento(s) seguinte(s) são o TRABALHO CORRIGIDO.` : "Os documentos anexados são o TRABALHO CORRIGIDO."}` : `Os documentos anexados são o TRABALHO CORRIGIDO. A devolutiva original não está anexada; use a lista de exigências abaixo como referência.`}
+${textoOriginal?.trim() ? `Texto da devolutiva original:\n"""\n${textoOriginal.trim()}\n"""\n` : ""}
+Exigências extraídas da devolutiva na primeira análise:
 ${listaItens || "(nenhum item registrado)"}
 
-Analise os documentos anexados (podem incluir memoriais, tabelas dentro de plantas, vértices/coordenadas, nomes de lotes, dados de pessoas, áreas, referências a lei/decreto) e, para CADA exigência da lista acima, diga se foi corrigida, não foi corrigida, ou se não é possível verificar com o material enviado.
-Se não conseguir confirmar um item com segurança (documento não contempla aquele ponto, informação ilegível, etc.), use status "nao_verificavel" e explique o motivo em "observacao" — não presuma que foi corrigido sem evidência clara no documento.
-Se encontrar, nos documentos, alguma alteração relevante que não estava na lista de exigências, cite em "naoIdentificado" para o técnico avaliar.
+Faça a conferência em duas passadas:
+1) Para CADA exigência da lista acima, compare o que a devolutiva pediu com o que aparece no trabalho corrigido e diga se foi corrigida, não foi corrigida, ou se não é possível verificar com o material enviado. Se não conseguir confirmar com segurança (documento não contempla aquele ponto, informação ilegível, etc.), use "nao_verificavel" e explique em "observacao" — nunca presuma que foi corrigido sem evidência clara.
+2) Releia a devolutiva original por inteiro${temOriginal ? "" : " (pela lista de exigências)"} e verifique se existe algo que ela pede e que ainda não foi atendido, mesmo que não esteja na lista acima (a primeira análise pode ter deixado passar). Tudo o que ainda falta entra em "pendencias", com uma orientação objetiva do que a equipe precisa fazer.
+Se encontrar no trabalho corrigido alguma alteração relevante que a devolutiva não pediu, ou algo que introduziu um erro novo, cite em "naoIdentificado".
+"pronto" só é true se não houver nenhuma pendência e nenhum item "nao_corrigido".
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
-{"resumo":"até 40 palavras resumindo a conferência","itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
+{"resumo":"até 40 palavras resumindo a conferência","pronto":true,"itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"pendencias":[{"refItemId":"id do item da lista, ou vazio se for algo novo","descricao":"o que ainda falta","oQueFazer":"orientação objetiva para a equipe, até 40 palavras"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+  return chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000);
+}
+// Recupera um anexo guardado com a meta como File, para reenviar à IA
+async function arquivoDoArmazenamento(arq) {
+  const dataUrl = await armazenamento.get(arq.chave);
+  if (!dataUrl) return null;
+  const blob = await (await fetch(dataUrl)).blob();
+  return new File([blob], arq.nome, { type: arq.tipo || blob.type || "application/octet-stream" });
 }
 function simularAnalise(tipo, p, regras) {
   const t = tipo === "auto" ? "identidade" : tipo;
@@ -8031,7 +8045,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
         const vencida = d.prazo && d.prazo < hoje && m.status !== "Concluído";
         const etapa1 = d.analiseIA?.etapa1;
         const etapa2 = d.analiseIA?.etapa2;
-        const contagemEtapa2 = etapa2 ? etapa2.itens.reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {}) : null;
+        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2);
         return (
           <div key={m.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <div className="flex flex-wrap items-center gap-2">
@@ -8049,6 +8063,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
                 {etapa1 && <Tag tipo="neutra"><Sparkles size={12} />{etapa1.itens.length} item(ns) a corrigir</Tag>}
                 {etapa2 && (
                   <>
+                    {pronto ? <Tag tipo="ok"><Check size={12} />Pronto para responder</Tag> : !!pendentes && <Tag tipo="bloq"><AlertTriangle size={12} />{pendentes} pendência(s)</Tag>}
                     {!!contagemEtapa2.corrigido && <Tag tipo="ok">{contagemEtapa2.corrigido} corrigido(s)</Tag>}
                     {!!contagemEtapa2.nao_corrigido && <Tag tipo="bloq">{contagemEtapa2.nao_corrigido} não corrigido(s)</Tag>}
                     {!!contagemEtapa2.nao_verificavel && <Tag tipo="pend">{contagemEtapa2.nao_verificavel} não verificável(is)</Tag>}
@@ -8061,7 +8076,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
               {(m.arquivos || []).map((a) => <button key={a.id} className="btn btn-sm" onClick={() => baixar(a)}><Paperclip size={13} />{a.nome}</button>)}
               {!(m.arquivos || []).length && <span className="ajuda" style={{ margin: 0 }}>Sem arquivo anexado.</span>}
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorio(m)}><Sparkles size={13} />Ver relatório da IA</button>}
-              {gerenciaMetas(usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{etapa2 ? "Reanalisar resposta" : "Analisar resposta"}</button>}
+              {gerenciaMetas(usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
               <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "metas" })}>Abrir a meta</button>
             </div>
           </div>
@@ -8099,30 +8114,66 @@ function ModalRelatorioDevolutiva({ meta, onFechar }) {
       )}
       {etapa2 && (
         <div>
-          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>Etapa 2 — Conferência da resposta</h3>
-          <p style={{ margin: "0 0 8px" }}>{etapa2.resumo}</p>
-          {etapa2.itens.map((it, i) => {
-            const original = (etapa1?.itens || []).find((x) => x.id === it.refItemId);
-            const tagTipo = it.status === "corrigido" ? "ok" : it.status === "nao_corrigido" ? "bloq" : "pend";
-            const rotuloStatus = it.status === "corrigido" ? "Corrigido" : it.status === "nao_corrigido" ? "Não corrigido" : "Não foi possível verificar";
-            return (
-              <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
-                <Tag tipo={tagTipo}>{rotuloStatus}</Tag>
-                <div style={{ marginTop: 4 }}>{original?.descricao || "Item da devolutiva"}</div>
-                {it.observacao && <div className="ajuda" style={{ margin: "2px 0 0" }}>{it.observacao}</div>}
-              </div>
-            );
-          })}
-          {!!etapa2.naoIdentificado?.length && (
-            <div className="msg-erro" style={{ marginTop: 10 }}>
-              <strong>Pontos para o técnico revisar manualmente:</strong>
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa2.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
-            </div>
-          )}
+          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>Etapa 2 — Conferência do trabalho corrigido</h3>
+          <RelatorioEtapa2 etapa1={etapa1} etapa2={etapa2} />
         </div>
       )}
+      {etapa1 && !etapa2 && <p className="ajuda" style={{ margin: 0 }}>A conferência do trabalho corrigido (etapa 2) ainda não foi feita. Depois de executar o que a devolutiva pede, use "Conferir trabalho corrigido" na meta.</p>}
       {!etapa1 && !etapa2 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma análise de IA registrada ainda.</p>}
     </Modal>
+  );
+}
+
+// Resultado da etapa 2: veredito, item a item, o que ainda falta e pontos para revisar
+const ROTULO_STATUS_ETAPA2 = { corrigido: ["ok", "Corrigido"], nao_corrigido: ["bloq", "Não corrigido"], nao_verificavel: ["pend", "Não foi possível verificar"] };
+function resumoEtapa2(etapa2) {
+  const contagem = (etapa2?.itens || []).reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {});
+  const pendentes = (etapa2?.pendencias || []).length;
+  const pronto = etapa2 ? (typeof etapa2.pronto === "boolean" ? etapa2.pronto : !pendentes && !contagem.nao_corrigido && !contagem.nao_verificavel) : false;
+  return { contagem, pendentes, pronto };
+}
+function RelatorioEtapa2({ etapa1, etapa2 }) {
+  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+  const descricaoItem = (id) => (etapa1?.itens || []).find((x) => x.id === id)?.descricao;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
+        {pronto ? <Tag tipo="ok"><Check size={12} />Pronto para responder ao município</Tag> : <Tag tipo="bloq"><AlertTriangle size={12} />Ainda falta {pendentes || contagem.nao_corrigido || "conferir"} {pendentes === 1 || (!pendentes && contagem.nao_corrigido === 1) ? "ponto" : "pontos"}</Tag>}
+        {!!contagem.corrigido && <Tag tipo="ok">{contagem.corrigido} corrigido(s)</Tag>}
+        {!!contagem.nao_corrigido && <Tag tipo="bloq">{contagem.nao_corrigido} não corrigido(s)</Tag>}
+        {!!contagem.nao_verificavel && <Tag tipo="pend">{contagem.nao_verificavel} não verificável(is)</Tag>}
+      </div>
+      <p style={{ margin: "0 0 8px" }}>{etapa2.resumo}</p>
+      {etapa2.geradoEm && <div className="ajuda" style={{ margin: "0 0 8px" }}>Conferido em {dataHoraBR(etapa2.geradoEm)}{etapa2.por ? ` por ${etapa2.por}` : ""}{etapa2.comOriginal === false ? ". A devolutiva original não estava disponível; a IA usou só a lista de exigências." : ""}</div>}
+      {!!(etapa2.pendencias || []).length && (
+        <div className="card" style={{ padding: 12, marginBottom: 10, borderColor: "var(--danger)" }}>
+          <strong style={{ color: "var(--titulo)" }}>O que ainda falta fazer</strong>
+          {etapa2.pendencias.map((p, i) => (
+            <div key={i} style={{ padding: "6px 0", borderTop: i ? "1px solid var(--line2)" : "none", marginTop: i ? 0 : 6 }}>
+              <div>{p.descricao}{p.refItemId && descricaoItem(p.refItemId) ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>(item: {descricaoItem(p.refItemId)})</span> : null}</div>
+              {p.oQueFazer && <div className="ajuda" style={{ margin: "2px 0 0" }}><strong>Como resolver:</strong> {p.oQueFazer}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      <strong style={{ color: "var(--titulo)" }}>Conferência item a item</strong>
+      {(etapa2.itens || []).map((it, i) => {
+        const [tagTipo, rotulo] = ROTULO_STATUS_ETAPA2[it.status] || ["pend", it.status];
+        return (
+          <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+            <Tag tipo={tagTipo}>{rotulo}</Tag>
+            <div style={{ marginTop: 4 }}>{descricaoItem(it.refItemId) || "Item da devolutiva"}</div>
+            {it.observacao && <div className="ajuda" style={{ margin: "2px 0 0" }}>{it.observacao}</div>}
+          </div>
+        );
+      })}
+      {!!etapa2.naoIdentificado?.length && (
+        <div className="msg-erro" style={{ marginTop: 10 }}>
+          <strong>Pontos para o técnico revisar manualmente:</strong>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa2.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -8160,11 +8211,26 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
+  // Arquivos da devolutiva original: os escolhidos agora ou, numa meta já salva, os guardados com ela
+  const anexosOriginais = () => {
+    const analisados = meta?.devolutiva?.analiseIA?.etapa1?.arquivosAnalisados || [];
+    const chaves = new Set(analisados.map((a) => a.chave).filter(Boolean));
+    const daResposta = new Set((meta?.devolutiva?.analiseIA?.etapa2?.arquivosAnalisados || []).map((a) => a.chave).filter(Boolean));
+    const todos = (meta?.arquivos || []).filter((a) => /^(application\/pdf|image\/)/.test(a.tipo || ""));
+    const lista = chaves.size ? todos.filter((a) => chaves.has(a.chave)) : todos.filter((a) => !daResposta.has(a.chave));
+    return lista.slice(0, MAX_LOTE_DEVOLUTIVA);
+  };
   const rodarEtapa2 = async () => {
     setErro(""); setCarregando("etapa2");
     try {
-      const resultado = await analisarRespostaDevolutivaIA(etapa1?.itens || [], arquivosEtapa2);
-      setEtapa2({ geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: resultado.itens || [], naoIdentificado: resultado.naoIdentificado || [], arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
+      let arquivosOriginais = arquivosEtapa1;
+      if (!arquivosOriginais.length && meta) arquivosOriginais = (await Promise.all(anexosOriginais().map(arquivoDoArmazenamento))).filter(Boolean);
+      const textoOriginal = textoLivre.trim() || (arquivosOriginais.length ? "" : (meta?.observacoes || ""));
+      const resultado = await analisarRespostaDevolutivaIA({ itensEtapa1: etapa1?.itens || [], arquivosOriginais, textoOriginal, arquivosResposta: arquivosEtapa2 });
+      const itens = resultado.itens || [];
+      const pendencias = resultado.pendencias || [];
+      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status === "nao_corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
+      setEtapa2({ geradoEm: new Date().toISOString(), por: usuario.nome, resumo: resultado.resumo || "", pronto, itens, pendencias, naoIdentificado: resultado.naoIdentificado || [], comOriginal: arquivosOriginais.length > 0 || !!textoOriginal, arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
@@ -8210,7 +8276,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         mutar((d) => {
           d.metas.unshift(m);
           registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
-          if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência da resposta) gerada.", usuario);
+          if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência do trabalho corrigido) gerada.", usuario);
           return d;
         }, "Devolutiva: análise de IA", { detalhe: m.titulo });
         setToast("Devolutiva registrada com o relatório da IA.");
@@ -8219,7 +8285,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
           const q = d.metas.find((x) => x.id === meta.id);
           q.devolutiva = devolutiva;
           q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
-          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? "Etapa 2 (conferência da resposta) gerada." : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
+          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
           return d;
         }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo });
         setToast("Relatório da IA atualizado.");
@@ -8272,34 +8338,12 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
 
       {etapa1 && (
         <div className="card" style={{ padding: 14 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>2. Resposta enviada ao município (opcional agora, pode ser feita depois)</h3>
-          <label className="rot" htmlFor="adarq2">Arquivos da resposta / documentos corrigidos</label>
+          <h3 style={{ fontSize: 15, margin: "0 0 4px" }}>2. Conferência do trabalho corrigido (depois de executar o que a devolutiva pede)</h3>
+          <p className="ajuda" style={{ margin: "0 0 10px" }}>Anexe as plantas, memoriais e documentos já corrigidos. A mesma IA compara a devolutiva original com o material novo, confere item por item e lista o que ainda falta antes de responder ao município.{meta && !arquivosEtapa1.length ? ` A devolutiva original guardada com a meta (${anexosOriginais().length} arquivo(s)) vai junto.` : ""}</p>
+          <label className="rot" htmlFor="adarq2">Arquivos do trabalho corrigido (PDF ou imagem)</label>
           <input id="adarq2" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa2(arr); }} />
-          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa2" || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar resposta enviada</button>
-
-          {etapa2 && (
-            <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}>
-              <p style={{ margin: "0 0 8px" }}>{etapa2.resumo}</p>
-              {etapa2.itens.map((it, i) => {
-                const original = (etapa1.itens || []).find((x) => x.id === it.refItemId);
-                const tagTipo = it.status === "corrigido" ? "ok" : it.status === "nao_corrigido" ? "bloq" : "pend";
-                const rotuloStatus = it.status === "corrigido" ? "Corrigido" : it.status === "nao_corrigido" ? "Não corrigido" : "Não foi possível verificar";
-                return (
-                  <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
-                    <Tag tipo={tagTipo}>{rotuloStatus}</Tag>
-                    <div style={{ marginTop: 4 }}>{original?.descricao || "Item da devolutiva"}</div>
-                    {it.observacao && <div className="ajuda" style={{ margin: "2px 0 0" }}>{it.observacao}</div>}
-                  </div>
-                );
-              })}
-              {!!etapa2.naoIdentificado?.length && (
-                <div className="msg-erro" style={{ marginTop: 10 }}>
-                  <strong>Pontos para o técnico revisar manualmente:</strong>
-                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{etapa2.naoIdentificado.map((t, i) => <li key={i}>{t}</li>)}</ul>
-                </div>
-              )}
-            </div>
-          )}
+          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa2" || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}{etapa2 ? "Conferir de novo" : "Conferir se ainda falta algo"}</button>
+          {etapa2 && <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}><RelatorioEtapa2 etapa1={etapa1} etapa2={etapa2} /></div>}
         </div>
       )}
 
@@ -10263,6 +10307,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [motivoRecusa, setMotivoRecusa] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
+  const [analiseIA, setAnaliseIA] = useState(false);
+  const [relatorioIA, setRelatorioIA] = useState(false);
   const entradaArquivo = useRef(null);
   const m = (db.metas || []).find((x) => x.id === metaId);
   if (!m) return null;
@@ -10337,6 +10383,30 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </div>
       <p className="obs-modal">{m.observacoes || "Sem observações."}</p>
 
+      {m.devolutiva && (() => {
+        const etapa1 = m.devolutiva.analiseIA?.etapa1;
+        const etapa2 = m.devolutiva.analiseIA?.etapa2;
+        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+        return (
+          <section className="bloco-modal">
+            <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
+            {!etapa1 && <p className="ajuda" style={{ margin: "0 0 8px" }}>A devolutiva ainda não foi analisada pela IA.</p>}
+            {etapa1 && (
+              <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
+                <Tag tipo="neutra"><Sparkles size={12} />Etapa 1: {etapa1.itens.length} item(ns) a corrigir</Tag>
+                {etapa2 ? (pronto ? <Tag tipo="ok"><Check size={12} />Etapa 2: pronto para responder</Tag> : <Tag tipo="bloq"><AlertTriangle size={12} />Etapa 2: ainda falta {pendentes || contagem.nao_corrigido || 0} ponto(s)</Tag>) : <Tag tipo="pend">Etapa 2 pendente: conferir o trabalho corrigido</Tag>}
+                {!!contagem.nao_verificavel && <Tag tipo="pend">{contagem.nao_verificavel} não verificável(is)</Tag>}
+              </div>
+            )}
+            {etapa1 && !etapa2 && <p className="ajuda" style={{ margin: "0 0 8px" }}>Depois de executar o que a devolutiva pede, anexe o trabalho corrigido e a mesma IA compara com a devolutiva original para dizer se ainda falta algo.</p>}
+            <div className="flex flex-wrap gap-2">
+              {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorioIA(true)}><Sparkles size={13} />Ver relatório da IA</button>}
+              {gerencia && <button className="btn btn-sm btn-primario" onClick={() => setAnaliseIA(true)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
+            </div>
+          </section>
+        );
+      })()}
+
       <section className="bloco-modal">
       <h3 className="titulo-bloco">Checklist <span className="conta-bloco">{(m.checklist || []).filter((c) => c.concluido).length} de {(m.checklist || []).length}</span></h3>
       {(m.checklist || []).map((c) => (
@@ -10400,6 +10470,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
         </div>
       )) : <p className="ajuda" style={{ margin: 0 }}>Sem histórico.</p>}
       </section>
+      {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
+      {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
       {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast("Meta excluída do planejamento."); }} />}
     </Modal>
   );
