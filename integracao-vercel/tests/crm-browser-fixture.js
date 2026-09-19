@@ -1,6 +1,7 @@
 // Isolated browser fixture: no production data or requests.
 import {id} from './fixture.js';
 export function instalarCRMFixture(base) {
+ base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{nucleoId:id(5)}});
  base.profiles.push({id:id(70),nome:'Ana Comercial',tipo:'Comercial',ativo:true},{id:id(71),nome:'Bia Comercial',tipo:'Comercial',ativo:true});
  const card={id:id(200),cliente_id:id(4),responsavel_id:id(70),status:'Cliente novo',nome:'Morador Teste',cpf_cnpj:'52998224725',telefone:'47999990000',municipio:'Município teste',municipio_id:id(2),remessa_id:id(3),remessa:'Remessa teste',origem:'manual'};
  base.integracao_crm_cards=[card,{id:id(201),lead_nome:'Lead de demonstração',lead_telefone:'47988880000',responsavel_id:id(70),status:'Cliente novo',origem:'chatwoot'}];
