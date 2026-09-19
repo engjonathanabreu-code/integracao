@@ -14,6 +14,7 @@ export function instalarCRMFixture(base) {
   base.integracao_semanal_semanas=[0,1].map(i=>({id:id(500+i),municipio_id:id(400+i),ano:2026,mes:9,semana:1,concluido:true}));
   base.integracao_semanal_registros=[0,1].map(i=>({id:id(510+i),semana_id:id(500+i),comentario:'Registro fictício para conferir o layout.',created_at:'2026-09-01T14:30:00Z'}));
  }
+ base.integracao_marketing_grupos=[];base.integracao_marketing_atualizacoes=[];base.integracao_marketing_rotina=[];
  base.integracao_marketing_etapas=[{id:id(220),fase_numero:1,fase_nome:'Boas-vindas',codigo:'M1',ordem:1,titulo:'Apresentar equipe',descricao:'Mensagem inicial no grupo de moradores.'},{id:id(221),fase_numero:2,fase_nome:'Acompanhamento',codigo:'M2',ordem:1,titulo:'Atualizar moradores'}];
  base.integracao_marketing_projetos=[{id:id(222),nucleo_id:id(5),ativo:true}];base.integracao_marketing_progresso=[];base.integracao_nucleo_ia=[];
  base.processos_kanban_andamentos=[{id:id(230),processo_id:id(5),status:'Topografia',status_operacional:'Em andamento',descricao_cliente:'Levantamento em conferência.',observacao_interna:'Nota interna de teste',data_atualizacao:'2026-09-19',visivel_ia:false}];
