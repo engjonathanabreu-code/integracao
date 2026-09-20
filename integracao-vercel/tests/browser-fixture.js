@@ -35,6 +35,7 @@ if(new URLSearchParams(location.search).has('busca')) {
 }
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
+base.integracao_acessos=[];
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
@@ -45,6 +46,7 @@ window.fetch=async(input,options={})=>{
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
   if(crmFixture){const result=crmFixture(url,options,json);if(result!==undefined)return result;}
+  if(url.pathname.endsWith('/rpc/integracao_registrar_acesso')){const p=JSON.parse(options.body);base.integracao_acessos.push({id:crypto.randomUUID(),usuario_id:base.profiles[0].id,usuario_nome:base.profiles[0].nome,evento:p.p_evento,motivo:p.p_motivo,ocorrido_em:new Date().toISOString()});return json(null);}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});
   if(url.pathname.includes('/storage/v1/object/')) {
     const path=url.pathname.split('/integracao/')[1];
