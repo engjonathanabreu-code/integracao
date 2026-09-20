@@ -14,3 +14,13 @@ test('Word nativo contém A4, margens de relatório, timbre incorporado e pagina
  const header=await zip.file('word/header1.xml').async('string'),footer=await zip.file('word/footer1.xml').async('string');assert.match(footer,/PAGE/);assert.notEqual(header.match(/wp:docPr id="(\d+)"/)[1],footer.match(/wp:docPr id="(\d+)"/)[1]);
 });
 test('falha visível se o timbre configurado não carregou',async()=>{await assert.rejects(()=>gerarDocx('<p>Teste</p>','T',{cabecalho:{chave:'x'},imagens:{}},{parse}),/timbrado/);});
+
+test('PRF com tabelas vazias exporta e preserva tabelas preenchidas e texto',async()=>{
+ const html='<h1>PRF teste</h1><table></table><p>Sem registros ambientais</p><table><tbody><tr></tr></tbody></table><table><tr><th>Unidade</th></tr><tr><td>001<table></table></td></tr></table><p>Fim do relatório</p>';
+ const blob=await gerarDocx(html,'PRF',{}, {parse});
+ const zip=await JSZip.loadAsync(await blob.arrayBuffer());
+ const xml=await zip.file('word/document.xml').async('string');
+ assert.equal((xml.match(/<w:tbl>/g)||[]).length,1);
+ for(const texto of ['PRF teste','Sem registros ambientais','001','Fim do relatório'])assert.ok(xml.includes(texto));
+ assert.match(xml,/w:tblHeader/);
+});
