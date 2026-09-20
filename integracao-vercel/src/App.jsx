@@ -10021,7 +10021,7 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const alvo = modoPino ? ativos.find((p) => p.id === modoPino) : null;
   return (
     <div className="flex flex-col gap-3" ref={caixaRef}>
-      <ImportadorGeoJSON db={db} n={n} perm={perm} mutar={mutar} por={usuario.nome} setToast={setToast} onVer={f=>{setCentro({lng:f.poligono.reduce((s,p)=>s+p[0],0)/f.poligono.length,lat:f.poligono.reduce((s,p)=>s+p[1],0)/f.poligono.length});setZoom(19);}} />
+      <ImportadorGeoJSON onMemoriais={()=>ir({pag:"nucleo",id:n.id,aba:"memoriais"})} db={db} n={n} perm={perm} mutar={mutar} por={usuario.nome} setToast={setToast} onVer={f=>{setCentro({lng:f.poligono.reduce((s,p)=>s+p[0],0)/f.poligono.length,lat:f.poligono.reduce((s,p)=>s+p[1],0)/f.poligono.length});setZoom(19);}} />
       <Secao titulo="Área do núcleo" nota="Envie o KMZ ou KML com a delimitação e marque cada morador dentro dela. As imagens são de satélite."
         acao={pode && (geo
           ? <span className="flex gap-2"><button className="btn btn-sm" onClick={baixarKML}><Download size={13} />Baixar KML</button><button className="btn btn-sm" onClick={() => entrada.current?.click()}><Upload size={13} />Trocar arquivo</button></span>

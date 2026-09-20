@@ -1,6 +1,6 @@
 export const INFRA_PRF = [['redeEnergia','Rede de energia'],['iluminacao','Iluminação pública'],['redeAgua','Rede de água'],['drenagem','Drenagem a executar'],['drenagemExistente','Drenagem existente'],['passeio','Passeios'],['pavimentacao','Pavimentação']];
 export const CRONOGRAMA_PRF = [['redeEnergia','Rede de energia'],['ligacaoEnergia','Ligações de energia'],['redeAgua','Rede de água'],['ligacaoAgua','Ligações de água'],['esgoto','Esgotamento sanitário'],['drenagem','Drenagem'],['risco','Medidas de risco'],['ambiental','Medidas ambientais']];
-export const TIPOS_AREA_PRF = [['via','Via / rua','logradouro'],['app','APP','areaApp'],['risco','Área de risco','areaRisco'],['publica','Área pública','areaPublica'],['servidao','Servidão','servidao']];
+export const TIPOS_AREA_PRF = [['via','Estrada / via / rua','logradouro'],['app','APP','areaApp'],['risco','Área de risco','areaRisco'],['publica','Área pública','areaPublica'],['servidao','Servidão','servidao']];
 
 export function numeroExtenso(n) {
   if (!Number.isSafeInteger(n) || n < 0 || n >= 1000000000) return '';
@@ -45,7 +45,7 @@ export function complementoNucleoPRF(n) {
     marcadores['cronograma.'+id+'Prazo']=estrutura.cronograma[id+'Prazo'] || '';
   }
   for (const [tipo,,prefixo] of TIPOS_AREA_PRF) {
-    const itens=(n.memorial?.vias || []).filter(v=>(v.tipo || 'via')===tipo).map(v=>({...v,...medidasPRF(v)}));
+    const itens=(n.memorial?.vias || []).filter(v=>(v.tipo || 'via')===tipo).map(v=>({...v,memorial:v.texto||v.memorial||'',...medidasPRF(v)}));
     if(itens.length)estrutura[prefixo+'s']=itens;
     // Marcador singular só representa uma área; múltiplas áreas devem usar laço.
     if(itens.length===1) {estrutura[prefixo]=itens[0];adicionar(prefixo,itens[0]);}

@@ -73,18 +73,37 @@ export function prepararFeicoes(lido,campo) {
 }
 export function salvarImportacao(db,nucleoId,pacote,por) {
   const n=db.nucleos.find(n=>n.id===nucleoId);
-  if(!n || n.etapa!==1)throw new Error('A importação é liberada na etapa Topografia.');
-  if(n.levantamentoGeoJSON?.feicoes?.length)throw new Error('Este núcleo já possui um levantamento importado. A substituição não é automática, para preservar os vínculos existentes.');
-  n.levantamentoGeoJSON={...n.levantamentoGeoJSON,...structuredClone(pacote),por,importadoEm:new Date().toISOString()};
+  if(!n || !Number.isInteger(n.etapa) || n.etapa<1)throw new Error('A importação é liberada a partir da etapa Topografia.');
+  const existente=n.levantamentoGeoJSON;
+  const anteriores=existente?.feicoes || [];
+  if(anteriores.length && existente.epsg!==pacote.epsg)throw new Error('Use o mesmo SRC do levantamento existente.');
+  if(!pacote.feicoes?.length || anteriores.length+pacote.feicoes.length>2000)throw new Error('O núcleo deve conter de 1 a 2.000 feições.');
+  const codigos=new Set(anteriores.map(f=>normalizar(f.codigo))), ids=new Set(anteriores.map(f=>f.id));
+  const nomes=new Map(), usados=new Set();
+  for(const f of anteriores)for(const v of f.vertices){nomes.set(v.e+','+v.n,v.nome);usados.add(v.nome);}
+  let proximo=1;
+  const novas=structuredClone(pacote.feicoes).map(f=>{
+    if(codigos.has(normalizar(f.codigo)) || ids.has(f.id))throw new Error('Código repetido no núcleo: '+f.codigo+'. A importação existente foi preservada.');
+    codigos.add(normalizar(f.codigo));ids.add(f.id);
+    if(f.vinculo)throw new Error('Importe as feições sem vínculos prévios.');
+    const vertices=f.vertices.map(v=>{
+      const chave=v.e+','+v.n;
+      if(!nomes.has(chave)){while(usados.has('V'+proximo))proximo++;const nome='V'+proximo++;nomes.set(chave,nome);usados.add(nome);}
+      return {...v,nome:nomes.get(chave)};
+    });
+    return {...f,...processarVertices(vertices),arquivo:pacote.arquivo};
+  });
+  const importadoEm=new Date().toISOString();
+  const importacoes=existente?.importacoes || (anteriores.length?[{arquivo:existente.arquivo,por:existente.por,importadoEm:existente.importadoEm}]:[]);
+  n.levantamentoGeoJSON={...existente,...structuredClone(pacote),feicoes:[...anteriores,...novas],por,importadoEm,importacoes:[...importacoes,{arquivo:pacote.arquivo,por,importadoEm,quantidade:novas.length}]};
   return db;
 }
 export function vincularFeicao(db,nucleoId,feicao,alvo,anterior,por) {
   const n=db.nucleos.find(n=>n.id===nucleoId);
   const atual=n?.levantamentoGeoJSON?.feicoes?.find(f=>f.id===feicao.id);
-  if(!n || n.etapa!==1 || !atual)throw new Error('Reabra o levantamento na etapa Topografia.');
+  if(!n || !Number.isInteger(n.etapa) || n.etapa<1 || !atual)throw new Error('Reabra o levantamento na etapa Topografia.');
   if(atual.vinculo || JSON.stringify(atual)!==JSON.stringify(feicao))throw new Error('Esta feição foi alterada ou já vinculada. Reabra o levantamento.');
-  const meridiano=`${Math.abs((n.levantamentoGeoJSON.epsg-31960)*6-183)}° O`;
-  const texto=montarMemorial(atual.vertices,{sistema:'UTM',meridiano});
+  const texto=memorialDaFeicao(atual,n.levantamentoGeoJSON.epsg);
   if(alvo.tipo==='unidade'){
     const p=db.processos.find(p=>p.id===alvo.moradorId && p.nucleoId===nucleoId && !p._resumo);
     if(!p || p.situacao!=='Ativo' || p.arquivado || p.excluido)throw new Error('Morador indisponível.');
@@ -97,4 +116,9 @@ export function vincularFeicao(db,nucleoId,feicao,alvo,anterior,por) {
   }
   atual.vinculo={...alvo,por,em:new Date().toISOString()};
   return db;
+}
+
+export function memorialDaFeicao(feicao,epsg) {
+  const meridiano=Math.abs((epsg-31960)*6-183)+'° O';
+  return montarMemorial(feicao.vertices,{sistema:'UTM',meridiano});
 }
