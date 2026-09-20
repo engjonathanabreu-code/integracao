@@ -85,7 +85,7 @@ export function separarQuadraLote(loteQuadra) {
 export function marcadoresPRF({ municipio, dadosPRF, nucleo, moradores = [], elaboracao, emitidoEm } = {}) {
   const d = dadosPRF || {};
   const cont = contarModalidades(moradores);
-  const macro = (d.macrozonas || []).find((m) => m.nome === nucleo?.dados?.macrozona) || (d.macrozonas || [])[0] || {};
+  const macro = (d.macrozonas || []).find((m) => m.nome === nucleo?.dados?.macrozona) || {};
   const endereco = nucleo?.dados?.endereco || {};
 
   const marcadores = {
@@ -93,7 +93,7 @@ export function marcadoresPRF({ municipio, dadosPRF, nucleo, moradores = [], ela
     "nucleo.nome": texto(nucleo?.dados?.nomeIntegrado || nucleo?.nome),
     "nucleo.codigo": texto(nucleo?.dados?.codigo || nucleo?.codigo),
     "nucleo.bairro": texto(endereco.bairro || endereco.localidade),
-    "nucleo.zona": texto(nucleo?.dados?.zona) || "Área Urbana",
+    "nucleo.zona": texto(nucleo?.dados?.zona),
     "municipio.nome": texto(municipio?.nome || endereco.municipio),
     "municipio.uf": texto(municipio?.uf || endereco.uf),
     "documento.dataExtenso": dataPorExtenso(emitidoEm),
