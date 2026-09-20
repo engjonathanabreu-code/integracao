@@ -12,6 +12,13 @@ test('Word nativo contém A4, margens de relatório, timbre incorporado e pagina
  assert.match(xml,/w:w="11906"/);assert.match(xml,/w:left="1701"/);assert.match(xml,/w:right="1134"/);assert.match(xml,/Município/);assert.match(xml,/w:tbl/);assert.match(xml,/w:tblHeader/);
  assert.ok(zip.file('word/header1.xml'));assert.ok(zip.file('word/footer1.xml'));assert.ok(Object.keys(zip.files).filter(k=>k.startsWith('word/media/')&&!zip.files[k].dir).length===2);
  const header=await zip.file('word/header1.xml').async('string'),footer=await zip.file('word/footer1.xml').async('string');assert.match(footer,/PAGE/);assert.notEqual(header.match(/wp:docPr id="(\d+)"/)[1],footer.match(/wp:docPr id="(\d+)"/)[1]);
+ // Arte na largura da folha, independente das margens assimétricas do texto.
+ for(const parte of [header,footer]){assert.match(parte,/<wp:positionH relativeFrom="page"><wp:posOffset>0/);assert.match(parte,/<wp:extent cx="7560310"/);}
+ assert.match(header,/<wp:positionV relativeFrom="page"><wp:posOffset>0/);
+ const y=Number(footer.match(/<wp:positionV[^>]*><wp:posOffset>(\d+)/)[1]);
+ const altura=Number(footer.match(/<wp:extent[^>]*cy="(\d+)"/)[1]);
+ assert.ok(Math.abs(y+altura-16838*635)<=1);
+ assert.ok(Number(xml.match(/w:top="(\d+)"/)[1])>1701);
 });
 test('falha visível se o timbre configurado não carregou',async()=>{await assert.rejects(()=>gerarDocx('<p>Teste</p>','T',{cabecalho:{chave:'x'},imagens:{}},{parse}),/timbrado/);});
 
