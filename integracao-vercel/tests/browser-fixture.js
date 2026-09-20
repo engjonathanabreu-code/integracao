@@ -42,6 +42,7 @@ const json=(value,status=200)=>new Response(JSON.stringify(value),{status,header
 window.fetch=async(input,options={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href);
   if(url.pathname==='/api/resumo-moradores'){const {contexto}=JSON.parse(options.body);return json({resumo:compactarResumo(resumirMoradores({clientes:base.fin_receb_clientes,complementos:base.integracao_moradores},contexto))});}
+  if(url.pathname==='/api/ler-matricula'&&new URLSearchParams(location.search).has('leitor'))return json({arquivo:'matricula-ficticia.pdf',hash:'fixture-sha256',modelo:'Leitor de teste',analisadoEm:new Date().toISOString(),dados:{matricula:{numero:'12345',cartorio:'Cartório de teste',comarca:'Município teste'},proprietario:{nome:'Proprietário fictício'},imovel:{area_registral:200,unidade_area:'m2',descricao:'Imóvel fictício para conferência'},historico_registro:[{ato:'R.1',tipo:'Usucapião',para:'Proprietário fictício',data:'01/02/2020',descricao:'Registro fictício de usucapião.'}],evidencias:[{campo:'numero',trecho:'Matrícula 12345',pagina:1}],alertas:['Dados fictícios: conferir antes de salvar.']}});
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
@@ -86,7 +87,7 @@ if(new URLSearchParams(location.search).has('prf')) {
     const a=event.target.closest?.('a[download]'),blob=a&&blobs.get(a.href);if(!blob)return;
     event.preventDefault();
     let out=document.getElementById('exportacao-teste');if(!out){out=document.createElement('pre');out.id='exportacao-teste';document.body.append(out)}
-    out.setAttribute('data-nome',a.download);out.setAttribute('data-tipo',blob.type);out.textContent=await blob.text();
+    out.setAttribute('data-nome',a.download);out.setAttribute('data-tipo',blob.type);out.textContent=a.download.endsWith('.docx')?'Arquivo DOCX gerado: '+blob.size+' bytes':await blob.text();
   },true);
   const {instalarArmazenamento}=await import('../src/armazenamento-local.js');instalarArmazenamento();
   await window.storage.set('integracao-prf-modelo-v4','<h1>PRF {{municipio.nome}}</h1><p>{{#se:nucleo.nome}}Núcleo {{nucleo.nome}}{{/se}}</p><table><tr><td>{{#cada:unidades}}{{unidade.codigo}}</td><td>{{unidade.nome}}</td><td>{{unidade.cpf}}{{/cada}}</td></tr></table><p>{{bloco.lista_lotes}}</p><p>Responsável: ______</p><mark>Redação alternativa para decisão humana</mark>');

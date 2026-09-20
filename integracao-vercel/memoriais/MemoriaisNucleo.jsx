@@ -2,7 +2,7 @@ import { TIPOS_AREA_PRF } from "../src/cadastros-prf.js";
 import { useState } from 'react';
 import { interpretarVertices, formatarMedida } from './memoriaisCalculos.js';
 import { calcularMemorialNucleo, salvarMemorialNucleo } from './memorialNucleo.js';
-import { contextoDocumentoMemorial } from './integracaoMemoriais.js';
+import { contextoDocumentoMemorial, configMemoriaisNucleo } from './integracaoMemoriais.js';
 import { lacunasDoDocumento } from '../src/modelos-html.js';
 
 export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToast, montarDocumento, baixarDocumento, Modal, por }) {
@@ -12,8 +12,8 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
   const [entrada, setEntrada] = useState('');
   const [previa, setPrevia] = useState(null);
   const [mensagem, setMensagem] = useState('');
-  const editar = perm.etapa('topografia') && n.etapa === 1;
-  const podeGerar = perm.etapa('topografia') && n.etapa >= 1;
+  const editar = perm.etapa('topografia') && n.etapa >= 1;
+  const podeGerar = (perm.etapa('topografia') || perm.prf) && n.etapa >= 1;
   const vias = n.memorial?.vias || [];
   const ruas = [...new Set(db.processos.filter(p => p.nucleoId === n.id).map(p => p.enderecoImovel?.logradouro).concat(n.endereco?.logradouro).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const abrir = via => {
@@ -31,7 +31,7 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
     const temCabecalho = /(?:^|[;\t])(e|este|x|easting)(?:[;\t]|$)/i.test(primeira);
     const lido = interpretarVertices(temCabecalho ? entrada : ['nome','este','norte','confrontante','longitude','latitude'].join(separador) + '\n' + entrada);
     if (lido.avisos.length) throw new Error(lido.avisos.join(' '));
-    const config = db.memoriais || {};
+    const config = configMemoriaisNucleo(n,db.memoriais);
     if (config.sistema === 'Geográfica' && lido.vertices.some(v => !v.longitude || !v.latitude)) throw new Error('No sistema geográfico, inclua também as colunas longitude e latitude de cada vértice; Este e Norte continuam necessários para os cálculos.');
     if (!config.responsavel?.nome || !config.responsavel?.registro || (!config.meridiano && config.sistema !== 'Geográfica')) throw new Error('Preencha responsável técnico, registro e meridiano nas configurações da aba Memoriais dos lotes.');
     return { ...calcularMemorialNucleo(lido.vertices, config), nome: nome.trim(), tipo };
@@ -46,7 +46,7 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
   const gerar = () => executar(() => {
     if (!podeGerar) throw new Error('Emissão disponível a partir da Topografia.');
     const dados = calcular();
-    const config = db.memoriais || {};
+    const config = configMemoriaisNucleo(n,db.memoriais);
     const contexto = contextoDocumentoMemorial({ 'levantamento.nome':nome, 'nucleo.nome':n.nome || n.codigo, 'nucleo.codigo':n.codigo, 'municipio.nome':municipio.nome, 'municipio.uf':municipio.uf,
       'unidade.area':formatarMedida(dados.area), 'unidade.perimetro':formatarMedida(dados.perimetro), 'unidade.memorial':dados.texto,
       'responsavelTecnico.nome':config.responsavel.nome, 'responsavelTecnico.registro':config.responsavel.registro });
@@ -75,6 +75,6 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}><button className="btn btn-primario" disabled={!editar} onClick={salvar}>Calcular e salvar memorial</button><button className="btn" disabled={!podeGerar} onClick={gerar}>Gerar documento</button></div>
       {mensagem && <p role="status">{mensagem}</p>}
     </div>}
-    {previa && <Modal titulo={previa.nome} largura={780} onFechar={()=>setPrevia(null)}><div className="previa-doc" dangerouslySetInnerHTML={{__html:previa.html}}/><button className="btn btn-primario" onClick={()=>{baixarDocumento({codigo:`${n.codigo}-${previa.nome}`},previa.html);mutar(d=>d,'Documento memorial do núcleo ou via emitido',{nucleoId:n.id,municipioId:n.municipioId,detalhe:previa.nome});}}>Baixar memorial para Word</button></Modal>}
+    {previa && <Modal titulo={previa.nome} largura={780} onFechar={()=>setPrevia(null)}><div className="previa-doc" dangerouslySetInnerHTML={{__html:previa.html}}/><button className="btn btn-primario" onClick={async()=>{try{await baixarDocumento({codigo:`${n.codigo}-${previa.nome}`},previa.html);mutar(d=>d,'Documento memorial do núcleo ou via emitido',{nucleoId:n.id,municipioId:n.municipioId,detalhe:previa.nome});}catch(e){setMensagem(e.message);}}}>Baixar memorial para Word</button></Modal>}
   </section>;
 }
