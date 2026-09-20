@@ -23,7 +23,7 @@ test('furos, multipartes, autointerseção e anel aberto não perdem geometria s
  const d=arquivo();d.features[0].geometry.coordinates[0].pop();assert.throws(()=>preparar(d),/fechado/);
 });
 test('importação é aditiva e não altera morador nem substitui levantamento já existente',()=>{
- const db=banco(),antes=structuredClone(db.processos);salvarImportacao(db,'n',preparar(),'Agente');assert.deepEqual(db.processos,antes);assert.equal(db.nucleos[0].outro,'preservar');assert.throws(()=>salvarImportacao(db,'n',preparar(),'Outro'),/já possui/);
+ const db=banco(),antes=structuredClone(db.processos);salvarImportacao(db,'n',preparar(),'Agente');assert.deepEqual(db.processos,antes);assert.equal(db.nucleos[0].outro,'preservar');assert.throws(()=>salvarImportacao(db,'n',preparar(),'Outro'),/Código repetido/);
 });
 test('vínculo preenche memorial da unidade preservando demais chaves e unidades',()=>{
  const db=banco();salvarImportacao(db,'n',preparar(),'Agente');const f=structuredClone(db.nucleos[0].levantamentoGeoJSON.feicoes[0]),antes=structuredClone(db.processos[0].unidades[0]);
@@ -33,4 +33,17 @@ test('edição concorrente de memorial é bloqueada',()=>{const db=banco();salva
 test('APP, risco, via, área pública e servidão alimentam dados do PRF',()=>{
  for(const tipo of ['app','risco','via','publica','servidao']){const db=banco();salvarImportacao(db,'n',preparar(),'A');vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo,nome:'Área teste'},null,'A');const n=db.nucleos[0];assert.equal(n.memorial.vias[0].area,200);assert.equal(n.memorial.chave,'preservar');assert.ok(JSON.stringify(complementoNucleoPRF(n)).includes('200'));}
 });
-test('antes ou depois da Topografia não importa',()=>{for(const etapa of [0,2,3]){const db=banco();db.nucleos[0].etapa=etapa;assert.throws(()=>salvarImportacao(db,'n',preparar(),'A'),/Topografia/);}});
+test('antes da Topografia não importa',()=>{for(const etapa of [0]){const db=banco();db.nucleos[0].etapa=etapa;assert.throws(()=>salvarImportacao(db,'n',preparar(),'A'),/Topografia/);}});
+
+test('arquivos complementares preservam vínculos e reutilizam vértices comuns',()=>{
+ const db=banco();salvarImportacao(db,'n',preparar(),'A');
+ const f=db.nucleos[0].levantamentoGeoJSON.feicoes[0];vincularFeicao(db,'n',f,{tipo:'app',nome:'APP'},null,'A');const antes=structuredClone(f);
+ const a=arquivo();a.features[0].properties.Lote='Estrada';a.features[0].geometry.coordinates[0]=[[500020,7000000],[500040,7000000],[500040,7000010],[500020,7000010],[500020,7000000]];
+ salvarImportacao(db,'n',preparar(a),'B');const fs=db.nucleos[0].levantamentoGeoJSON.feicoes;
+ assert.deepEqual(fs[0],antes);assert.equal(fs.length,2);assert.equal(fs[1].vertices[0].nome,fs[0].vertices[1].nome);assert.notEqual(fs[1].vertices[1].nome,fs[0].vertices[0].nome);assert.equal(fs[1].area,200);
+ const estado=structuredClone(db);const pacote=preparar(a);pacote.epsg=31983;assert.throws(()=>salvarImportacao(db,'n',pacote,'B'),/mesmo SRC/);assert.deepEqual(db,estado);
+});
+test('núcleo após Topografia gera memorial e áreas expõem texto para PRF',()=>{
+ for(const etapa of [1,2,3,4,5]){const db=banco();db.nucleos[0].etapa=etapa;salvarImportacao(db,'n',preparar(),'A');vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo:'nucleo',nome:'Núcleo'},structuredClone(db.nucleos[0].memorial),'A');assert.match(db.nucleos[0].memorial.texto,/SIRGAS 2000/);assert.equal(db.nucleos[0].memorial.area,200);}
+ const db=banco();salvarImportacao(db,'n',preparar(),'A');vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo:'app',nome:'APP'},null,'A');assert.ok(JSON.stringify(complementoNucleoPRF(db.nucleos[0])).includes('Inicia-se'));
+});
