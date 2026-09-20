@@ -35,7 +35,12 @@ async function blocos(parent,emTabela=false){
   const tag=el.tagName.toLowerCase();
   if(['script','style','iframe','object'].includes(tag))continue;
   if(tag==='table'){
-   flush();const rows=[...el.querySelectorAll('tr')].filter(r=>r.closest('table')===el);const total=Math.max(1,...rows.map(r=>[...r.children].reduce((s,c)=>s+(Number(c.getAttribute('colspan'))||1),0)));
+   flush();
+   // Modelos podem conter tabelas ainda sem registros. O docx não aceita
+   // uma tabela sem linhas: seu cálculo de colunas tenta criar Array(-Infinity).
+   const rows=[...el.querySelectorAll('tr')].filter(r=>r.closest('table')===el&&[...r.children].some(c=>['TD','TH'].includes(c.tagName)));
+   if(!rows.length)continue;
+   const total=Math.max(1,...rows.map(r=>[...r.children].reduce((s,c)=>s+(Number(c.getAttribute('colspan'))||1),0)));
    out.push(new Table({width:{size:100,type:WidthType.PERCENTAGE},rows:await Promise.all(rows.map(async(r,ri)=>new TableRow({tableHeader:ri===0&&!!r.querySelector('th'),children:await Promise.all([...r.children].filter(c=>['TD','TH'].includes(c.tagName)).map(async c=>{
     const span=Number(c.getAttribute('colspan'))||1,children=await blocos(c,true);
     return new TableCell({columnSpan:span,rowSpan:Number(c.getAttribute('rowspan'))||1,width:{size:Math.round(9071*span/total),type:WidthType.DXA},margins:{top:80,bottom:80,left:100,right:100},borders:{top:borda,bottom:borda,left:borda,right:borda},shading:c.tagName==='TH'?{fill:'E8ECEE'}:undefined,children:children.length?children:[new Paragraph('')]});
