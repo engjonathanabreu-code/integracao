@@ -65,7 +65,11 @@ export function contextoPRF({ municipio, remessa, nucleo, unidades, cpfDe }) {
   const logradouros = lista => agrupar(lista, 'logradouro', nome => ({nome}));
   const matriculas = agrupar(us, 'matricula', numero => ({ numero, nome:numero }));
   for (const mat of matriculas) { mat.logradouros = logradouros(mat.unidades); mat.remanescentes = []; mat.proprietarios = []; }
-  const explicitas = Array.isArray(n.matriculas) ? n.matriculas : null;
+  const explicitas = Array.isArray(n.matriculas) && n.matriculas.length ? n.matriculas.map(mat => {
+    const agrupada = matriculas.find(m => String(m.numero).trim() === String(mat.numero).trim());
+    return {...agrupada,...mat,unidades:agrupada?.unidades || mat.unidades || [],logradouros:agrupada?.logradouros || mat.logradouros || []};
+  }) : null;
+  const vincular = lista => (Array.isArray(lista) ? lista : []).map(item => ({...us.find(u => u.id === item.unidadeId),...item}));
   const tipos = us.map(u => u.modalidade);
   const social = tipos.length > 0 && tipos.every(t => t === 'REURB-S');
   const especifica = tipos.length > 0 && tipos.every(t => t === 'REURB-E');
@@ -73,16 +77,16 @@ export function contextoPRF({ municipio, remessa, nucleo, unidades, cpfDe }) {
   return {
     municipio:m, remessa:seguro(remessa || {}),
     nucleo:{ ...n, nome:n.nome || n.codigo || '', modalidadeSocial:social, modalidadeEspecifica:especifica, estudoAmbiental:n.campos?.estudoAmbiental === 'sim', estudoRisco:n.campos?.estudoRisco === 'sim' },
-    unidades:us, matriculas:explicitas || matriculas, logradouros:logradouros(us),
+    unidades:us, matriculas:explicitas ? [...explicitas,...matriculas.filter(m=>!explicitas.some(e=>String(e.numero).trim()===String(m.numero).trim()))] : matriculas, logradouros:logradouros(us),
     quadras:agrupar(us, 'quadra', nome => ({nome,numero:nome})),
     // Sem especialização é uma situação jurídica; não se presume só pela falta de matrícula.
-    unidadesSemEspecializacao:Array.isArray(n.unidadesSemEspecializacao) ? n.unidadesSemEspecializacao : [],
-    areasUsucapidas:Array.isArray(n.areasUsucapidas) ? n.areasUsucapidas : [],
+    unidadesSemEspecializacao:vincular(n.unidadesSemEspecializacao),
+    areasUsucapidas:vincular(n.areasUsucapidas),
     versoes:Array.isArray(n.versoes) ? n.versoes : [], equipeTecnica:Array.isArray(n.equipeTecnica) ? n.equipeTecnica : [],
     proprietariosCadeiaDominial:Array.isArray(n.proprietariosCadeiaDominial) ? n.proprietariosCadeiaDominial : [],
-    unidadesAtingidasRodovia:Array.isArray(n.unidadesAtingidasRodovia) ? n.unidadesAtingidasRodovia : [],
-    unidadesAtingidasCursoAgua:Array.isArray(n.unidadesAtingidasCursoAgua) ? n.unidadesAtingidasCursoAgua : [],
-    medida:n.medida || {}, bibliografia:n.bibliografia || m.bibliografia || {},
+    unidadesAtingidasRodovia:vincular(n.unidadesAtingidasRodovia),
+    unidadesAtingidasCursoAgua:vincular(n.unidadesAtingidasCursoAgua),
+    medida:{...n.medida,unidades:vincular(n.medida?.unidades)}, bibliografia:n.bibliografia || m.bibliografia || {},
     cronograma, modalidadeSocial:social, modalidadeEspecifica:especifica,
   };
 }

@@ -1,3 +1,4 @@
+import DadosNUI from './DadosNUI.jsx';
 import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
@@ -11,7 +12,7 @@ import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
-import { InfraestruturaPRF, CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
+import { CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
 import { complementoNucleoPRF, INFRA_PRF } from "./cadastros-prf.js";
 import { separarQuadraLote } from "../municipio-prf/marcadoresPRF.js";
 import MemoriaisNucleo from "../memoriais/MemoriaisNucleo.jsx";
@@ -2405,7 +2406,6 @@ function ModalRemessa({ db, municipio, inicial, onSalvar, onFechar }) {
 }
 
 function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, onFechar }) {
-  const [infra, setInfra] = useState(inicial?.infra || {});
   const editando = !!inicial;
   const remessas = db.remessas.filter((r) => r.municipioId === municipio.id).sort((a, b) => a.numero - b.numero);
   const [remessaId, setRemessaId] = useState(inicial ? inicial.remessaId || "" : remessaPadrao || "");
@@ -2415,11 +2415,6 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   const [sm, setSm] = useState(inicial?.criterio?.salarioMinimo || "");
   const [teto, setTeto] = useState(inicial?.criterio?.rendaMaxima || "");
   const [end, setEnd] = useState({ ...enderecoVazio(), municipio: inicial?.endereco?.municipio || municipio.nome, uf: inicial?.endereco?.uf || municipio.uf, ...(inicial?.endereco || {}) });
-  const [situacao, setSituacao] = useState(inicial?.situacao || "Ativo");
-  const [situacaoDescricao, setSituacaoDescricao] = useState(inicial?.situacaoDescricao || "");
-  const [modalidade, setModalidade] = useState(inicial?.modalidade || "");
-  const [objeto, setObjeto] = useState(inicial?.objeto || "");
-  const [instrumento, setInstrumento] = useState(inicial?.instrumento || "");
   const setE = (k, v) => setEnd((x) => ({ ...x, [k]: v }));
   const moradores = inicial ? db.processos.filter((p) => p.nucleoId === inicial.id).length : 0;
   const dup = (db._baseArquivo || db).nucleos.find((n) => n.id !== inicial?.id && n.municipioId === municipio.id && (n.remessaId || "") === remessaId && codigoNorm(n.codigo) === codigoNorm(codigo));
@@ -2432,7 +2427,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   const disEstr = !perm.estrutura;
   return (
     <Modal titulo={editando ? `Editar ${nomeNucleo(inicial)}` : "Novo núcleo"} largura={640} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end, situacao, situacaoDescricao: situacaoDescricao.trim(), modalidade, objeto, instrumento, infra })}>Salvar núcleo</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end })}>Salvar núcleo</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="nrem">Remessa</label>
@@ -2461,15 +2456,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
         <div><label className="rot" htmlFor="nloc">Localidade</label><input id="nloc" className="inp" value={end.localidade} disabled={disEstr} onChange={(e) => setE("localidade", e.target.value)} placeholder="Loteamento, comunidade" /></div>
         <div><label className="rot" htmlFor="ncep">CEP</label><input id="ncep" className="inp" inputMode="numeric" value={end.cep} disabled={disEstr} onChange={(e) => setE("cep", fmtCEP(e.target.value))} /></div>
       </div>
-      <InfraestruturaPRF dados={infra} onChange={setInfra} disabled={disEstr}/>
-      <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Situação e enquadramento</h3>
-      <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div><label className="rot" htmlFor="nsit">Situação</label><select id="nsit" className="inp" value={situacao} disabled={disEstr} onChange={(e) => setSituacao(e.target.value)}>{["Ativo", "Suspenso", "Cancelado", "Concluído"].map((x) => <option key={x}>{x}</option>)}</select></div>
-        <div><label className="rot" htmlFor="nmod">Modalidade predominante</label><select id="nmod" className="inp" value={modalidade} disabled={disEstr} onChange={(e) => setModalidade(e.target.value)}><option value="">Não definida</option><option value="REURB-S">REURB-S</option><option value="REURB-E">REURB-E</option><option value="Mista">Mista</option></select></div>
-        <div><label className="rot" htmlFor="nobj">Objeto</label><select id="nobj" className="inp" value={objeto} disabled={disEstr} onChange={(e) => setObjeto(e.target.value)}><option value="">Não definido</option>{OBJETOS_REURB.map((x) => <option key={x}>{x}</option>)}</select></div>
-        <div><label className="rot" htmlFor="nins">Instrumento</label><select id="nins" className="inp" value={instrumento} disabled={disEstr} onChange={(e) => setInstrumento(e.target.value)}><option value="">Não definido</option>{INSTRUMENTOS_REURB.map((x) => <option key={x}>{x}</option>)}</select></div>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nsitd">Descrição da situação</label><textarea id="nsitd" className="inp" rows={3} value={situacaoDescricao} disabled={disEstr} onChange={(e) => setSituacaoDescricao(e.target.value)} placeholder="Como está o núcleo hoje: o que já foi feito, o que trava, decisões tomadas." /></div>
-      </div>
+      <p className="ajuda">Infraestrutura, situação e enquadramento estão na aba Dados NUI do núcleo.</p>
       {editando && <div className="ajuda" style={{ marginTop: 14 }}>Etapa do núcleo: {inicial.etapa >= TOTAL_NUCLEO ? "concluído" : NUCLEO_ETAPAS[inicial.etapa].nome}. A etapa muda pelo ok dado na página do núcleo.</div>}
       {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 12 }}>{erros.join(". ")}.</div>}
     </Modal>
@@ -2819,7 +2806,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
     if (inicial) {
       mutar((d) => { const atual=d.nucleos.find((n) => n.id === inicial.id); Object.assign(atual, unirCampos(atual,dados)); return d; }, "Núcleo alterado", { municipioId: municipio.id, remessaId: dados.remessaId, detalhe: `${dados.codigo}${dados.criterio.rendaMaxima ? `, teto REURB-S ${moeda(parseNum(dados.criterio.rendaMaxima))}` : ""}` });
     } else {
-      const n = { id: uid("n"), municipioId: municipio.id, ...dados, etapa: 0, campos: {}, checks: {}, analiseMatricula: "Pendente", ambiental: "Pendente", risco: "Em análise", origem: [], externo: {} };
+      const n = { id: uid("n"), municipioId: municipio.id, situacao: "Ativo", ...dados, etapa: 0, campos: {}, checks: {}, analiseMatricula: "Pendente", ambiental: "Pendente", risco: "Em análise", origem: [], externo: {} };
       mutar((d) => { d.nucleos.push(n); return d; }, "Núcleo cadastrado", { municipioId: municipio.id, remessaId: n.remessaId, detalhe: `${n.codigo}${n.remessaId ? ` em ${nomeRemessa(db, remessaDe(db, n.remessaId))}` : ", sem remessa"}` });
     }
     fechar(); setToast("Núcleo salvo.");
@@ -4603,6 +4590,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       ["memorial", "Memorial", ScrollText, 0, n.memorial?.texto ? "" : "vazio"],
       ["memoriais", "Memoriais", FileText, 0, n.etapa < 1 ? "libera na Topografia" : ""],
       ["metas", "Metas", Target, metasAbertas],
+      ["dadosNui", "Dados NUI", ClipboardList, 0],
       ["historico", "Histórico", History, 0],
     ]
     : [["moradores", "Moradores", Users, 0], ["quadro", "Quadro", Columns3, 0], ["pendencias", "Pendências", AlertTriangle, 0]];
@@ -4722,6 +4710,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
               baixarDocumento={(unidade, html) => baixarArquivo(`${unidade.codigo}-memorial-descritivo.doc`, documentoWord(html, `Memorial descritivo ${unidade.codigo}`), "application/msword")} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
+            {abaAtual === "dadosNui" && n && <DadosNUI key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
           </div>
         </div>
