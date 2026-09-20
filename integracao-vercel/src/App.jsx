@@ -4703,14 +4703,14 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             )}
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
-              montarDocumento={(dados) => aplicarTimbrado(montarDocumentoComercial("memorialNucleoVias", dados, db, dados), timbradoMemoriais)}
-              baixarDocumento={(item, html) => baixarArquivo(`${item.codigo}-memorial.doc`, documentoWord(html, `Memorial descritivo ${item.codigo}`), "application/msword")} />
+              montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
+              baixarDocumento={(item, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
               <IntegracaoMemoriais key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
-              montarDocumento={(dados) => aplicarTimbrado(montarDocumentoComercial("memorialDescritivo", dados, db, dados), timbradoMemoriais)}
-              baixarDocumento={(unidade, html) => baixarArquivo(`${unidade.codigo}-memorial-descritivo.doc`, documentoWord(html, `Memorial descritivo ${unidade.codigo}`), "application/msword")} /></>}
+              montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
+              baixarDocumento={(unidade, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
-            {abaAtual === "dadosNui" && n && <DadosNUI key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
+            {abaAtual === "dadosNui" && n && <DadosNUI usuario={usuario} key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
           </div>
         </div>
@@ -5050,6 +5050,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   const resultado = preparo.html != null && mapa ? montarPRF(preparo.html, lacunas, mapa, dados.valores) : null;
   const faltandoPorOrigem = unirCampos(dados.faltando || {}, lacunasPRF(Object.fromEntries((resultado?.faltando || []).map((l) => [l.chave, ""]))));
   const pronto = prontidaoPRF(db, n);
+  const documentoCompleto=pronto.completo&&!Object.keys(faltandoPorOrigem).length&&!(resultado?.faltando?.length)&&!/<mark\b|_{3,}|\{\{/.test(resultado?.html||"");
   const titulo = `PRF ${nomeRemessa(db, remessaDe(db, n.remessaId))} ${n.codigo}`.trim();
   const preencherIA = async () => {
     setEstado("ia"); setErro("");
@@ -5058,12 +5059,13 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
     finally { setEstado("ocioso"); }
   };
   const preencherPalavras = () => { setMapa(mapearPorPalavras(lacunas)); setOrigemMapa("palavras-chave"); setErro(""); mutar((d) => d, "Prévia do PRF preenchida por palavras-chave", { ...log, detalhe: `${lacunas.length} lacunas no modelo` }); };
-  const baixar = (tipo) => {
+  const baixar = async (tipo) => {
+    setErro("");setEstado("exportando");try{
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
-    const aviso = pronto.completo ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Prévia parcial: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Gere de novo quando o núcleo estiver completo.</p>`;
-    const corpo = documentoWord(aplicarTimbrado(aviso + resultado.html, timbrado), titulo);
-    baixarArquivo(`${nomeArq}${pronto.completo ? "" : "-previa"}.${tipo === "doc" ? "doc" : "html"}`, corpo, tipo === "doc" ? "application/msword" : "text/html;charset=utf-8");
-    mutar((d) => d, pronto.completo ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, ${cpfCompleto && perm.verCPF ? "com CPF completo" : "com CPF mascarado"}` });
+    const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
+    if(tipo==="doc"){const {baixarDocx}=await import("./documento-docx.js");await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
+    mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, ${cpfCompleto && perm.verCPF ? "com CPF completo" : "com CPF mascarado"}` });
+    }catch(e){setErro(e.message);}finally{setEstado("ocioso");}
   };
   const usarExemplo = () => { setModelo(MODELO_PRF_EXEMPLO); setNomeModelo("Modelo de exemplo"); setMapa(null); };
   const preenchidas = resultado ? lacunas.filter((l) => mapa[l.id] && preenchido(dados.valores[mapa[l.id]])).length : 0;
@@ -5072,10 +5074,10 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
       <Migalhas itens={caminho(db, { municipioId: n.municipioId, remessaId: n.remessaId, nucleoId: n.id, final: "Prévia do PRF" })} ir={ir} />
       <div className="cabeca">
         <div>
-          <h1>{pronto.completo ? "PRF completo" : "Prévia do PRF"}, {nomeNucleo(n)}</h1>
+          <h1>{documentoCompleto ? "PRF completo" : "Prévia do PRF"}, {nomeNucleo(n)}</h1>
           <p>O sistema encontra os espaços em branco do modelo e coloca cada dado do cadastro no lugar certo. Revise a correspondência antes de baixar.</p>
         </div>
-        <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={pronto.completo ? "ok" : "pend"}>{pronto.completo ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
+        <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={documentoCompleto ? "ok" : "pend"}>{documentoCompleto ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
       <Secao titulo="Dados que faltam antes de gerar">
         {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem.includes("loteQuadra") ? "Cadastro da unidade — campos Quadra e Lote" : origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
@@ -5127,10 +5129,10 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap justify-end gap-2">
                   <button className="btn" onClick={() => baixar("html")}><Download size={15} />Baixar HTML</button>
-                  <button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />{pronto.completo ? "Baixar PRF completo" : "Baixar prévia"} para Word</button>
+                  <button className="btn btn-primario" disabled={estado==="exportando"} onClick={() => baixar("doc")}><Download size={15} />{documentoCompleto ? "Baixar PRF completo" : "Baixar prévia"} para Word</button>
                 </div>
                 <iframe title="Prévia do PRF" sandbox="" srcDoc={documentoWord(resultado.html, titulo)} style={{ width: "100%", height: 760, border: "1px solid var(--line)", borderRadius: 15, background: "#fff" }} />
-                <p className="ajuda">Marcadores e sublinhados destacados em amarelo ficaram sem dado. Outros trechos amarelos preservam o marca-texto do modelo e precisam de revisão humana. No arquivo Word, algumas versões não exibem fotos embutidas; o arquivo HTML mostra todas.</p>
+                <p className="ajuda">Marcadores e sublinhados destacados em amarelo ficaram sem dado. Outros trechos amarelos preservam o marca-texto do modelo e precisam de revisão humana. O Word é gerado em .docx com imagens incorporadas, timbrado repetido, páginas A4 e margens de relatório técnico. Campos pendentes mantêm o documento como prévia.</p>
               </div>
             </div>
           )}

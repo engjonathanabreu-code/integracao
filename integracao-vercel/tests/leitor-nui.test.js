@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {sugestoesDaLeitura,incluirSugestoesNUI} from '../src/leitor-nui.js';
+import {configMemoriaisNucleo} from '../memoriais/integracaoMemoriais.js';
+const d={matricula:{numero:'123'},imovel:{area_registral:2,unidade_area:'ha'},proprietario:{nome:'Teste'},historico_registro:[{ato:'R.1',tipo:'Usucapião',para:'Teste',data:'01/02/2020',descricao:'Ato explícito'},{ato:'AV.2',tipo:'Penhora',descricao:'Sem transmissão'}]};
+test('extração propõe somente atos pertinentes e não atribui área total à área usucapida',()=>{assert.equal(sugestoesDaLeitura(d,'matriculas')[0].area,'20000');assert.equal(sugestoesDaLeitura(d,'dominial').length,1);const [u]=sugestoesDaLeitura(d,'usucapiao');assert.equal(u.area,undefined);assert.equal(u.unidadeId,undefined);assert.equal(u.data,'2020-02-01');assert.equal(sugestoesDaLeitura({...d,imovel:{area_registral:2}},'matriculas')[0].area,'');});
+test('confirmação preserva registros e impede repetição de arquivo na mesma seção',()=>{const draft={matriculas:[{id:'a',numero:'Existente'}]},r={hash:'abc',arquivo:'teste.pdf'};const saida=incluirSugestoesNUI(draft,r,'matriculas',[{numero:'123'}],{id:'u',nome:'Técnico'});assert.deepEqual(saida.matriculas[0],draft.matriculas[0]);assert.equal(draft.matriculas.length,1);assert.equal(saida.leiturasMatriculas[0].confirmadoPorId,'u');assert.throws(()=>incluirSugestoesNUI(saida,r,'matriculas',[{}],{id:'u'}),/já foi confirmado/);});
+test('memorial usa o fuso do GeoJSON em vez do meridiano global',()=>{assert.equal(configMemoriaisNucleo({levantamentoGeoJSON:{epsg:31983}},{meridiano:'51° O'}).meridiano,'45° O');});

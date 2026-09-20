@@ -526,3 +526,13 @@ export async function lerFichaCliente(cliente) {
   if (!clientes.length && !complementos.length) throw new Error('Cliente indisponível para esta conta.');
   return {clientes, complementos};
 }
+
+export async function analisarMatriculaNUI(arquivo){
+ if(!session)throw new Error('Entre novamente para analisar a matrícula.');
+ if(arquivo.size>3*1024*1024)throw new Error('Envie PDF, PNG ou JPG de até 3 MB. Divida documentos maiores.');
+ if(!['application/pdf','image/png','image/jpeg'].includes(arquivo.type))throw new Error('Formato aceito: PDF, PNG ou JPG.');
+ await requisicao('profiles?select=id&id=eq.'+encodeURIComponent(session.user.id));
+ const data=await new Promise((ok,erro)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=()=>erro(new Error('Não foi possível ler o arquivo.'));r.readAsDataURL(arquivo);});
+ const response=await fetch('/api/ler-matricula',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({arquivo:arquivo.name,mime:arquivo.type,base64:data}),signal:AbortSignal.timeout(290000)});
+ const result=await response.json();if(!response.ok)throw new Error(result.message||'Falha na análise.');return result;
+}

@@ -11,7 +11,7 @@ export const SECOES_NUI=[
  {id:'medidas',titulo:'Medidas, infraestrutura e enquadramento',descricao:'Medidas propostas, infraestrutura e situação geral do núcleo.',listas:[]}
 ];
 export const CAMPOS_MEDIDA=[campo('nome','Identificação da medida'),campo('tipo','Tipo de medida'),texto('descricao','Descrição'),campo('responsavel','Responsável'),campo('prazo','Prazo'),texto('fundamentacao','Fundamentação / estudo'),{id:'unidades',rotulo:'Unidades relacionadas',tipo:'lista',campos:unidade}];
-export const CHAVES_NUI=[...SECOES_NUI.flatMap(s=>s.listas.map(l=>l.id)),'medida','infra','situacao','situacaoDescricao','modalidade','objeto','instrumento','macrozona','zona'];
+export const CHAVES_NUI=[...SECOES_NUI.flatMap(s=>s.listas.map(l=>l.id)),'leiturasMatriculas','medida','infra','situacao','situacaoDescricao','modalidade','objeto','instrumento','macrozona','zona'];
 export function dadosNUI(n){return Object.fromEntries(CHAVES_NUI.filter(k=>n[k]!==undefined).map(k=>[k,structuredClone(n[k])]));}
 export function salvarDadosNUI(atual,base,draft){
  const mudancas=CHAVES_NUI.filter(k=>JSON.stringify(base[k])!==JSON.stringify(draft[k]));

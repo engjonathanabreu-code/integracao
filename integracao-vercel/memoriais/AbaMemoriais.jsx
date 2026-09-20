@@ -101,7 +101,7 @@ function PainelUnidade({ unidade, nucleo, municipio, config, podeEditar, aoSalva
     try {
       await aoGerarDocumento(unidade, dadosDoMemorial({
         morador: unidade.morador,
-        unidade: { ...unidade, area: calculado.area, perimetro: calculado.perimetro, memorial },
+        unidade: { ...unidade, area: calculado.area, perimetro: calculado.perimetro, memorial: JSON.stringify(vertices)===JSON.stringify(unidade.vertices)&&unidade.memorial?unidade.memorial:memorial },
         nucleo, municipio, config,
       }));
     } finally { setGerando(false); }
@@ -228,7 +228,7 @@ export default function AbaMemoriais({
     for (const u of unidades) {
       if (!temVertices(u)) { fora.push(`${u.codigo}: sem vértices importados`); continue; }
       const calc = processarVertices(u.vertices);
-      const texto = montarMemorial(calc.vertices, config);
+      const texto = u.memorial || montarMemorial(calc.vertices, config);
       await aoGerarDocumento(u, dadosDoMemorial({
         morador: u.morador,
         unidade: { ...u, area: calc.area, perimetro: calc.perimetro, memorial: texto },

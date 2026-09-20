@@ -38,3 +38,9 @@ export function contextoDocumentoMemorial(marcadores, hoje = new Date()) {
   dados.documento = { ...dados.documento, dataExtenso: hoje.toLocaleDateString('pt-BR', { day:'numeric', month:'long', year:'numeric' }) };
   return dados;
 }
+
+export function configMemoriaisNucleo(n,config={}){
+ config=config||{};
+ const epsg=n.levantamentoGeoJSON?.epsg;
+ return epsg>=31978&&epsg<=31985?{...config,sistema:'UTM',meridiano:Math.abs((epsg-31960)*6-183)+'° O'}:config;
+}
