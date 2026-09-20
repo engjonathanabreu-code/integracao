@@ -1,3 +1,5 @@
+import ControleAcessos from './ControleAcessos.jsx';
+import {registrarAcesso} from './acessos-api.js';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
 import GestaoSemanal from './GestaoSemanal.jsx';
@@ -6293,6 +6295,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const perm = permissoes(usuario);
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
+    acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
     perm.importar && ["previa", "Prévia com dados do ERP", Sparkles],
@@ -6313,6 +6316,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
+        {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "regras" && <ConfigRegras db={db} mutar={mutar} setToast={setToast} />}
         {atual === "modelos" && <ConfigModelos db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -11877,8 +11881,10 @@ export default function App() {
     const marcar = () => { ultimoUso.current = Date.now(); };
     const eventos = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     eventos.forEach((e) => window.addEventListener(e, marcar, { passive: true }));
-    const iv = setInterval(() => {
+    const iv = setInterval(async () => {
       if (Date.now() - ultimoUso.current > LIMITE_OCIOSO_MS) {
+        clearInterval(iv);
+        if(!AMBIENTE.DEMO && temSessao()){try{await registrarAcesso("logout","inatividade");}catch{ /* A ausência do evento permanece explícita no relatório. */ }}
         mutar((d) => d, "Sessão encerrada por inatividade");
         compartilhado.close(); setUsuarioId(null); setAviso("Sessão encerrada depois de 2 horas sem uso. Entre de novo.");
       }
@@ -11916,6 +11922,7 @@ export default function App() {
     if (!AMBIENTE.DEMO) {
       if (!temSessao() && !u.offline) throw new Error("Entre com sua conta do ERP para acessar os registros compartilhados.");
       u = await compartilhado.open(u, db);
+      if(temSessao()) await registrarAcesso("login", "autenticacao");
     }
     usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setEntrouEm(new Date().toISOString());
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
@@ -11926,11 +11933,14 @@ export default function App() {
       return d;
     }, "Entrou no sistema");
   };
-  const sair = () => {
+  const sair = async () => {
+    let falhaRegistro=false;
+    if(!AMBIENTE.DEMO && temSessao()) {try{await registrarAcesso("logout","manual");}catch{falhaRegistro=true;}}
     const id = usuarioRef.current?.id;
     mutar((d) => { const q = d.usuarios.find((x) => x.id === id); if (q) { q.online = false; q.ultimaAtividade = new Date().toISOString(); } return d; }, "Saiu do sistema");
     compartilhado.close();
     setUsuarioId(null); setMenuAberto(false); setJanela(null);
+    if(falhaRegistro)setAviso("Você saiu do sistema, mas não foi possível confirmar o registro da saída por falha de conexão.");
   };
   const restaurar = async () => {
     if (!AMBIENTE.DEMO) { setToast("A restauração de exemplos está disponível no modo demonstração. Os dados de produção foram preservados."); return; }
