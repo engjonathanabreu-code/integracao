@@ -1,10 +1,11 @@
 import JSZip from 'jszip';
+import {MARGENS_PADRAO} from './timbrado.js';
 // Saída OOXML real: imagens incorporadas, cabeçalho e rodapé por seção.
 import {Document,Packer,Paragraph,TextRun,ImageRun,Table,TableRow,TableCell,Header,Footer,PageNumber,WidthType,AlignmentType,HeadingLevel,BorderStyle} from 'docx';
 
 export const FORMATO_RELATORIO={largura:11906,altura:16838,topo:1701,esquerda:1701,direita:1134,base:1134};
 const limpar=t=>String(t||'').replace(/\u00a0/g,' ');
-async function imagem(src,maxWidth=604,maxHeight=850){
+async function imagem(src,maxWidth=604,maxHeight=850,pagina){
  if(!/^data:image\/(png|jpeg|jpg);base64,/i.test(src||''))throw new Error('Uma imagem não está incorporada. Reenvie-a em PNG ou JPG antes de gerar o Word.');
  const tipo=/^data:image\/png/i.test(src)?'png':'jpg';
  const data=Uint8Array.from(atob(src.split(',')[1]),c=>c.charCodeAt(0));
@@ -12,8 +13,13 @@ async function imagem(src,maxWidth=604,maxHeight=850){
  if(tipo==='png'){const v=new DataView(data.buffer);w=v.getUint32(16);h=v.getUint32(20);}
  else {let i=2;while(i<data.length){if(data[i]!==255){i++;continue;}const marker=data[i+1];const len=(data[i+2]<<8)+data[i+3];if([192,193,194].includes(marker)){h=(data[i+5]<<8)+data[i+6];w=(data[i+7]<<8)+data[i+8];break;}if(!len)break;i+=2+len;}}
  if(!w||!h)throw new Error('Não foi possível ler as dimensões de uma imagem do documento.');
- const escala=Math.min(maxWidth/w,maxHeight/h,1);
- return new ImageRun({type:tipo,data,transformation:{width:Math.round(w*escala),height:Math.round(h*escala)}});
+ const escala=pagina?maxWidth/w:Math.min(maxWidth/w,maxHeight/h,1);
+ const width=w*escala,height=h*escala;
+ if(pagina){
+  pagina.altura=height*15;
+  if(pagina.altura>FORMATO_RELATORIO.altura/4)throw new Error('Recorte a imagem do timbrado para conter somente a faixa do cabeçalho ou rodapé.');
+ }
+ return new ImageRun({type:tipo,data,transformation:{width,height},...(pagina?{floating:{horizontalPosition:{relative:'page',offset:0},verticalPosition:{relative:'page',offset:Math.round((pagina.rodape?FORMATO_RELATORIO.altura-pagina.altura:0)*635)},behindDocument:true,allowOverlap:true,layoutInCell:false,lockAnchor:true}}:{})});
 }
 async function trechos(node,estilo={}){
  if(node.nodeType===3)return [new TextRun({...estilo,text:limpar(node.textContent)})];
@@ -64,11 +70,14 @@ export async function gerarDocx(html,titulo,timbrado,{parse=texto=>new DOMParser
  if(timbrado?.ativo!==false&&['cabecalho','rodape'].some(k=>timbrado?.[k]&&!timbrado?.imagens?.[k]))throw new Error('O timbrado ainda não foi carregado. Aguarde ou confira Configurações → Papel timbrado.');
  const root=parse(html);const children=await blocos(root.body||root);
  const ativo=timbrado?.ativo!==false,imgs=ativo?timbrado?.imagens||{}:{};
- const header=[];if(imgs.cabecalho)header.push(new Paragraph({children:[await imagem(imgs.cabecalho,604,82)],spacing:{after:0,line:240},alignment:AlignmentType.CENTER}));
- const footer=[];if(imgs.rodape)footer.push(new Paragraph({children:[await imagem(imgs.rodape,604,37)],spacing:{after:0,line:240},alignment:AlignmentType.CENTER}));
- footer.push(new Paragraph({children:[new TextRun({children:[PageNumber.CURRENT],size:18})],alignment:AlignmentType.RIGHT,spacing:{after:0,line:200}}));
- const f=FORMATO_RELATORIO;
- const doc=new Document({title:titulo,creator:'Integral Soluções em Engenharia',styles:{default:{document:{run:{font:'Arial',size:24,color:'000000'},paragraph:{spacing:{line:240,after:120},widowControl:true}}},paragraphStyles:[1,2,3,4,5,6].map(i=>({id:'Heading'+i,name:'Heading '+i,basedOn:'Normal',next:'Normal',quickFormat:true,run:{font:'Arial',size:i===1?28:24,bold:true,color:'000000'},paragraph:{keepNext:true,spacing:{before:200,after:160}}}))},sections:[{properties:{page:{size:{width:f.largura,height:f.altura},margin:{top:f.topo,left:f.esquerda,right:f.direita,bottom:f.base,header:170,footer:170}}},headers:{default:new Header({children:header})},footers:{default:new Footer({children:footer})},children:children.length?children:[new Paragraph(titulo)]}]});
+ const f=FORMATO_RELATORIO,cab={altura:0},rod={altura:0,rodape:true};
+ const header=[];if(imgs.cabecalho)header.push(new Paragraph({children:[await imagem(imgs.cabecalho,f.largura/15,Infinity,cab)],spacing:{before:0,after:0,line:20}}));
+ const footer=[];if(imgs.rodape)footer.push(new Paragraph({children:[await imagem(imgs.rodape,f.largura/15,Infinity,rod)],spacing:{before:0,after:0,line:20}}));
+ footer.push(new Paragraph({children:[new TextRun({children:[PageNumber.CURRENT],size:18})],alignment:AlignmentType.RIGHT,spacing:{before:0,after:0,line:200}}));
+ const gap=k=>Math.max(0,Math.min(50,Number(timbrado?.margens?.[k]??MARGENS_PADRAO[k])||0))*1440/25.4;
+ const margemTopo=Math.max(f.topo,cab.altura?Math.ceil(cab.altura+gap('topo')):0);
+ const margemBase=Math.max(f.base,rod.altura?Math.ceil(rod.altura+Math.max(gap('base'),400)):0);
+ const doc=new Document({title:titulo,creator:'Integral Soluções em Engenharia',styles:{default:{document:{run:{font:'Arial',size:24,color:'000000'},paragraph:{spacing:{line:240,after:120},widowControl:true}}},paragraphStyles:[1,2,3,4,5,6].map(i=>({id:'Heading'+i,name:'Heading '+i,basedOn:'Normal',next:'Normal',quickFormat:true,run:{font:'Arial',size:i===1?28:24,bold:true,color:'000000'},paragraph:{keepNext:true,spacing:{before:200,after:160}}}))},sections:[{properties:{page:{size:{width:f.largura,height:f.altura},margin:{top:margemTopo,left:f.esquerda,right:f.direita,bottom:margemBase,header:0,footer:Math.ceil(rod.altura+170)}}},headers:{default:new Header({children:header})},footers:{default:new Footer({children:footer})},children:children.length?children:[new Paragraph(titulo)]}]});
  // Word exige identificadores de desenho únicos, inclusive entre header/footer.
  const zip=await JSZip.loadAsync(await (await Packer.toBlob(doc)).arrayBuffer());let desenho=0;
  for(const path of Object.keys(zip.files).filter(p=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(p))){const xml=await zip.file(path).async('string');zip.file(path,xml.replace(/<wp:docPr id="\d+"/g,()=>'<wp:docPr id="'+(++desenho)+'"'));}
