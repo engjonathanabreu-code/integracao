@@ -4,7 +4,7 @@ import {acessoCRM,progressoMarketing} from './crm-regras.js';
 import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
 export default function JornadaMarketing({db,usuario}) {
  const acesso=acessoCRM(usuario),[busca,setBusca]=useState(''),[status,setStatus]=useState(''),[novo,setNovo]=useState(false),[nucleo,setNucleo]=useState(''),[notas,setNotas]=useState(''),[aberto,setAberto]=useState(null),[novaEtapa,setNovaEtapa]=useState(false);
- const m=useModulo(async()=>{if(!acesso.marketing)return {};const [etapas,projetos,progresso]=await Promise.all(['etapas','projetos','progresso'].map(t=>listarCRM(`integracao_marketing_${t}`)));return {etapas,projetos,progresso};},[usuario?.id]);
+ const m=useModulo(async()=>{if(!acesso.marketing)return {};const [etapas,projetos,progresso]=await Promise.all(['etapas','projetos','progresso'].map(t=>listarCRM(`integracao_marketing_${t}`)));return {etapas,projetos,progresso};},[usuario?.id],['marketing']);
  if(!acesso.marketing)return <div className="contem"><h1>Marketing</h1><p>Acesso restrito ao Marketing e à administração.</p></div>;
  const nucleoDe=id=>db.nucleos.find(n=>(n.externo?.kanbanId||n.id)===id);
  const titulo=p=>{if(p.municipio_id)return db.municipios.find(m=>m.id===p.municipio_id)?.nome||'Município';const n=nucleoDe(p.nucleo_id);return `${n?.codigo||''} ${n?.nome||'Núcleo'}`;};

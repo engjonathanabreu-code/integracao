@@ -6,7 +6,7 @@ import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
 import {JanelaMarketing,MunicipioMarketing,RemoverMarketing,nomeMunicipio} from './marketing-ui.jsx';
 export default function GruposMarketing({db,usuario}) {
  const [busca,setBusca]=useState(''),[form,setForm]=useState(null),[aberto,setAberto]=useState(null),[remover,setRemover]=useState(null),[arquivados,setArquivados]=useState(false),[texto,setTexto]=useState(''),[enviar,setEnviar]=useState(false);
- const m=useModulo(async()=>{const [grupos,atualizacoes,projetos]=await Promise.all(['grupos','atualizacoes','projetos'].map(t=>listarCRM(`integracao_marketing_${t}`)));return {grupos,atualizacoes,projetos};},[usuario.id]);
+ const m=useModulo(async()=>{const [grupos,atualizacoes,projetos]=await Promise.all(['grupos','atualizacoes','projetos'].map(t=>listarCRM(`integracao_marketing_${t}`)));return {grupos,atualizacoes,projetos};},[usuario.id],['marketing']);
  const grupos=(m.dados?.grupos||[]).filter(g=>Boolean(g.ativo)!==arquivados&&normalizarCRM(`${g.nome} ${nomeMunicipio(db,g.municipio_id)}`).includes(normalizarCRM(busca)));
  const municipios=[...new Set([...grupos.map(g=>g.municipio_id),...(!arquivados&&!busca?(m.dados?.projetos||[]).filter(p=>p.ativo).map(p=>p.municipio_id||db.nucleos.find(n=>(n.externo?.kanbanId||n.id)===p.nucleo_id)?.municipioId):[])].filter(Boolean))].sort((a,b)=>nomeMunicipio(db,a).localeCompare(nomeMunicipio(db,b),'pt-BR'));
  const grupo=m.dados?.grupos.find(g=>g.id===aberto);

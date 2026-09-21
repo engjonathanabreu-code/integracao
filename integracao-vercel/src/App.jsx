@@ -4366,6 +4366,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const perm = permissoes(usuario);
   const [aba, setAba] = useState(abaInicial || "cadastro");
   const [rascunho, setRascunho] = useState(() => (p ? extrair(p) : null));
+  const baseFormulario=useRef(p?extrair(p):null);
+  useEffect(()=>{const anterior=baseFormulario.current,proximo=p?extrair(p):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
   const [iaPaths, setIaPaths] = useState([]);
   const [cpfVisivel, setCpfVisivel] = useState(false);
   const [modal, setModal] = useState(null);
@@ -8638,7 +8640,7 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
   };
   return (
     <Secao titulo={titulo} nota={nota}>
-      <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+      <div data-edicao-pendente={sujo} className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><label className="rot" htmlFor={`${titulo}-mod`}>Forma de venda</label><select id={`${titulo}-mod`} className="inp" value={f.modalidade} disabled={!pode} onChange={(e) => set("modalidade", e.target.value)}>{MODALIDADES_VENDA.map((x) => <option key={x}>{x}</option>)}</select></div>
         {!semValores && <div><label className="rot" htmlFor={`${titulo}-tot`}>Valor total (R$)</label><input id={`${titulo}-tot`} className="inp" inputMode="decimal" value={f.valorTotal} disabled={!pode} onChange={(e) => set("valorTotal", e.target.value)} onBlur={calcular} /></div>}
         {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-ent`}>Entrada (R$)</label><input id={`${titulo}-ent`} className="inp" inputMode="decimal" value={f.entrada} disabled={!pode} onChange={(e) => set("entrada", e.target.value)} onBlur={calcular} /></div>}
@@ -8690,7 +8692,7 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
   return (
     <Secao titulo="Distrato" nota="Motivo, tipo de acerto e comarca entram no documento. Depois de assinado, altere a situação do morador para Cancelado com o mesmo motivo."
       acao={registrado ? <Tag tipo="bloq">Registrado em {dataBR(p.distrato.registradoEm)} por {p.distrato.por}</Tag> : <Tag tipo="pend">Em preenchimento</Tag>}>
-      <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+      <div data-edicao-pendente={sujo} className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><label className="rot" htmlFor="dt-data">Data</label><input id="dt-data" type="date" className="inp" value={f.data} disabled={!pode} onChange={(e) => set("data", e.target.value)} /></div>
         <div><label className="rot" htmlFor="dt-com">Comarca</label><input id="dt-com" className="inp" value={f.comarca} disabled={!pode} onChange={(e) => set("comarca", e.target.value)} placeholder="Comarca do foro" /></div>
         <div><label className="rot" htmlFor="dt-tipo">Tipo de distrato</label><select id="dt-tipo" className="inp" value={tipoDistrato(f)} disabled={!pode} onChange={e=>set("tipo",e.target.value)}><option value="devolucao">Distrato com devolução</option><option value="multa">Distrato com multa</option><option value="sem_acerto">Distrato sem multa e sem devolução</option></select></div>
@@ -11992,7 +11994,7 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
+          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
           {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}

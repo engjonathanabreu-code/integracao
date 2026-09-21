@@ -11,7 +11,7 @@ export default function Andamentos({db,usuario}) {
  const acesso=acessoCRM(usuario);
  const [nucleo,setNucleo]=useState(''),[form,setForm]=useState(null),[busca,setBusca]=useState('');
  const [instrucao,setInstrucao]=useState(''),[habilitado,setHabilitado]=useState(false),[promptAberto,setPromptAberto]=useState(false);
- const m=useModulo(async()=>{const [itens,prompts]=await Promise.all([listarCRM('processos_kanban_andamentos'),acesso.pos?listarCRM('integracao_nucleo_ia'):Promise.resolve([])]);return {itens,prompts};},[usuario?.id]);
+ const m=useModulo(async()=>{const [itens,prompts]=await Promise.all([listarCRM('processos_kanban_andamentos'),acesso.pos?listarCRM('integracao_nucleo_ia'):Promise.resolve([])]);return {itens,prompts};},[usuario?.id],['processos']);
  const nome=id=>{const n=db.nucleos.find(n=>referenciaNucleo(n)===id);return n?(n.nome?.startsWith(n.codigo)?n.nome:[n.codigo,n.nome].filter(Boolean).join(' · ')):'Núcleo';};
  const etapa=id=>etapaDoAndamento(db.nucleos,id);
  const opcoes=db.nucleos.map(n=><option key={n.id} value={referenciaNucleo(n)}>{nome(referenciaNucleo(n))}</option>);

@@ -1,3 +1,11 @@
+// Realtime is isolated too: no test connects to a production WebSocket.
+class SocketFixture {
+ constructor(){this.readyState=0;window.socketFixture=this;setTimeout(()=>{this.readyState=1;this.onopen?.();},0);}
+ send(text){const m=JSON.parse(text);if(m.event==='phx_join'){this.topic=m.topic;setTimeout(()=>{this.onmessage?.({data:JSON.stringify({topic:m.topic,event:'phx_reply',ref:m.ref,payload:{status:'ok'}})});this.onmessage?.({data:JSON.stringify({topic:m.topic,event:'system',payload:{status:'ok'}})});},0);}if(m.event==='heartbeat')setTimeout(()=>this.onmessage?.({data:JSON.stringify({topic:'phoenix',event:'phx_reply',ref:m.ref,payload:{status:'ok'}})}),0);}
+ close(){this.readyState=3;}
+}
+window.WebSocket=SocketFixture;
+window.simularRevisao=modulo=>window.socketFixture?.onmessage?.({data:JSON.stringify({topic:window.socketFixture.topic,event:'postgres_changes',payload:{data:{record:{modulo,versao:1}}}})});
 import {instalarPontoFixture} from './ponto-browser-fixture.js';
 const pontoFixture=new URLSearchParams(location.search).has('ponto')?instalarPontoFixture():null;
 // Development-only harness. Never included in the production entry point.
@@ -5,7 +13,7 @@ import {resumirMoradores} from '../src/resumo-moradores.js';
 import {compactarResumo} from '../src/resumo-transporte.js';
 import {fixture,id} from './fixture.js';
 import {instalarCRMFixture} from './crm-browser-fixture.js';
-const base=fixture();base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
+const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 if(new URLSearchParams(location.search).has('calendario')) {
   const hoje=new Date().toISOString().slice(0,10);

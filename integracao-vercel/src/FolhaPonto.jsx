@@ -6,7 +6,7 @@ import {acessoCRM} from './crm-regras.js';
 import './folha-ponto.css';
 const diasSemana=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 export function JornadaPonto({alvo}){
- const id=idPonto(alvo),m=useModulo(()=>jornadaAtual(id),[id]);
+ const id=idPonto(alvo),m=useModulo(()=>jornadaAtual(id),[id],['ponto']);
  const [editar,setEditar]=useState(false),[form,setForm]=useState(null),[erro,setErro]=useState('');
  if(!/^[0-9a-f-]{36}$/i.test(id))return <p className="ajuda">Vincule o usuário ao ERP para configurar o ponto.</p>;
  const atual=m.dados?.[0];
@@ -23,7 +23,7 @@ export function JornadaPonto({alvo}){
  </section>;
 }
 export function BaterPonto({usuario}){
- const m=useModulo(()=>ponto('estado'),[usuario.id]),[recibo,setRecibo]=useState(null),[online,setOnline]=useState(navigator.onLine),pedido=useRef(null);
+ const m=useModulo(()=>ponto('estado'),[usuario.id],['ponto']),[recibo,setRecibo]=useState(null),[online,setOnline]=useState(navigator.onLine),pedido=useRef(null);
  useEffect(()=>{const f=()=>{setOnline(navigator.onLine);m.atualizar();};window.addEventListener('online',f);window.addEventListener('offline',f);window.addEventListener('focus',f);return()=>{window.removeEventListener('online',f);window.removeEventListener('offline',f);window.removeEventListener('focus',f);};},[usuario.id]);
  if(m.dados&&m.dados.jornada?.vinculo!=='CLT')return null;
  if(!m.dados&&!m.erro)return null;
@@ -44,7 +44,7 @@ function AcaoPonto({acao,usuarioId,fechar,salvar}){
 }
 export default function FolhaPonto({usuario,db}){
  const admin=acessoCRM(usuario).admin,usuarios=db.usuarios.filter(u=>u.erpRef),[pessoa,setPessoa]=useState(usuarios[0]?.erpRef||''),[mes,setMes]=useState(()=>diaPonto().slice(0,7)),[acao,setAcao]=useState(null);
- const m=useModulo(()=>admin&&pessoa?relatorioPonto(pessoa,mes):Promise.resolve(null),[admin,pessoa,mes]);
+ const m=useModulo(()=>admin&&pessoa?relatorioPonto(pessoa,mes):Promise.resolve(null),[admin,pessoa,mes],['ponto']);
  if(!admin)return null;
  const alvo=usuarios.find(u=>u.erpRef===pessoa),dias=m.dados?.dias||[],somar=k=>dias.reduce((s,d)=>s+Number(d[k]||0),0);
  const csv=()=>{const linhas=[['Dia','Previsto (min)','Trabalhado (min)','Extra pendente (min)','Extra aprovado (min)','Extra recusado (min)','Ajuste (min)','Saldo (min)','Situação'],...dias.map(d=>[d.dia,d.previsto,d.trabalhado,d.pendente_extra,d.aprovado,d.rejeitado,d.ajuste,d.saldo,d.incompleto?'Batidas incompletas':d.fechado?'Fechado':'Em andamento'])];const url=URL.createObjectURL(new Blob(['\ufeff'+linhas.map(l=>l.join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`folha-ponto-${pessoa}-${mes}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};

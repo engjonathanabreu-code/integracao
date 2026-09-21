@@ -1,21 +1,27 @@
+import {temEdicaoEmAndamento} from './protecao-edicao.js';
+import {conectarTempoReal} from './tempo-real.js';
+import {tabelasDosGrupos,afetaResumo,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
 import {filaRascunho} from './fila-rascunho.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
-import {invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
+import {configERP,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const current=useRef(null), server=useRef(null), actor=useRef(null), busy=useRef(false), pending=useRef(false), timer=useRef(null), generation=useRef(0);
+  const vivo=useRef(null),avisos=useRef(new Set()),avisoTimer=useRef(null),retentativas=useRef(0);
+  const [tempoReal,setTempoReal]=useState('desconectado');
   const [status,setStatus]=useState(''),[error,setError]=useState('');
   const [summaryReady,setSummaryReady]=useState(false),[summaryError,setSummaryError]=useState('');
   const summaryJob=useRef(null);
   const attempt=useRef(null),lastRefresh=useRef(0);
   const municipios=useRef(new Set()), opening=useRef(false), municipalityLoads=useRef(new Map());
-  const carregarBase=async(seed)=>{
-    const base=await lerBase({municipios:[...municipios.current]});
+  const carregarBase=async(seed,grupos=null)=>{
+    const tabelas=grupos?tabelasDosGrupos(grupos):null;
+    const base=await lerBase({municipios:[...municipios.current],tabelas,anterior:grupos?server.current?.base:null});
     // Keep opened clients without a municipality available during refresh/save.
     const avulsos=(seed?.processos||[]).filter(p=>!p.municipioId&&!p._resumo&&p._compartilhado);
-    for(const cliente of avulsos){
+    for(const cliente of (!grupos||grupos.includes('clientes')?avulsos:[])){
       const carga=await lerFichaCliente(cliente);
       base.fin_receb_clientes.push(...carga.clientes.filter(c=>!base.fin_receb_clientes.some(x=>x.id===c.id)));
       base.integracao_moradores.push(...carga.complementos.filter(e=>!base.integracao_moradores.some(x=>x.registro_id===e.registro_id)));
@@ -34,6 +40,17 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     if(typeof value==='object') return Object.fromEntries(Object.entries(value).map(([k,v])=>[aliases[k]||k,remap(v,aliases)]));
     return value;
   };
+  const processarAvisos=async()=>{
+    clearTimeout(avisoTimer.current);avisoTimer.current=null;
+    if(!actor.current||!avisos.current.size)return;
+    if(opening.current||busy.current||pending.current||temEdicaoEmAndamento()||document.visibilityState==='hidden'||!navigator.onLine){avisoTimer.current=setTimeout(processarAvisos,1500);return;}
+    const grupos=[...avisos.current];avisos.current.clear();
+    const ok=await refresh({force:true,grupos:grupos.includes('*')?null:grupos});
+    if(!ok)grupos.forEach(g=>avisos.current.add(g));
+    if(avisos.current.size)avisoTimer.current=setTimeout(processarAvisos,ok?500:10000);
+  };
+  const avisar=grupo=>{avisos.current.add(grupo||'*');if(grupo==='clientes'||!grupo)invalidarIndiceClientes();window.dispatchEvent(new CustomEvent('integracao:atualizacao',{detail:{modulo:grupo}}));if(!avisoTimer.current)avisoTimer.current=setTimeout(processarAvisos,400);};
+  const iniciarTempoReal=()=>{vivo.current?.fechar();vivo.current=conectarTempoReal({url:configERP.url,chave:configERP.chave,token:tokenTempoReal,alterou:avisar,estado:setTempoReal});};
   const flush=async()=>{
     if(busy.current || !pending.current || !server.current || !temSessao()) return;
     if(!navigator.onLine) {setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
@@ -56,25 +73,28 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       const result=await gravarOperacoes(operations,id);
       if(gen!==generation.current) return;
       const aliases=result.aliases||{};
-      const saved=remap(after,aliases), latest=remap(current.current,aliases);
-      const base=await carregarBase(saved);
+      const saved=remap(after,aliases),grupos=gruposDasOperacoes(operations);
+      const base=await carregarBase(saved,grupos);
       if(gen!==generation.current) return;
       await confirmarArquivos(sent,base);
       const state=projetar(base,saved);
       server.current=state;
       attempt.current=null;
-      publish(mesclarEdicoes(saved,latest,state.db));
+      publish(mesclarEdicoes(saved,remap(current.current,aliases),state.db));
       pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(state.db);
       setStatus(pending.current?'Salvando próximas alterações…':'Dados compartilhados no Supabase');
       await saveDraft();
-      atualizarResumo();
+      retentativas.current=0;
+      if(afetaResumo(grupos))atualizarResumo();
       if(pending.current) timer.current=setTimeout(flush,500);
     } catch(e) {
       if(gen!==generation.current)return;
       setError(e.message);setStatus('Alterações pendentes — dados locais preservados.');await saveDraft();
+      if(falhaTransitoria(e)){clearTimeout(timer.current);timer.current=setTimeout(flush,Math.min(30000,2000*2**Math.min(retentativas.current++,4)));}
     } finally {busy.current=false;}
   };
   const open=async (user,legacy)=>{
+    vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
     actor.current=user;generation.current++;server.current=null;municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');
     try {
     const cached=await storage.get(storageKey());
@@ -113,8 +133,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     }
     pending.current=pending.current||arquivosPendentes();
     await saveDraft();
-    if(pending.current)timer.current=setTimeout(flush,700);
-    atualizarResumo();
+    if(pending.current)timer.current=setTimeout(flush,250);
+    atualizarResumo();iniciarTempoReal();
     return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
     } finally {opening.current=false;}
   };
@@ -174,9 +194,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     if(previousSummaries.size)throw new Error('Abra o município antes de remover moradores.');
     if(entry)next.auditoria=[entry,...(next.auditoria||[])].slice(0,2000);
     publish(next);pending.current=true;setStatus('Alterações pendentes');saveDraft().catch(e=>setError(e.message));
-    clearTimeout(timer.current);timer.current=setTimeout(flush,700);
+    clearTimeout(timer.current);timer.current=setTimeout(flush,250);
   };
-  const refresh=async({force=false,manual=false}={})=>{
+  const refresh=async({force=false,manual=false,grupos=null}={})=>{
     if(!force&&Date.now()-lastRefresh.current<120000)return;
     if(manual) {
       if(!navigator.onLine)throw new Error('Conecte-se à internet para atualizar os dados.');
@@ -185,13 +205,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(pending.current)await flush();
       if(pending.current)throw new Error('Há alterações aguardando gravação. Elas foram preservadas; resolva o aviso de sincronização antes de atualizar.');
     }
-    if(!actor.current||opening.current||!server.current||busy.current||pending.current||!temSessao()||!navigator.onLine||(!manual&&document.visibilityState==='hidden'))return;
+    if(!actor.current||opening.current||!server.current||busy.current||pending.current||(!manual&&temEdicaoEmAndamento())||!temSessao()||!navigator.onLine||(!manual&&document.visibilityState==='hidden'))return;
     busy.current=true;const gen=generation.current;
-    try {const base=await carregarBase(current.current);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');atualizarResumo();}
-    catch(e){setError(e.message);if(manual)throw e;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
+    try {const base=await carregarBase(current.current,grupos);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');if(afetaResumo(grupos))atualizarResumo();}
+    catch(e){setError(e.message);if(manual)throw e;return false;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
     if(manual){invalidarIndiceClientes();await atualizarResumo();}
+    return true;
   };
-  const close=()=>{saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
+  const close=()=>{vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
     if(busy.current)return;
     try {
@@ -204,13 +225,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);
-    const online=()=>{if(pending.current)flush();else refresh({force:true});};
-    const filePending=()=>{if(!actor.current)return;pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,700);};
+    const online=()=>{if(!actor.current)return;if(navigator.onLine){if(!vivo.current)iniciarTempoReal();else vivo.current.reconectar();if(pending.current)flush();avisar(null);}else{vivo.current?.fechar();vivo.current=null;setTempoReal('offline');}};
+    const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){if(pending.current)flush();avisar(null);}};
+    const filePending=()=>{if(!actor.current)return;pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,250);};
     const protegerSaida=e=>{if(pending.current){e.preventDefault();e.returnValue='';}};
     window.addEventListener('beforeunload',protegerSaida);
     window.addEventListener('integracao:arquivo-pendente',filePending);
-    window.addEventListener('online',online);window.addEventListener('focus',refresh);
-    return()=>{window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',refresh);};
+    window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
+    return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
-  return {open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,atualizarResumo,ready:()=>!!server.current};
+  return {open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,atualizarResumo,tempoReal,ready:()=>!!server.current};
 }

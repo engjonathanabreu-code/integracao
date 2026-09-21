@@ -7,7 +7,7 @@ import {JanelaMarketing,MunicipioMarketing,RemoverMarketing,MESES_MARKETING,nome
 const STATUS=['A fazer','Em andamento','Concluído'];
 export default function RotinaMarketing({db,usuario}) {
  const hoje=new Date(),[mes,setMes]=useState(hoje.getMonth()+1),[ano,setAno]=useState(hoje.getFullYear()),[busca,setBusca]=useState(''),[form,setForm]=useState(null),[aberto,setAberto]=useState(null),[remover,setRemover]=useState(null),[arquivados,setArquivados]=useState(false);
- const m=useModulo(async()=>({cards:await listarCRM('integracao_marketing_rotina',`&ano=eq.${ano}&mes=eq.${mes}`)}),[usuario.id,ano,mes]);
+ const m=useModulo(async()=>({cards:await listarCRM('integracao_marketing_rotina',`&ano=eq.${ano}&mes=eq.${mes}`)}),[usuario.id,ano,mes],['marketing']);
  const equipe=db.usuarios.filter(u=>u.ativo!==false&&u.erpRef);
  const cards=(m.dados?.cards||[]).filter(c=>Boolean(c.ativo)!==arquivados&&normalizarCRM(`${c.titulo} ${c.descricao}`).includes(normalizarCRM(busca)));
  const atual=m.dados?.cards.find(c=>c.id===aberto);

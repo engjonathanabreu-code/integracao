@@ -20,7 +20,7 @@ export default function GestaoSemanal({db,usuario,municipioId}) {
     if(!acesso.pos)return {};
     const [municipios,semanas,registros,arquivos,pedidos]=await Promise.all(['municipios','semanas','registros','arquivos','exclusoes'].map(t=>listarCRM(`integracao_semanal_${t}`)));
     return {municipios,semanas,registros,arquivos,pedidos};
-  },[usuario?.id]);
+  },[usuario?.id],['semanal','clientes']);
   if(!acesso.pos)return <div className="contem"><h1>Gestão Semanal</h1><p>Acesso restrito ao Pós-Protocolo e à administração.</p></div>;
   const nome=id=>{const c=db.municipios.find(x=>x.id===id);return c?`${c.nome}/${c.uf}`:'Município';};
   const nomeCard=c=>db.municipios.some(x=>x.id===c?.municipio_id)?nome(c.municipio_id):`${c?.origem_dados?.nome||'Município'}/${c?.origem_dados?.estado||''}`;

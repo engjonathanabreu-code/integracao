@@ -5,7 +5,7 @@ import {acessoCRM} from './crm-regras.js';
 import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
 export default function AgentesChatwoot({usuario,db}){
  const admin=acessoCRM(usuario).admin,[form,setForm]=useState(null);
- const m=useModulo(()=>admin?listarCRM('integracao_crm_agentes'):Promise.resolve([]),[usuario?.id]);
+ const m=useModulo(()=>admin?listarCRM('integracao_crm_agentes'):Promise.resolve([]),[usuario?.id],['crm']);
  if(!admin)return null;
  const novo=()=>setForm({instalacao:m.dados?.[0]?.instalacao||'',conta_id:m.dados?.[0]?.conta_id||'',agente_id:'',usuario_id:''});
  return <section className="crm-painel"><h2>Agentes do Chatwoot</h2><p>Os agentes abaixo já estão associados aos comerciais do Integração. Contatos sem agente mapeado ficam disponíveis à administração para distribuição.</p><EstadoModulo modulo={m}/>

@@ -28,7 +28,7 @@ export async function requisicao(path, options = {}) {
   }
   const r = await fetch(`${configERP.url}/rest/v1/${path}`, { signal:AbortSignal.timeout(25000), ...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
   const body = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(body?.message || `Não foi possível acessar ${path.split('?')[0]} (${r.status}).`);
+  if (!r.ok) {const erro=new Error(body?.message || `Não foi possível acessar ${path.split('?')[0]} (${r.status}).`);erro.status=r.status;throw erro;}
   return body;
 }
 export async function lerTabela(tabela, campos = '*', filtro = '') {
@@ -55,8 +55,9 @@ export async function abrirArquivoSemanal(caminho) {
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
-export async function lerBase({municipios=[]}={}) {
-  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)).map(async table => {
+export async function tokenTempoReal(){if(!session)return null;if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});return session?.access_token||null;}
+export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
+  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
@@ -66,12 +67,18 @@ export async function lerBase({municipios=[]}={}) {
     }
     return [table, rows];
   }));
-  const result = Object.fromEntries(pairs);
+  const result = {...(anterior||{}),...Object.fromEntries(pairs)};
+  // projetar reúne complementos; não reutilize cópias de tabelas próprias removidas.
+  if(tabelas&&!tabelas.includes('integracao_complementos'))result.integracao_complementos=(result.integracao_complementos||[]).filter(e=>!e._tabela||e._tabela==='integracao_complementos');
   // The existing ERP directory exposes names/roles without exposing personal fields.
+  if(!tabelas||tabelas.includes('profiles')){
   const directory = await requisicao('rpc/erp_collab_directory', { method: 'POST', body: '{}' });
   result.profiles = directory.map(p => ({ ...p, ativo: true, ...(result.profiles.find(x => x.id === p.id) || {}) }));
+  }
+  if(!tabelas||tabelas.some(t=>['fin_receb_clientes','integracao_moradores'].includes(t))){
   result.fin_receb_clientes=[];result.integracao_moradores=[];
   for(const municipio of municipios){const carga=await lerMoradoresMunicipio(municipio);result.fin_receb_clientes.push(...carga.clientes);result.integracao_moradores.push(...carga.complementos);}
+  }
   return result;
 }
 export async function lerMoradoresMunicipio(municipio) {

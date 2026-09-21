@@ -33,7 +33,7 @@ export function HistoricoAtendimento({cardId,clienteId,usuario}) {
     const [atendimentos,conversas]=await Promise.all([listarCRM('integracao_crm_atendimentos',filtro),listarCRM('integracao_crm_conversas',filtro)]);
     const mensagens=conversas.length?await listarCRM('integracao_crm_mensagens',`&conversa_id=in.(${conversas.map(c=>c.id).join(',')})`):[];
     return {atendimentos,conversas,mensagens};
-  },[cardId,clienteId,usuario?.id]);
+  },[cardId,clienteId,usuario?.id],['crm','clientes']);
   if(!acesso.comercial)return <p>O histórico de atendimento está disponível ao comercial responsável e à administração.</p>;
   return <section className="crm-painel"><h2>Atendimentos e conversas</h2><EstadoModulo modulo={m}/>{m.dados&&<>
     {!m.dados.atendimentos.length&&!m.dados.mensagens.length&&<p>Nenhum atendimento disponível para este cliente.</p>}
@@ -57,7 +57,7 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
     for(let i=0;i<ids.length;i+=50)vinculos.push(lerTabela('integracao_moradores','referencia_id,nucleo_id:dados->>nucleoId',`&colecao=eq.processos&referencia_id=in.(${ids.slice(i,i+50).join(',')})`));
     const nucleos=new Map((await Promise.all(vinculos)).flat().map(v=>[v.referencia_id,v.nucleo_id]));
     return {cards:cards.map(c=>({...c,nucleo_id:nucleos.get(c.cliente_id)||''})),tarefas};
-  },[usuario?.id]);
+  },[usuario?.id],['crm','clientes','usuarios']);
   if(!acesso.comercial)return <div className="contem"><h1>CRM</h1><p>Acesso restrito ao Comercial e à administração.</p></div>;
   const comerciais=db.usuarios.filter(u=>u.ativo&&u.tipoERP==='Comercial');
   const cards=(m.dados?.cards||[]).filter(c=>c.origem!=='vinculado'&&(!responsavel||c.responsavel_id===responsavel)&&normalizarCRM([nomeCard(c),c.cpf_cnpj,c.telefone,c.lead_telefone,c.municipio,c.lead_cidade].join(' ')).includes(normalizarCRM(busca)));

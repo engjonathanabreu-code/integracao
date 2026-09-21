@@ -13,7 +13,7 @@ export default function NegociacaoCRM({card,ocupado,onSalvar,onConverter}){
  const editar=(k,v)=>{setForm(f=>({...f,[k]:v}));setErro('');};
  let resumo='';try{resumo=resumoNegociacao(prepararNegociacao(form));}catch{}
  const salvar=async e=>{e.preventDefault();try{const dados={status,...prepararNegociacao(form)};if(await (converter?onConverter(()=>converterLead(card,dados,base,municipio,remessa)):onSalvar(dados,base))){setBase({...base,...dados});setForm(formularioNegociacao(dados));}}catch(e){setErro(e.message);}};
- return <form className="crm-negociacao" aria-label={`Negociação de ${card.nome||card.lead_nome||'Contato'}`} onSubmit={salvar}>
+ return <form data-edicao-pendente={mudou} className="crm-negociacao" aria-label={`Negociação de ${card.nome||card.lead_nome||'Contato'}`} onSubmit={salvar}>
   <CampoCRM nome="Status"><select className="inp" aria-label="Status" value={status} disabled={ocupado} onChange={e=>setStatus(e.target.value)}>{[...ETAPAS_CRM,'Perdido'].map(s=><option key={s}>{s}</option>)}</select></CampoCRM>
   {converter&&<RemessaLead card={card} municipio={municipio} setMunicipio={setMunicipio} remessa={remessa} setRemessa={setRemessa}/>}
   <CampoCRM nome="Valor total (R$)"><input className="inp" inputMode="decimal" placeholder="R$ 0,00" value={form.valor} disabled={ocupado} onChange={e=>editar('valor',e.target.value)} onBlur={()=>{try{editar('valor',lerValorReais(form.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));}catch{}}}/></CampoCRM>
