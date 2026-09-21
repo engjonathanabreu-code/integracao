@@ -11,6 +11,9 @@
     },
     "api/ler-matricula.js": {
       "maxDuration": 300
+    },
+    "api/oficios-analisar.js": {
+      "maxDuration": 90
     }
   },
   "rewrites": [

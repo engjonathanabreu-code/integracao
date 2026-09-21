@@ -1,7 +1,7 @@
 export const GRUPOS_TEMPO_REAL={
  clientes:['fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','integracao_municipios','integracao_remessas','integracao_moradores'],
  processos:['processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','integracao_nucleos'],
- metas:['metas','meta_setores','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','meta_arquivos','integracao_metas','ordens_servico','ordem_servico_comentarios','integracao_ordens_servico'],
+ metas:['integracao_oficios','integracao_oficios_sequencias','metas','meta_setores','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','meta_arquivos','integracao_metas','ordens_servico','ordem_servico_comentarios','integracao_ordens_servico'],
  planos:['planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','documentos','projetos','integracao_planos'],
  calendario:['erp_agendas','erp_eventos','erp_evento_respostas','integracao_calendario'],
  chat:['erp_conversas','erp_mensagens','erp_exclusoes_chat','integracao_chat'],

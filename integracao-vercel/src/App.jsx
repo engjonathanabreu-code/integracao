@@ -1,3 +1,4 @@
+import Oficios,{IconeOficios} from './Oficios.jsx';
 import {SincronizadorPonto} from './use-ponto-local.js';
 import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
 import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
@@ -10551,6 +10552,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
         <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
+        <button className={`btn btn-sm${tela === "oficios" ? " btn-primario" : ""}`} onClick={()=>{setColaborador(null);setTela(tela === "oficios" ? "home" : "oficios");}}><IconeOficios size={16}/>Ofícios</button>
         <button className={`btn btn-sm${tela === "ativas" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "ativas" ? "home" : "ativas")}><Target size={16} aria-hidden="true"/>Metas Ativas</button>
         <button className="btn btn-sm" onClick={() => setCompacto((x) => !x)} title="Alterna entre a visão condensada e a detalhada">{compacto ? <><Eye size={13} />Detalhado</> : <><ListTodo size={13} />Condensado</>}</button>
         {gerencia && <button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Setor</button>}
@@ -10566,6 +10568,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {barra}
 
+      {tela === "oficios" && <Oficios usuario={usuario}/>}
       {tela === "home" && !colaborador && (
         <>
           <div className="grade-indicadores" style={{ marginBottom: 14 }}>

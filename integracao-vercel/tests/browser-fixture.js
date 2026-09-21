@@ -1,3 +1,5 @@
+import {instalarOficiosFixture} from './oficios-browser-fixture.js';
+const oficiosFixture=new URLSearchParams(location.search).has('oficios')?instalarOficiosFixture():null;
 // Realtime is isolated too: no test connects to a production WebSocket.
 class SocketFixture {
  constructor(){this.readyState=0;window.socketFixture=this;setTimeout(()=>{this.readyState=1;this.onopen?.();},0);}
@@ -53,6 +55,7 @@ const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href);
+  if(oficiosFixture){const r=oficiosFixture(url,options,json);if(r!==undefined)return r;}
   if(url.pathname==='/api/resumo-moradores'){const {contexto}=JSON.parse(options.body);return json({resumo:compactarResumo(resumirMoradores({clientes:base.fin_receb_clientes,complementos:base.integracao_moradores},contexto))});}
   if(url.pathname==='/api/ler-matricula'&&new URLSearchParams(location.search).has('leitor'))return json({arquivo:'matricula-ficticia.pdf',hash:'fixture-sha256',modelo:'Leitor de teste',analisadoEm:new Date().toISOString(),dados:{matricula:{numero:'12345',cartorio:'Cartório de teste',comarca:'Município teste'},proprietario:{nome:'Proprietário fictício'},imovel:{area_registral:200,unidade_area:'m2',descricao:'Imóvel fictício para conferência'},historico_registro:[{ato:'R.1',tipo:'Usucapião',para:'Proprietário fictício',data:'01/02/2020',descricao:'Registro fictício de usucapião.'}],evidencias:[{campo:'numero',trecho:'Matrícula 12345',pagina:1}],alertas:['Dados fictícios: conferir antes de salvar.']}});
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);

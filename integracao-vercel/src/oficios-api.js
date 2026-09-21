@@ -1,0 +1,14 @@
+import {configERP,tokenTempoReal,requisicao} from './dados-compartilhados.js';
+import {validarOficio} from './oficios-regras.js';
+export const registrarOficio=dados=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'registrar',p_dados:dados})});
+export const salvarResumoOficio=(id,resumo)=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'resumo',p_dados:{id,resumo,resumo_status:'ia'}})});
+export async function listarOficios(ano){
+ const seq=await requisicao(`integracao_oficios_sequencias?ano=eq.${ano}`),itens=[];
+ for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios?ano=eq.${ano}&order=numero.desc&limit=500&offset=${inicio}`);itens.push(...parte);if(parte.length<500)break;}
+ return {itens,ultimo:seq[0]?.ultimo||null};
+}
+async function token(){const t=await tokenTempoReal();if(!t)throw Error('Entre novamente na sua conta.');return t;}
+export async function prepararOficio(arquivo,usuario,pedido){const {ext,mime}=validarOficio(arquivo),hash=await crypto.subtle.digest('SHA-256',await arquivo.arrayBuffer());return {pedido,caminho:`${usuario}/${pedido}/oficio.${ext}`,nome_arquivo:arquivo.name,mime,tamanho:arquivo.size,sha256:Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('')};}
+export async function enviarOficio(arquivo,meta){const t=await token();const r=await fetch(`${configERP.url}/storage/v1/object/integracao-oficios/${meta.caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${t}`,'Content-Type':meta.mime,'x-upsert':'false'},body:arquivo,signal:AbortSignal.timeout(60000)});if(!r.ok){const e=await r.json().catch(()=>({}));if(!['409','Duplicate'].includes(String(e.statusCode||e.error||r.status)))throw Error(e.message||'Não foi possível enviar o arquivo.');}return meta;}
+export async function analisarOficio(caminho){const t=await token();const r=await fetch('/api/oficios-analisar',{method:'POST',headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json'},body:JSON.stringify({caminho}),signal:AbortSignal.timeout(90000)});const d=await r.json();if(!r.ok)throw Error(d.message||'A análise está indisponível.');return d;}
+export async function abrirOficio(caminho){const t=await token();const r=await fetch(`${configERP.url}/storage/v1/object/sign/integracao-oficios/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${t}`,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:120})});if(!r.ok)throw Error('Não foi possível abrir o arquivo.');const d=await r.json();return `${configERP.url}/storage/v1${d.signedURL}`;}
