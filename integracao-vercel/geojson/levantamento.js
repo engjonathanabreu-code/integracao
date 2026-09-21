@@ -67,7 +67,7 @@ export function prepararFeicoes(lido,campo) {
     });
     const calculado=processarVertices(vertices);
     if(calculado.area<=0)throw new Error(`${codigo}: área nula.`);
-    return {id:crypto.randomUUID(),codigo,poligono,...calculado};
+    return {id:crypto.randomUUID(),codigo,codigoMorador:String(f.properties?.[lido.campos.find(k=>['codigo','codprocess','codigo_morador','codigomorador'].includes(normalizar(k)))] || '').trim(),poligono,...calculado};
   });
   return {campo,epsg:lido.epsg,feicoes};
 }
@@ -116,6 +116,26 @@ export function vincularFeicao(db,nucleoId,feicao,alvo,anterior,por) {
   }
   atual.vinculo={...alvo,por,em:new Date().toISOString()};
   return db;
+}
+
+// Códigos completos, sem aproximação por nome. Zeros à esquerda no número não alteram a identidade.
+export const normalizarCodigoMorador=v=>normalizar(v).replace(/_(0+)(\d+)([a-z]?)$/,(_,zeros,n,s)=>'_'+Number(n)+s);
+export function sugerirVinculos(feicoes,unidades) {
+ const sugestoes=feicoes.filter(f=>!f.vinculo).map(f=>{
+  const codigo=f.codigoMorador||f.codigo;
+  const candidatos=unidades.filter(u=>normalizarCodigoMorador(u.codigo)===normalizarCodigoMorador(codigo));
+  const unidade=candidatos.length===1?candidatos[0]:null;
+  const ocupado=unidade&&feicoes.some(x=>x.vinculo?.moradorId===unidade.moradorId&&x.vinculo?.unidadeId===unidade.unidadeId);
+  return {feicao:f,unidade:ocupado?null:unidade,motivo:ocupado?'Unidade já vinculada':candidatos.length>1?'Código ambíguo':!unidade?'Sem correspondência única':'Código correspondente'};
+ });
+ const usados=new Map();for(const s of sugestoes)if(s.unidade)usados.set(s.unidade.id,(usados.get(s.unidade.id)||0)+1);
+ return sugestoes.map(s=>s.unidade&&usados.get(s.unidade.id)>1?{...s,unidade:null,motivo:'Mais de um lote com o mesmo código'}:s);
+}
+export function confirmarSugestoes(db,nucleoId,sugestoes,por) {
+ // Valida a operação inteira numa cópia: um conflito não deixa vínculos parciais.
+ const copia=structuredClone(db);
+ for(const {feicao,unidade} of sugestoes){if(!unidade)throw new Error('Revise os destinos antes de confirmar.');vincularFeicao(copia,nucleoId,feicao,{tipo:'unidade',moradorId:unidade.moradorId,unidadeId:unidade.unidadeId,nome:unidade.codigo+' — '+unidade.requerente},unidade,por);}
+ return copia;
 }
 
 export function memorialDaFeicao(feicao,epsg) {

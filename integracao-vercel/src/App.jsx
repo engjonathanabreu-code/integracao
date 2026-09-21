@@ -1,3 +1,6 @@
+import {responsavelMeta} from './metas-identidade.js';
+import {Landmark} from 'lucide-react';
+import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './permissoes.js';
 import DadosNUI from './DadosNUI.jsx';
 import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
@@ -92,42 +95,6 @@ async function prepararParaIA(arquivo) {
 }
 
 /* ---------------- setores, funções e permissões ---------------- */
-const SETORES = {
-  diretoria: { nome: "Diretoria", descricao: "Acesso total, como administrador" },
-  comercial: { nome: "Comercial", descricao: "Mobilização, contrato e análise documental" },
-  topografia: { nome: "Topografia", descricao: "Topografia, levantamento de campo e memorial" },
-  projeto: { nome: "Projeto", descricao: "Projeto de REURB e PRF" },
-  posprotocolo: { nome: "Pós-protocolo", descricao: "Prefeitura, CRF e matrícula" },
-  juridico: { nome: "Jurídico", descricao: "Análise jurídica, contratos e devolutivas" },
-  consulta: { nome: "Consulta", descricao: "Só visualiza" },
-};
-const FUNCOES = ["Diretor", "Coordenador", "Analista", "Técnico", "Advogado", "Assistente", "Estagiário"];
-const SETOR_DA_ETAPA = { mobilizacao: "comercial", contrato: "comercial", documental: "comercial", topografia: "topografia", projeto: "projeto", prefeitura: "posprotocolo", crf: "posprotocolo" };
-function permissoes(u) {
-  const s = u?.setor || "consulta";
-  const dir = s === "diretoria";
-  return {
-    setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
-    verCPF: dir || s === "comercial" || s === "projeto",
-    cadastro: dir || s === "comercial",
-    social: dir || s === "comercial",
-    imovel: dir || s === "comercial" || s === "topografia",
-    validarDocs: dir || s === "comercial",
-    juridico: dir || s === "juridico",
-    forcarValidacao: dir,
-    situacao: dir || s === "comercial",
-    estrutura: dir || s === "comercial",
-    criterio: dir || s === "comercial",
-    nucleos: dir,
-    campo: dir || s === "topografia",
-    campoOffline: !!u,
-    prf: dir || s === "projeto",
-    modeloPRF: dir || s === "projeto",
-    config: dir, importar: dir, usuarios: dir,
-    etapa: (etapaId) => dir || SETOR_DA_ETAPA[etapaId] === s,
-    secao: (setorSecao) => dir || setorSecao === s,
-  };
-}
 const papelDe = (u) => (u ? `${u.funcao || "Sem função"}, ${SETORES[u.setor]?.nome || "Consulta"}` : "");
 
 /* ---------------- etapas ---------------- */
@@ -544,7 +511,7 @@ const LEITURA_USUARIOS_ERP = [
   { ref: "606ed01a", nome: "Ana J.", tipo: "Topografia", setor: "Projetos", ativo: true },
   { ref: "55d27d76", nome: "Jonathan T.", tipo: "Topografia", setor: "Topografia", ativo: false },
 ];
-const MAPA_TIPO_ERP = { Administrador: "diretoria", "Diretor de Projetos": "diretoria", Comercial: "comercial", Topografia: "topografia", Projetos: "projeto", "Pós-protocolo": "posprotocolo", Financeiro: "consulta", Jurídico: "juridico", Marketing: "consulta" };
+const MAPA_TIPO_ERP = { Administrador: "diretoria", "Diretor de Projetos": "diretoria", Comercial: "comercial", Topografia: "topografia", Projetos: "projeto", "Pós-protocolo": "posprotocolo", Financeiro: "financeiro", Jurídico: "juridico", Marketing: "consulta" };
 const FUNCAO_TIPO_ERP = { Administrador: "Diretor", "Diretor de Projetos": "Diretor", Comercial: "Analista", Topografia: "Técnico", Projetos: "Analista", "Pós-protocolo": "Analista", Financeiro: "Assistente", Jurídico: "Advogado", Marketing: "Assistente" };
 // Setores cadastrados em meta_setores no ERP e o setor equivalente no Integração
 const SETORES_METAS_ERP = { Atendimentos: "comercial", Topografia: "topografia", Projetos: "projeto", "Pós-protocolo": "posprotocolo", "Jurídico": "juridico" };
@@ -4705,7 +4672,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
               montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
               baixarDocumento={(item, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
-              <IntegracaoMemoriais key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
+              <IntegracaoMemoriais por={usuario.nome} key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
               baixarDocumento={(unidade, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -5652,7 +5619,7 @@ async function entrarPeloERP(email, senha) {
   if (p.ativo === false) throw new Error("Este usuário está inativo no ERP");
   return {
     id: `erp_${p.id}`, erpRef: p.id, nome: p.nome || email, email: p.email || email,
-    setor: SETOR_POR_TIPO_ERP[p.tipo] || "consulta", funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista",
+    setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP), funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista",
     tipoERP: p.tipo, ativo: true, origem: "ERP", online: true, ultimaAtividade: new Date().toISOString(),
     agendaPessoal: [], calendarioOculto: [],
   };
@@ -5789,7 +5756,7 @@ function SincronizarUsuariosERP({ db, onImportar, onFechar }) {
     const vinculado = (db.usuarios || []).find((u) => u.erpRef === e.ref) || null;
     const primeiro = normalizar(e.nome.split(" ")[0]);
     const parecido = !vinculado ? (db.usuarios || []).find((u) => !u.erpRef && normalizar(u.nome.split(" ")[0]) === primeiro) || null : null;
-    const setorSugerido = MAPA_TIPO_ERP[e.tipo] || "consulta";
+    const setorSugerido = setorDoPerfilERP(e, MAPA_TIPO_ERP);
     const avisos = [];
     if (e.tipo === "Diretor de Projetos") avisos.push("Confirme se diretor de projetos terá acesso total ou só ao setor Projeto");
     if (normalizar(e.setor) !== normalizar(e.tipo) && !["Administrador", "Diretor de Projetos"].includes(e.tipo)) avisos.push(`No ERP o setor é ${e.setor} e o tipo é ${e.tipo}`);
@@ -9192,7 +9159,7 @@ const ERP_SUPABASE = configERP;
 const SETOR_POR_TIPO_ERP = {
   Administrador: "diretoria", "Diretor Técnico": "diretoria", "Diretor de Projetos": "diretoria",
   Comercial: "comercial", Atendimentos: "comercial", Topografia: "topografia", Projetos: "projeto",
-  "Pós-protocolo": "posprotocolo", "Jurídico": "juridico", Financeiro: "consulta", Marketing: "consulta", Administrativo: "consulta",
+  "Pós-protocolo": "posprotocolo", "Jurídico": "juridico", Financeiro: "financeiro", Marketing: "consulta", Administrativo: "consulta",
 };
 const FUNCAO_POR_TIPO_ERP = {
   Administrador: "Diretor", "Diretor Técnico": "Diretor", "Diretor de Projetos": "Diretor",
@@ -9241,7 +9208,7 @@ async function montarPreviaERP(db, usuario) {
     const id = uid("u");
     porPerfil[p.id] = { id, nome: p.nome };
     return {
-      id, nome: p.nome, email: p.email || "", setor: SETOR_POR_TIPO_ERP[p.tipo] || "consulta",
+      id, nome: p.nome, email: p.email || "", setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP),
       funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista", ativo: p.ativo !== false, origem: "ERP", tipoERP: p.tipo,
       erpRef: p.id, online: false, ultimaAtividade: "", agendaPessoal: [], calendarioOculto: [],
     };
@@ -10102,7 +10069,7 @@ const ASSOC_TIPOS = [["plano", "Plano de Trabalho"], ["nucleo", "Processo"], ["o
 const gerenciaMetas = (u) => u.setor === "diretoria";
 const aprovaMetas = (u) => gerenciaMetas(u);
 const gerenciaOS = (u) => ["diretoria", "posprotocolo"].includes(u.setor);
-const respMeta = (m, u) => (m.responsaveis || []).includes(u.id);
+const respMeta = responsavelMeta;
 const vePendenteAprovacao = (m) => m.status === "Aguardando aprovação";
 const podeSolicitarConclusao = (m, u) => respMeta(m, u) && !aprovaMetas(u) && !["Concluído", "Cancelado", "Aguardando aprovação"].includes(m.status);
 const podeAprovarConclusao = (m, u) => aprovaMetas(u) && vePendenteAprovacao(m);
@@ -10542,11 +10509,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const gerencia = gerenciaMetas(usuario);
   const visiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario)).filter((m) => !filtroSetor || m.setor === filtroSetor);
+  const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
   const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
   const ativas = visiveis.filter((m) => !["Concluído", "Cancelado"].includes(m.status));
   const atrasadas = ativas.filter((m) => m.prazo && m.prazo < hoje);
-  const metasDe = (id) => visiveis.filter((m) => (m.responsaveis || []).includes(id));
+  const metasDe = (id) => visiveis.filter((m) => respMeta(m, {id}));
   const equipe = (gerencia ? (db.usuarios || []).filter((u) => u.ativo && u.setor !== "consulta") : [usuario]).filter(Boolean);
   const abrir = (m) => setDetalhe(m.id);
   const moverNaColuna = (lista, i, dir) => {
@@ -10590,6 +10558,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
 
   return (
     <div className="contem largo">
+      {!AMBIENTE.DEMO && metasLocais.length>0 && <p role="status" className="card" style={{padding:14}}>Há {metasLocais.length} meta(s) neste aparelho ainda sem confirmação de envio. Elas só aparecerão aos responsáveis após a sincronização. Confira o aviso de salvamento no topo.</p>}
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {barra}
 
@@ -11351,7 +11320,7 @@ function PaginaPlanos({ db, usuario, ir, mutar, setToast }) {
     <div className="contem">
       <div className="cabeca">
         <div><h1>Planos de trabalho</h1><p>Planos avulsos ou vinculados a clientes, com prazos, responsáveis e entregáveis.</p></div>
-        {perm.estrutura && <button className="btn btn-primario" onClick={() => setNovo(true)}><Plus size={16} />Novo plano</button>}
+        {perm.planos && <button className="btn btn-primario" onClick={() => setNovo(true)}><Plus size={16} />Novo plano</button>}
       </div>
       <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
         {planos.map((p) => {
@@ -11479,9 +11448,9 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
           <h1>{p.titulo}</h1>
           <p>{m ? `${m.nome}/${m.uf}` : p.tipoVinculo === "avulso" || !p.municipioNome ? "Plano avulso" : `${p.municipioNome}/${p.uf || ""}, município ainda sem cliente`}, {feitas} de {p.etapas.length} etapas concluídas{p.descricao ? `. ${p.descricao}` : ""}</p>
         </div>
-        {perm.estrutura && <button className="btn btn-primario" onClick={() => setEditando(true)}><Pencil size={14} />Editar plano</button>}
+        {perm.planos && <button className="btn btn-primario" onClick={() => setEditando(true)}><Pencil size={14} />Editar plano</button>}
         {m ? <button className="btn btn-sm" onClick={() => ir({ pag: "municipio", id: p.municipioId })}><MapPin size={14} />Abrir cliente</button>
-          : perm.estrutura && <button className="btn btn-sm btn-primario" onClick={() => setVincular(true)}><Link2 size={14} />Vincular a um cliente</button>}
+          : perm.planos && <button className="btn btn-sm btn-primario" onClick={() => setVincular(true)}><Link2 size={14} />Vincular a um cliente</button>}
       </div>
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
         <div className="barra-progresso"><span style={{ width: `${(feitas / p.etapas.length) * 100}%` }} /></div>
@@ -11968,7 +11937,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
+  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -11995,6 +11964,7 @@ export default function App() {
           {navItem(rota.pag === "planos" || rota.pag === "plano", <ClipboardList size={18} />, "Planos de trabalho", { pag: "planos" })}
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
+          {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
           {(perm.config || perm.modeloPRF) && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
@@ -12036,6 +12006,7 @@ export default function App() {
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
           {rota.pag === "metas" && <PaginaMetas {...props} />}
+          {rota.pag === "financeiro" && <PaginaFinanceiro usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
           {rota.pag === "calendario" && <PaginaCalendario {...props} />}
@@ -12060,4 +12031,17 @@ export default function App() {
       {toast && !abrindoMunicipio && <div className="toast" role="alert">{toast}</div>}
     </div>
   );
+}
+
+function PaginaFinanceiro({usuario}) {
+  const operacional = permissoes(usuario).financeiro;
+  return <div className="contem" data-acesso={operacional ? "operacional" : "consulta"}>
+    <div className="cabeca"><div><h1>Financeiro</h1><p>Gestão financeira integrada ao seu trabalho.</p></div><Tag tipo={operacional ? "ok" : "neutra"}>{operacional ? "Acesso operacional" : "Somente leitura"}</Tag></div>
+    <section className="card" aria-labelledby="financeiro-construcao" style={{padding:"clamp(28px, 6vw, 72px)",textAlign:"center"}}>
+      <div style={{display:"inline-flex",padding:20,borderRadius:20,background:"var(--pill)",color:"var(--primary)",marginBottom:20}}><Landmark size={40} aria-hidden="true" /></div>
+      <h2 id="financeiro-construcao" style={{color:"var(--titulo)",fontSize:26,fontWeight:700,margin:"0 0 12px"}}>Em construção</h2>
+      <p style={{color:"var(--muted)",maxWidth:480,margin:"0 auto",lineHeight:1.7}}>Estamos preparando este espaço para reunir as rotinas financeiras do Integração.</p>
+      <p className="ajuda" style={{marginTop:24}}>{operacional ? "Seu perfil tem acesso operacional. As funcionalidades estarão disponíveis em breve." : "Seu acesso a esta área é somente para consulta, sem alterações."}</p>
+    </section>
+  </div>;
 }

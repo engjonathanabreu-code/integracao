@@ -1,9 +1,10 @@
+import RevogarMemorial from './RevogarMemorial.jsx';
 import { useState } from 'react';
 import AbaMemoriais from './AbaMemoriais.jsx';
 import { unidadesParaMemoriais, salvarUnidadeMemorial, salvarConfiguracaoMemoriais, contextoDocumentoMemorial, configMemoriaisNucleo } from './integracaoMemoriais.js';
 import { lacunasDoDocumento } from '../src/modelos-html.js';
 
-export default function IntegracaoMemoriais({ db, n, municipio, perm, mutar, setToast, montarDocumento, baixarDocumento, Modal, ListaHistorico }) {
+export default function IntegracaoMemoriais({ db, n, municipio, perm, mutar, setToast, montarDocumento, baixarDocumento, Modal, ListaHistorico, por }) {
   const [documentos, setDocumentos] = useState([]);
   const [erro, setErro] = useState('');
   const unidades = unidadesParaMemoriais(db.processos, n.id);
@@ -35,8 +36,8 @@ export default function IntegracaoMemoriais({ db, n, municipio, perm, mutar, set
   return <div className="flex flex-col gap-3">
     {erro && <p role="alert" style={{ color: 'var(--warning)' }}>{erro}</p>}
     {liberada && <p className="ajuda">{n.etapa > 1 ? 'Memoriais vinculados às unidades. Topografia pode revisar; Projetos e Diretoria também podem emitir os documentos.' : 'Alterações do levantamento são salvas na unidade selecionada. As configurações compartilhadas são mantidas pela Diretoria.'}</p>}
-    <AbaMemoriais nucleo={n} municipio={municipio} unidades={unidades} config={configMemoriaisNucleo(n,db.memoriais)} podeEditar={editar} etapaLiberada={liberada} aoSalvarUnidade={salvar} aoSalvarConfig={configurar} aoGerarDocumento={gerar} />
-    {liberada && unidades.filter(u => u.memorial).map(u => <details key={u.id}><summary>Memorial salvo — {u.codigo}</summary><p style={{ whiteSpace:'pre-wrap' }}>{u.memorial}</p><p>Área: {u.area} m² · Perímetro: {u.perimetro || 'não informado'} m</p></details>)}
+    <AbaMemoriais key={(n.memoriaisRevogados||[]).length} nucleo={n} municipio={municipio} unidades={unidades} config={configMemoriaisNucleo(n,db.memoriais)} podeEditar={editar} etapaLiberada={liberada} aoSalvarUnidade={salvar} aoSalvarConfig={configurar} aoGerarDocumento={gerar} />
+    {liberada && unidades.filter(u => u.memorial).map(u => <details key={u.id}><summary>Memorial salvo — {u.codigo}</summary><p style={{ whiteSpace:'pre-wrap' }}>{u.memorial}</p><p>Área: {u.area} m² · Perímetro: {u.perimetro || 'não informado'} m</p><RevogarMemorial db={db} n={n} alvo={{tipo:'unidade',moradorId:u.moradorId,unidadeId:u.unidadeId}} anterior={u} pode={editar} mutar={mutar} por={por} setToast={setToast}/></details>)}
     {liberada && <details><summary>Histórico de memoriais</summary><ListaHistorico itens={db.auditoria.filter(a => a.nucleoId === n.id && /memoria[il]/i.test(a.acao))} vazio="Nenhuma ação registrada." /></details>}
     {documentos.length > 0 && <Modal titulo="Memoriais descritivos" largura={780} onFechar={() => setDocumentos([])}>
       {documentos.map(({ unidade, html }, i) => <section key={`${unidade.id}-${i}`}><h3>{unidade.codigo}</h3><div className="previa-doc" dangerouslySetInnerHTML={{ __html: html }} /><button className="btn btn-primario" disabled={!pode} onClick={async () => { if (!pode) return; try {await baixarDocumento(unidade, html); mutar(d => d, 'Documento memorial descritivo emitido', log(unidade));}catch(e){avisar(e);} }}>Baixar memorial para Word — {unidade.codigo}</button></section>)}

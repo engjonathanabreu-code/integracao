@@ -35,6 +35,8 @@ if(new URLSearchParams(location.search).has('busca')) {
 }
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
+const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiroTeste');
+if(perfilFinanceiroTeste)base.profiles[0].tipo=perfilFinanceiroTeste;
 base.integracao_acessos=[];
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();

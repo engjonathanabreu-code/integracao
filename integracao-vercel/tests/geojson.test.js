@@ -33,6 +33,36 @@ test('edição concorrente de memorial é bloqueada',()=>{const db=banco();salva
 test('APP, risco, via, área pública e servidão alimentam dados do PRF',()=>{
  for(const tipo of ['app','risco','via','publica','servidao']){const db=banco();salvarImportacao(db,'n',preparar(),'A');vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],{tipo,nome:'Área teste'},null,'A');const n=db.nucleos[0];assert.equal(n.memorial.vias[0].area,200);assert.equal(n.memorial.chave,'preservar');assert.ok(JSON.stringify(complementoNucleoPRF(n)).includes('200'));}
 });
+test('sugestões usam código do morador separado do lote e exigem confirmação',async()=>{
+ const {sugerirVinculos,confirmarSugestoes}=await import('../geojson/levantamento.js');
+ const a=arquivo();a.features[0].properties.Codigo='TST01_0001';delete a.features[0].properties.Codprocess;
+ const db=banco();db.processos[0].codigo='TST01_001';db.processos[0].unidades=db.processos[0].unidades.slice(0,1);
+ salvarImportacao(db,'n',preparar(a),'A');
+ const {unidadesParaMemoriais}=await import('../memoriais/integracaoMemoriais.js');
+ const sugestoes=sugerirVinculos(db.nucleos[0].levantamentoGeoJSON.feicoes,unidadesParaMemoriais(db.processos,'n'));
+ assert.equal(sugestoes[0].unidade.moradorId,'p');assert.equal(db.processos[0].unidades[0].memorial,'anterior');
+ const novo=confirmarSugestoes(db,'n',sugestoes,'Revisor');assert.equal(novo.processos[0].unidades[0].area,200);assert.equal(db.processos[0].unidades[0].memorial,'anterior');
+});
+test('códigos ausentes, duplicados e unidades ambíguas não geram vínculo automático',async()=>{
+ const {sugerirVinculos}=await import('../geojson/levantamento.js');const u={id:'u',codigo:'TST_001',moradorId:'p',unidadeId:'u'};
+ assert.equal(sugerirVinculos([{codigo:'Q01_L01'}],[u])[0].unidade,null);
+ assert.equal(sugerirVinculos([{codigo:'TST_001'}],[u,{...u,id:'outra'}])[0].unidade,null);
+ assert(sugerirVinculos([{codigo:'A',codigoMorador:'TST_001'},{codigo:'B',codigoMorador:'TST_001'}],[u]).every(s=>!s.unidade));
+});
+test('revogação preserva histórico e outras unidades e libera a feição',async()=>{
+ const {revogarMemorial}=await import('../memoriais/revogacao.js');const db=banco();salvarImportacao(db,'n',preparar(),'A');
+ const alvo={tipo:'unidade',moradorId:'p',unidadeId:'u'};vincularFeicao(db,'n',db.nucleos[0].levantamentoGeoJSON.feicoes[0],alvo,structuredClone(db.processos[0].unidades[0]),'A');
+ const anterior=structuredClone(db.processos[0].unidades[0]);
+ assert.throws(()=>revogarMemorial(db,'n',alvo,anterior,'','A'),/motivo/);
+ revogarMemorial(db,'n',alvo,anterior,'Destino incorreto','A');
+ assert.equal(db.processos[0].unidades[0].memorial,'');assert.equal(db.processos[0].unidades[0].caracteristicas,'preservar');assert.equal(db.nucleos[0].memoriaisRevogados[0].memorial.memorial,anterior.memorial);assert.equal(db.nucleos[0].levantamentoGeoJSON.feicoes[0].vinculo,null);
+ assert.throws(()=>revogarMemorial(db,'n',alvo,anterior,'Repetido','A'),/mudou/);
+});
+test('revogar via não remove o contorno do núcleo ou outras vias',async()=>{
+ const {revogarMemorial}=await import('../memoriais/revogacao.js');const db=banco();salvarImportacao(db,'n',preparar(),'A');const f=db.nucleos[0].levantamentoGeoJSON.feicoes[0];vincularFeicao(db,'n',f,{tipo:'via',nome:'Rua'},null,'A');
+ const anterior=structuredClone(db.nucleos[0].memorial.vias[0]);db.nucleos[0].memorial.vias.push({id:'outra',texto:'Preservado'});
+ revogarMemorial(db,'n',{tipo:'via',viaId:f.id},anterior,'Revisão','A');assert.equal(db.nucleos[0].memorial.chave,'preservar');assert.equal(db.nucleos[0].memorial.vias[0].texto,'Preservado');
+});
 test('antes da Topografia não importa',()=>{for(const etapa of [0]){const db=banco();db.nucleos[0].etapa=etapa;assert.throws(()=>salvarImportacao(db,'n',preparar(),'A'),/Topografia/);}});
 
 test('arquivos complementares preservam vínculos e reutilizam vértices comuns',()=>{

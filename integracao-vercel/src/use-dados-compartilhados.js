@@ -1,3 +1,4 @@
+import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,lerResumoMoradores,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
@@ -99,7 +100,15 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       const prior=projetar(draft.base||base,draft.baseline);
       server.current={...prior,db:draft.baseline};publish(draft.db);pending.current=true;
       setStatus('Há alterações locais aguardando revisão ou envio.');
-    } else {server.current=state;publish(state.db);pending.current=false;setStatus('Dados compartilhados no Supabase');}
+    } else {
+      const locais=metasLocaisParaCompartilhar(base,state.db,user);
+      const ids=new Set(locais.map(m=>m.id));
+      // Local-only metas are not a server baseline: enqueue their complete creation,
+      // including assignees, checklist and attachments, on the next flush.
+      server.current=locais.length?{...state,db:{...state.db,metas:state.db.metas.filter(m=>!ids.has(m.id))}}:state;
+      publish(state.db);pending.current=locais.length>0;
+      setStatus(locais.length?`${locais.length} meta(s) local(is) aguardando envio aos responsáveis.`:'Dados compartilhados no Supabase');
+    }
     pending.current=pending.current||arquivosPendentes();
     await saveDraft();
     if(pending.current)timer.current=setTimeout(flush,700);

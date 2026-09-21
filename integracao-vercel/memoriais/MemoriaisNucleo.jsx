@@ -1,3 +1,4 @@
+import RevogarMemorial from './RevogarMemorial.jsx';
 import { TIPOS_AREA_PRF } from "../src/cadastros-prf.js";
 import { useState } from 'react';
 import { interpretarVertices, formatarMedida } from './memoriaisCalculos.js';
@@ -73,6 +74,7 @@ export default function MemoriaisNucleo({ db, n, municipio, perm, mutar, setToas
       <textarea className="inp" id="vertices-nucleo" rows={10} value={entrada} disabled={!editar} onChange={e=>setEntrada(e.target.value)} placeholder={'nome;este;norte;confrontante\nV01;500000;7000000;Rua A\nV02;500010;7000000;Lote 1\nV03;500010;7000010;Lote 2'} />
       {selecao.anterior?.texto && <details><summary>Memorial salvo</summary><p style={{whiteSpace:'pre-wrap'}}>{selecao.anterior.texto}</p></details>}
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}><button className="btn btn-primario" disabled={!editar} onClick={salvar}>Calcular e salvar memorial</button><button className="btn" disabled={!podeGerar} onClick={gerar}>Gerar documento</button></div>
+      {selecao.anterior?.texto&&<RevogarMemorial db={db} n={n} alvo={{tipo:selecao.viaId?tipo:'nucleo',viaId:selecao.viaId}} anterior={selecao.anterior} pode={editar} mutar={mutar} por={por} setToast={setToast} aoRevogar={()=>setSelecao(null)}/>}
       {mensagem && <p role="status">{mensagem}</p>}
     </div>}
     {previa && <Modal titulo={previa.nome} largura={780} onFechar={()=>setPrevia(null)}><div className="previa-doc" dangerouslySetInnerHTML={{__html:previa.html}}/><button className="btn btn-primario" onClick={async()=>{try{await baixarDocumento({codigo:`${n.codigo}-${previa.nome}`},previa.html);mutar(d=>d,'Documento memorial do núcleo ou via emitido',{nucleoId:n.id,municipioId:n.municipioId,detalhe:previa.nome});}catch(e){setMensagem(e.message);}}}>Baixar memorial para Word</button></Modal>}

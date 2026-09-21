@@ -38,6 +38,7 @@ const temVertices = (u) => Array.isArray(u.vertices) && u.vertices.length >= 3;
 
 function PainelUnidade({ unidade, nucleo, municipio, config, podeEditar, aoSalvar, aoGerarDocumento }) {
   const [vertices, setVertices] = useState(unidade.vertices || []);
+  const [baseEdicao,setBaseEdicao] = useState(()=>structuredClone(unidade));
   const [avisos, setAvisos] = useState([]);
   const [colado, setColado] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -45,7 +46,7 @@ function PainelUnidade({ unidade, nucleo, municipio, config, podeEditar, aoSalva
   const [mensagem, setMensagem] = useState("");
   const arquivo = useRef(null);
 
-  useEffect(() => { setVertices(unidade.vertices || []); setMensagem(""); }, [unidade.id]);
+  useEffect(() => { setVertices(unidade.vertices || []); setBaseEdicao(structuredClone(unidade)); setMensagem(""); }, [unidade.id]);
 
   const calculado = useMemo(() => processarVertices(vertices), [vertices]);
   const conferencia = useMemo(() => conferirPoligono(vertices), [vertices]);
@@ -86,14 +87,15 @@ function PainelUnidade({ unidade, nucleo, municipio, config, podeEditar, aoSalva
   const salvar = async () => {
     setSalvando(true);
     try {
-      await aoSalvar(unidade, {
+      await aoSalvar(baseEdicao, {
         vertices: calculado.vertices,
         area: calculado.area,
         perimetro: calculado.perimetro,
         memorial,
       });
+      setBaseEdicao({...baseEdicao,vertices:calculado.vertices,area:calculado.area,perimetro:calculado.perimetro,memorial});
       setMensagem("Memorial, área e perímetro gravados no cadastro da unidade.");
-    } finally { setSalvando(false); }
+    } catch(e) { setMensagem(e.message); } finally { setSalvando(false); }
   };
 
   const gerar = async () => {
