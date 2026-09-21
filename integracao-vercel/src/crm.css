@@ -39,3 +39,26 @@
 
 .rb .crm-negociacao{display:grid;gap:12px;margin:16px 0;min-width:0}.rb .crm-negociacao label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.rb .crm-negociacao .inp{width:100%;min-width:0}.rb .crm-negociacao-resumo{padding:12px;border-radius:10px;background:var(--bg);font-size:12px;line-height:1.65;margin:0;color:var(--titulo)}.rb .crm-negociacao small{color:var(--muted);font-size:11px}
 .rb .crm-negociacao .crm-painel{min-width:0}.rb .crm-negociacao .crm-painel label{display:grid;gap:6px;margin:10px 0;min-width:0}.rb .crm-negociacao .crm-painel .inp{width:100%;min-width:0}.rb .crm-negociacao .crm-painel .btn{max-width:100%;height:auto;white-space:normal;text-align:left;overflow-wrap:anywhere}.rb .crm-negociacao .crm-painel p{white-space:normal;overflow-wrap:anywhere}
+
+/* A densidade muda somente o funil; a ficha aberta mantém o formato completo.
+   Os formulários permanecem montados para preservar negociações em edição. */
+.rb .crm-visoes{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:14px 0}
+.rb .crm-visoes>span{font-size:12px;color:var(--muted);margin-right:3px}
+.rb .crm-visoes .btn{min-height:34px}
+.rb .crm-visao-reduzido .crm-cliente-card{padding:10px 12px;margin-bottom:8px;border-radius:10px}
+.rb .crm-visao-reduzido .crm-cliente-card>.crm-ficha-dados,
+.rb .crm-visao-reduzido .crm-cliente-card>.crm-negociacao,
+.rb .crm-visao-reduzido .crm-cliente-card>.crm-cliente-botoes{display:none}
+.rb .crm-visao-reduzido .crm-cliente-abrir{display:flex;flex-direction:column;gap:4px;min-height:44px;justify-content:center}
+.rb .crm-visao-reduzido .crm-cliente-abrir h3{order:-1;margin:0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.rb .crm-visao-reduzido .crm-ficha-legenda{font-size:10px;letter-spacing:.4px;line-height:1.4;overflow-wrap:anywhere}
+.rb .crm-visao-semi .crm-cliente-card{padding:12px;margin-bottom:9px;border-radius:12px}
+.rb .crm-visao-semi .crm-cliente-abrir h3{font-size:14px;line-height:1.35;margin:4px 0 8px}
+.rb .crm-visao-semi .crm-ficha-dados{margin:8px 0 10px}
+.rb .crm-visao-semi .crm-ficha-dados>div{padding:6px 0;gap:8px;font-size:11px}
+.rb .crm-visao-semi .crm-negociacao{gap:7px;margin:10px 0}
+.rb .crm-visao-semi .crm-negociacao label{gap:3px;font-size:11px}
+.rb .crm-visao-semi .crm-cliente-card .inp{font-size:11px;padding:6px 8px;min-height:32px}
+.rb .crm-visao-semi .crm-negociacao-resumo{padding:8px;font-size:11px;line-height:1.4}
+.rb .crm-visao-semi .crm-cliente-botoes{gap:5px;margin-top:9px}
+.rb .crm-visao-semi .crm-cliente-botoes .btn{padding:6px 8px;min-height:32px;font-size:10px}
