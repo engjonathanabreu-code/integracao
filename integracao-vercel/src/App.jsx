@@ -1,3 +1,4 @@
+import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
 import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
 import {responsavelMeta} from './metas-identidade.js';
 import {Landmark} from 'lucide-react';
@@ -8386,16 +8387,8 @@ const ITENS_COMPROMISSO = [
   { id: "risco", nome: "Eliminação ou mitigação da área de risco" }, { id: "app", nome: "Recuperação da área de preservação permanente" },
 ];
 const compromissoVazio = () => ({ itens: {}, prazos: {}, observacao: "", atualizadoEm: "", por: "" });
-const distratoVazio = () => ({ data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
-function textoDevolucao(dt) {
-  if (!dt) return "____________";
-  const total = parseNum(dt.valorDevolucao);
-  if (!(total > 0)) return "Não há valores a devolver.";
-  const qtd = parseInt(dt.parcelas, 10) || 0;
-  const forma = dt.formaDevolucao === "carne" ? "por meio de carnê" : `por PIX${dt.pixChave ? ` (chave ${dt.pixTipo ? `${dt.pixTipo} ` : ""}${dt.pixChave})` : ""}`;
-  if (qtd > 1) return `A CONTRATADA devolverá ${reais(total)} (${porExtensoReais(total)}) em ${qtd} parcelas de ${reais(dt.valorParcela)}, com vencimento todo dia ${dt.diaVencimento || "___"}, ${forma}.`;
-  return `A CONTRATADA devolverá ${reais(total)} (${porExtensoReais(total)}) em parcela única, ${forma}.`;
-}
+const distratoVazio = () => ({ tipo: "devolucao", valorMulta: "", vencimentoMulta: "", formaMulta: "", data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
+function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,parseNum); }
 function textoCompromissos(c, remessaPrazos) {
   const itens = ITENS_COMPROMISSO.filter((i) => c?.itens?.[i.id]);
   if (!itens.length) return "Nenhum compromisso de infraestrutura assumido para esta unidade.";
@@ -8677,10 +8670,10 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
   const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
   const calcular = () => { const total = parseNum(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
   const salvar = () => {
-    if (f.motivo.trim().length < 10) { setToast("Descreva o motivo do distrato com pelo menos 10 caracteres."); return; }
+    const erroDistrato=validarDistrato(f,parseNum);if(erroDistrato){setToast(erroDistrato);return;}
     const novo = { ...f, motivo: f.motivo.trim(), por: usuario.nome, registradoEm: p.distrato?.registradoEm || new Date().toISOString() };
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
-    setToast("Distrato salvo. Gere o documento e, depois de assinado, altere a situação do morador para Cancelado.");
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
+    setToast("Distrato guardado neste aparelho e aguardando sincronização. Após confirmar o envio, gere o documento.");
   };
   const desfazer = () => {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = null; return d; }, "Distrato desfeito", { ...log, detalhe: p.codigo });
@@ -8695,18 +8688,21 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
     );
   }
   return (
-    <Secao titulo="Distrato" nota="Motivo, devolução de valores e comarca entram no documento. Depois de assinado, altere a situação do morador para Cancelado com o mesmo motivo."
+    <Secao titulo="Distrato" nota="Motivo, tipo de acerto e comarca entram no documento. Depois de assinado, altere a situação do morador para Cancelado com o mesmo motivo."
       acao={registrado ? <Tag tipo="bloq">Registrado em {dataBR(p.distrato.registradoEm)} por {p.distrato.por}</Tag> : <Tag tipo="pend">Em preenchimento</Tag>}>
       <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><label className="rot" htmlFor="dt-data">Data</label><input id="dt-data" type="date" className="inp" value={f.data} disabled={!pode} onChange={(e) => set("data", e.target.value)} /></div>
         <div><label className="rot" htmlFor="dt-com">Comarca</label><input id="dt-com" className="inp" value={f.comarca} disabled={!pode} onChange={(e) => set("comarca", e.target.value)} placeholder="Comarca do foro" /></div>
-        <div><label className="rot" htmlFor="dt-val">Valor a devolver (R$)</label><input id="dt-val" className="inp" inputMode="decimal" value={f.valorDevolucao} disabled={!pode} onChange={(e) => set("valorDevolucao", e.target.value)} onBlur={calcular} /></div>
+        <div><label className="rot" htmlFor="dt-tipo">Tipo de distrato</label><select id="dt-tipo" className="inp" value={tipoDistrato(f)} disabled={!pode} onChange={e=>set("tipo",e.target.value)}><option value="devolucao">Distrato com devolução</option><option value="multa">Distrato com multa</option><option value="sem_acerto">Distrato sem multa e sem devolução</option></select></div>
+        {tipoDistrato(f)==="multa"&&<><div><label className="rot" htmlFor="dt-multa">Multa a pagar à empresa (R$)</label><input id="dt-multa" className="inp" inputMode="decimal" value={f.valorMulta} disabled={!pode} onChange={e=>set("valorMulta",e.target.value)}/></div><div><label className="rot" htmlFor="dt-venc-multa">Vencimento da multa</label><input id="dt-venc-multa" className="inp" type="date" value={f.vencimentoMulta} disabled={!pode} onChange={e=>set("vencimentoMulta",e.target.value)}/></div><div><label className="rot" htmlFor="dt-forma-multa">Forma de pagamento da multa</label><input id="dt-forma-multa" className="inp" value={f.formaMulta} disabled={!pode} onChange={e=>set("formaMulta",e.target.value)} placeholder="Ex.: PIX à empresa"/></div></>}
+        {tipoDistrato(f)==="devolucao"&&<><div><label className="rot" htmlFor="dt-val">Valor a devolver (R$)</label><input id="dt-val" className="inp" inputMode="decimal" value={f.valorDevolucao} disabled={!pode} onChange={(e) => set("valorDevolucao", e.target.value)} onBlur={calcular} /></div>
         <div><label className="rot" htmlFor="dt-par">Parcelas</label><input id="dt-par" className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} onBlur={calcular} /></div>
         <div><label className="rot" htmlFor="dt-vp">Valor da parcela (R$)</label><input id="dt-vp" className="inp" inputMode="decimal" value={f.valorParcela} disabled={!pode} onChange={(e) => set("valorParcela", e.target.value)} /></div>
         <div><label className="rot" htmlFor="dt-dia">Dia de vencimento</label><input id="dt-dia" className="inp" inputMode="numeric" value={f.diaVencimento} disabled={!pode} onChange={(e) => set("diaVencimento", e.target.value)} /></div>
         <div><label className="rot" htmlFor="dt-forma">Forma de devolução</label><select id="dt-forma" className="inp" value={f.formaDevolucao} disabled={!pode} onChange={(e) => set("formaDevolucao", e.target.value)}><option value="pix">PIX</option><option value="carne">Carnê</option></select></div>
         {f.formaDevolucao === "pix" && <div><label className="rot" htmlFor="dt-pt">Tipo da chave PIX</label><select id="dt-pt" className="inp" value={f.pixTipo} disabled={!pode} onChange={(e) => set("pixTipo", e.target.value)}><option value="">Escolha</option>{["CPF", "CNPJ", "E-mail", "Telefone", "Aleatória"].map((x) => <option key={x}>{x}</option>)}</select></div>}
-        {f.formaDevolucao === "pix" && <div><label className="rot" htmlFor="dt-pk">Chave PIX</label><input id="dt-pk" className="inp" value={f.pixChave} disabled={!pode} onChange={(e) => set("pixChave", e.target.value)} /></div>}
+        {f.formaDevolucao === "pix" && <div><label className="rot" htmlFor="dt-pk">Chave PIX</label><input id="dt-pk" className="inp" value={f.pixChave} disabled={!pode} onChange={(e) => set("pixChave", e.target.value)} /></div>}</>}
+
       </div>
       <label className="rot" htmlFor="dt-mot" style={{ marginTop: 12 }}>Motivo do distrato</label>
       <textarea id="dt-mot" className="inp" rows={3} value={f.motivo} disabled={!pode} onChange={(e) => set("motivo", e.target.value)} placeholder="Por que o contrato está sendo encerrado. Entra no documento." />
@@ -11996,7 +11992,7 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar rascunho e reabrir dados atuais</button></>}</div>}
+          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
           {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}

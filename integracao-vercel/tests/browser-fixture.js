@@ -63,6 +63,7 @@ window.fetch=async(input,options={})=>{
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
+    if(new URLSearchParams(location.search).has('sincronizacao')&&!window.permissaoCorrigida&&operacoes.some(o=>o.table==='fin_receb_municipios'))return json({message:'new row violates row-level security policy for table fin_receb_municipios'},403);
     for(const op of operacoes) {
       if(!op.table)return json({message:'Ação não implementada no simulador'},400);
       const rows=base[op.table] ||= [];

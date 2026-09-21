@@ -1,3 +1,4 @@
+import {filaRascunho} from './fila-rascunho.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
@@ -24,7 +25,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   const storageKey=()=>`integracao-compartilhado-${actor.current?.erpRef}`;
   const publish=db=>{current.current=db;setDb(db);};
-  const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await storage.set(storageKey(),JSON.stringify({db:current.current,baseline:server.current?.db,base:server.current?.base,pending:pending.current,attempt:attempt.current,municipios:[...municipios.current]}));await storage.set('integracao-ultima-conta',owner);}};
+  const gravaRascunho=useRef(null);if(!gravaRascunho.current)gravaRascunho.current=filaRascunho(storage);
+  const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await gravaRascunho.current(storageKey(),JSON.stringify({db:current.current,baseline:server.current?.db,base:server.current?.base,pending:pending.current,attempt:attempt.current,municipios:[...municipios.current]}),owner);}};
   const remap=(value,aliases)=>{
     if(!value) return value;
     if(typeof value==='string') return aliases[value]||value;
@@ -136,7 +138,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     const individual=!id && cliente;
     const chave=individual ? `cliente:${cliente.id}` : id;
     if(individual && current.current?.processos.some(p=>p.id===cliente.id&&!p._resumo))return current.current;
-    if(!individual && municipios.current.has(id))return current.current;
+    if(!individual && municipios.current.has(id) && (!cliente || current.current?.processos.some(p=>(p.id===cliente.id||(cliente.financeiroRef&&p.financeiroRef===cliente.financeiroRef))&&!p._resumo)))return current.current;
     if(municipalityLoads.current.has(chave))return municipalityLoads.current.get(chave);
     const gen=generation.current;
     const job=(async()=>{
@@ -197,17 +199,18 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       await storage.set(`${storageKey()}-revisao-${Date.now()}`,snapshot);
       const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
       const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-      const base=await carregarBase(server.current.db);const state=projetar(base,server.current.db);
-      attempt.current=null;pending.current=false;server.current=state;publish(state.db);setError('');setStatus('Versão atual aberta. O rascunho anterior foi preservado para revisão.');await saveDraft();
+      setStatus('Cópia baixada. As alterações continuam pendentes neste navegador; use Tentar salvar novamente.');await saveDraft();
     }catch(e){setError(e.message);}
   };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);
     const online=()=>{if(pending.current)flush();else refresh({force:true});};
     const filePending=()=>{if(!actor.current)return;pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,700);};
+    const protegerSaida=e=>{if(pending.current){e.preventDefault();e.returnValue='';}};
+    window.addEventListener('beforeunload',protegerSaida);
     window.addEventListener('integracao:arquivo-pendente',filePending);
     window.addEventListener('online',online);window.addEventListener('focus',refresh);
-    return()=>{clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',refresh);};
+    return()=>{window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',refresh);};
   },[]);
   return {open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,atualizarResumo,ready:()=>!!server.current};
 }

@@ -38,3 +38,4 @@
 @media(max-width:450px){.rb .crm-ficha-painel{padding:16px}.rb .crm-ficha-painel .crm-ficha-dados{grid-template-columns:1fr}}
 
 .rb .crm-negociacao{display:grid;gap:12px;margin:16px 0;min-width:0}.rb .crm-negociacao label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.rb .crm-negociacao .inp{width:100%;min-width:0}.rb .crm-negociacao-resumo{padding:12px;border-radius:10px;background:var(--bg);font-size:12px;line-height:1.65;margin:0;color:var(--titulo)}.rb .crm-negociacao small{color:var(--muted);font-size:11px}
+.rb .crm-negociacao .crm-painel{min-width:0}.rb .crm-negociacao .crm-painel label{display:grid;gap:6px;margin:10px 0;min-width:0}.rb .crm-negociacao .crm-painel .inp{width:100%;min-width:0}.rb .crm-negociacao .crm-painel .btn{max-width:100%;height:auto;white-space:normal;text-align:left;overflow-wrap:anywhere}.rb .crm-negociacao .crm-painel p{white-space:normal;overflow-wrap:anywhere}
