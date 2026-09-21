@@ -1,3 +1,4 @@
+import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
 import {responsavelMeta} from './metas-identidade.js';
 import {Landmark} from 'lucide-react';
 import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './permissoes.js';
@@ -5844,6 +5845,7 @@ function ConfigUsuarios({ db, usuario, mutar, setToast }) {
               <Tag>{u.funcao}</Tag><Tag tipo="pend">{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s) de aprovação</Tag>
               {u.origem === "ERP" && <Tag>ERP{u.tipoERP ? `: ${u.tipoERP}` : ""}</Tag>}
             </div>
+            <JornadaPonto alvo={u} />
             <div className="ajuda" style={{ margin: "8px 0 0" }}>{estaOnline(u) ? "No sistema agora. " : u.ultimaAtividade ? `Visto por último em ${dataHoraBR(u.ultimaAtividade)}. ` : ""}{acoesDe(u)} ação(ões) registrada(s){u.senhaAlteradaEm ? `. Senha alterada em ${dataBR(u.senhaAlteradaEm)}` : ""}</div>
             <div className="flex flex-wrap gap-2" style={{ marginTop: 10 }}>
               <button className="btn btn-sm" onClick={() => setEditando(u)}><Pencil size={13} />Editar</button>
@@ -6253,6 +6255,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const perm = permissoes(usuario);
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
+    acessoCRM(usuario).admin && ["ponto", "Folha Ponto", Clock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
@@ -6274,6 +6277,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
+        {atual === "ponto" && acessoCRM(usuario).admin && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "regras" && <ConfigRegras db={db} mutar={mutar} setToast={setToast} />}
@@ -7620,6 +7624,7 @@ function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
       <div className="cabeca">
         <div><h1>{saudacao}, {usuario.nome.split(" ")[0]}</h1><p>{dataExtenso()}. {papelDe(usuario)}.</p></div>
       </div>
+      {!AMBIENTE.DEMO && <BaterPonto usuario={usuario} />}
       {(!conexao.online || offline.pendentes > 0 || offline.conflitos > 0) && <div style={{ marginBottom: 14 }}><StatusConexao conexao={conexao} offline={offline} compacto /></div>}
       {perm.setor === "topografia" && <PainelTopografiaHome db={db} ir={ir} offline={offline} conexao={conexao} />}
       {(

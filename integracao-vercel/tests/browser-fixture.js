@@ -1,3 +1,5 @@
+import {instalarPontoFixture} from './ponto-browser-fixture.js';
+const pontoFixture=new URLSearchParams(location.search).has('ponto')?instalarPontoFixture():null;
 // Development-only harness. Never included in the production entry point.
 import {resumirMoradores} from '../src/resumo-moradores.js';
 import {compactarResumo} from '../src/resumo-transporte.js';
@@ -48,6 +50,7 @@ window.fetch=async(input,options={})=>{
   if(url.origin===location.origin || url.protocol==='data:')return original(input,options);
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
+  if(pontoFixture){const result=pontoFixture(url,options,json);if(result!==undefined)return result;}
   if(crmFixture){const result=crmFixture(url,options,json);if(result!==undefined)return result;}
   if(url.pathname.endsWith('/rpc/integracao_registrar_acesso')){const p=JSON.parse(options.body);base.integracao_acessos.push({id:crypto.randomUUID(),usuario_id:base.profiles[0].id,usuario_nome:base.profiles[0].nome,evento:p.p_evento,motivo:p.p_motivo,ocorrido_em:new Date().toISOString()});return json(null);}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});
