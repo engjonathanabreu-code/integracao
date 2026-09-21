@@ -36,3 +36,5 @@
 .rb .crm-ficha-painel summary{cursor:pointer}
 @media(max-width:800px){.rb .crm-ficha-layout{grid-template-columns:1fr}.rb .crm-ficha-layout>aside{grid-row:1}.rb .crm-ficha-dialogo{padding:20px}.rb .crm-ficha-cabeca h2{font-size:20px}}
 @media(max-width:450px){.rb .crm-ficha-painel{padding:16px}.rb .crm-ficha-painel .crm-ficha-dados{grid-template-columns:1fr}}
+
+.rb .crm-negociacao{display:grid;gap:12px;margin:16px 0;min-width:0}.rb .crm-negociacao label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.rb .crm-negociacao .inp{width:100%;min-width:0}.rb .crm-negociacao-resumo{padding:12px;border-radius:10px;background:var(--bg);font-size:12px;line-height:1.65;margin:0;color:var(--titulo)}.rb .crm-negociacao small{color:var(--muted);font-size:11px}

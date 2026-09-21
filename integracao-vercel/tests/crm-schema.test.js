@@ -35,7 +35,7 @@ export async function prepararBanco(){
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919153643_marketing_municipios.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919154451_semanal_origem.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20260919161336_crm_importacao_funil.sql',import.meta.url),'utf8'));
- await db.exec(readFileSync(new URL('../supabase/migrations/20260919172538_marketing_grupos_rotina.sql',import.meta.url),'utf8'));return db;
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260919172538_marketing_grupos_rotina.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/crm-negociacao.sql',import.meta.url),'utf8'));return db;
 }
 async function como(db,id,sql){await db.exec(`set role authenticated;set request.jwt.claim.sub='${uuid(id)}';`);try{return await db.query(sql);}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
 test('grupos de marketing preservam progressos, restringem acesso e não simulam envio ao WhatsApp',async()=>{
@@ -190,5 +190,30 @@ test('importar card perdido conserva cadastro e expõe origem apenas ao respons�
  const row=(await como(db,2,'select * from integracao_crm_funil')).rows[0];assert.equal(row.status,'Perdido');assert.equal(row.origem_dados.observacoes,'Nota original');assert.equal(row.telefone,'original');
  assert.equal((await db.query('select dados from integracao_moradores')).rows[0].dados.requerente.statusCRM,'Legado');
  assert.equal((await como(db,3,'select * from integracao_crm_funil')).rows.length,0);
+ }finally{await db.close();}
+});
+
+test('negociação fica no CRM, acompanha ativação e respeita responsável e administrador',async()=>{
+ const db=await prepararBanco();try{
+ await db.exec(`insert into integracao_crm_cards(id,cliente_id,responsavel_id) values('${uuid(990)}','${uuid(20)}','${uuid(2)}');`);
+ await como(db,2,`update integracao_crm_cards set valor_total=1000,forma_negociacao='entrada_parcelas',entrada_percentual=20,parcelas=4 where id='${uuid(990)}'`);
+ await como(db,2,`update integracao_crm_cards set status='Cliente ativo' where id='${uuid(990)}'`);
+ const salvo=(await como(db,2,`select valor_total,parcelas,status from integracao_crm_funil where id='${uuid(990)}'`)).rows[0];assert.equal(Number(salvo.valor_total),1000);assert.equal(salvo.parcelas,4);assert.equal(salvo.status,'Cliente ativo');
+ assert.equal((await como(db,3,`update integracao_crm_cards set valor_total=2000 where id='${uuid(990)}' returning id`)).rows.length,0);
+ assert.equal((await como(db,6,`select id from integracao_crm_funil`)).rows.length,0);
+ await assert.rejects(()=>como(db,2,`update integracao_crm_cards set entrada_percentual=100 where id='${uuid(990)}'`));
+ await assert.rejects(()=>como(db,2,`update integracao_crm_cards set valor_total=null where id='${uuid(990)}'`));
+ await como(db,1,`update integracao_crm_cards set valor_total=1500 where id='${uuid(990)}'`);
+ assert.equal((await db.query(`select column_name from information_schema.columns where table_name='fin_receb_clientes' and column_name='forma_negociacao'`)).rows.length,0);
+ }finally{await db.close();}
+});
+test('vincular lead preserva condições e impede sobrescrever negociação diferente',async()=>{
+ const db=await prepararBanco();try{
+ await db.exec(`insert into integracao_crm_cards(id,cliente_id,responsavel_id) values('${uuid(991)}','${uuid(20)}','${uuid(2)}');
+ insert into integracao_crm_cards(id,lead_nome,responsavel_id,valor_total,forma_negociacao,desconto_percentual) values('${uuid(992)}','Lead','${uuid(2)}',1000,'avista',10);`);
+ await como(db,2,`select integracao_crm_vincular('${uuid(992)}','${uuid(20)}')`);
+ assert.equal(Number((await como(db,2,`select valor_total from integracao_crm_cards where id='${uuid(991)}'`)).rows[0].valor_total),1000);
+ await db.exec(`insert into integracao_crm_cards(id,lead_nome,responsavel_id,valor_total,forma_negociacao,desconto_percentual) values('${uuid(993)}','Outro lead','${uuid(2)}',3000,'avista',0)`);
+ await assert.rejects(()=>como(db,2,`select integracao_crm_vincular('${uuid(993)}','${uuid(20)}')`),/negociações diferentes/);
  }finally{await db.close();}
 });

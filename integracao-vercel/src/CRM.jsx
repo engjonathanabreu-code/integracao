@@ -1,3 +1,5 @@
+import NegociacaoCRM from './NegociacaoCRM.jsx';
+import {salvarNegociacaoCRM} from './crm-api.js';
 import {useState,useEffect,useRef} from 'react';
 import {X,Phone,FileText,MapPin,Layers,MessageSquare,ListTodo,Filter,UserPlus,UserX} from 'lucide-react';
 import {lerTabela} from './dados-compartilhados.js';
@@ -61,7 +63,7 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
   const nucleoCard=c=>{if(!c.nucleo_id)return '';const n=db.nucleos.find(n=>n.id===c.nucleo_id||n.externo?.kanbanId===c.nucleo_id);return n?[n.codigo,n.nome!==n.codigo?n.nome:''].filter(Boolean).join(' · '):'Núcleo vinculado';};
   const abrirFicha=(c,tipo=null)=>{setSelecionado(c);setForm(tipo?{tipo,card:c}:null);setHistorico(null);setTransferencia(null);setVinculo(null);};
   const atual=selecionado&&(m.dados?.cards.find(c=>c.id===selecionado.id)||selecionado);
-  const statusCard=c=><CampoCRM nome="Status"><select className="inp" aria-label={`Status de ${nomeCard(c)}`} value={c.status} disabled={m.ocupado} onChange={e=>m.executar(()=>editarCRM('integracao_crm_cards',c.id,{status:e.target.value}))}>{[...ETAPAS_CRM,'Perdido'].map(s=><option key={s}>{s}</option>)}</select></CampoCRM>;
+  const statusCard=c=><NegociacaoCRM key={c.id} card={c} ocupado={m.ocupado} onSalvar={(dados,anterior)=>m.executar(()=>salvarNegociacaoCRM(c.id,dados,anterior))}/>;
   const dadosCard=c=><dl className="crm-ficha-dados"><div><dt><FileText size={14}/> CPF</dt><dd>{c.cpf_cnpj||'Não informado'}</dd></div><div><dt><Phone size={14}/> Telefone</dt><dd>{c.telefone||c.lead_telefone||'Não informado'}</dd></div><div><dt><MapPin size={14}/> Município</dt><dd>{c.municipio||c.lead_cidade||'Não informado'}</dd></div><div><dt><Layers size={14}/> Remessa</dt><dd>{c.remessa||'Não informada'}</dd></div>{c.nucleo_id&&<div><dt>Núcleo</dt><dd>{nucleoCard(c)}</dd></div>}</dl>;
   const card=c=><article className="crm-card crm-cliente-card" key={c.id}><button className="crm-cliente-abrir" aria-label={`Abrir ficha de ${nomeCard(c)}`} onClick={()=>abrirFicha(c)}><span className="crm-ficha-legenda">{c.municipio||c.lead_cidade||'Município não informado'}</span><h3>{nomeCard(c)}</h3></button>{dadosCard(c)}{statusCard(c)}<div className="crm-cliente-botoes"><button className="btn btn-sm" onClick={()=>abrirFicha(c,'atendimento')}><MessageSquare size={14}/> Registrar atendimento</button><button className="btn btn-sm" onClick={()=>abrirFicha(c,'tarefa')}><ListTodo size={14}/> Registrar tarefa</button><button className="btn btn-sm" onClick={()=>abrirFicha(c)}>Abrir ficha</button></div></article>;
   return <div className="contem largo"><div className="cabeca"><div><h1>CRM</h1><p>Relacionamento, atendimentos e próximos passos.</p></div><button className="btn btn-primario" onClick={()=>ir({pag:'municipios'})}>Cadastrar cliente no município</button></div>
