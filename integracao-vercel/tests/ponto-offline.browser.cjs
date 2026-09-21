@@ -1,0 +1,15 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch({channel:'chrome',headless:true});try{const c=await b.newContext(),p=await c.newPage(),erros=[];p.on('pageerror',e=>erros.push(e.message));
+await c.addInitScript(()=>{Object.defineProperty(navigator,'onLine',{get:()=>localStorage.getItem('teste-offline')!=='sim'});});
+const login=async()=>{await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();};
+await p.goto('http://127.0.0.1:5178/tests/browser.html?ponto');await login();await p.getByRole('button',{name:'Bater ponto — entrada',exact:true}).waitFor();
+await p.evaluate(()=>{localStorage.setItem('teste-offline','sim');window.dispatchEvent(new Event('offline'));});
+await p.getByRole('button',{name:'Bater ponto — entrada',exact:true}).click();await p.getByText(/1 marcação\(ões\) salva/).waitFor();
+await p.reload();await login();await p.getByRole('button',{name:'Bater ponto — saida',exact:true}).waitFor();await p.getByText(/1 marcação\(ões\) salva/).waitFor();
+await p.evaluate(()=>{const NativeDate=Date;window.Date=class extends NativeDate{constructor(...a){super(...(a.length?a:[NativeDate.now()+60000]));}static now(){return NativeDate.now()+60000;}};});
+await p.getByRole('button',{name:'Bater ponto — saida',exact:true}).click();await p.getByText(/2 marcação\(ões\) salva/).waitFor();
+await p.getByRole('button',{name:'Clientes',exact:true}).click();
+await p.evaluate(()=>{localStorage.removeItem('teste-offline');window.dispatchEvent(new Event('online'));});
+await p.waitForFunction(()=>Object.keys(localStorage).filter(k=>k.startsWith('integracao-ponto-local-v1:')).every(k=>JSON.parse(localStorage.getItem(k)).fila.length===0));
+assert.deepEqual(erros,[]);console.log('Offline: entrada/saída, reabertura, fila preservada e envio automático fora da tela inicial: OK');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1});

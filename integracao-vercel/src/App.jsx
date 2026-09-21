@@ -1,3 +1,4 @@
+import {SincronizadorPonto} from './use-ponto-local.js';
 import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
 import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
 import {responsavelMeta} from './metas-identidade.js';
@@ -11955,6 +11956,7 @@ export default function App() {
   return (
     <div className={`rb${usuario?.tema?.modo === "escuro" ? " escuro" : ""}`}>
       <style>{CSS}{cssDoTema(usuario?.tema)}</style>
+      {!AMBIENTE.DEMO && <SincronizadorPonto key={usuario.id} usuario={usuario} />}
       <div className="app">
         <nav className={`nav${menuAberto ? " aberta" : ""}`} aria-label="Menu principal">
           <div className="marca-lateral"><LogoIntegracao clara tamanho={42} texto={18} /></div>
