@@ -6259,7 +6259,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const perm = permissoes(usuario);
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
-    acessoCRM(usuario).admin && ["ponto", "Folha Ponto", Clock],
+    ["ponto", "Folha Ponto", Clock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
@@ -6271,7 +6271,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     perm.config && ["requisitos", "Requisitos das etapas", ListTodo],
     (perm.config || perm.modeloPRF) && ["campos", perm.config ? "Campos, checklist e PRF" : "Modelo de PRF", SlidersHorizontal],
     perm.config && ["historico", "Histórico e dados", History],
-  ].filter(Boolean);
+  ].filter(Boolean).filter(([id])=>perm.config || perm.modeloPRF || id === "ponto");
   const pedida = aba === "dados" ? "historico" : aba;
   const atual = ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
   const setAba = (a2) => ir({ pag: "config", aba: a2 });
@@ -6281,7 +6281,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
-        {atual === "ponto" && acessoCRM(usuario).admin && <FolhaPonto usuario={usuario} db={db} />}
+        {atual === "ponto" && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "regras" && <ConfigRegras db={db} mutar={mutar} setToast={setToast} />}
@@ -11971,7 +11971,7 @@ export default function App() {
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
-          {(perm.config || perm.modeloPRF) && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
+          {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
             <div style={{ padding: "0 10px 10px" }}>
@@ -12024,7 +12024,7 @@ export default function App() {
           {rota.pag === "campo" && <PaginaCampo key={`${rota.nucleoId}_${rota.processoId || ""}`} {...props} nucleoId={rota.nucleoId} processoId={rota.processoId} />}
           {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} />}
           {rota.pag === "importar" && perm.importar && <PaginaConfig {...props} db={db} aba="importar" restaurar={restaurar} />}
-          {rota.pag === "config" && (perm.config || perm.modeloPRF) && <PaginaConfig {...props} db={db} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
+          {rota.pag === "config" && usuario.ativo !== false && <PaginaConfig {...props} db={db} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
           </Protecao>
           </ArquivoCadastros>
         </div>

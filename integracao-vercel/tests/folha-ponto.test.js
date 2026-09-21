@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {readFileSync} from 'node:fs';
 const admin='00000000-0000-4000-8000-000000000001',clt='00000000-0000-4000-8000-000000000002',outro='00000000-0000-4000-8000-000000000003';
-async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text);insert into profiles values('${admin}',true,'Administrador'),('${clt}',true,'Comercial'),('${outro}',true,'Topografia');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;`);await db.exec(readFileSync(new URL('../supabase/operacoes/folha-ponto.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-offline.sql',import.meta.url),'utf8'));return db;}
+async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text);insert into profiles values('${admin}',true,'Administrador'),('${clt}',true,'Comercial'),('${outro}',true,'Topografia');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;`);await db.exec(readFileSync(new URL('../supabase/operacoes/folha-ponto.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-offline.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-solicitacoes.sql',import.meta.url),'utf8'));return db;}
 async function como(db,u,sql,params=[]){await db.exec(`set role authenticated;set request.jwt.claim.sub='${u}';`);try{return(await db.query(sql,params)).rows;}finally{await db.exec('reset role');}}
 const rpc=(db,u,acao,dados)=>como(db,u,'select integracao_ponto($1,$2::jsonb) as r',[acao,JSON.stringify(dados)]).then(r=>r[0].r);
 async function jornada(db){await db.exec(`insert into integracao_ponto_jornadas(usuario_id,vigencia,vinculo,dias,entrada,saida,intervalo,autor) values('${clt}','2026-01-01','CLT',array[1,2,3,4,5],'08:00','17:00',60,'${admin}');`);}
@@ -60,4 +60,29 @@ test('offline: horário original, recebimento, repetição, acesso, conflitos e 
  await assert.rejects(()=>rpc(db,clt,'bater_offline',{...entrada,pedido:crypto.randomUUID(),ocorrido_em:'2026-01-08T09:00:00-03:00'}),/Conflito/);
  await rpc(db,admin,'revisar',{usuario_id:clt,dia:'2026-01-08',batidas:[],motivo:'Regularização administrativa'});
  await assert.rejects(()=>rpc(db,clt,'bater_offline',{...entrada,pedido:crypto.randomUUID(),ocorrido_em:'2026-01-08T18:00:00-03:00'}),/regularizado/);
+ }finally{await db.close();}});
+
+async function solicitar(db,dia='2026-01-05'){
+ const rel=await rpc(db,clt,'relatorio',{mes:'2026-01-01'}),d=rel.dias.find(x=>x.dia===dia);
+ const dados={pedido:crypto.randomUUID(),dia,assinatura:d.assinatura,batidas:['08:00','12:00','13:00','17:30'].map(h=>`${dia}T${h}:00-03:00`),motivo:'Esqueci a saída no retorno do campo'};
+ return {dados,r:await rpc(db,clt,'solicitar_correcao',dados)};
+}
+test('solicitação própria não altera ponto; acesso isolado e somente Diretoria decide',async()=>{const db=await banco();try{await jornada(db);await marcas(db,'2026-01-05',['08:00','12:00','13:00','17:00']);
+ const {dados,r}=await solicitar(db);assert.equal(r.status,'pendente');assert.equal((await rpc(db,clt,'solicitar_correcao',dados)).id,r.id);
+ assert.equal((await rpc(db,clt,'relatorio',{mes:'2026-01-01'})).dias.find(x=>x.dia===r.dia).trabalhado,480);
+ assert.equal((await como(db,outro,'select * from integracao_ponto_solicitacoes')).length,0);assert.equal((await como(db,admin,'select * from integracao_ponto_solicitacoes')).length,1);
+ await assert.rejects(()=>rpc(db,clt,'relatorio',{usuario_id:outro,mes:'2026-01-01'}),/permissão/);
+ await assert.rejects(()=>rpc(db,clt,'solicitar_correcao',{...dados,pedido:crypto.randomUUID()}),/pendente/);
+ await assert.rejects(()=>rpc(db,clt,'solicitar_correcao',{...dados,usuario_id:outro,pedido:crypto.randomUUID()}),/própria folha/);
+ await assert.rejects(()=>rpc(db,clt,'decidir_correcao',{pedido:r.id,aprovada:true,motivo:'Eu aprovo meu pedido'}),/Diretoria/);
+ await assert.rejects(()=>como(db,clt,"update integracao_ponto_solicitacoes set status='aprovada'"));
+ const aprovada=await rpc(db,admin,'decidir_correcao',{pedido:r.id,aprovada:true,motivo:'Conferido com o responsável'});assert.equal(aprovada.status,'aprovada');assert(aprovada.revisao_id);
+ await rpc(db,admin,'decidir_correcao',{pedido:r.id,aprovada:true,motivo:'Tentativa repetida'});assert.equal((await db.query('select count(*)::int n from integracao_ponto_revisoes')).rows[0].n,1);
+ const d=(await rpc(db,clt,'relatorio',{mes:'2026-01-01'})).dias.find(x=>x.dia===r.dia);assert.equal(d.trabalhado,510);assert.equal(d.pendente_extra,30);assert.equal(d.originais.length,4);
+ }finally{await db.close();}});
+test('recusa, cancelamento, pedido desatualizado e conta inativa preservam registros',async()=>{const db=await banco();try{await jornada(db);
+ let {r}=await solicitar(db);await rpc(db,admin,'decidir_correcao',{pedido:r.id,aprovada:false,motivo:'Horário não comprovado'});assert.equal((await db.query('select count(*)::int n from integracao_ponto_revisoes')).rows[0].n,0);
+ ({r}=await solicitar(db));await assert.rejects(()=>rpc(db,outro,'cancelar_correcao',{pedido:r.id}),/somente suas/);await rpc(db,clt,'cancelar_correcao',{pedido:r.id});
+ ({r}=await solicitar(db));await marcas(db,'2026-01-05',['08:00','12:00']);await assert.rejects(()=>rpc(db,admin,'decidir_correcao',{pedido:r.id,aprovada:true,motivo:'Tentativa antiga'}),/mudaram/);
+ await db.exec(`update profiles set ativo=false where id='${clt}'`);await assert.rejects(()=>rpc(db,clt,'cancelar_correcao',{pedido:r.id}),/Sessão ativa/);assert.equal((await como(db,clt,'select * from integracao_ponto_solicitacoes')).length,0);
  }finally{await db.close();}});

@@ -9,3 +9,9 @@ export async function relatorioPonto(id,mes){
  const [relatorio,decisoes,ajustes,revisoes]=await Promise.all([ponto('relatorio',{usuario_id:id,mes:mes+'-01'}),...['decisoes','ajustes','revisoes'].map(t=>requisicao(`integracao_ponto_${t}?usuario_id=eq.${encodeURIComponent(id)}&dia=gte.${mes}-01&dia=lt.${mes==='9999-12'?'9999-12-31':new Date(Date.UTC(Number(mes.slice(0,4)),Number(mes.slice(5,7)),1)).toISOString().slice(0,10)}&order=criado_em.desc&limit=1000`))]);
  return {...relatorio,decisoes,ajustes,revisoes};
 }
+
+export async function solicitacoesPonto(id,mes,diretor=false){
+ const historico=()=>requisicao(`integracao_ponto_solicitacoes?usuario_id=eq.${encodeURIComponent(id)}&dia=gte.${mes}-01&dia=lt.${new Date(Date.UTC(Number(mes.slice(0,4)),Number(mes.slice(5,7)),1)).toISOString().slice(0,10)}&order=criado_em.desc&limit=1000`);
+ const [registros,pendentes]=await Promise.all([historico(),diretor?requisicao('integracao_ponto_solicitacoes?status=eq.pendente&order=criado_em.asc&limit=1000'):Promise.resolve([])]);
+ return {registros,pendentes};
+}

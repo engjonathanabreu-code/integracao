@@ -9,7 +9,7 @@ export const GRUPOS_TEMPO_REAL={
  config:['integracao_complementos','integracao_configuracoes'],
  auxiliar:['integracao_arquivos','integracao_notificacoes','integracao_auditoria'],
  crm:['integracao_crm_cards','integracao_crm_atendimentos','integracao_crm_tarefas','integracao_crm_conversas','integracao_crm_mensagens','integracao_crm_agentes'],
- ponto:['integracao_ponto_jornadas','integracao_ponto_batidas','integracao_ponto_revisoes','integracao_ponto_decisoes','integracao_ponto_ajustes'],
+ ponto:['integracao_ponto_solicitacoes','integracao_ponto_jornadas','integracao_ponto_batidas','integracao_ponto_revisoes','integracao_ponto_decisoes','integracao_ponto_ajustes'],
  semanal:['integracao_semanal_municipios','integracao_semanal_semanas','integracao_semanal_registros','integracao_semanal_arquivos','integracao_semanal_exclusoes'],
  marketing:['integracao_marketing_grupos','integracao_marketing_atualizacoes','integracao_marketing_rotina','integracao_marketing_projetos','integracao_marketing_progresso','integracao_marketing_etapas'],
 };
