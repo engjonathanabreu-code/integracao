@@ -1948,6 +1948,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 }
 
 @media (max-width:640px){.rb .offline{padding:12px 10px 150px}.rb .offline .btn{font-size:15px}.rb .grade-unidades{grid-template-columns:1fr}.rb .offline .grade-fotos{grid-template-columns:1fr 1fr}.rb .offline .item-campo>div{flex:1 1 100%!important}}
+.rb .pagina-home .layout-home>*,.rb .pagina-home .grade-painel>*{min-width:0}
 .rb .layout-home{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
 .rb .lista-pendencias{list-style:none;margin:0;padding:0}
 .rb .lista-pendencias li+li{border-top:1px solid var(--line2)}
@@ -7625,16 +7626,16 @@ function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
     : perm.diretor ? { titulo: "Moradores cadastrados", par: des.cadastros } : null;
   const visiveis = verTodas ? pend : pend.slice(0, 8);
   return (
-    <div className="contem largo">
+    <div className="contem largo pagina-home">
       <div className="cabeca">
         <div><h1>{saudacao}, {usuario.nome.split(" ")[0]}</h1><p>{dataExtenso()}. {papelDe(usuario)}.</p></div>
       </div>
-      {!AMBIENTE.DEMO && <BaterPonto usuario={usuario} />}
       {(!conexao.online || offline.pendentes > 0 || offline.conflitos > 0) && <div style={{ marginBottom: 14 }}><StatusConexao conexao={conexao} offline={offline} compacto /></div>}
       {perm.setor === "topografia" && <PainelTopografiaHome db={db} ir={ir} offline={offline} conexao={conexao} />}
       {(
 
         <div className="acoes-nucleo" style={{ marginTop: perm.setor === "topografia" ? 14 : 0 }}>
+          {!AMBIENTE.DEMO && <BaterPonto usuario={usuario} />}
           <button className="acao-grande" onClick={() => setBuscaClientes(true)}><span className="acao-icone"><Search size={22} /></span><span><strong>Buscar cliente</strong><span>PF ou PJ por nome ou código</span></span></button>
           {atalhos.map((a) => (
             <button key={a.titulo} className="acao-grande" disabled={!a.rota} onClick={() => a.rota && ir(a.rota)}>

@@ -1,5 +1,6 @@
+import {createPortal} from 'react-dom';
 import {useEffect,useRef,useState} from 'react';
-import {Clock,Check,Download} from 'lucide-react';
+import {Clock,Check,Download,X} from 'lucide-react';
 import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
 import {ponto,idPonto,diaPonto,horaPonto,duracaoPonto,jornadaAtual,relatorioPonto} from './ponto-api.js';
 import {acessoCRM} from './crm-regras.js';
@@ -24,16 +25,23 @@ export function JornadaPonto({alvo}){
  {erro&&<p role="alert">{erro}</p>}<div className="flex gap-2"><button className="btn btn-primario" disabled={m.ocupado}>Salvar vínculo e jornada</button><button className="btn" type="button" onClick={()=>setEditar(false)}>Cancelar</button></div></form>}
  </section>;
 }
+function DialogoPonto({fechar,children}){
+ const ref=useRef(null);
+ useEffect(()=>{const anterior=document.activeElement;ref.current?.querySelector('button')?.focus({preventScroll:true});return()=>anterior?.focus?.({preventScroll:true});},[]);
+ const teclado=e=>{if(e.key==='Escape'){e.preventDefault();fechar();}if(e.key==='Tab'){const itens=[...ref.current.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled])')];const primeiro=itens[0],ultimo=itens.at(-1);if(e.shiftKey&&document.activeElement===primeiro){e.preventDefault();ultimo?.focus();}else if(!e.shiftKey&&document.activeElement===ultimo){e.preventDefault();primeiro?.focus();}}};
+ return createPortal(<div className="modal-fundo ponto-fundo" role="dialog" aria-modal="true" aria-label="Meu ponto" onKeyDown={teclado}><div ref={ref} className="ponto-dialogo"><button className="btn ponto-fechar" type="button" aria-label="Fechar ponto" onClick={fechar}><X size={20}/></button>{children}</div></div>,document.querySelector('.rb')||document.body);
+}
 export function BaterPonto({usuario}){
- const m=usePontoLocal(usuario);
+ const m=usePontoLocal(usuario),[aberto,setAberto]=useState(false);
  if(m.dados.estado?.jornada?.vinculo!=='CLT'&&!m.dados.fila.length)return null;
- return <section className="card ponto-home"><div><h2><Clock size={22}/>Meu ponto</h2><p>Registre a entrada e cada saída e retorno, incluindo café e almoço. Horário de Brasília.</p></div>
+ return <><button className="acao-grande ponto-atalho" type="button" aria-haspopup="dialog" onClick={()=>setAberto(true)}><span className="acao-icone"><Clock size={22} aria-hidden="true"/></span><span><strong>Bater ponto</strong><span>{m.proximo==='entrada'?'Registrar entrada':'Registrar saída'}{!m.online?' · sem internet':''}</span>{m.dados.fila.length>0&&<span role="status">{m.dados.fila.length} marcação(ões) pendente(s)</span>}</span></button>
+ {aberto&&<DialogoPonto fechar={()=>setAberto(false)}><section className="ponto-home"><div><h2><Clock size={22}/>Meu ponto</h2><p>Registre a entrada e cada saída e retorno, incluindo café e almoço. Horário de Brasília.</p></div>
  <button className="btn btn-primario" disabled={m.ocupado} onClick={m.bater}>Bater ponto — {m.proximo}</button>
  <p role="status">{m.dados.fila.length?`${m.dados.fila.length} marcação(ões) salva(s) neste aparelho, aguardando envio.`:'Marcações sincronizadas.'}{!m.online?' Sem internet: você pode continuar batendo ponto.':''}</p>
  {m.dados.fila.length>0&&<><button className="btn" disabled={!m.online} onClick={m.enviar}>Enviar marcações agora</button><ul>{m.dados.fila.map(b=><li key={b.pedido}>{new Date(b.ocorrido_em).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})} · {b.tipo==='entrada'?'Entrada':'Saída'} {horaPonto(b.ocorrido_em)} — pendente</li>)}</ul></>}
  {m.erro&&<p role="alert">{m.erro} {m.dados.fila.length?'As marcações pendentes continuam guardadas neste aparelho.':''}</p>}
  <div className="ponto-batidas">{m.batidas.map((b,i)=><span key={b}>{i%2?'Saída':'Entrada'} {horaPonto(b)}</span>)}</div>
- <p className="ajuda">Acesse sua conta neste aparelho antes de sair para campo. O envio ocorre com o Integração aberto e conectado, na mesma conta. Não limpe os dados do navegador enquanto houver marcações pendentes.</p></section>;
+ <p className="ajuda">Acesse sua conta neste aparelho antes de sair para campo. O envio ocorre com o Integração aberto e conectado, na mesma conta. Não limpe os dados do navegador enquanto houver marcações pendentes.</p></section></DialogoPonto>}</>;
 }
 function AcaoPonto({acao,usuarioId,fechar,salvar}){
  const [motivo,setMotivo]=useState(''),[minutos,setMinutos]=useState(''),[horas,setHoras]=useState((acao.dia.batidas||[]).map(h=>horaPonto(h).slice(0,5)).join('\n')),[erro,setErro]=useState(''),[ocupado,setOcupado]=useState(false);
