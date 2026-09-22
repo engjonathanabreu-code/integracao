@@ -82,3 +82,10 @@
 .rb .mkt-jornada .crm-form{background:var(--tema-superficie,#fff);border:1px solid #dce8e0;border-radius:16px;padding:24px;max-width:none;margin:18px 0}
 @media(max-width:800px){.rb .mkt-hero{padding:23px;gap:14px}.rb .mkt-hero-detalhe{display:none}.rb .mkt-hero h1{font-size:26px}.rb .mkt-section-head,.rb .mkt-jornada>.cabeca{align-items:start;flex-direction:column}.rb .mkt-toolbar{flex-wrap:wrap}.rb .mkt-rotina-filtros>input{flex-basis:100%}.rb .mkt-abas button{padding:13px;font-size:12px}.rb .mkt-jornada>.crm-acoes{grid-template-columns:1fr}.rb .mkt-hero-simbolo{width:48px;height:48px;border-radius:14px}}
 @media(max-width:480px){.rb .mkt-hero{padding:20px;align-items:start}.rb .mkt-hero-simbolo{display:none}.rb .mkt-dialogo{padding:20px}.rb .mkt-form-grid{grid-template-columns:1fr}.rb .mkt-grupos-quadro{grid-auto-columns:minmax(270px,85vw)}}
+
+/* The header gradient and translucent counters also need dark surfaces. */
+.rb.escuro .mkt-hero{background:linear-gradient(115deg,var(--card),var(--bg) 65%,var(--soft));border-color:var(--line)}
+.rb.escuro .mkt-hero h1{color:var(--titulo)}
+.rb.escuro .mkt-hero p{color:var(--muted)}
+.rb.escuro .mkt-hero .mkt-eyebrow{color:var(--primary-3)}
+.rb.escuro .mkt-contagem{background:var(--pill);color:var(--text)}
