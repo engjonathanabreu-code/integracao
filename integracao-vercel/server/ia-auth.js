@@ -6,9 +6,7 @@ export async function exigirUsuarioIA(req){
  const auth=await fetch(`${url}/auth/v1/user`,{headers,signal:AbortSignal.timeout(10000)});
  if(!auth.ok)throw new ErroIA('Sua sessão expirou. Entre novamente.',401);
  const user=await auth.json();
- const perfil=await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=ativo,tipo,setor`,{headers,signal:AbortSignal.timeout(10000)});
+ const perfil=await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=ativo`,{headers,signal:AbortSignal.timeout(10000)});
  if(!perfil.ok)throw new ErroIA('Não foi possível confirmar seu acesso. Tente novamente.');
- const ativo=(await perfil.json()).find(p=>p.ativo===true);
- if(!ativo)throw new ErroIA('Conta sem acesso ativo à análise de IA.',403);
- return ativo;
+ if(!(await perfil.json()).some(p=>p.ativo===true))throw new ErroIA('Conta sem acesso ativo à análise de IA.',403);
 }
