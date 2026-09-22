@@ -8301,9 +8301,9 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
           <div><label className="rot" htmlFor="adpz">Prazo final (opcional)</label><input id="adpz" disabled={!gerenciaMetas(usuario)} type="date" className="inp" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
         </div>
         <label className="rot" htmlFor="adarq" style={{ marginTop: 10 }}>Arquivos da devolutiva (PDF ou imagem)</label>
-        <input id="adarq" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa1(arr); }} />
+        <input id="adarq" disabled={!!carregando||salvando} type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) {setArquivosEtapa1(arr);setEtapa1(null);setEtapa2(null);} }} />
         <label className="rot" htmlFor="adtxt" style={{ marginTop: 10 }}>Ou cole o texto da devolutiva (opcional)</label>
-        <textarea id="adtxt" className="inp" rows={3} value={textoLivre} onChange={(e) => setTextoLivre(e.target.value)} placeholder="Cole aqui o texto recebido, se não houver arquivo digital" />
+        <textarea id="adtxt" disabled={!!carregando||salvando} className="inp" rows={3} value={textoLivre} onChange={(e) => {setTextoLivre(e.target.value);setEtapa1(null);setEtapa2(null);}} placeholder="Cole aqui o texto recebido, se não houver arquivo digital" />
         <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={!autorizado || !!carregando || salvando} onClick={rodarEtapa1}>{carregando === "etapa1" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar teor da devolutiva</button>
 
         {etapa1 && (
@@ -8326,17 +8326,23 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         )}
       </div>
 
-      {etapa1 && (
+      {(
         <div className="card" style={{ padding: 14 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 4px" }}>2. Conferência do trabalho corrigido (depois de executar o que a devolutiva pede)</h3>
+          <h3 style={{ fontSize: 15, margin: "0 0 4px" }}>2. Anexar e conferir o material corrigido</h3>
           <p className="ajuda" style={{ margin: "0 0 10px" }}>Anexe as plantas, memoriais e documentos já corrigidos. A mesma IA compara a devolutiva original com o material novo, confere item por item e lista o que ainda falta antes de responder ao município.{meta && !arquivosEtapa1.length ? ` A devolutiva original guardada com a meta (${anexosOriginais().length} arquivo(s)) vai junto.` : ""}</p>
+          {!etapa1 && <p role="status" className="ajuda">Você já pode selecionar o material corrigido. Primeiro conclua a análise da devolutiva na etapa 1 para liberar a comparação.</p>}
           <label className="rot" htmlFor="adarq2">Arquivos do trabalho corrigido (PDF ou imagem)</label>
-          <input id="adarq2" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa2(arr); }} />
-          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={!autorizado || !!carregando || salvando || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}{etapa2 ? "Conferir de novo" : "Conferir se ainda falta algo"}</button>
-          {etapa2 && <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}><RelatorioEtapa2 etapa1={etapa1} etapa2={etapa2} /></div>}
+          <input id="adarq2" disabled={!!carregando||salvando} type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) {setArquivosEtapa2(arr);setEtapa2(null);} }} />
+          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={!autorizado || !!carregando || salvando || !etapa1 || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}{etapa2 ? "Conferir de novo" : "Conferir se ainda falta algo"}</button>
+
         </div>
       )}
 
+      <section className="card" style={{padding:14,marginTop:14}}>
+        <h3 style={{fontSize:15,margin:"0 0 8px"}}>3. Relatório da comparação</h3>
+        {etapa2 ? <RelatorioEtapa2 etapa1={etapa1} etapa2={etapa2}/> : <p className="ajuda">Após conferir o material corrigido, o relatório aparece aqui, indicando o que foi atendido, o que ainda falta e o que a IA não conseguiu verificar.</p>}
+        <p className="ajuda">Clique em Salvar para guardar a análise na meta. Depois, abra “Ver relatório da IA” para consultá-la novamente.</p>
+      </section>
       {erro && <div className="msg-erro" style={{ marginTop: 12 }}>{erro}</div>}
     </Modal>
   );

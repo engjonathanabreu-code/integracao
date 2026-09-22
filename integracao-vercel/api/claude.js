@@ -1,3 +1,4 @@
+import {cabecalhosAnthropic,erroAnthropic} from '../server/anthropic.js';
 // Função da Vercel que chama a IA com a chave guardada no servidor.
 // O navegador nunca recebe a chave: ele manda o pedido para /api/claude e esta função repassa à Anthropic.
 export const config = { maxDuration: 60 };
@@ -29,13 +30,12 @@ export default async function handler(req, res) {
   try {
     const resposta = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": chave, "anthropic-version": "2023-06-01" },
+      headers: cabecalhosAnthropic(),
       body: JSON.stringify({ model: MODELO, max_tokens: Math.min(Number(corpo.max_tokens) || 1000, MAX_TOKENS), messages: corpo.messages }),
     });
     const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) {
-      const detalhe = dados && dados.error && dados.error.message;
-      return res.status(resposta.status).json({ erro: detalhe ? `a IA recusou o pedido: ${detalhe}` : `a IA respondeu com código ${resposta.status}` });
+      return res.status(resposta.status).json({ erro: erroAnthropic(dados,resposta.status) });
     }
     return res.status(200).json(dados);
   } catch (e) {
