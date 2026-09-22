@@ -55,6 +55,7 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
   const visao=preferenciaVisao.chave===chaveVisao?preferenciaVisao.modo:lerVisaoFunil(chaveVisao);
   const escolherVisao=modo=>{setPreferenciaVisao({chave:chaveVisao,modo});try{localStorage.setItem(chaveVisao,modo);}catch{/* A escolha continua disponível nesta sessão. */}};
   const [novoLead,setNovoLead]=useState(false);
+  const [avisoLead,setAvisoLead]=useState('');
   const [selecionado,setSelecionado]=useState(null),[versaoHistorico,setVersaoHistorico]=useState(0);
   const [vinculo,setVinculo]=useState(null),[clienteEscolhido,setClienteEscolhido]=useState(null);
   const acesso=acessoCRM(usuario),[aba,setAba]=useState('funil'),[busca,setBusca]=useState(''),[responsavel,setResponsavel]=useState(''),[form,setForm]=useState(null),[historico,setHistorico]=useState(null),[transferencia,setTransferencia]=useState(null);
@@ -80,7 +81,8 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
     <div className="crm-acoes"><input className="inp" aria-label="Buscar no CRM" placeholder="Nome, CPF, telefone ou município" value={busca} onChange={e=>setBusca(e.target.value)}/>{acesso.admin&&<select className="inp" aria-label="Filtrar comercial" value={responsavel} onChange={e=>setResponsavel(e.target.value)}><option value="">Todos os comerciais</option>{comerciais.map(u=><option key={u.id} value={u.erpRef}>{u.nome}</option>)}</select>}</div>
     {aba==='funil'&&<div className="crm-visoes" role="group" aria-label="Visualização do funil"><span>Visualização</span>{visoesFunil.map(([id,nome])=><button key={id} className={`btn btn-sm${visao===id?' btn-primario':''}`} aria-pressed={visao===id} onClick={()=>escolherVisao(id)}>{nome}</button>)}</div>}
     <EstadoModulo modulo={m}/>
-    {novoLead&&<CadastrarLead ocupado={m.ocupado} cancelar={()=>setNovoLead(false)} salvar={async dados=>{if(await m.executar(()=>rpcCRM('integracao_crm_cadastrar_lead',dados))){setNovoLead(false);setAba('funil');}}}/>}
+    {avisoLead&&<p role="status" className="ajuda">{avisoLead}</p>}
+    {novoLead&&<CadastrarLead comerciais={comerciais} usuario={usuario} ocupado={m.ocupado} cancelar={()=>setNovoLead(false)} salvar={async dados=>{if(await m.executar(()=>rpcCRM('integracao_crm_cadastrar_lead',dados))){setAvisoLead(`Lead cadastrado para ${comerciais.find(u=>u.erpRef===dados.p_responsavel)?.nome||'o comercial selecionado'}. Ele aparecerá no funil desse responsável.`);setNovoLead(false);setAba('funil');}}}/>}
     {acesso.admin&&<details className="crm-painel"><summary>Configurar agentes do Chatwoot</summary><AgentesChatwoot usuario={usuario} db={db}/></details>}
     {vinculo&&<section className="crm-card"><h2>Confirmar identidade de {nomeCard(vinculo)}</h2><p>Confira o titular com o contato antes de vincular o histórico. O cadastro existente será preservado.</p><BuscaClientes db={db} abrirCliente={async p=>setClienteEscolhido(p)}/>{clienteEscolhido&&<><p>Selecionado: {clienteEscolhido.codigo} · {clienteEscolhido.requerente?.nome}</p><button className="btn btn-primario" disabled={m.ocupado} onClick={async()=>{if(await m.executar(()=>rpcCRM('integracao_crm_vincular',{card:vinculo.id,cliente:clienteEscolhido.financeiroRef||clienteEscolhido.id})))setVinculo(null);}}>Identidade conferida — vincular</button></>}<button className="btn" onClick={()=>setVinculo(null)}>Cancelar</button></section>}
     {form&&!atual&&<RegistroForm key={`${form.tipo}${form.card.id}`} {...form} ocupado={m.ocupado} onSalvar={salvar} onCancelar={()=>setForm(null)}/>}

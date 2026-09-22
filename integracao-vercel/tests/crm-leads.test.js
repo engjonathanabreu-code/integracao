@@ -25,3 +25,21 @@ test('lead obrigatório, conversão atômica, remessa, identidade e permissões'
  await assert.rejects(()=>como(db,6,`insert into fin_receb_municipios(id,nome,uf) values('${id(82)}','Negado','SC')`));
  await db.exec(`update profiles set ativo=false where id='${id(2)}'`);await assert.rejects(()=>como(db,2,lead('Inativo','48999990001',id(30),id(72))));
 }finally{await db.close();}});
+
+test('atribui lead a outro comercial com autoria, repetição segura e RLS',async()=>{const db=await prepararBanco();try{
+ await db.exec(`alter table fin_receb_remessas add column codigo text,add column ativo boolean default true,add column created_at timestamptz default now();alter table integracao_moradores add column referencia_tabela text,add column criado_por uuid;alter table integracao_moradores add primary key(colecao,registro_id);`);
+ await db.exec(sql('crm-leads.sql'));await db.exec(sql('crm-lead-responsavel.sql'));
+ const lead=(destino=3,pedido=77)=>`select integracao_crm_cadastrar_lead('${id(pedido)}','Lead delegado','48999995555','${id(30)}','${id(destino)}') id`;
+ for(const destino of [1,6,999])await assert.rejects(()=>como(db,2,lead(destino)));
+ await assert.rejects(()=>como(db,6,lead()));
+ assert.equal((await como(db,2,lead()))[0].id,id(77));
+ assert.equal((await como(db,2,lead()))[0].id,id(77),'retry from creator remains idempotent');
+ await assert.rejects(()=>como(db,3,lead()),/Pedido já usado/);
+ await assert.rejects(()=>como(db,2,lead(3,78)),/Já existe/);
+ assert.equal((await como(db,2,`select id from integracao_crm_cards where id='${id(77)}'`)).length,0);
+ assert.equal((await como(db,3,`select responsavel_id from integracao_crm_cards where id='${id(77)}'`))[0].responsavel_id,id(3));
+ assert.equal((await como(db,1,`select id from integracao_crm_cards where id='${id(77)}'`)).length,1);
+ assert.equal((await db.query(`select autor_id from integracao_crm_auditoria where registro_id='${id(77)}' and acao='INSERT'`)).rows[0].autor_id,id(2));
+ await db.exec(`update profiles set ativo=false where id='${id(3)}'`);
+ await assert.rejects(()=>como(db,1,lead(3,79)),/comercial ativo/);
+ }finally{await db.close();}});
