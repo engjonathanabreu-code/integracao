@@ -62,3 +62,11 @@
 .rb .crm-visao-semi .crm-negociacao-resumo{padding:8px;font-size:11px;line-height:1.4}
 .rb .crm-visao-semi .crm-cliente-botoes{gap:5px;margin-top:9px}
 .rb .crm-visao-semi .crm-cliente-botoes .btn{padding:6px 8px;min-height:32px;font-size:10px}
+
+.rb .crm-lead-dialogo{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:26px;background:var(--card,#fff);color:var(--titulo,#213e38);box-sizing:border-box;overscroll-behavior:contain}
+.rb .crm-lead-dialogo .crm-form{max-width:none;margin:0;gap:16px}
+.rb .crm-lead-dialogo h2{font-size:22px;margin:0 44px 4px 0}
+.rb .crm-lead-dialogo .inp{width:100%;min-width:0;min-height:44px;box-sizing:border-box}
+.rb .crm-lead-dialogo .crm-acoes{display:flex;gap:10px;flex-wrap:wrap}
+.rb .crm-lead-dialogo .crm-acoes .btn{flex:1;min-height:44px}
+@media(max-width:600px){.rb .crm-lead-dialogo{padding:20px}.rb .crm-lead-dialogo .inp{font-size:16px}}

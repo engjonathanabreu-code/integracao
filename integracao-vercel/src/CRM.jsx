@@ -3,7 +3,6 @@ import NegociacaoCRM from './NegociacaoCRM.jsx';
 import {salvarNegociacaoCRM} from './crm-api.js';
 import {useState,useEffect,useRef} from 'react';
 import {X,Phone,FileText,MapPin,Layers,MessageSquare,ListTodo,Filter,UserPlus,UserX} from 'lucide-react';
-import {lerTabela} from './dados-compartilhados.js';
 import {listarCRM,criarCRM,editarCRM,rpcCRM} from './crm-api.js';
 import {ETAPAS_CRM,acessoCRM,normalizarCRM} from './crm-regras.js';
 import './crm.css';
@@ -44,10 +43,10 @@ export function HistoricoAtendimento({cardId,clienteId,usuario}) {
   </>}</section>;
 }
 
-function FichaCliente({titulo,fechar,children}) {
+function FichaCliente({titulo,fechar,children,compacta=false,ocupado=false}) {
  const ref=useRef(null);
  useEffect(()=>{const d=ref.current;d.showModal();return()=>d.close();},[]);
- return <dialog ref={ref} className="crm-ficha-dialogo" aria-label={titulo} onCancel={e=>{e.preventDefault();fechar();}}><button className="btn crm-ficha-fechar" aria-label="Fechar ficha" onClick={fechar}><X size={20}/></button>{children}</dialog>;
+ return <dialog ref={ref} className={`crm-ficha-dialogo${compacta?' crm-lead-dialogo':''}`} aria-label={titulo} onCancel={e=>{e.preventDefault();if(!ocupado)fechar();}}><button className="btn crm-ficha-fechar" aria-label={compacta?"Fechar cadastro":"Fechar ficha"} disabled={ocupado} onClick={fechar}><X size={20}/></button>{children}</dialog>;
 }
 export default function CRM({usuario,db,ir,abrirCliente}) {
   const chaveVisao=`integracao-crm-visao-v1:${usuario.erpRef||usuario.id}`;
@@ -61,10 +60,8 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
   const acesso=acessoCRM(usuario),[aba,setAba]=useState('funil'),[busca,setBusca]=useState(''),[responsavel,setResponsavel]=useState(''),[form,setForm]=useState(null),[historico,setHistorico]=useState(null),[transferencia,setTransferencia]=useState(null);
   const m=useModulo(async()=>{
     if(!acesso.comercial)return {cards:[],tarefas:[]};
-    const [cards,tarefas]=await Promise.all([listarCRM('integracao_crm_funil'),listarCRM('integracao_crm_tarefas','&concluida=eq.false')]);const ids=cards.map(c=>c.cliente_id).filter(Boolean),vinculos=[];
-    for(let i=0;i<ids.length;i+=50)vinculos.push(lerTabela('integracao_moradores','referencia_id,nucleo_id:dados->>nucleoId',`&colecao=eq.processos&referencia_id=in.(${ids.slice(i,i+50).join(',')})`));
-    const nucleos=new Map((await Promise.all(vinculos)).flat().map(v=>[v.referencia_id,v.nucleo_id]));
-    return {cards:cards.map(c=>({...c,nucleo_id:nucleos.get(c.cliente_id)||''})),tarefas};
+    const [cards,tarefas]=await Promise.all([listarCRM('integracao_crm_funil'),listarCRM('integracao_crm_tarefas','&concluida=eq.false')]);
+    return {cards,tarefas};
   },[usuario?.id],['crm','clientes','usuarios']);
   if(!acesso.comercial)return <div className="contem"><h1>CRM</h1><p>Acesso restrito ao Comercial e à administração.</p></div>;
   const comerciais=db.usuarios.filter(u=>u.ativo&&u.tipoERP==='Comercial');
@@ -82,7 +79,7 @@ export default function CRM({usuario,db,ir,abrirCliente}) {
     {aba==='funil'&&<div className="crm-visoes" role="group" aria-label="Visualização do funil"><span>Visualização</span>{visoesFunil.map(([id,nome])=><button key={id} className={`btn btn-sm${visao===id?' btn-primario':''}`} aria-pressed={visao===id} onClick={()=>escolherVisao(id)}>{nome}</button>)}</div>}
     <EstadoModulo modulo={m}/>
     {avisoLead&&<p role="status" className="ajuda">{avisoLead}</p>}
-    {novoLead&&<CadastrarLead comerciais={comerciais} usuario={usuario} ocupado={m.ocupado} cancelar={()=>setNovoLead(false)} salvar={async dados=>{if(await m.executar(()=>rpcCRM('integracao_crm_cadastrar_lead',dados))){setAvisoLead(`Lead cadastrado para ${comerciais.find(u=>u.erpRef===dados.p_responsavel)?.nome||'o comercial selecionado'}. Ele aparecerá no funil desse responsável.`);setNovoLead(false);setAba('funil');}}}/>}
+    {novoLead&&<FichaCliente titulo="Cadastrar lead" compacta ocupado={m.ocupado} fechar={()=>setNovoLead(false)}><CadastrarLead erro={m.erro} comerciais={comerciais} usuario={usuario} ocupado={m.ocupado} cancelar={()=>setNovoLead(false)} salvar={async dados=>{if(await m.executar(()=>rpcCRM('integracao_crm_cadastrar_lead',dados))){setAvisoLead(`Lead cadastrado para ${comerciais.find(u=>u.erpRef===dados.p_responsavel)?.nome||'o comercial selecionado'}. Ele aparecerá no funil desse responsável.`);setNovoLead(false);setAba('funil');}}}/></FichaCliente>}
     {acesso.admin&&<details className="crm-painel"><summary>Configurar agentes do Chatwoot</summary><AgentesChatwoot usuario={usuario} db={db}/></details>}
     {vinculo&&<section className="crm-card"><h2>Confirmar identidade de {nomeCard(vinculo)}</h2><p>Confira o titular com o contato antes de vincular o histórico. O cadastro existente será preservado.</p><BuscaClientes db={db} abrirCliente={async p=>setClienteEscolhido(p)}/>{clienteEscolhido&&<><p>Selecionado: {clienteEscolhido.codigo} · {clienteEscolhido.requerente?.nome}</p><button className="btn btn-primario" disabled={m.ocupado} onClick={async()=>{if(await m.executar(()=>rpcCRM('integracao_crm_vincular',{card:vinculo.id,cliente:clienteEscolhido.financeiroRef||clienteEscolhido.id})))setVinculo(null);}}>Identidade conferida — vincular</button></>}<button className="btn" onClick={()=>setVinculo(null)}>Cancelar</button></section>}
     {form&&!atual&&<RegistroForm key={`${form.tipo}${form.card.id}`} {...form} ocupado={m.ocupado} onSalvar={salvar} onCancelar={()=>setForm(null)}/>}

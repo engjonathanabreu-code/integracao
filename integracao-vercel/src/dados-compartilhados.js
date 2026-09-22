@@ -1,3 +1,4 @@
+import {buscarREST} from './transporte-rest.js';
 import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
@@ -26,10 +27,7 @@ export async function requisicao(path, options = {}) {
     })().finally(() => { refreshing = null; });
     await refreshing;
   }
-  const r = await fetch(`${configERP.url}/rest/v1/${path}`, { signal:AbortSignal.timeout(25000), ...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
-  const body = await r.json().catch(() => null);
-  if (!r.ok) {const erro=new Error(body?.message || `Não foi possível acessar ${path.split('?')[0]} (${r.status}).`);erro.status=r.status;throw erro;}
-  return body;
+  return buscarREST(`${configERP.url}/rest/v1/${path}`, {...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
 }
 export async function lerTabela(tabela, campos = '*', filtro = '') {
   const all = [];
