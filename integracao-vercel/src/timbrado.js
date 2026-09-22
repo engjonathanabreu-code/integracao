@@ -1,6 +1,6 @@
 import { IMAGENS_INTEGRAL_2026 } from './timbrado-integral-2026.js';
 
-export const MARGENS_PADRAO = { topo: 18, base: 16, lateral: 22 };
+export const MARGENS_PADRAO = { topo: 2, base: 2, lateral: 0 };
 
 export function timbradoPadrao() {
   return {
@@ -13,6 +13,7 @@ export function timbradoPadrao() {
 
 // Uma configuração existente, inclusive partes removidas, tem precedência.
 export function configTimbrado(config) {
+  if (config?.margens?.topo === 18 && config.margens.base === 16 && config.margens.lateral === 22) return { ...config, margens: { ...MARGENS_PADRAO } };
   return config ?? timbradoPadrao();
 }
 

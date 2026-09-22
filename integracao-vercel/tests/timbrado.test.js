@@ -39,5 +39,5 @@ test('troca de imagem na mesma chave invalida a leitura anterior', () => {
 test('alterações nas margens não modificam o modelo padrão', () => {
   const config = timbradoPadrao();
   config.margens.topo = 99;
-  assert.equal(timbradoPadrao().margens.topo, 18);
+  assert.equal(timbradoPadrao().margens.topo, 2);
 });

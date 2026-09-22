@@ -1,3 +1,4 @@
+import {documentoHtml} from './documento-formato.js';
 import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
 import {SincronizadorPonto} from './use-ponto-local.js';
@@ -1309,8 +1310,34 @@ Responda só com JSON no formato {"L1":"chave ou null"}, sem texto fora do JSON.
   return mapa;
 }
 function documentoWord(corpo, titulo) {
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escaparHtml(titulo)}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.45;margin:2cm}h1{font-size:16pt}h2{font-size:13pt;margin-top:18pt}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px}mark{background:#ffff00;color:inherit}</style></head><body>${corpo}</body></html>`;
+  return documentoHtml(corpo, titulo, { ativo: false });
 }
+function PreviaDocumento({ html, titulo, timbrado }) {
+  const [arquivo,setArquivo]=useState(null),[erro,setErro]=useState("");
+  const chaveTimbrado=JSON.stringify(timbrado);
+  useEffect(()=>{
+    let cancelado=false,url;
+    setArquivo(null);setErro("");
+    import("./documento-pdf.js").then(m=>m.gerarPdf(html,titulo,JSON.parse(chaveTimbrado))).then(blob=>{
+      if(cancelado)return;
+      url=URL.createObjectURL(blob);setArquivo(url);
+    }).catch(e=>{if(!cancelado)setErro(e.message);});
+    return ()=>{cancelado=true;if(url)URL.revokeObjectURL(url);};
+  },[html,titulo,chaveTimbrado]);
+  if(erro)return <div role="alert" className="msg-erro">{erro}</div>;
+  if(!arquivo)return <p role="status">Preparando as páginas do documento…</p>;
+  return <iframe title={`Prévia de ${titulo}`} src={`${arquivo}#view=FitH&toolbar=0`} style={{width:"100%",height:"60vh",border:"1px solid var(--line)",background:"#e8e8e8",borderRadius:8}} />;
+}
+async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
+  if(formato === "pdf") {
+    const {baixarPdf}=await import("./documento-pdf.js");
+    await baixarPdf(html,titulo,timbrado,nome);
+  } else {
+    const {baixarDocx}=await import("./documento-docx.js");
+    await baixarDocx(html,titulo,timbrado,nome);
+  }
+}
+
 function baixarArquivo(nome, conteudo, tipo) {
   const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
   const a = document.createElement("a");
@@ -8555,7 +8582,7 @@ const qualificacaoAdvogado = (a) => [
 function blocoAssinatura(d, comConjuge) {
   return `
 <p style="margin:36px 0 6px;text-align:center">${d.dataExtenso}.</p>
-<table style="width:100%;margin-top:40px"><tr>
+<table data-assinaturas="true" style="width:100%;margin-top:40px"><tr>
 <td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${d.nome}<br/>CPF ${d.cpf}</div></td>
 ${comConjuge && d.conjuge ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${d.conjuge}<br/>CPF ${d.cpfConjuge || "____________"}</div></td>` : ""}
 </tr></table>`;
@@ -8566,7 +8593,7 @@ function blocoAssinaturaTodos(d) {
   const linhas = []; for (let i = 0; i < celulas.length; i += 2) linhas.push(`<tr>${celulas.slice(i, i + 2).join("")}</tr>`);
   return `
 <p style="margin:36px 0 6px;text-align:center">${d.dataExtenso}.</p>
-<table style="width:100%;margin-top:26px">${linhas.join("")}</table>`;
+<table data-assinaturas="true" style="width:100%;margin-top:26px">${linhas.join("")}</table>`;
 }
 function valoresDocumento(d, extras = {}) {
   const qualifica = d.qualificacaoCompleta && !/\[[^\]]+\]/.test(d.qualificacaoCompleta) ? d.qualificacaoCompleta.replace(/\.$/, "") : `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no CPF sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
@@ -8588,7 +8615,7 @@ function preencherModelo(corpo, valores) {
   for (let volta = 0; volta < 3; volta++) {
     texto = texto.replace(/\{\{([a-zA-Z_]+)\}\}/g, (achado, chave) => (valores[chave] !== undefined && valores[chave] !== null ? String(valores[chave]) : achado));
   }
-  texto = texto.replace(/\{\{titulo:([\s\S]*?)\}\}/g, (a, t) => `<h1 style="text-align:center;font-size:15pt;margin:0 0 20px">${t}</h1>`);
+  texto = texto.replace(/\{\{titulo:([\s\S]*?)\}\}/g, (a, t) => `<h1 style="text-align:center;font-size:12pt;margin:0 0 24px">${t}</h1>`);
   texto = texto.replace(/\{\{p:([\s\S]*?)\}\}\s*$/gm, (a, t) => paragrafo(t));
   texto = texto.replace(/\{\{p:([\s\S]*?)\}\}/g, (a, t) => paragrafo(t));
   return texto.split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
@@ -8704,6 +8731,7 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
   const bloqueio = p.etapa < 4 ? "Disponível quando o morador chegar à etapa Projeto." : !p.qualificacaoRequerente?.quali_compromisso?.trim() ? "Preencha a qualificação de compromisso no cadastro do morador." : "";
   const [f, setF] = useState(() => ({ ...compromissoVazio(), ...(p.compromisso || {}) }));
   const [previa, setPrevia] = useState(null);
+  const [gerandoArquivo,setGerandoArquivo]=useState(false);
   useEffect(() => { setF({ ...compromissoVazio(), ...(p.compromisso || {}) }); }, [JSON.stringify(p.compromisso)]); // eslint-disable-line
   const timbrado = useTimbrado(db);
   const n = nucleoDe(db, p.nucleoId);
@@ -8719,15 +8747,19 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
   const gerar = () => {
     if (bloqueio) { setToast(bloqueio); return; }
     const dados = dadosDocumento(db, { ...p, compromisso: f }, usuario);
-    const html = aplicarTimbrado(montarDocumentoComercial("termo_compromisso", dados, db, {}), timbrado);
+    const html = montarDocumentoComercial("termo_compromisso", dados, db, {});
     setPrevia(html);
   };
-  const baixar = (formato) => {
+  const baixar = async (formato) => {
+    if(gerandoArquivo)return;
+    setGerandoArquivo(true);
+    try {
     const doc = MODELOS_DOC.termo_compromisso;
-    baixarArquivo(`${p.codigo}-termo-compromisso.${formato === "doc" ? "doc" : "html"}`, documentoWord(previa, `${doc.nome} ${p.codigo}`), formato === "doc" ? "application/msword" : "text/html;charset=utf-8");
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); if (sujo) q.compromisso = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome }; q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: "termo_compromisso", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: ITENS_COMPROMISSO.filter((i) => f.itens?.[i.id]).length + " compromisso(s)" }]; return d; },
+    await baixarDocumentoCliente(previa,`${doc.nome} ${p.codigo}`,timbrado,`${p.codigo}-termo-compromisso`,formato);
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); if (sujo) q.compromisso = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome }; q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: "termo_compromisso", formato: formato === "pdf" ? "pdf" : "docx", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: ITENS_COMPROMISSO.filter((i) => f.itens?.[i.id]).length + " compromisso(s)" }]; return d; },
       "Termo de compromisso gerado", { ...log, detalhe: `${p.codigo}` });
     setToast("Termo de compromisso baixado.");
+    } catch(e){setToast(`Não foi possível gerar o documento: ${e.message}`);} finally{setGerandoArquivo(false);}
   };
   const marcados = ITENS_COMPROMISSO.filter((i) => f.itens?.[i.id]).length;
   return (
@@ -8748,10 +8780,10 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
       </div>
       {bloqueio && <p role="status" className="ajuda">{bloqueio}</p>}
       {previa && (
-        <Modal titulo="Termo de compromisso" largura={780} onFechar={() => setPrevia(null)}
-          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" onClick={() => baixar("html")}><Download size={15} />HTML</button><button className="btn btn-primario" onClick={() => baixar("doc")}><Download size={15} />Baixar para Word</button></>}>
+        <Modal titulo="Termo de compromisso" largura={920} onFechar={() => setPrevia(null)}
+          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo} onClick={() => baixar("docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo} onClick={() => baixar("pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
           {lacunasDoDocumento(previa).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa).tracos} campo(s) em branco no texto</Tag></div>}
-          <div className="previa-doc" dangerouslySetInnerHTML={{ __html: previa }} />
+          <PreviaDocumento html={previa} titulo="Termo de compromisso" timbrado={timbrado} />
         </Modal>
       )}
     </div>
@@ -8795,29 +8827,33 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const dados = { ...dadosDocumento(db, p, usuario), advogados: (db.advogados || []).filter((a) => a.ativo !== false) };
   const sugeridos = documentosSugeridos(db, p);
   const [previa, setPrevia] = useState(null);
+  const [gerandoArquivo,setGerandoArquivo]=useState(false);
   const [confirmarProprio, setConfirmarProprio] = useState(false);
   const [escolherProc, setEscolherProc] = useState(null);
   const timbrado = useTimbrado(db);
   const gerar = (doc, procuradoresEscolhidos) => {
     const lista = (procuradoresEscolhidos || []).map((id) => (db.advogados || []).find((a) => a.id === id)).filter(Boolean);
     const texto = lista.length ? lista.map(qualificacaoAdvogado).join("; ") : "";
-    const html = aplicarTimbrado(montarDocumentoComercial(doc.id, dados, db, { procuradores: texto }), timbrado);
+    const html = montarDocumentoComercial(doc.id, dados, db, { procuradores: texto });
     setPrevia({ doc, html, procuradores: lista.map((a) => a.nome) });
   };
   const abrirDoc = (doc) => {
     if (doc.id === "procuracao") { setEscolherProc({ doc, ids: (db.advogados || []).filter((a) => a.ativo !== false).map((a) => a.id).slice(0, 1) }); return; }
     gerar(doc);
   };
-  const baixar = (doc, html, formato) => {
+  const baixar = async (doc, html, formato) => {
+    if(gerandoArquivo)return;
+    setGerandoArquivo(true);
+    try {
     const nomeArq = `${p.codigo}-${doc.id}`;
-    const corpo = documentoWord(html, `${doc.nome} ${p.codigo}`);
-    baixarArquivo(`${nomeArq}.${formato === "doc" ? "doc" : "html"}`, corpo, formato === "doc" ? "application/msword" : "text/html;charset=utf-8");
+    await baixarDocumentoCliente(html,`${doc.nome} ${p.codigo}`,timbrado,nomeArq,formato);
     mutar((d) => {
       const q = d.processos.find((x) => x.id === p.id);
-      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : "" }];
+      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, formato: formato === "pdf" ? "pdf" : "docx", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : "" }];
       return d;
     }, "Documento comercial gerado", { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${doc.nome}${doc.id === "contrato" ? `, ${resumoCondicoes(condicoes)}` : ""}` });
     setToast(`${doc.nome} baixado.`);
+    } catch(e){setToast(`Não foi possível gerar o documento: ${e.message}`);} finally{setGerandoArquivo(false);}
   };
   const gerados = p.documentosGerados || [];
   return (
@@ -8840,7 +8876,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
 
       <Secao titulo="Termo de compromisso"><TermoCompromisso db={db} p={p} usuario={usuario} podeEditar={(perm.diretor || perm.setor === "projeto") && ativo(p) && p.etapa >= 4} mutar={mutar} setToast={setToast} /></Secao>
       <SecaoDistrato db={db} p={p} usuario={usuario} pode={perm.diretor || perm.setor === "comercial"} mutar={mutar} setToast={setToast} onGerar={() => abrirDoc(DOCS_COMERCIAIS.find((d) => d.id === "distrato"))} />
-      <Secao titulo="Documentos" nota="Gerados na hora, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
+      <Secao titulo="Documentos" nota="Baixe em Word ou PDF, com os dados do cadastro e a forma de pagamento em vigor. Se a condição mudar, o documento sai atualizado."
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
         <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
           {DOCS_COMERCIAIS.map((doc) => {
@@ -8892,12 +8928,12 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
         </Modal>
       )}
       {previa && (
-        <Modal titulo={previa.doc.nome} largura={780} onFechar={() => setPrevia(null)}
-          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" onClick={() => baixar(previa.doc, previa.html, "html")}><Download size={15} />HTML</button><button className="btn btn-primario" onClick={() => baixar(previa.doc, previa.html, "doc")}><Download size={15} />Baixar para Word</button></>}>
+        <Modal titulo={previa.doc.nome} largura={920} onFechar={() => setPrevia(null)}
+          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo} onClick={() => baixar(previa.doc, previa.html, "docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo} onClick={() => baixar(previa.doc, previa.html, "pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
           {previa.doc.id === "procuracao" && previa.procuradores?.length > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">Representantes: {previa.procuradores.join(", ")}</Tag></div>}
           {lacunasDoDocumento(previa.html).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa.html).tracos} campo(s) em branco no texto</Tag></div>}
           {previa.doc.id === "contrato" && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">{resumoCondicoes(condicoes)}</Tag> <span className="ajuda" style={{ margin: 0 }}>{p.comercial ? "condição própria deste morador" : `regra do núcleo ${n?.codigo || ""}`}</span></div>}
-          <div className="previa-doc" dangerouslySetInnerHTML={{ __html: previa.html }} />
+          <PreviaDocumento html={previa.html} titulo={previa.doc.nome} timbrado={timbrado} />
         </Modal>
       )}
       {confirmarProprio && <ModalConfirmar titulo="Voltar à regra do núcleo?" texto={`A condição própria deste morador será apagada e ele volta a seguir ${n ? `a regra do ${n.codigo}` : "a regra do núcleo"}. O contrato muda junto.`} rotuloBotao="Voltar à regra" onFechar={() => setConfirmarProprio(false)} onConfirmar={() => {
@@ -9603,9 +9639,9 @@ function ConfigTimbrado({ db, usuario, mutar, setToast }) {
       </Secao>
 
       {pode && (
-        <Secao titulo="Margens do documento" nota="Distância entre o timbre e o texto, em milímetros.">
+        <Secao titulo="Margens do documento" nota="Folha A4 com margens mínimas de 3 cm acima e à esquerda, 2 cm abaixo e à direita. Os valores em milímetros abaixo reservam espaço para o timbrado; a lateral acrescenta espaço às margens da página.">
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
-            {[["topo", "Abaixo do cabeçalho"], ["base", "Acima do rodapé"], ["lateral", "Margem lateral"]].map(([k, t]) => (
+            {[["topo", "Abaixo do cabeçalho"], ["base", "Acima do rodapé"], ["lateral", "Espaço lateral adicional"]].map(([k, t]) => (
               <div key={k}>
                 <label className="rot" htmlFor={`mg-${k}`}>{t}</label>
                 <input id={`mg-${k}`} className="inp" inputMode="numeric" value={(config.margens || MARGENS_PADRAO)[k]}

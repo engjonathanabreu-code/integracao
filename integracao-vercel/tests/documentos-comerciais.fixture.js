@@ -1,0 +1,11 @@
+// Synthetic data only. Exercise the actual default templates, not copies.
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {timbradoPadrao,imagemPadrao} from '../src/timbrado.js';
+export const timbrado=timbradoPadrao();timbrado.imagens=Object.fromEntries(['cabecalho','rodape'].map(k=>[k,imagemPadrao(timbrado[k],k)]));
+const source=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
+const start=source.indexOf('const paragrafo ='),end=source.indexOf('\nfunction FormaDeVenda',start);
+const context={MODELO_MEMORIAL_NUCLEO:'',MODELO_MEMORIAL_DESCRITIVO:'',aplicarCondicionais:x=>x,expandirLacos:(html,d)=>html.replace(/\{\{elaboracao\.(\w+)\}\}/g,(_,k)=>d.elaboracao[k]),escaparHtml:x=>x};
+vm.createContext(context);vm.runInContext(source.slice(start,end)+'\nthis.modelos=MODELOS_DOC;this.montar=montarDocumentoComercial;',context);
+const dados={nome:'Maria Aparecida de Oliveira da Silva',cpf:'000.000.000-00',nacionalidade:'brasileira',estadoCivil:'casada',profissao:'atividade autônoma',rg:'0000000',endereco:'Rua das Flores, nº 123, bairro Centro',municipio:'Município Exemplo/SC',nucleo:'NUI-TESTE',unidades:'001',modalidade:'REURB-S',renda:'R$ 2.400,00',conjuge:'João Carlos de Oliveira da Silva',cpfConjuge:'111.111.111-11',dataExtenso:'Município Exemplo, 22 de setembro de 2026',pagamento:'O valor total será pago em dez parcelas mensais de R$ 240,00.',condicoes:{},dataContrato:'01/09/2026',motivo_distrato:'Encerramento solicitado pelas partes.',devolucao:'Não há multa nem devolução.',comarca_distrato:'Município Exemplo',area:'200',enderecoImovel:'Rua das Flores, nº 123',tempoPosse:'10 anos',tipoPosse:'posse',historicoPosse:'Aquisição por cessão de direitos.',qualificacaoCompromisso:'Maria Aparecida de Oliveira da Silva, CPF 000.000.000-00',compromissos:'Executar os serviços previstos no projeto.',observacao_compromisso:'Prazo de 90 dias.',elaboracao:{razaoSocial:'Integral Soluções em Engenharia',cnpj:'00.000.000/0001-00',endereco:'Município Exemplo/SC'}};
+export const documentos=Object.fromEntries(Object.keys(context.modelos).filter(k=>!k.startsWith('memorial')).map(k=>[k,context.montar(k,dados,{}, {procuradores:'Representante de teste, brasileiro(a), advogado(a)'})]));
