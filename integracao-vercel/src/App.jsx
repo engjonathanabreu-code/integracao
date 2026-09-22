@@ -1601,6 +1601,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .inp:disabled{background:var(--hover);color:var(--muted)}
 .rb .inp.erro{border-color:var(--danger);background:#FDF7F6}
 .rb .inp.ia{border-color:var(--primary-3);background:#EEF8F6}
+.rb.escuro .inp.erro,.rb.escuro .inp.ia{background:var(--card);color:var(--text)}
 .rb .rot{display:block;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px}
 .rb .ajuda{font-size:12.5px;color:var(--muted);margin-top:3px}
 .rb .msg-erro{color:var(--danger);font-size:12.5px;margin-top:3px}
