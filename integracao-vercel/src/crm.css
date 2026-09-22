@@ -70,3 +70,5 @@
 .rb .crm-lead-dialogo .crm-acoes{display:flex;gap:10px;flex-wrap:wrap}
 .rb .crm-lead-dialogo .crm-acoes .btn{flex:1;min-height:44px}
 @media(max-width:600px){.rb .crm-lead-dialogo{padding:20px}.rb .crm-lead-dialogo .inp{font-size:16px}}
+
+.rb .crm-comerciais{border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}.rb .crm-comerciais legend{padding:0 5px;font-weight:650}.rb .crm-comerciais>div{max-height:240px;overflow:auto;display:grid;gap:4px}.rb .crm-form .crm-comerciais label{display:flex;align-items:center;gap:10px;min-height:40px;padding:5px}.rb .crm-comerciais input{width:18px;height:18px;flex-shrink:0;accent-color:var(--primary)}

@@ -12,7 +12,7 @@ for(const width of [1440,390]){
  await p.waitForTimeout(2500);assert.equal(await p.evaluate(()=>window.crmTest.max),1);
  await p.getByRole('button',{name:'Cadastrar lead',exact:true}).click();const d=p.getByRole('dialog',{name:'Cadastrar lead',exact:true});await d.waitFor();
  assert.equal(await d.evaluate(el=>el.matches(':modal')),true);
- await d.getByLabel('Nome do lead').fill('Lead preservado');await d.getByLabel('Telefone',{exact:true}).fill('48999990000');await d.getByLabel('Município do lead').selectOption({index:1});await d.getByLabel('Responsável comercial',{exact:true}).selectOption({label:'Bia Comercial'});
+ await d.getByLabel('Nome do lead').fill('Lead preservado');await d.getByLabel('Telefone',{exact:true}).fill('48999990000');await d.getByLabel('Município do lead').selectOption({index:1});await d.getByRole('checkbox',{name:'Bia Comercial',exact:true}).check();
  await d.getByRole('button',{name:'Salvar lead',exact:true}).click();await d.getByRole('alert').filter({hasText:'Seus campos foram preservados'}).waitFor();assert.equal(await d.getByLabel('Nome do lead').inputValue(),'Lead preservado');assert.equal(await p.evaluate(()=>window.crmTest.writes),1);
  const box=await d.boundingBox();assert.ok(box.width<=width-20);assert.equal(await d.evaluate(el=>el.scrollWidth>el.clientWidth),false);await d.screenshot({path:`/tmp/crm-modal-${width}.png`});
  await p.evaluate(()=>window.crmTest.failWrite=false);await d.getByRole('button',{name:'Salvar lead',exact:true}).click();await d.waitFor({state:'detached'});await p.getByText(/Lead cadastrado para Bia Comercial/).waitFor();
