@@ -13,7 +13,7 @@
       "maxDuration": 300
     },
     "api/oficios-analisar.js": {
-      "maxDuration": 90
+      "maxDuration": 150
     },
     "api/financeiro-documentos.js": {
       "maxDuration": 120
@@ -22,7 +22,13 @@
       "maxDuration": 300
     },
     "api/oficios-gerar.js": {
-      "maxDuration": 90
+      "maxDuration": 150
+    },
+    "api/ia.js": {
+      "maxDuration": 150
+    },
+    "api/claude.js": {
+      "maxDuration": 150
     }
   },
   "rewrites": [

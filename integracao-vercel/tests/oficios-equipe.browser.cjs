@@ -24,7 +24,7 @@ const url=process.env.TEST_URL||'http://127.0.0.1:5187';
  const original=window.fetch;window.analisesTeste=[];
  window.fetch=async(input,options={})=>{
  const u=String(input);if(u.includes('/storage/v1/object/documentos/')&&options.method==='POST')return Response.json({});if(u.includes('/storage/v1/object/authenticated/documentos/'))return new Response(new Uint8Array(window.pdfTeste),{headers:{'Content-Type':'application/pdf'}});
- if(u==='/api/claude'){const body=JSON.parse(options.body);window.analisesTeste.push(body);const etapa2=body.messages[0].content.some(x=>x.text?.includes('TRABALHO CORRIGIDO'));return Response.json({content:[{type:'text',text:JSON.stringify(etapa2?{resumo:'Área conferida.',pronto:true,itens:[{id:'1',status:'corrigido',observacao:'Área adequada.'}],pendencias:[],naoIdentificado:[]}:{resumo:'Revisar área.',itens:[{categoria:'areas',descricao:'Corrigir área para 200 m².',statusEsperado:'Área correta.'}],naoIdentificado:[]})}]});}
+ if(u==='/api/ia'){const body=JSON.parse(options.body);window.analisesTeste.push(body);const etapa2=body.messages[0].content.some(x=>x.text?.includes('TRABALHO CORRIGIDO'));return Response.json({content:[{type:'text',text:JSON.stringify(etapa2?{resumo:'Área conferida.',pronto:true,itens:[{id:'1',status:'corrigido',observacao:'Área adequada.'}],pendencias:[],naoIdentificado:[]}:{resumo:'Revisar área.',itens:[{categoria:'areas',descricao:'Corrigir área para 200 m².',statusEsperado:'Área correta.'}],naoIdentificado:[]})}]});}
  return original(input,options);
  };
  });

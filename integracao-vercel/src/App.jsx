@@ -47,7 +47,7 @@ import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
-import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP} from './dados-compartilhados.js';
+import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -74,7 +74,12 @@ const LIMITE_OCIOSO_MS = 2 * 60 * 60 * 1000;
 const OCULTAR_CPF_MS = 2 * 60 * 1000;
 // O envio para a IA passa por uma função da Vercel, com limite de 4,5 MB por pedido
 const MAX_ARQUIVO = 25 * 1024 * 1024;
-const URL_IA = "/api/claude";
+const URL_IA = "/api/ia";
+async function cabecalhosIA(){
+  const token=await tokenTempoReal();
+  if(!token)throw new Error("Entre novamente para usar a análise de IA.");
+  return {"Content-Type":"application/json",Authorization:`Bearer ${token}`};
+}
 const TIPOS_ACEITOS = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "image/tiff", "image/bmp", "image/avif"];
 const TIPOS_NATIVOS_IA = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"];
 const EXTENSOES_ACEITAS = ".pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.tif,.tiff,.bmp,.avif";
@@ -965,7 +970,7 @@ Orientações:
 - Escreva em português do Brasil, direto, sem jargão e sem repetir o que já está nos campos.`;
   const resp = await fetch(URL_IA, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: 2000, messages: [{ role: "user", content: [bloco, { type: "text", text: instrucao }] }] }),
   });
   if (!resp.ok) { let msg = `o serviço respondeu com código ${resp.status}`; try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) { /* resposta sem JSON */ } throw new Error(msg); }
@@ -991,7 +996,7 @@ async function blocosDeArquivosIA(arquivos) {
 async function chamarIA(content, maxTokens = 4000) {
   const resp = await fetch(URL_IA, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: maxTokens, messages: [{ role: "user", content }] }),
   });
   if (!resp.ok) { let msg = `o serviço respondeu com código ${resp.status}`; try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) { /* resposta sem JSON */ } throw new Error(msg); }
@@ -1296,7 +1301,7 @@ Lacunas (id | texto antes | texto depois):
 ${lote.map((l) => `${l.id} | ${l.antes.replace(/\|/g, "/").slice(-90)} | ${l.depois.slice(0, 40)}`).join("\n")}
 Responda só com JSON no formato {"L1":"chave ou null"}, sem texto fora do JSON.`;
     const resp = await fetch(URL_IA, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: await cabecalhosIA(),
       body: JSON.stringify({ max_tokens: 1000, messages: [{ role: "user", content: instrucao }] }),
     });
     if (!resp.ok) { let msg = `o serviço respondeu com código ${resp.status}`; try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) { /* resposta sem JSON */ } throw new Error(msg); }
@@ -9315,7 +9320,7 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
         const linhas = await lerTabelaERP("profiles", "id");
         setTestes((x) => ({ ...x, erp: { ok: true, msg: `respondeu com ${linhas.length} usuário(s).` } }));
       } else {
-        const resp = await fetch(URL_IA_TESTE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ max_tokens: 16, messages: [{ role: "user", content: "Responda apenas: ok" }] }) });
+        const resp = await fetch(URL_IA_TESTE, { method: "POST", headers: await cabecalhosIA(), body: JSON.stringify({ max_tokens: 16, messages: [{ role: "user", content: "Responda apenas: ok" }] }) });
         if (!resp.ok) { const j = await resp.json().catch(() => ({})); throw new Error(j.erro || `código ${resp.status}`); }
         setTestes((x) => ({ ...x, ia: { ok: true, msg: "respondeu normalmente. A análise de documentos está pronta." } }));
       }
@@ -9785,7 +9790,7 @@ const TAMANHO_BLOCO = 256;
 const ZOOM_MIN = 3;
 const ZOOM_MAX = 19;
 const CHAVE_KML = "integracao-kml-v1-";
-const URL_IA_TESTE = typeof URL_IA === "string" ? URL_IA : "https://api.anthropic.com/v1/messages";
+const URL_IA_TESTE = URL_IA;
 const lngParaX = (lng, z) => ((lng + 180) / 360) * Math.pow(2, z);
 const latParaY = (lat, z) => {
   const r = (lat * Math.PI) / 180;

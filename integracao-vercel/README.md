@@ -20,8 +20,8 @@ Feito em React com Vite. Roda na Vercel, com uma função de servidor para a IA.
 
    | Nome | Para que serve | Obrigatória |
    |---|---|---|
-   | `ANTHROPIC_API_KEY` | Análise de documentos pela IA | sim |
-   | `ANTHROPIC_MODEL` | Trocar o modelo da IA | não |
+   | `OPENAI_API_KEY` | Análise de documentos pela IA | sim |
+   | `OPENAI_MODEL` | Modelo da IA (padrão: gpt-6-astra) | não |
    | `VITE_ERP_SUPABASE_URL` | Endereço do Supabase do ERP | não |
    | `VITE_ERP_SUPABASE_KEY` | Chave publicável do ERP | não |
    | `VITE_DEMO` | `1` liga os dados de exemplo, para treinamento | não |
@@ -43,7 +43,7 @@ Moradores e unidades estão no CRM e entram em uma segunda etapa.
 
 ## Agente de IA
 
-O navegador nunca vê a chave. Ele manda o pedido para `/api/claude`, e a função repassa à Anthropic, conferindo a origem. Cada pedido tem limite de 4,5 MB, por isso imagens grandes são reduzidas e convertidas no próprio navegador antes de subir.
+O navegador nunca vê a chave. Ele manda o pedido para `/api/ia`, e a função repassa à OpenAI Responses API, conferindo a origem e a sessão ativa do usuário. Cada pedido tem limite de 4,5 MB, por isso imagens grandes são reduzidas e convertidas no próprio navegador antes de subir.
 
 ## Mapa dos núcleos
 
@@ -60,10 +60,12 @@ npm install
 npm run dev
 ```
 
-A análise por IA só funciona publicada, porque depende da função `/api/claude`.
+A análise por IA só funciona publicada, porque depende da função `/api/ia`.
 
 ## Limites desta versão
 
 - Os dados vivem no aparelho. A gravação no Supabase do Integração ainda não foi ligada.
 - Moradores e unidades ainda não vêm do CRM.
 - O mapa precisa de internet para carregar as imagens de satélite.
+
+A rota antiga `/api/claude` é mantida somente por compatibilidade e também usa OpenAI. As variáveis Anthropic não são mais utilizadas. Configure `OPENAI_API_KEY` como segredo no servidor, sem prefixo `VITE_`, e faça novo deploy após salvar. A Responses API recebe textos, imagens e PDFs com `store: false`; respostas incompletas ou recusadas não são salvas como análises válidas.
