@@ -1568,7 +1568,7 @@ function aplicarImportacao(d, plano, selMun, selNuc) {
 /* ---------------- estilos (padrão ERP Integral) ---------------- */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-.rb.escuro{--bg:#0B1F1E;--card:#12312F;--line:#1E4744;--line2:#193B39;--muted:#9CB6B3;--primary:#2FB3A8;--primary-2:#39C6BA;--primary-3:#5FD3BF;--text:#E8F3F1;--titulo:#FFFFFF;--danger:#F08A82;--danger-bg:#3A1F1E;--ok:#5FD39B;--ok-bg:#123227;--warning:#E9B457;--warning-bg:#33270F;--pill:#1B403D;--soft:#173B38;--hover:#16403C;--sombra:0 6px 20px rgba(0,0,0,.35)}
+.rb.escuro{color-scheme:dark;--tema-superficie:var(--card);--tema-texto:var(--text);--bg:#0B1F1E;--card:#12312F;--line:#1E4744;--line2:#193B39;--muted:#9CB6B3;--primary:#2FB3A8;--primary-2:#39C6BA;--primary-3:#5FD3BF;--text:#E8F3F1;--titulo:#FFFFFF;--danger:#F08A82;--danger-bg:#3A1F1E;--ok:#5FD39B;--ok-bg:#123227;--warning:#E9B457;--warning-bg:#33270F;--pill:#1B403D;--soft:#173B38;--hover:#16403C;--sombra:0 6px 20px rgba(0,0,0,.35)}
 .rb.escuro .nav{background:linear-gradient(#0A1B1A,#10322F)}
 .rb.escuro .aba[aria-selected="true"],.rb.escuro .btn-primario{color:#07201E}
 .rb.escuro .abas-destaque .aba[aria-selected="true"]{color:#07201E}
@@ -1579,7 +1579,7 @@ const CSS = `
 .rb .mensagens{background:var(--chat-fundo,transparent)}
 .rb .mensagem{background:var(--chat-outro,var(--soft));color:var(--chat-texto-outro,inherit)}
 .rb .mensagem.minha{background:var(--chat-meu,var(--primary));color:var(--chat-texto-meu,#fff)}
-.rb{--bg:#F4F8F7;--card:#FFFFFF;--line:#D9E6E4;--line2:#E8F0EE;--muted:#6B7F7D;--primary:#0F5F5B;--primary-2:#147A74;--primary-3:#1A9A92;--text:#18302E;--titulo:#102A2A;--danger:#B63A3A;--danger-bg:#F8E5E3;--ok:#1B7B4B;--ok-bg:#E2F3E9;--warning:#B87912;--warning-bg:#F8EED8;--pill:#E8F2F1;--soft:#EDF6F5;--hover:#F8FBFA;--sombra:0 5px 18px rgba(15,95,91,.06);
+.rb{color-scheme:light;--surface:var(--card);--border:var(--line);--bg:#F4F8F7;--card:#FFFFFF;--line:#D9E6E4;--line2:#E8F0EE;--muted:#6B7F7D;--primary:#0F5F5B;--primary-2:#147A74;--primary-3:#1A9A92;--text:#18302E;--titulo:#102A2A;--danger:#B63A3A;--danger-bg:#F8E5E3;--ok:#1B7B4B;--ok-bg:#E2F3E9;--warning:#B87912;--warning-bg:#F8EED8;--pill:#E8F2F1;--soft:#EDF6F5;--hover:#F8FBFA;--sombra:0 5px 18px rgba(15,95,91,.06);
 font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;font-size:15px;line-height:1.45}
 .rb *{box-sizing:border-box}
 .rb h1,.rb h2,.rb h3{color:var(--titulo);letter-spacing:-.01em}
@@ -1689,8 +1689,8 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .layout-proc{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}
 @media (min-width:1500px){.rb .layout-proc{grid-template-columns:minmax(0,1fr) 400px;gap:22px}}
 .rb .lateral{position:sticky;top:82px}
-.rb .barra-salvar{position:fixed;left:245px;right:0;bottom:0;background:var(--titulo);color:#fff;z-index:40}
-.rb .toast{position:fixed;bottom:88px;left:calc(50% + 122px);transform:translateX(-50%);background:var(--titulo);color:#fff;padding:11px 16px;border-radius:10px;font-size:14px;z-index:90;max-width:92vw;box-shadow:0 10px 30px rgba(15,95,91,.25)}
+.rb .barra-salvar{position:fixed;left:245px;right:0;bottom:0;background:var(--text);color:var(--bg);z-index:40}
+.rb .toast{position:fixed;bottom:88px;left:calc(50% + 122px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 16px;border-radius:10px;font-size:14px;z-index:90;max-width:92vw;box-shadow:0 10px 30px rgba(15,95,91,.25)}
 .rb .modal-fundo{position:fixed;inset:0;background:rgba(16,42,42,.45);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
 .rb .modal{width:100%;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(15,95,91,.25)}
 .rb .girando{animation:girar 1s linear infinite}
@@ -1852,7 +1852,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .meta-card.compacto strong{font-size:14px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rb .meta-card.compacto .meta-card-rodape{border-top:none;padding-top:2px;font-size:12px}
 .rb .meta-card.compacto .tag{font-size:11.5px;padding:2px 7px}
-.rb .ponto-acao{position:absolute;top:8px;right:8px;width:9px;height:9px;border-radius:999px;background:var(--primary-3)}
+.rb .meta-acao-compacta{align-self:flex-start;font-size:11px;font-weight:650;color:var(--primary);background:var(--pill);padding:3px 7px;border-radius:6px}
 .rb .agenda-horas{overflow-x:hidden}
 .rb .agenda-cabecalho,.rb .faixa-prazos,.rb .corpo-agenda{display:grid;gap:4px;min-width:0}
 .rb .cabecalho-dia{display:flex;flex-direction:column;align-items:center;border:none;background:none;border-radius:10px;padding:6px 2px;font:inherit;color:var(--text);cursor:pointer}
@@ -1926,7 +1926,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (max-width:900px){.rb .layout-calendario,.rb .layout-chat{grid-template-columns:1fr}.rb .lista-conversas{max-height:230px}}
 .rb .codigo-unidade{display:inline-flex;align-items:center;font-weight:800;font-size:17px;letter-spacing:.03em;color:var(--primary);background:var(--pill);border-radius:8px;padding:4px 10px}
 .rb .memorial-texto{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:13.5px;line-height:1.55;resize:vertical;min-height:140px}
-.rb .salvar-flutuante{position:sticky;bottom:12px;z-index:20;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--titulo);color:#fff;border-radius:14px;padding:10px 14px;box-shadow:0 10px 30px rgba(15,95,91,.25)}
+.rb .salvar-flutuante{position:sticky;bottom:12px;z-index:20;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--text);color:var(--bg);border-radius:14px;padding:10px 14px;box-shadow:0 10px 30px rgba(15,95,91,.25)}
 .rb .offline{max-width:980px;margin:0 auto;padding:18px 18px 150px}
 .rb .barra-voltar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .rb .status-conexao{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-radius:15px;border:1px solid var(--line);background:var(--card);box-shadow:var(--sombra)}
@@ -2051,7 +2051,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (max-width:800px){.rb .layout-campo{grid-template-columns:1fr}.rb .lista-unidades{display:none}}
 
 @media (max-width:1100px){.rb .layout-proc{grid-template-columns:1fr}.rb .lateral{position:static}}
-@media (max-width:900px){.rb .app{grid-template-columns:1fr}.rb .nav{position:fixed;left:0;top:0;bottom:0;width:265px;z-index:70;transform:translateX(-100%);transition:transform .2s}.rb .nav.aberta{transform:none}.rb .btn-menu{display:inline-flex}.rb .barra-salvar{left:0}.rb .toast{left:50%}
+@media (max-width:900px){.rb .app{grid-template-columns:minmax(0,1fr)}.rb .nav{position:fixed;left:0;top:0;bottom:0;width:265px;z-index:70;transform:translateX(-100%);transition:transform .2s}.rb .nav.aberta{transform:none}.rb .btn-menu{display:inline-flex}.rb .barra-salvar{left:0}.rb .toast{left:50%}
  .rb .trilha{grid-template-columns:1fr 1fr;gap:16px 8px}.rb .trilha .eixo,.rb .trilha .eixo-feito{display:none}}
 @media (max-width:640px){.rb .fg{grid-template-columns:1fr}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
  .rb .trilha{grid-template-columns:1fr}.rb .estaca{flex-direction:row;gap:14px;text-align:left}.rb .estaca .nome{margin-top:0}}
@@ -2828,7 +2828,17 @@ function LegendaEtapas() { return (
       </div>
 ); }
 
-function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
+function PendenciasMunicipio({municipio,carregarMunicipio}) {
+  const [resumo,setResumo]=useState(null),[carregando,setCarregando]=useState(false),[erro,setErro]=useState('');
+  const carregar=async()=>{if(carregando)return;setCarregando(true);setErro('');try{const dados=dadosVisiveis(await carregarMunicipio(municipio.id));setResumo(resumoMoradores(dados,dados.processos.filter(p=>p.municipioId===municipio.id)));}catch(e){setErro(e.message);}finally{setCarregando(false);}};
+  return <div className="municipio-pendencias" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
+    <button className="btn btn-sm" disabled={carregando} onClick={carregar}>{carregando?'Carregando pendências…':resumo?'Atualizar pendências do município':'Carregar pendências do município'}</button>
+    {erro&&<p role="alert" className="msg-erro">{erro}</p>}
+    {resumo&&<div role="status"><p>{resumo.comPend} de {resumo.ativos} moradores com pendências</p><BarraEtapas cont={resumo.cont} ativos={resumo.ativos}/></div>}
+  </div>;
+}
+
+function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio }) {
   const ordem = useOrdenacao("nome");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [municipioPRF, setMunicipioPRF] = useState(null);
@@ -2897,7 +2907,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
-                <td>Abra Núcleos para ver pendências e etapas</td>
+                <td><PendenciasMunicipio municipio={m} carregarMunicipio={carregarMunicipio}/></td>
                 <td style={{ whiteSpace: "nowrap" }}>{ultima ? <><span style={{ fontWeight: 600 }}>{tempoRelativo(ultima.data)}</span><div className="ajuda" style={{ margin: 0 }}>{ultima.acao}</div></> : <span style={{ color: "var(--muted)" }}>sem movimentação</span>}</td>
                 <td><button className="btn btn-sm" onKeyDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMunicipioPRF(m.id); }}><FileText size={14} />Dados do PRF ({pendenciasMunicipioPRF(m.prf || {}).length} pendentes)</button></td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}><BotaoArquivar colecao="municipios" registro={m} /></td>
@@ -4528,7 +4538,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           <div className="flex flex-wrap items-center justify-between gap-2" style={{ maxWidth: 1320, margin: "0 auto", padding: "12px 26px" }}>
             <span>{alterados.length} {alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro</span>
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "#fff", borderColor: "rgba(255,255,255,.35)" }} onClick={() => { setRascunho(extrair(p)); setIaPaths([]); }}>Descartar</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} onClick={() => { setRascunho(extrair(p)); setIaPaths([]); }}>Descartar</button>
               <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} onClick={salvar}><Check size={16} />Salvar alterações</button>
             </div>
           </div>
@@ -10451,7 +10461,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         </span>
         {!compacto && <span className="ajuda meta-resp" style={{ margin: 0 }}>{(m.responsaveis || []).map(nomeUsuario).join(", ") || "Sem responsável"}</span>}
         {acao && !compacto && <span className={`acao-meta${acao === "Aguardando aprovação" ? " pendente" : ""}`}>{acao}</span>}
-        {acao && compacto && <span className="ponto-acao" title={acao} aria-label={acao} />}
+        {acao && compacto && <span className="meta-acao-compacta">{acao}</span>}
       </button>
       {acoesOrdem && (
         <span className="ordem-card">
@@ -11918,7 +11928,7 @@ export default function App() {
     if (!ficha || ficha._resumo) throw new Error('Não foi possível carregar a ficha deste cliente. Tente novamente.');
     await ir({ pag: "processo", id: ficha.id, aba: "cadastro" });
   };
-  const props = { abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const props = { carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home"].includes(rota.pag);
 
   return (
@@ -11964,7 +11974,7 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
+          {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}

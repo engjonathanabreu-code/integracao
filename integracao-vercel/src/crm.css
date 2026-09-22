@@ -2,21 +2,21 @@
 .rb .crm-cliente-card{padding:18px;border-radius:15px;border-color:#dce7e3;box-shadow:0 3px 9px #123e3b05}
 .rb .crm-cliente-abrir{display:block;width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer;color:inherit;font:inherit}
 .rb .crm-cliente-abrir h3{font-size:15px;font-weight:700;line-height:1.45;margin:8px 0 15px}
-.rb .crm-ficha-legenda{font-size:10px;font-weight:750;letter-spacing:1px;text-transform:uppercase;color:#23746f}
+.rb .crm-ficha-legenda{font-size:10px;font-weight:750;letter-spacing:1px;text-transform:uppercase;color:var(--tema-texto,#23746f)}
 .rb .crm-ficha-dados{margin:14px 0 20px;display:grid;grid-template-columns:1fr;gap:0}
 .rb .crm-ficha-dados>div{display:flex;align-items:start;justify-content:space-between;gap:12px;border-bottom:1px solid #e4ebe8;padding:11px 0;font-size:12px}
-.rb .crm-ficha-dados dt{display:flex;gap:6px;align-items:center;color:#7a8985;flex-shrink:0}
-.rb .crm-ficha-dados dd{text-align:right;margin:0;color:#25443d;font-weight:550;overflow-wrap:anywhere;min-width:0}
-.rb .crm-cliente-card>label{display:grid;gap:7px;font-size:11px;color:#74867f}
+.rb .crm-ficha-dados dt{display:flex;gap:6px;align-items:center;color:var(--tema-texto,#7a8985);flex-shrink:0}
+.rb .crm-ficha-dados dd{text-align:right;margin:0;color:var(--tema-texto,#25443d);font-weight:550;overflow-wrap:anywhere;min-width:0}
+.rb .crm-cliente-card>label{display:grid;gap:7px;font-size:11px;color:var(--tema-texto,#74867f)}
 .rb .crm-cliente-card .inp{width:100%;font-size:12px}
 .rb .crm-cliente-botoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .rb .crm-cliente-card .crm-cliente-botoes .btn{font-size:11px;padding:8px 10px;flex:1 1 auto;justify-content:center}
-.rb .crm-ficha-dialogo{width:min(1180px,calc(100vw - 30px));max-height:92vh;border:1px solid #dce7e3;border-radius:20px;padding:30px;background:#fff;color:#213e38;box-shadow:0 24px 90px #123e3b35}
+.rb .crm-ficha-dialogo{width:min(1180px,calc(100vw - 30px));max-height:92vh;border:1px solid #dce7e3;border-radius:20px;padding:30px;background:var(--tema-superficie,#fff);color:var(--tema-texto,#213e38);box-shadow:0 24px 90px #123e3b35}
 .rb .crm-ficha-dialogo::backdrop{background:#103b3970}
 .rb .crm-ficha-fechar{position:absolute;right:20px;top:18px;padding:8px}
 .rb .crm-ficha-cabeca{padding:0 40px 22px 0;margin-bottom:22px;border-bottom:1px solid #e1e9e5}
 .rb .crm-ficha-cabeca h2{font-size:23px;line-height:1.4;font-weight:700;margin:9px 0 12px}
-.rb .crm-ficha-cabeca p{font-size:13px;color:#7b8984;margin:0}
+.rb .crm-ficha-cabeca p{font-size:13px;color:var(--tema-texto,#7b8984);margin:0}
 .rb .crm-ficha-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
 .rb .crm-ficha-painel{border:1px solid #dfe7e3;border-radius:16px;padding:22px;margin-bottom:18px;min-width:0}
 .rb .crm-ficha-painel h3{font-size:17px;font-weight:700;margin:12px 0 20px}
@@ -24,7 +24,7 @@
 .rb .crm-ficha-painel .crm-ficha-dados>div{flex-direction:column;gap:6px;padding:13px 0}
 .rb .crm-ficha-painel .crm-ficha-dados dd{text-align:left;font-size:14px}
 .rb .crm-ficha-painel .crm-ficha-nome{grid-column:1/-1}
-.rb .crm-ficha-painel>label{display:grid;gap:8px;font-size:12px;color:#74867f}
+.rb .crm-ficha-painel>label{display:grid;gap:8px;font-size:12px;color:var(--tema-texto,#74867f)}
 .rb .crm-ficha-painel .inp{width:100%}
 .rb .crm-ficha-painel .crm-form{max-width:none;border-top:1px solid #e5ece8;padding-top:15px;font-size:12px}
 .rb .crm-ficha-painel .crm-form h3{font-size:14px;line-height:1.5;margin:0 0 5px}
@@ -32,7 +32,7 @@
 .rb .crm-ficha-painel .crm-painel h2{font-size:16px;font-weight:700;margin-bottom:16px}
 .rb .crm-ficha-painel .crm-mensagem{font-size:13px;line-height:1.6}
 .rb .crm-ficha-relato{white-space:pre-wrap;font-size:13px;line-height:1.6}
-.rb .crm-ficha-painel details{margin-top:18px;font-size:12px;color:#5a7970}
+.rb .crm-ficha-painel details{margin-top:18px;font-size:12px;color:var(--tema-texto,#5a7970)}
 .rb .crm-ficha-painel summary{cursor:pointer}
 @media(max-width:800px){.rb .crm-ficha-layout{grid-template-columns:1fr}.rb .crm-ficha-layout>aside{grid-row:1}.rb .crm-ficha-dialogo{padding:20px}.rb .crm-ficha-cabeca h2{font-size:20px}}
 @media(max-width:450px){.rb .crm-ficha-painel{padding:16px}.rb .crm-ficha-painel .crm-ficha-dados{grid-template-columns:1fr}}
