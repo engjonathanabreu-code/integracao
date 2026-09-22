@@ -1,7 +1,7 @@
 import {normalizar} from './requisitos-moradores.js';
 import {dadosVisiveis} from './arquivamento.js';
 
-export function reunirClientes(clientes, complementos, db) {
+export function reunirClientes(clientes, complementos, db, incluirArquivados=false) {
   const porReferencia = new Map(complementos.filter(e => e.referencia_id).map(e => [e.referencia_id, e]));
   const usados = new Set();
   const registros = clientes.map(c => {
@@ -16,7 +16,7 @@ export function reunirClientes(clientes, complementos, db) {
     if (p.financeiroRef) unicos.delete(idsPorReferencia.get(p.financeiroRef));
     unicos.set(p.id, p);
   }
-  return dadosVisiveis({...db, processos:[...unicos.values()]}).processos;
+  return incluirArquivados?[...unicos.values()]:dadosVisiveis({...db, processos:[...unicos.values()]}).processos;
 }
 
 export function filtrarClientes(clientes, busca, municipioId) {

@@ -1,4 +1,5 @@
 export const GRUPOS_TEMPO_REAL={
+ financeiro:['fin_receb_parcelas','fin_receb_importacoes'],
  clientes:['fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','integracao_municipios','integracao_remessas','integracao_moradores'],
  processos:['processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','integracao_nucleos'],
  metas:['integracao_oficios','integracao_oficios_sequencias','metas','meta_setores','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','meta_arquivos','integracao_metas','ordens_servico','ordem_servico_comentarios','integracao_ordens_servico'],

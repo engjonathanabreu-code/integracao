@@ -45,6 +45,8 @@ if(new URLSearchParams(location.search).has('busca')) {
   base.fin_receb_clientes.push({id:id(201),nome:'João Comércio Ltda',codigo:'TST02_002',municipio_id:id(2),remessa_id:null,ativo:true}, {id:id(202),nome:'João Avulso',codigo:'AVU_003',municipio_id:null,remessa_id:null,ativo:true});
   base.integracao_moradores.push({colecao:'processos',registro_id:id(201),referencia_tabela:'fin_receb_clientes',referencia_id:id(201),dados:{requerente:{tipoPessoa:'juridica'}}});
 }
+if(new URLSearchParams(location.search).has('financeiroTeste'))base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_id:id(4),referencia_tabela:'fin_receb_clientes',dados:{nucleoId:id(5)}});
+base.fin_receb_parcelas=[{id:id(301),cliente_id:id(4),numero:1,vencimento:'2026-10-10',valor_previsto:100,juros:2,multa:3,valor_liquidado:0,status:'Pendente',tipo:'Parcela',versao:1,ativo:true}];
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiroTeste');
@@ -53,8 +55,9 @@ base.integracao_acessos=[];
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
+window.finRequests=[];
 window.fetch=async(input,options={})=>{
-  const url=new URL(typeof input==='string'?input:input.url,location.href);
+  const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);
   if(oficiosFixture){const r=oficiosFixture(url,options,json);if(r!==undefined)return r;}
   if(url.pathname==='/api/resumo-moradores'){const {contexto}=JSON.parse(options.body);return json({resumo:compactarResumo(resumirMoradores({clientes:base.fin_receb_clientes,complementos:base.integracao_moradores},contexto))});}
   if(url.pathname==='/api/ler-matricula'&&new URLSearchParams(location.search).has('leitor'))return json({arquivo:'matricula-ficticia.pdf',hash:'fixture-sha256',modelo:'Leitor de teste',analisadoEm:new Date().toISOString(),dados:{matricula:{numero:'12345',cartorio:'Cartório de teste',comarca:'Município teste'},proprietario:{nome:'Proprietário fictício'},imovel:{area_registral:200,unidade_area:'m2',descricao:'Imóvel fictício para conferência'},historico_registro:[{ato:'R.1',tipo:'Usucapião',para:'Proprietário fictício',data:'01/02/2020',descricao:'Registro fictício de usucapião.'}],evidencias:[{campo:'numero',trecho:'Matrícula 12345',pagina:1}],alertas:['Dados fictícios: conferir antes de salvar.']}});
@@ -71,6 +74,9 @@ window.fetch=async(input,options={})=>{
     return new Response(objects.get(path)||'');
   }
   if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:inicio?[]:base.integracao_moradores.filter(e=>base.fin_receb_clientes.some(c=>c.id===e.referencia_id&&c.municipio_id===municipio)),total:0});}
+  if(url.pathname.endsWith('/rpc/integracao_contagens_clientes'))return json(base.fin_receb_clientes.map(c=>({municipio_id:c.municipio_id,remessa_id:c.remessa_id,total:1,ativos:c.ativo===false?0:1})));
+  if(url.pathname.endsWith('/rpc/integracao_financeiro_resumo'))return json([{municipio_id:id(2),remessa_id:id(3),nucleo_id:id(5),clientes:1,parcelas:1,pagas:base.fin_receb_parcelas[0].status==='Pago'?1:0,previsto:105,recebido:base.fin_receb_parcelas[0].valor_liquidado}]);
+  if(url.pathname.endsWith('/rpc/integracao_financeiro_editar')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);if(p.versao!==b.p_versao)return json({message:'Esta parcela mudou. Atualize antes de salvar.'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
@@ -88,7 +94,8 @@ window.fetch=async(input,options={})=>{
   const table=url.pathname.endsWith('/rpc/integracao_eventos')?'erp_eventos':url.pathname.split('/').at(-1);
   if(table in base) {
     let rows=base[table];const id=url.searchParams.get('id');if(id?.startsWith('eq.'))rows=rows.filter(r=>r.id===id.slice(3));
-    for(const k of ['referencia_id','registro_id','colecao']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3));if(filtro?.startsWith('in.('))rows=rows.filter(r=>filtro.slice(4,-1).split(',').includes(r[k])); }
+    for(const k of ['referencia_id','registro_id','colecao','municipio_id','remessa_id','cliente_id']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3));if(filtro?.startsWith('in.('))rows=rows.filter(r=>filtro.slice(4,-1).split(',').includes(r[k])); }
+    if(table==='integracao_moradores' && url.searchParams.get('select')==='referencia_id,nucleo:dados->>nucleoId')rows=rows.map(e=>({referencia_id:e.referencia_id,nucleo:e.dados?.nucleoId}));
     if(table==='integracao_moradores' && url.searchParams.get('select')==='referencia_id,nucleo_id:dados->>nucleoId')rows=rows.map(e=>({referencia_id:e.referencia_id,nucleo_id:e.dados?.nucleoId}));
     if(table==='integracao_moradores' && url.searchParams.get('select')?.includes('nome:dados')) rows=rows.map(e=>({registro_id:e.registro_id,referencia_id:e.referencia_id,nome:e.dados?.requerente?.nome,tipoPessoa:e.dados?.requerente?.tipoPessoa,municipioId:e.dados?.municipioId,remessaId:e.dados?.remessaId,nucleoId:e.dados?.nucleoId,codigo:e.dados?.codigo,arquivamento:e.dados?.extras?.arquivamento}));
     const offset=Number(url.searchParams.get('offset')||0);return json(rows.slice(offset,offset+Number(url.searchParams.get('limit')||500)));

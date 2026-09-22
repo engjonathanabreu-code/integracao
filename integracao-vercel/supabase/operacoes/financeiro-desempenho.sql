@@ -1,0 +1,7 @@
+begin;
+alter policy fin_receb_parcelas_admin_financeiro on public.fin_receb_parcelas using((select public.can_access_fin_recebimentos())) with check((select public.can_access_fin_recebimentos()));
+create or replace function public.integracao_financeiro_resumo(p_inicio date,p_fim date) returns table(municipio_id uuid,remessa_id uuid,nucleo_id text,clientes bigint,parcelas bigint,pagas bigint,previsto numeric,recebido numeric) language sql stable security invoker set search_path='' as $$
+with extras as materialized(select distinct on(referencia_id) referencia_id,dados->>'nucleoId' nucleo_id from public.integracao_moradores where colecao='processos' and referencia_id is not null order by referencia_id,registro_id), pagos as (select cliente_id,count(*) parcelas,count(*) filter(where status='Pago') pagas,sum(valor_previsto+juros+multa) previsto,sum(coalesce(valor_liquidado,0)) recebido from public.fin_receb_parcelas where ativo and status<>'Cancelado' and vencimento>=p_inicio and vencimento<p_fim group by cliente_id)
+select c.municipio_id,c.remessa_id,coalesce(e.nucleo_id,''),count(*),coalesce(sum(p.parcelas),0)::bigint,coalesce(sum(p.pagas),0)::bigint,coalesce(sum(p.previsto),0),coalesce(sum(p.recebido),0)
+from public.fin_receb_clientes c left join pagos p on p.cliente_id=c.id left join extras e on e.referencia_id=c.id where c.ativo group by c.municipio_id,c.remessa_id,coalesce(e.nucleo_id,'')$$;
+commit;

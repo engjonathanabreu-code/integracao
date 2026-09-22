@@ -1,3 +1,4 @@
+import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
 import {SincronizadorPonto} from './use-ponto-local.js';
 import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
@@ -1329,6 +1330,12 @@ function resumoMoradores(db, ps) {
   const cont = Array(TOTAL + 1).fill(0);
   at.forEach((p) => { cont[p.etapa]++; });
   return { total: ps.length, ativos: at.length, comPend: at.filter((p) => pendencias(db, p).length > 0).length, cont };
+}
+function contagemClientes(db, municipioId, remessaId) {
+  const rows=(db._contagensClientes||[]).filter(r=>(!municipioId||r.municipio_id===municipioId)&&(remessaId===undefined||r.remessa_id===remessaId));
+  if(db._contagensClientes)return {total:rows.reduce((n,r)=>n+Number(r.total),0),ativos:rows.reduce((n,r)=>n+Number(r.ativos),0),cont:[],comPend:null};
+  const ps=db.processos.filter(p=>(!municipioId||p.municipioId===municipioId)&&(remessaId===undefined||p.remessaId===remessaId));
+  return {total:ps.length,ativos:soAtivos(ps).length,cont:[],comPend:null};
 }
 const codigoNorm = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/\d+/g, (d) => String(parseInt(d, 10)));
 const proximoCodigoNucleo = (db, municipioId, remessaId) => {
@@ -2831,10 +2838,10 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
   const ufs = ["Todas", ...Array.from(new Set(db.municipios.map((m) => m.uf))).sort()];
   const linhas = db.municipios
     .filter((m) => (uf === "Todas" || m.uf === uf) && normalizar(`${m.nome} ${m.prefixo}`).includes(normalizar(busca)))
-    .map((m) => ({ m, remessas: db.remessas.filter((r) => r.municipioId === m.id).length, nucleos: db.nucleos.filter((n) => n.municipioId === m.id).length, ultima: db.auditoria.find((a) => a.municipioId === m.id && a.usuarioId), ...resumoMoradores(db, db.processos.filter((p) => p.municipioId === m.id)) }))
+    .map((m) => ({ m, remessas: db.remessas.filter((r) => r.municipioId === m.id).length, nucleos: db.nucleos.filter((n) => n.municipioId === m.id).length, ultima: db.auditoria.find((a) => a.municipioId === m.id && a.usuarioId), ...contagemClientes(db, m.id) }))
     .sort((a, b) => a.m.nome.localeCompare(b.m.nome));
   const sugestoes = busca ? linhas.slice(0, 8) : [];
-  const tot = { nucleos: db.nucleos.length, moradores: soAtivos(db.processos).length };
+  const tot = { nucleos: db.nucleos.length, moradores: contagemClientes(db).ativos };
   return (
     <div className="contem">
       <div className="cabeca">
@@ -2881,7 +2888,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
       </div>
       <div className="card rolagem">
         <table className="tab">
-          <thead><tr>{ordem.cabecalho("nome", "Município")}{ordem.cabecalho("remessas", "Remessas")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("ultima", "Última movimentação")}<th>PRF</th><th><span className="sr-only">Ações</span></th></tr></thead>
+          <thead><tr>{ordem.cabecalho("nome", "Município")}{ordem.cabecalho("remessas", "Remessas")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}<th>Detalhes</th>{ordem.cabecalho("ultima", "Última movimentação")}<th>PRF</th><th><span className="sr-only">Ações</span></th></tr></thead>
 
           <tbody>
             {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
@@ -2890,8 +2897,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
-                <td>{ativos ? (comPend ? <Tag tipo="pend">{comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
-                <td><BarraEtapas cont={cont} ativos={ativos} /></td>
+                <td>Abra Núcleos para ver pendências e etapas</td>
                 <td style={{ whiteSpace: "nowrap" }}>{ultima ? <><span style={{ fontWeight: 600 }}>{tempoRelativo(ultima.data)}</span><div className="ajuda" style={{ margin: 0 }}>{ultima.acao}</div></> : <span style={{ color: "var(--muted)" }}>sem movimentação</span>}</td>
                 <td><button className="btn btn-sm" onKeyDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMunicipioPRF(m.id); }}><FileText size={14} />Dados do PRF ({pendenciasMunicipioPRF(m.prf || {}).length} pendentes)</button></td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}><BotaoArquivar colecao="municipios" registro={m} /></td>
@@ -2901,7 +2907,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast }) {
           </tbody>
         </table>
       </div>
-      <LegendaEtapas />
+
       {municipioPRF && <Modal titulo="Dados do PRF" largura={900} onFechar={() => setMunicipioPRF(null)}><FormularioDadosPRF key={municipioPRF} municipio={municipioDe(db, municipioPRF)} dados={municipioDe(db, municipioPRF)?.prf} podeEditar={cad.perm.estrutura} aoFechar={() => setMunicipioPRF(null)} aoSalvar={(prf) => {
         if (!cad.perm.estrutura) throw new Error("Sem permissão");
         return mutar((d) => { const m = municipioDe(d, municipioPRF); m.prf = unirCampos(m.prf, prf); return d; }, "Dados do PRF atualizados", { municipioId: municipioPRF });
@@ -2920,10 +2926,10 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
   if (!m) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Município não encontrado.</p></div>;
   const perm = cad.perm;
   const remessas = db.remessas.filter((r) => r.municipioId === m.id).sort((a, b) => a.numero - b.numero);
-  const resumoRemessas = new Map(remessas.map(r => [r.id, resumoMoradores(db, db.processos.filter(p=>p.remessaId === r.id))]));
+  const resumoRemessas = new Map(remessas.map(r => [r.id, contagemClientes(db, m.id, r.id)]));
   const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
   const qtdNucleos = db.nucleos.filter((n) => n.municipioId === m.id).length;
-  const rs = resumoMoradores(db, db.processos.filter((p) => p.municipioId === m.id));
+  const rs = contagemClientes(db, m.id);
   const ajustes = ajustesDoMunicipio(db, m.id);
   const temAjusteAlgum = !!(ajustes && (ajustes.regrasIA || ajustes.checklistCampo || ajustes.prf));
   return (
@@ -2953,20 +2959,19 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
           <Secao titulo="Remessas" acao={<BotaoArquivo municipioId={m.id} />}>
             <div className="rolagem" style={{ margin: "-4px -18px -18px" }}>
               <table className="tab">
-                <thead><tr>{ordem.cabecalho("nome", "Remessa")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("semNucleo", "Sem núcleo")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("andamento", "Andamento")}{ordem.cabecalho("criada", "Criada em")}<th><span className="sr-only">Ações</span></th></tr></thead>
+                <thead><tr>{ordem.cabecalho("nome", "Remessa")}{ordem.cabecalho("nucleos", "Núcleos")}{ordem.cabecalho("moradores", "Moradores")}<th>Detalhes</th>{ordem.cabecalho("criada", "Criada em")}<th><span className="sr-only">Ações</span></th></tr></thead>
                 <tbody>
                   {ordem.ordenar(remessas, { nome:r=>nomeRemessa(db,r), nucleos:r=>db.nucleos.filter(n=>n.remessaId === r.id).length, moradores:r=>resumoRemessas.get(r.id).ativos, semNucleo:r=>db.processos.filter(p=>p.remessaId === r.id && ativo(p) && !p.nucleoId).length, pendencias:r=>resumoRemessas.get(r.id).ativos ? resumoRemessas.get(r.id).comPend : null, andamento:r=>{ const x=resumoRemessas.get(r.id);return x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null; }, criada:r=>r.criada }).map((r) => {
                     const ps = db.processos.filter((p) => p.remessaId === r.id);
-                    const x = resumoMoradores(db, ps);
+                    const x = contagemClientes(db, m.id, r.id);
                     const semNuc = soAtivos(ps).filter((p) => !p.nucleoId).length;
                     return (
                       <tr key={r.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "remessa", id: r.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "remessa", id: r.id }); }}>
                         <td><strong style={{ color: "var(--titulo)" }}>{nomeRemessa(db, r)}</strong>{r.titulo && <div className="ajuda" style={{ margin: 0 }}>{r.titulo}</div>}</td>
                         <td>{db.nucleos.filter((n) => n.remessaId === r.id).length}</td>
                         <td><strong style={{ fontWeight: 650 }}>{x.ativos}</strong></td>
-                        <td>{semNuc ? <Tag tipo="pend">{semNuc}</Tag> : "0"}</td>
-                        <td>{x.ativos ? (x.comPend ? <Tag tipo="pend">{x.comPend}</Tag> : <Tag tipo="ok">nenhum</Tag>) : "—"}</td>
-                        <td><BarraEtapas cont={x.cont} ativos={x.ativos} /></td>
+
+                        <td>Abra Núcleos para ver pendências e etapas</td>
                         <td>{dataBR(r.criada)}</td>
                         <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{perm.estrutura && <button className="btn-icone" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })} aria-label={`Editar ${nomeRemessa(db, r)}`}><Pencil size={14} /></button>}<BotaoArquivar colecao="remessas" registro={r} /></td>
                       </tr>
@@ -2977,12 +2982,12 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
             </div>
           </Secao>
         )}
-        {remessas.length > 0 && <LegendaEtapas />}
+
         {semRemessa.length > 0 && (
           <div>
             <h3 style={{ margin: "8px 0 4px", fontSize: 17 }}>{remessas.length ? "Núcleos sem remessa" : "Núcleos"}</h3>
             <p className="ajuda" style={{ margin: "0 0 10px" }}>{remessas.length ? "Núcleos importados ou criados sem remessa. Coloque-os em uma remessa para cadastrar moradores." : "Núcleos importados ou criados direto no município."}</p>
-            <TabelaNucleos db={db} nucleos={semRemessa} ir={ir} perm={perm} onEditar={(n) => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })} onVincular={remessas.length ? (n) => cad.abrir({ tipo: "vincular", nucleo: n }) : null} />
+            <div className="flex flex-col gap-2">{semRemessa.map(n=><div className="card flex flex-wrap items-center gap-2" style={{padding:12}} key={n.id}><button className="btn" onClick={()=>ir({pag:"nucleo",id:n.id})}>{nomeNucleo(n)}<ChevronRight size={15}/></button><span className="ajuda">Abra o núcleo para consultar moradores e pendências.</span>{perm.estrutura&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"nucleo",municipio:m,inicial:n})}><Pencil size={14}/>Editar</button>}{perm.estrutura&&remessas.length>0&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"vincular",nucleo:n})}>Vincular remessa</button>}<BotaoArquivar colecao="nucleos" registro={n}/></div>)}</div>
           </div>
         )}
         {!remessas.length && !semRemessa.length && <p style={{ color: "var(--muted)" }}>Nada cadastrado ainda neste município.</p>}
@@ -4477,6 +4482,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["cadastro", "Cadastro", UserPlus, 0, sujo ? "não salvo" : ""],
               ["unidades", "Unidade" + (unidadesDe(p).length > 1 ? "s" : ""), MapPin, unidadesDe(p).length > 1 ? unidadesDe(p).length : 0],
               ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
+              ["financeiro", "Financeiro", Landmark, 0],
               ["atendimentosCRM", "Atendimentos", MessageSquare, 0],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
@@ -4503,6 +4509,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </span>
             </div>
           )}
+          {aba === "financeiro" && <FinanceiroCliente p={p} usuario={usuario} />}
           {aba === "atendimentosCRM" && <HistoricoAtendimento usuario={usuario} clienteId={p.financeiroRef || p.id} />}
       {aba === "comercial" && <AbaComercialCliente db={db} p={p} usuario={usuario} ir={irComCuidado} mutar={mutar} setToast={setToast} />}
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -7342,54 +7349,10 @@ function pendenciasDoUsuario(db, u) {
     itens.push({ id: `meta_${m.id}`, tipo: aprovar ? "Aprovar meta" : "Meta", data: `${m.prazo || hoje}T12:00:00.000Z`, prazo: true, titulo: m.titulo, detalhe: `${m.setor}${nId ? `, ${rotuloNucleo(db, nId)}` : ""}. ${m.status}`, alerta: m.prazo && m.prazo < hoje, rota: nId ? { pag: "nucleo", id: nId, aba: "metas" } : null });
   });
   if (perm.setor === "consulta") return itens.sort((a, b) => a.data.localeCompare(b.data));
-  db.nucleos.forEach((n) => {
-    if (n.etapa >= TOTAL_NUCLEO) return;
-    const et = NUCLEO_ETAPAS[n.etapa];
-    if (!doSetor(et.id) || !db.processos.some((p) => p.nucleoId === n.id && ativo(p))) return;
-    const pend = pendenciasNucleo(db, n);
-    const proprios = pend.filter((r) => r.id !== "moradores");
-    if (pend.length && !proprios.length) return;
-    itens.push({ id: `nuc_${n.id}`, tipo: pend.length ? "Requisitos do núcleo" : "Dar o ok do núcleo", data: dataEntradaEtapaNucleo(db, n), titulo: `${rotuloNucleo(db, n)}, etapa ${et.nome}`, detalhe: pend.length ? `Falta: ${proprios.map((r) => r.label).join(", ")}` : "Tudo cumprido. Falta dar o ok para seguir.", rota: { pag: "nucleo", id: n.id } });
-  });
-  const grupos = {};
-  db.processos.forEach((p) => {
-    if (!ativo(p) || p.etapa >= TOTAL) return;
-    const et = ETAPAS[p.etapa];
-    if (!doSetor(et.id)) return;
-    const n = nucleoDe(db, p.nucleoId);
-    if (bloqueioPeloNucleo(p, n)) return;
-    const chave = `${p.nucleoId || `sem_${p.remessaId}`}|${p.etapa}`;
-    const g = grupos[chave] || (grupos[chave] = { n, p0: p, et, comPend: 0, prontos: 0, data: null });
-    if (pendencias(db, p).length) g.comPend++; else g.prontos++;
-    const d = dataEntradaEtapaMorador(db, p);
-    if (!g.data || d < g.data) g.data = d;
-  });
-  Object.entries(grupos).forEach(([k, g]) => itens.push({
-    id: `grp_${k}`, tipo: g.et.nome, data: g.data,
-    titulo: g.n ? rotuloNucleo(db, g.n) : `${nomeRemessa(db, remessaDe(db, g.p0.remessaId))}, sem núcleo`,
-    detalhe: [g.comPend && `${g.comPend} ${g.comPend === 1 ? "morador com pendência" : "moradores com pendência"}`, g.prontos && `${g.prontos} ${g.prontos === 1 ? "pronto" : "prontos"} para concluir`].filter(Boolean).join(", ") + ` na etapa ${g.et.nome}`,
-    rota: g.n ? { pag: "nucleo", id: g.n.id, aba: "pendencias" } : { pag: "nucleo", semNucleo: g.p0.remessaId, aba: "pendencias" },
-  }));
-  if (perm.validarDocs) {
-    const docs = {};
-    db.processos.filter(ativo).forEach((p) => p.docs.filter((d) => d.status === "recebido").forEach((d) => {
-      const chave = p.nucleoId || `sem_${p.remessaId}`;
-      const g = docs[chave] || (docs[chave] = { p0: p, qtd: 0, data: d.data });
-      g.qtd++; if (d.data < g.data) { g.data = d.data; g.p0 = p; }
-    }));
-    Object.entries(docs).forEach(([k, g]) => itens.push({ id: `doc_${k}`, tipo: "Validar documentos", data: g.data, titulo: g.p0.nucleoId ? rotuloNucleo(db, g.p0.nucleoId) : `${nomeRemessa(db, remessaDe(db, g.p0.remessaId))}, sem núcleo`, detalhe: `${g.qtd} ${g.qtd === 1 ? "documento analisado aguarda" : "documentos analisados aguardam"} validação. Começa por ${g.p0.codigo}.`, rota: { pag: "processo", id: g.p0.id } }));
-  }
   (db.planos || []).forEach((pl) => (pl.etapas || []).forEach((e) => {
     if (e.status === "Concluída" || !(e.responsaveis || []).includes(u.id)) return;
     itens.push({ id: `pla_${e.id}`, tipo: "Plano de trabalho", data: `${e.prazo || hoje}T12:00:00.000Z`, prazo: !!e.prazo, titulo: `${pl.titulo}: ${e.titulo}`, detalhe: `Etapa ${e.status.toLowerCase()}${(e.entregaveis || []).length ? `, ${e.entregaveis.filter((x) => x.concluido).length} de ${e.entregaveis.length} entregáveis` : ""}`, alerta: e.prazo && e.prazo < hoje, rota: { pag: "plano", id: pl.id } });
   }));
-  if (perm.campo) {
-    db.nucleos.forEach((n) => {
-      const faltando = db.processos.filter((p) => p.nucleoId === n.id && ativo(p) && p.etapa === 3 && !campoCompleto(db, p));
-      if (!faltando.length || n.etapa < 1) return;
-      itens.push({ id: `campo_${n.id}`, tipo: "Top. Campo", data: faltando.map((p) => dataEntradaEtapaMorador(db, p)).sort()[0], titulo: rotuloNucleo(db, n), detalhe: `${faltando.length} ${faltando.length === 1 ? "unidade sem levantamento completo" : "unidades sem levantamento completo"}`, rota: { pag: "campo", nucleoId: n.id } });
-    });
-  }
   return itens.sort((a, b) => a.data.localeCompare(b.data));
 }
 
@@ -11865,8 +11828,9 @@ export default function App() {
     const vez=++navegacao.current;setMenuAberto(false);setAbrindoMunicipio('');
     const municipio=municipioDaRota(db,r);
     try {
-      if(municipio&&!AMBIENTE.DEMO){setAbrindoMunicipio(db.municipios.find(m=>m.id===municipio)?.nome||'município');await carregarMunicipio(municipio);}
+      if(municipio&&r.pag!=="municipio"&&!AMBIENTE.DEMO){setAbrindoMunicipio(db.municipios.find(m=>m.id===municipio)?.nome||'município');await carregarMunicipio(municipio);}
       if(vez!==navegacao.current)return;
+      compartilhado.definirMunicipioAtivo(r.pag!=="municipio"?municipio:null);
       if (JSON.stringify(rotaAtual.current) !== JSON.stringify(r)) {
         const anterior = rotaAtual.current;
         setHistoricoNavegacao((h) => voltando ? h.slice(0, -1) : [...h, anterior]);
@@ -12001,11 +11965,11 @@ export default function App() {
             </div>
           </header>
           {!AMBIENTE.DEMO && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"#fff2e5":"var(--surface)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
-          {!AMBIENTE.DEMO && rota.pag!=="home" && (!compartilhado.summaryReady||compartilhado.summaryError) && <div role="status" style={{padding:"8px 18px",fontSize:13}}>{compartilhado.summaryError||'Atualizando as contagens e pendências dos municípios…'}{compartilhado.summaryError&&<button className="btn btn-sm" onClick={compartilhado.atualizarResumo}>Atualizar pendências</button>}</div>}
+
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
-          {rota.pag === "home" && (AMBIENTE.DEMO||compartilhado.summaryReady ? <PaginaHome {...props} /> : compartilhado.summaryError ? <div className="contem"><p role="alert">{compartilhado.summaryError}</p><button className="btn" onClick={compartilhado.atualizarResumo}>Tentar carregar pendências novamente</button></div> : <CarregandoLoteamento />)}
+          {rota.pag === "home" && <PaginaHome {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
@@ -12015,7 +11979,7 @@ export default function App() {
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
           {rota.pag === "metas" && <PaginaMetas {...props} />}
-          {rota.pag === "financeiro" && <PaginaFinanceiro usuario={usuario} />}
+          {rota.pag === "financeiro" && <Financeiro db={db} usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
           {rota.pag === "calendario" && <PaginaCalendario {...props} />}
@@ -12040,17 +12004,4 @@ export default function App() {
       {toast && !abrindoMunicipio && <div className="toast" role="alert">{toast}</div>}
     </div>
   );
-}
-
-function PaginaFinanceiro({usuario}) {
-  const operacional = permissoes(usuario).financeiro;
-  return <div className="contem" data-acesso={operacional ? "operacional" : "consulta"}>
-    <div className="cabeca"><div><h1>Financeiro</h1><p>Gestão financeira integrada ao seu trabalho.</p></div><Tag tipo={operacional ? "ok" : "neutra"}>{operacional ? "Acesso operacional" : "Somente leitura"}</Tag></div>
-    <section className="card" aria-labelledby="financeiro-construcao" style={{padding:"clamp(28px, 6vw, 72px)",textAlign:"center"}}>
-      <div style={{display:"inline-flex",padding:20,borderRadius:20,background:"var(--pill)",color:"var(--primary)",marginBottom:20}}><Landmark size={40} aria-hidden="true" /></div>
-      <h2 id="financeiro-construcao" style={{color:"var(--titulo)",fontSize:26,fontWeight:700,margin:"0 0 12px"}}>Em construção</h2>
-      <p style={{color:"var(--muted)",maxWidth:480,margin:"0 auto",lineHeight:1.7}}>Estamos preparando este espaço para reunir as rotinas financeiras do Integração.</p>
-      <p className="ajuda" style={{marginTop:24}}>{operacional ? "Seu perfil tem acesso operacional. As funcionalidades estarão disponíveis em breve." : "Seu acesso a esta área é somente para consulta, sem alterações."}</p>
-    </section>
-  </div>;
 }

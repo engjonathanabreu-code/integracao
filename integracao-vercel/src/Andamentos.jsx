@@ -12,6 +12,9 @@ export default function Andamentos({db,usuario}) {
  const [nucleo,setNucleo]=useState(''),[form,setForm]=useState(null),[busca,setBusca]=useState('');
  const [instrucao,setInstrucao]=useState(''),[habilitado,setHabilitado]=useState(false),[promptAberto,setPromptAberto]=useState(false);
  const m=useModulo(async()=>{const [itens,prompts]=await Promise.all([listarCRM('processos_kanban_andamentos'),acesso.pos?listarCRM('integracao_nucleo_ia'):Promise.resolve([])]);return {itens,prompts};},[usuario?.id],['processos']);
+ const ativos=db.nucleos.filter(n=>n.ativo!==false&&!n.extras?.arquivamento?.ativo);
+ const porNucleo=new Map();for(const a of m.dados?.itens||[]){const id=a.processo_id;porNucleo.set(id,(porNucleo.get(id)||0)+1);}
+ const comAndamento=ativos.filter(n=>porNucleo.has(referenciaNucleo(n)));
  const nome=id=>{const n=db.nucleos.find(n=>referenciaNucleo(n)===id);return n?(n.nome?.startsWith(n.codigo)?n.nome:[n.codigo,n.nome].filter(Boolean).join(' · ')):'Núcleo';};
  const etapa=id=>etapaDoAndamento(db.nucleos,id);
  const opcoes=db.nucleos.map(n=><option key={n.id} value={referenciaNucleo(n)}>{nome(referenciaNucleo(n))}</option>);
@@ -28,6 +31,8 @@ export default function Andamentos({db,usuario}) {
  return <div className="contem largo andamentos-pagina">
   <header className="andamentos-cabeca"><div><span className="andamentos-eyebrow"><History size={16}/> PROCESSOS E NÚCLEOS</span><h1>Andamentos</h1><p>Acompanhe a evolução dos núcleos e as informações disponíveis para atendimento.</p></div>{acesso.pos&&<button className="btn btn-primario" onClick={novo}><Plus size={17}/>Registrar andamento</button>}</header>
   <EstadoModulo modulo={m}/>
+  <section className="andamentos-resumo" aria-label="Resumo de andamentos">{[['Núcleos ativos',ativos.length],['Com andamento',m.dados?comAndamento.length:'—'],['Sem andamento',m.dados?ativos.length-comAndamento.length:'—']].map(([titulo,valor])=><div className="card" key={titulo}><span>{titulo}</span><strong>{valor}</strong></div>)}</section>
+  {m.dados&&<details className="card andamentos-cobertura"><summary>Quais núcleos já têm andamento ({comAndamento.length})</summary><div className="andamentos-nucleos">{comAndamento.map(n=><button className="btn" key={n.id} onClick={()=>setNucleo(referenciaNucleo(n))}>{nome(referenciaNucleo(n))} · {porNucleo.get(referenciaNucleo(n))} registro(s)</button>)}{!comAndamento.length&&<p>Nenhum núcleo ativo possui andamento registrado.</p>}</div></details>}
   <section className="andamentos-filtros">
    <CampoCRM nome="Núcleo"><select className="inp" value={nucleo} onChange={e=>{setNucleo(e.target.value);setPromptAberto(false);if(form&&!form.id)setForm({...form,processo_id:e.target.value});}}><option value="">Todos os núcleos</option>{opcoes}</select></CampoCRM>
    <CampoCRM nome="Buscar no histórico"><div className="andamentos-busca"><Search size={17}/><input className="inp" value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Descrição, núcleo ou etapa"/></div></CampoCRM>

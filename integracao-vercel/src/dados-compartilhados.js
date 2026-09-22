@@ -68,6 +68,7 @@ export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
     return [table, rows];
   }));
   const result = {...(anterior||{}),...Object.fromEntries(pairs)};
+  if(!tabelas||tabelas.includes('fin_receb_clientes'))result._contagensClientes=await requisicao('rpc/integracao_contagens_clientes',{method:'POST',body:'{}'});
   // projetar reúne complementos; não reutilize cópias de tabelas próprias removidas.
   if(tabelas&&!tabelas.includes('integracao_complementos'))result.integracao_complementos=(result.integracao_complementos||[]).filter(e=>!e._tabela||e._tabela==='integracao_complementos');
   // The existing ERP directory exposes names/roles without exposing personal fields.
@@ -122,6 +123,7 @@ export function projetar(base, local) {
     return value;
   };
   const db = relink(copy(local)), bindings = [];
+  db._contagensClientes=base._contagensClientes??null;
   if(base._moradoresResumo){
     const loaded=new Set((base.fin_receb_clientes||[]).map(r=>r.id));
     const own=new Set((base.integracao_moradores||[]).map(r=>r.registro_id));
@@ -195,7 +197,7 @@ export function projetar(base, local) {
     const old=(db.nucleos||[]).find(x=>x.externo?.kanbanId===k.id || x.id===k.id);
     const id=old?.id||k.id;
     const nested=(table, collection, map, make)=>group(base[table],'processo_id',k.id).map(r=>bind(collection,r,make(r),map,table,{collection:'nucleos',id,field:collection}));
-    return bind('nucleos',k,{id,municipioId:m.id,remessaId:old?.remessaId||null,codigo:old?.codigo||k.nucleo,nome:k.nucleo,etapa:old?.etapa||0,campos:old?.campos||{},checks:old?.checks||{},criterio:old?.criterio||{salarioMinimo:'1518,00',rendaMaxima:'5'},responsavel:names[k.responsavel_id]||'',origem:['ERP'],externo:{...old?.externo,kanbanId:k.id,erp:k.nucleo},prioridade:k.prioridade||'Normal',pendencia:text(k.pendencia),prazoSLA:text(k.sla_prazo),etapaProcesso:k.etapa_atual,etapaIniciadaEm:text(k.etapa_iniciada_em),observacaoInterna:text(k.observacao_interna),
+    return bind('nucleos',k,{id,ativo:k.ativo!==false,municipioId:m.id,remessaId:old?.remessaId||null,codigo:old?.codigo||k.nucleo,nome:k.nucleo,etapa:old?.etapa||0,campos:old?.campos||{},checks:old?.checks||{},criterio:old?.criterio||{salarioMinimo:'1518,00',rendaMaxima:'5'},responsavel:names[k.responsavel_id]||'',origem:['ERP'],externo:{...old?.externo,kanbanId:k.id,erp:k.nucleo},prioridade:k.prioridade||'Normal',pendencia:text(k.pendencia),prazoSLA:text(k.sla_prazo),etapaProcesso:k.etapa_atual,etapaIniciadaEm:text(k.etapa_iniciada_em),observacaoInterna:text(k.observacao_interna),
       andamentos:nested('processos_kanban_andamentos','andamentos',{status:'status',operacional:'status_operacional',descricaoCliente:'descricao_cliente',observacao:'observacao_interna',previsao:'previsao',data:'data_atualizacao'},r=>({id:r.id,status:text(r.status),operacional:text(r.status_operacional),descricaoCliente:text(r.descricao_cliente),observacao:text(r.observacao_interna),previsao:text(r.previsao),data:r.data_atualizacao||r.created_at,por:r.origem||'ERP',origem:r.origem})),
       observacoes:nested('processos_kanban_observacoes','observacoes',{texto:'texto'},comment),
       historicoEtapas:group(base.processos_kanban_historico,'processo_id',k.id).map(r=>({id:r.id,de:r.etapa_anterior,para:r.etapa_nova,por:names[r.alterado_por]||'Equipe',observacao:text(r.observacao),data:r.created_at})),

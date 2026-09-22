@@ -1,4 +1,6 @@
-import { createContext, useContext, useState } from 'react';
+import {lerIndiceClientes} from './dados-compartilhados.js';
+import {reunirClientes} from './busca-clientes.js';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Folder, Archive, RotateCcw } from 'lucide-react';
 import { COLECOES_ARQUIVO, arquivoDoRegistro, arquivadoDiretamente, mapaArquivamento, podeArquivar, vinculadosAoRegistro, alterarArquivamento } from './arquivamento.js';
 
@@ -22,7 +24,10 @@ export function BotaoArquivo({ colecao, municipioId, remessaId, nucleoId, etapa,
 export default function ArquivoCadastros({ db, usuario, mutar, carregarMunicipio, etapaDoNucleo, pronto, Modal, setToast, children }) {
   const [selecao, selecionar] = useState(null), [escopo, abrir] = useState(null), [busca, setBusca] = useState(''), [ocupado, setOcupado] = useState(false), [erro, setErro] = useState('');
   const permitido = podeArquivar(usuario) && pronto;
-  const mapa = mapaArquivamento(db);
+  const [indice,setIndice]=useState(null),[carregandoIndice,setCarregandoIndice]=useState(false);
+  useEffect(()=>{if(!escopo)return;let vivo=true;setCarregandoIndice(true);lerIndiceClientes().then(i=>{if(vivo)setIndice(i);}).catch(e=>{if(vivo)setErro(e.message);}).finally(()=>{if(vivo)setCarregandoIndice(false);});return()=>{vivo=false;};},[escopo]);
+  const baseArquivo=useMemo(()=>indice?{...db,processos:reunirClientes(indice.clientes,indice.complementos,db,true)}:db,[db,indice]);
+  const mapa = mapaArquivamento(baseArquivo);
   const registro = selecao && db[selecao.colecao]?.find(r => r.id === selecao.id);
   const vinculados = registro ? vinculadosAoRegistro(db, selecao.colecao, registro.id) : null;
   const contagem = vinculados && COLECOES_ARQUIVO.filter(c => vinculados[c].size).map(c => `${vinculados[c].size} ${nomes[c].toLowerCase()}`).join(', ');
@@ -30,12 +35,12 @@ export default function ArquivoCadastros({ db, usuario, mutar, carregarMunicipio
   const salvar = async (colecao, r, arquivar) => {
     setOcupado(true); setErro('');
     try {
-      if (r.municipioId) await carregarMunicipio(r.municipioId);
+      if (colecao==='processos') await carregarMunicipio(r.municipioId||null,r);else if(r.municipioId)await carregarMunicipio(r.municipioId);
       await mutar(d => alterarArquivamento(d, colecao, r.id, arquivar, usuario), arquivar ? 'Cadastro arquivado' : 'Cadastro restaurado', { municipioId:colecao === 'municipios' ? r.id : r.municipioId, remessaId:colecao === 'remessas' ? r.id : r.remessaId, nucleoId:colecao === 'nucleos' ? r.id : r.nucleoId, processoId:colecao === 'processos' ? r.id : undefined, detalhe:`${nomes[colecao]}: ${nomeRegistro(r,colecao)}` });
       selecionar(null); setToast(arquivar ? 'Cadastro arquivado. Acompanhe a confirmação de gravação.' : 'Cadastro restaurado. Acompanhe a confirmação de gravação.');
     } catch(e) { setErro(e.message); } finally { setOcupado(false); }
   };
-  const linhas = !escopo ? [] : COLECOES_ARQUIVO.filter(c => !escopo.colecao || c === escopo.colecao).flatMap(c => (db[c] || []).filter(r => mapa[c].has(r.id)
+  const linhas = !escopo ? [] : COLECOES_ARQUIVO.filter(c => !escopo.colecao || c === escopo.colecao).flatMap(c => (baseArquivo[c] || []).filter(r => mapa[c].has(r.id)
     && (!escopo.municipioId || r.municipioId === escopo.municipioId) && (!escopo.remessaId || r.remessaId === escopo.remessaId)
     && (!escopo.nucleoId || r.nucleoId === escopo.nucleoId) && (!escopo.etapa || (c === 'nucleos' && etapaDoNucleo(r) === escopo.etapa))
     && (escopo.etapaCliente == null || String(r.etapa) === String(escopo.etapaCliente))
@@ -51,7 +56,7 @@ export default function ArquivoCadastros({ db, usuario, mutar, carregarMunicipio
       <p>Restaure o cadastro para voltar à mesma etapa, mantendo documentos e histórico. Quando o vínculo estiver arquivado, restaure primeiro o cadastro principal.</p>
       <input className="inp" aria-label="Buscar no arquivo" placeholder="Buscar por nome ou código" value={busca} onChange={e => setBusca(e.target.value)} />
       {erro && <p role="alert">{erro}</p>}
-      {!linhas.length && <p>Nenhum registro arquivado neste local.</p>}
+      {carregandoIndice&&<p role="status">Carregando arquivo…</p>}{!carregandoIndice&&!linhas.length && <p>Nenhum registro arquivado neste local.</p>}
       {linhas.map(({ colecao, registro:r }) => <div key={`${colecao}:${r.id}`} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 0', borderBottom:'1px solid var(--line2)' }}>
         <div style={{ flex:1, minWidth:0 }}><strong>{nomeRegistro(r,colecao)}</strong><div className="ajuda">{nomes[colecao]} · {arquivoDoRegistro(r)?.arquivadoPor || 'Arquivado pelo vínculo'}{arquivoDoRegistro(r)?.arquivadoEm ? ` · ${new Date(arquivoDoRegistro(r).arquivadoEm).toLocaleString('pt-BR')}` : ''}</div></div>
         <button className="btn btn-sm" disabled={ocupado || !arquivadoDiretamente(r)} title={arquivadoDiretamente(r) ? 'Restaurar cadastro' : 'Restaure primeiro o cadastro principal'} onClick={() => salvar(colecao,r,false)}><RotateCcw size={14} />Restaurar</button>
