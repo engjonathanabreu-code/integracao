@@ -1,10 +1,11 @@
 import {documentoHtml} from './documento-formato.js';
 import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
+import {ConfigModeloOficio} from './GeradorOficio.jsx';
 import {SincronizadorPonto} from './use-ponto-local.js';
 import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
 import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
-import {responsavelMeta} from './metas-identidade.js';
+import {responsavelMeta,podeAnalisarDevolutiva,arquivosOriginaisDevolutiva} from './metas-identidade.js';
 import {Landmark} from 'lucide-react';
 import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './permissoes.js';
 import DadosNUI from './DadosNUI.jsx';
@@ -8059,7 +8060,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
               {(m.arquivos || []).map((a) => <button key={a.id} className="btn btn-sm" onClick={() => baixar(a)}><Paperclip size={13} />{a.nome}</button>)}
               {!(m.arquivos || []).length && <span className="ajuda" style={{ margin: 0 }}>Sem arquivo anexado.</span>}
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorio(m)}><Sparkles size={13} />Ver relatório da IA</button>}
-              {gerenciaMetas(usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
+              {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
               <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "metas" })}>Abrir a meta</button>
             </div>
           </div>
@@ -8162,10 +8163,11 @@ function RelatorioEtapa2({ etapa1, etapa2 }) {
 
 function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }) {
   const nova = !meta;
+  const autorizado = podeAnalisarDevolutiva(meta,usuario);
   const [nucleoId, setNucleoId] = useState(meta?.associacao_id || "");
   const [chegada, setChegada] = useState(meta?.devolutiva?.chegada || new Date().toISOString().slice(0, 10));
   const [prazo, setPrazo] = useState(meta?.devolutiva?.prazo || "");
-  const [textoLivre, setTextoLivre] = useState("");
+  const [textoLivre, setTextoLivre] = useState(meta?.devolutiva?.textoOriginal || meta?.observacoes || "");
   const [arquivosEtapa1, setArquivosEtapa1] = useState([]);
   const [arquivosEtapa2, setArquivosEtapa2] = useState([]);
   const [erro, setErro] = useState("");
@@ -8185,41 +8187,46 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
   };
 
   const rodarEtapa1 = async () => {
+    if (!autorizado || carregando || salvando) return;
     if (!nucleoId) { setErro("Selecione o núcleo antes de analisar."); return; }
     setErro(""); setCarregando("etapa1");
     try {
-      const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1, textoLivre);
-      setEtapa1({ geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map((it) => ({ ...it, id: uid("iv") })), naoIdentificado: resultado.naoIdentificado || [], arquivosAnalisados: arquivosEtapa1.map((a) => ({ nome: a.name })) });
+      const originais = arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais();
+      const resultado = await analisarTeorDevolutivaIA(originais, textoLivre);
+      setEtapa1({ geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map((it) => ({ ...it, id: uid("iv") })), naoIdentificado: resultado.naoIdentificado || [], arquivosAnalisados: arquivosEtapa1.length ? arquivosEtapa1.map((a) => ({ nome: a.name })) : anexosOriginais().map(a=>({id:a.id,nome:a.nome,chave:a.chave})) });
       setEtapa2(null);
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
   // Arquivos da devolutiva original: os escolhidos agora ou, numa meta já salva, os guardados com ela
-  const anexosOriginais = () => {
-    const analisados = meta?.devolutiva?.analiseIA?.etapa1?.arquivosAnalisados || [];
-    const chaves = new Set(analisados.map((a) => a.chave).filter(Boolean));
-    const daResposta = new Set((meta?.devolutiva?.analiseIA?.etapa2?.arquivosAnalisados || []).map((a) => a.chave).filter(Boolean));
-    const todos = (meta?.arquivos || []).filter((a) => /^(application\/pdf|image\/)/.test(a.tipo || ""));
-    const lista = chaves.size ? todos.filter((a) => chaves.has(a.chave)) : todos.filter((a) => !daResposta.has(a.chave));
-    return lista.slice(0, MAX_LOTE_DEVOLUTIVA);
+  const anexosOriginais = () => arquivosOriginaisDevolutiva(meta);
+  const carregarOriginais = async () => {
+    const anexos = anexosOriginais();
+    if (anexos.length > MAX_LOTE_DEVOLUTIVA) throw Error(`Selecione até ${MAX_LOTE_DEVOLUTIVA} arquivos originais para esta análise.`);
+    if (!anexos.length && meta?.devolutiva?.analiseIA?.etapa1?.arquivosAnalisados?.length) throw Error('O arquivo original não foi localizado. Anexe novamente a devolutiva original antes de analisar.');
+    const arquivos = await Promise.all(anexos.map(arquivoDoArmazenamento));
+    if (arquivos.some(a=>!a)) throw Error('Não foi possível carregar a devolutiva original. Reabra a meta ou anexe o original novamente.');
+    return arquivos;
   };
   const rodarEtapa2 = async () => {
+    if (!autorizado || carregando || salvando) return;
     setErro(""); setCarregando("etapa2");
     try {
       let arquivosOriginais = arquivosEtapa1;
-      if (!arquivosOriginais.length && meta) arquivosOriginais = (await Promise.all(anexosOriginais().map(arquivoDoArmazenamento))).filter(Boolean);
+      if (!arquivosOriginais.length && meta) arquivosOriginais = await carregarOriginais();
       const textoOriginal = textoLivre.trim() || (arquivosOriginais.length ? "" : (meta?.observacoes || ""));
       const resultado = await analisarRespostaDevolutivaIA({ itensEtapa1: etapa1?.itens || [], arquivosOriginais, textoOriginal, arquivosResposta: arquivosEtapa2 });
       const itens = resultado.itens || [];
       const pendencias = resultado.pendencias || [];
-      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status === "nao_corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
+      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status !== "corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
       setEtapa2({ geradoEm: new Date().toISOString(), por: usuario.nome, resumo: resultado.resumo || "", pronto, itens, pendencias, naoIdentificado: resultado.naoIdentificado || [], comOriginal: arquivosOriginais.length > 0 || !!textoOriginal, arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
-  const podeSalvar = !!nucleoId && !!etapa1 && !salvando;
+  const podeSalvar = autorizado && !!nucleoId && !!etapa1 && !salvando && !carregando;
 
   const salvar = async () => {
+    if (!podeSalvar) return;
     setSalvando(true); setErro("");
     try {
       const gravarLote = async (arquivos) => {
@@ -8237,10 +8244,10 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
       const nucleo = nucleoDe(db, nucleoId);
       const devolutiva = {
         origem: meta?.devolutiva?.origem || "Prefeitura",
-        chegada, prazo,
+        ...meta?.devolutiva, chegada, prazo, textoOriginal: textoLivre.trim(),
         analiseIA: {
-          etapa1: etapa1 ? { ...etapa1, arquivosAnalisados: [...(meta?.devolutiva?.analiseIA?.etapa1?.arquivosAnalisados || []), ...anexosEtapa1.map((a) => ({ nome: a.nome, chave: a.chave }))] } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
-          etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: [...(meta?.devolutiva?.analiseIA?.etapa2?.arquivosAnalisados || []), ...anexosEtapa2.map((a) => ({ nome: a.nome, chave: a.chave }))] } : (meta?.devolutiva?.analiseIA?.etapa2 || null),
+          etapa1: etapa1 ? { ...etapa1, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
+          etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: anexosEtapa2.length ? anexosEtapa2.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa2.arquivosAnalisados || []) } : null,
         },
       };
       if (nova) {
@@ -8290,14 +8297,14 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
           <div className="ajuda" style={{ marginBottom: 10 }}>Núcleo: <strong>{nucleoDe(db, nucleoId) ? rotuloNucleo(db, nucleoDe(db, nucleoId)) : "—"}</strong></div>
         )}
         <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <div><label className="rot" htmlFor="adch">Data de chegada</label><input id="adch" type="date" className="inp" value={chegada} onChange={(e) => setChegada(e.target.value)} /></div>
-          <div><label className="rot" htmlFor="adpz">Prazo final (opcional)</label><input id="adpz" type="date" className="inp" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
+          <div><label className="rot" htmlFor="adch">Data de chegada</label><input id="adch" disabled={!gerenciaMetas(usuario)} type="date" className="inp" value={chegada} onChange={(e) => setChegada(e.target.value)} /></div>
+          <div><label className="rot" htmlFor="adpz">Prazo final (opcional)</label><input id="adpz" disabled={!gerenciaMetas(usuario)} type="date" className="inp" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
         </div>
         <label className="rot" htmlFor="adarq" style={{ marginTop: 10 }}>Arquivos da devolutiva (PDF ou imagem)</label>
         <input id="adarq" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa1(arr); }} />
         <label className="rot" htmlFor="adtxt" style={{ marginTop: 10 }}>Ou cole o texto da devolutiva (opcional)</label>
         <textarea id="adtxt" className="inp" rows={3} value={textoLivre} onChange={(e) => setTextoLivre(e.target.value)} placeholder="Cole aqui o texto recebido, se não houver arquivo digital" />
-        <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa1"} onClick={rodarEtapa1}>{carregando === "etapa1" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar teor da devolutiva</button>
+        <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={!autorizado || !!carregando || salvando} onClick={rodarEtapa1}>{carregando === "etapa1" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}Analisar teor da devolutiva</button>
 
         {etapa1 && (
           <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}>
@@ -8325,7 +8332,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
           <p className="ajuda" style={{ margin: "0 0 10px" }}>Anexe as plantas, memoriais e documentos já corrigidos. A mesma IA compara a devolutiva original com o material novo, confere item por item e lista o que ainda falta antes de responder ao município.{meta && !arquivosEtapa1.length ? ` A devolutiva original guardada com a meta (${anexosOriginais().length} arquivo(s)) vai junto.` : ""}</p>
           <label className="rot" htmlFor="adarq2">Arquivos do trabalho corrigido (PDF ou imagem)</label>
           <input id="adarq2" type="file" className="inp" multiple accept={EXTENSOES_ACEITAS} onChange={(e) => { const arr = validarArquivos(e.target.files); if (arr) setArquivosEtapa2(arr); }} />
-          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={carregando === "etapa2" || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}{etapa2 ? "Conferir de novo" : "Conferir se ainda falta algo"}</button>
+          <button className="btn btn-sm btn-primario" style={{ marginTop: 10 }} disabled={!autorizado || !!carregando || salvando || !arquivosEtapa2.length} onClick={rodarEtapa2}>{carregando === "etapa2" ? <Loader2 size={14} className="girando" /> : <Sparkles size={14} />}{etapa2 ? "Conferir de novo" : "Conferir se ainda falta algo"}</button>
           {etapa2 && <div style={{ marginTop: 14, borderTop: "1px solid var(--line2)", paddingTop: 10 }}><RelatorioEtapa2 etapa1={etapa1} etapa2={etapa2} /></div>}
         </div>
       )}
@@ -9689,6 +9696,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
+      <ConfigModeloOficio modelo={db.modelosDoc?.oficio} pode={pode} salvar={modelo=>{mutar(d=>{d.modelosDoc={...(d.modelosDoc||{}),oficio:modelo};return d;},"Modelo de ofício alterado");setToast("Modelo de ofício salvo.");}}/>
       <Secao titulo="Modelos dos documentos" nota="O texto é preenchido pelo próprio sistema com os dados do cadastro, sem depender de IA. Use os marcadores entre chaves para indicar onde cada informação entra.">
         {!pode && <Aviso>Só a Diretoria altera os modelos. Você pode conferir o texto aqui.</Aviso>}
         <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
@@ -10388,7 +10396,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
             {etapa1 && !etapa2 && <p className="ajuda" style={{ margin: "0 0 8px" }}>Depois de executar o que a devolutiva pede, anexe o trabalho corrigido e a mesma IA compara com a devolutiva original para dizer se ainda falta algo.</p>}
             <div className="flex flex-wrap gap-2">
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorioIA(true)}><Sparkles size={13} />Ver relatório da IA</button>}
-              {gerencia && <button className="btn btn-sm btn-primario" onClick={() => setAnaliseIA(true)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
+              {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm btn-primario" onClick={() => setAnaliseIA(true)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
             </div>
           </section>
         );
@@ -10510,6 +10518,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
   );
 }
 function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
+  const timbradoOficios = useTimbrado(db);
   const [tela, setTela] = useState("home");
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [detalhe, setDetalhe] = useState(null);
@@ -10579,7 +10588,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {barra}
 
-      {tela === "oficios" && <Oficios usuario={usuario}/>}
+      {tela === "oficios" && <Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/>}
       {tela === "home" && !colaborador && (
         <>
           <div className="grade-indicadores" style={{ marginBottom: 14 }}>

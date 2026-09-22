@@ -1,0 +1,27 @@
+import {useEffect,useState} from 'react';
+import {CampoCRM} from './modulo-ui.jsx';
+import {modeloOficio,htmlOficio} from './oficio-modelo.js';
+import {gerarConteudoOficio} from './oficios-api.js';
+import {idPonto,diaPonto} from './ponto-api.js';
+export function ConfigModeloOficio({modelo,pode,salvar}){
+ const [rascunho,setRascunho]=useState(null),atual=modeloOficio(modelo),valor=rascunho||atual;
+ return <section className="card oficio-cadastro"><h3>Modelo de ofício</h3><p>A introdução e o encerramento serão preenchidos nos novos ofícios. O conteúdo específico é escrito na aba Ofícios, manualmente ou com auxílio da IA.</p>
+ {['introducao','encerramento'].map(k=><CampoCRM key={k} nome={k==='introducao'?'Introdução padrão do ofício':'Encerramento padrão do ofício'}><textarea aria-label={k==='introducao'?'Introdução padrão do ofício':'Encerramento padrão do ofício'} className="inp" rows={4} maxLength={10000} disabled={!pode} value={valor[k]} onChange={e=>setRascunho({...valor,[k]:e.target.value})}/></CampoCRM>)}
+ {pode&&<button className="btn btn-primario" disabled={!rascunho} onClick={()=>{salvar(rascunho);setRascunho(null);}}>Salvar modelo de ofício</button>}</section>;
+}
+export default function GeradorOficio({usuario,modelo,timbrado,proximo,fechar}){
+ const chave=`integracao-oficio-geracao-v1:${idPonto(usuario)}`;
+ const [f,setF]=useState(()=>{try{const salvo=JSON.parse(localStorage.getItem(chave));if(salvo)return salvo;}catch{}return {numero:proximo||1,data:diaPonto(),local:'',destinatario:'',assunto:'',conteudo:'',orientacao:'',assinatura:usuario.nome||'',...modeloOficio(modelo)};}),[ocupado,setOcupado]=useState(''),[erro,setErro]=useState(''),[sugestao,setSugestao]=useState(''),[aviso,setAviso]=useState('');
+ useEffect(()=>{try{localStorage.setItem(chave,JSON.stringify(f));}catch{setAviso('Não foi possível guardar o rascunho neste navegador. Baixe o documento antes de sair.');}},[f,chave]);
+ const campo=(k,v)=>setF(x=>({...x,[k]:v}));
+ const baixar=async tipo=>{if(ocupado)return;setOcupado(tipo);setErro('');try{const html=htmlOficio(f),titulo=`Ofício ${f.numero}/${f.data.slice(0,4)}`,nome=`oficio-${f.numero}-${f.data.slice(0,4)}`;const baixar=tipo==='PDF'?(await import('./documento-pdf.js')).baixarPdf:(await import('./documento-docx.js')).baixarDocx;await baixar(html,titulo,timbrado,nome);}catch(e){setErro(e.message);}finally{setOcupado('');}};
+ return <section className="card oficio-cadastro" data-edicao-pendente="true"><h3>Gerar ofício</h3><p>Revise o texto antes de baixar. O rascunho fica guardado neste navegador. Após enviar o ofício, use “Adicionar ofício” para registrar o arquivo e confirmar a numeração. O download não reserva um número.</p>
+ <fieldset disabled={!!ocupado} style={{border:0,padding:0,minWidth:0}}>
+ <div className="ponto-campos"><CampoCRM nome="Número do novo ofício"><input className="inp" type="number" min="1" max="999999" value={f.numero} onChange={e=>campo('numero',e.target.value)}/></CampoCRM><CampoCRM nome="Data do ofício"><input className="inp" type="date" value={f.data} onChange={e=>campo('data',e.target.value)}/></CampoCRM><CampoCRM nome="Local de emissão"><input className="inp" maxLength={200} value={f.local} onChange={e=>campo('local',e.target.value)}/></CampoCRM></div>
+ {proximo&&<p>Próximo número no controle deste ano: {proximo}. Confira novamente antes de enviar.</p>}
+ {[['destinatario','Destinatário / Prefeitura',3,1000],['assunto','Assunto do novo ofício',2,300],['introducao','Introdução do ofício',4,10000],['conteudo','Conteúdo do ofício',9,30000],['encerramento','Encerramento do ofício',3,10000],['assinatura','Nome e cargo para assinatura',2,1000]].map(([k,n,rows,max])=><CampoCRM key={k} nome={n}><textarea aria-label={n} className="inp" rows={rows} maxLength={max} value={f[k]} onChange={e=>campo(k,e.target.value)}/></CampoCRM>)}
+ <details><summary>Escrever com auxílio da IA</summary><CampoCRM nome="Orientação para a IA"><textarea aria-label="Orientação para a IA" className="inp" rows={4} maxLength={10000} value={f.orientacao} onChange={e=>campo('orientacao',e.target.value)} placeholder="Informe o objetivo, os fatos, o pedido e os prazos que devem constar no ofício."/></CampoCRM><button className="btn" disabled={!f.orientacao.trim()||!f.assunto.trim()} onClick={async()=>{setOcupado('IA');setErro('');try{const r=await gerarConteudoOficio(f);setSugestao(r.conteudo);}catch(e){setErro(e.message);}finally{setOcupado('');}}}>Gerar sugestão de conteúdo</button>
+ {sugestao&&<div><CampoCRM nome="Sugestão da IA para revisão"><textarea aria-label="Sugestão da IA para revisão" className="inp" rows={8} value={sugestao} onChange={e=>setSugestao(e.target.value)}/></CampoCRM><button className="btn" onClick={()=>{campo('conteudo',sugestao);setSugestao('');setAviso('Sugestão aplicada ao conteúdo. Confira os fatos antes de baixar.');}}>Usar sugestão no conteúdo</button></div>}</details>
+ <div className="flex flex-wrap gap-2" style={{marginTop:16}}><button className="btn btn-primario" onClick={()=>baixar('PDF')}>Baixar ofício em PDF</button><button className="btn" onClick={()=>baixar('Word')}>Baixar ofício em Word</button><button className="btn" onClick={fechar}>Fechar e guardar rascunho</button></div>
+ </fieldset>{ocupado&&<p role="status">{ocupado==='IA'?'Gerando sugestão…':'Preparando documento…'}</p>}{aviso&&<p role="status">{aviso}</p>}{erro&&<p role="alert">{erro}</p>}</section>;
+}

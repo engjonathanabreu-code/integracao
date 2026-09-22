@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {readFileSync} from 'node:fs';import {validarOficio,respostaOficioIA} from '../src/oficios-regras.js';
 const admin='00000000-0000-4000-8000-000000000001',func='00000000-0000-4000-8000-000000000002';
-async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text);insert into profiles values('${admin}',true,'Administrador'),('${func}',true,'Comercial');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert on storage.objects to authenticated;`);await db.exec(readFileSync(new URL('../supabase/operacoes/oficios.sql',import.meta.url),'utf8'));return db;}
+async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text,setor text);insert into profiles values('${admin}',true,'Administrador','Administrativo'),('${func}',true,'Comercial','Comercial');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert on storage.objects to authenticated;`);await db.exec(readFileSync(new URL('../supabase/operacoes/oficios.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/oficios-equipe.sql',import.meta.url),'utf8'));return db;}
 async function como(db,u,sql,params=[]){await db.exec(`set role authenticated;set request.jwt.claim.sub='${u}';`);try{return(await db.query(sql,params)).rows;}finally{await db.exec('reset role');}}
 const rpc=(db,u,d)=>como(db,u,"select integracao_oficios_operar('registrar',$1) r",[JSON.stringify(d)]).then(r=>r[0].r);
 async function arquivo(db,numero=42,data='2025-01-10',hash=crypto.randomUUID().replaceAll('-','').repeat(2)){
@@ -14,10 +14,26 @@ test('ofícios: primeiro número confirmado, sequência anual, idempotência e d
  assert.equal((await rpc(db,admin,await arquivo(db,1,'2026-01-01'))).numero,1);
  const invalido=await arquivo(db,44);invalido.assunto='';await assert.rejects(()=>rpc(db,admin,invalido));assert.equal((await db.query('select ultimo from integracao_oficios_sequencias where ano=2025')).rows[0].ultimo,43);
  }finally{await db.close();}});
-test('ofícios: perfis, arquivos privados e escritas somente pela operação autorizada',async()=>{const db=await banco();try{const d=await arquivo(db);await assert.rejects(()=>rpc(db,func,d),/gerencia Metas/);await rpc(db,admin,d);assert.equal((await como(db,func,'select * from integracao_oficios')).length,1);
+test('ofícios: perfis, arquivos privados e escritas somente pela operação autorizada',async()=>{const db=await banco();try{const d=await arquivo(db);await assert.rejects(()=>rpc(db,func,d),/Sem permissão/);await rpc(db,admin,d);assert.equal((await como(db,func,'select * from integracao_oficios')).length,1);
  await assert.rejects(()=>como(db,func,"update integracao_oficios_sequencias set ultimo=1"));await assert.rejects(()=>como(db,func,"delete from integracao_oficios"));
  await assert.rejects(()=>como(db,func,"insert into storage.objects values('integracao-oficios',$1)",[`${func}/${crypto.randomUUID()}/oficio.pdf`]));
  assert.equal((await como(db,func,"select * from storage.objects where bucket_id='integracao-oficios'")).length,1);
  await db.exec(`update profiles set ativo=false where id='${func}'`);assert.equal((await como(db,func,'select * from integracao_oficios')).length,0);
  }finally{await db.close();}});
 test('validar arquivos e respostas IA sem inventar numeração',()=>{assert.equal(validarOficio({name:'OFICIO.PDF',size:100}).mime,'application/pdf');assert.throws(()=>validarOficio({name:'antigo.doc',size:10}),/exporte/);assert.throws(()=>validarOficio({name:'grande.pdf',size:11000000}),/10 MB/);const r=respostaOficioIA('```json\n{"resumo":"Solicita análise do processo.","numero":null,"ano":null}\n```');assert.equal(r.numero,null);assert.throws(()=>respostaOficioIA('{}'),/resumo válido/);});
+
+test('ofícios: Projeto, Jurídico, diretores e setor canônico podem anexar e registrar; inativos não',async()=>{
+ const db=await banco();try{
+ let numero=1;
+ for(const [tipo,setor] of [['Projetos','Projetos'],['Jurídico','Jurídico'],['Diretor Técnico','Topografia'],['Diretor de Projetos','Projetos'],['Topografia','Projetos']]){
+  await db.query('update profiles set tipo=$1,setor=$2 where id=$3',[tipo,setor,func]);
+  const d=await arquivo(db,numero++);d.caminho=d.caminho.replace(admin,func);
+  await como(db,func,"insert into storage.objects values('integracao-oficios',$1)",[d.caminho]);
+  assert.equal((await rpc(db,func,d)).autor,func);
+  await assert.rejects(()=>como(db,func,"insert into storage.objects values('integracao-oficios',$1)",[`${admin}/${crypto.randomUUID()}/oficio.pdf`]));
+ }
+ await db.query('update profiles set ativo=false where id=$1',[func]);
+ await assert.rejects(()=>rpc(db,func,{}),/Sessão ativa/);
+ await assert.rejects(()=>como(db,func,"insert into storage.objects values('integracao-oficios',$1)",[`${func}/${crypto.randomUUID()}/oficio.pdf`]));
+ }finally{await db.close();}
+});

@@ -8,3 +8,13 @@ export function metasLocaisParaCompartilhar(base,db,usuario) {
   (usuario.setor==='diretoria'||[usuario.id,usuario.erpRef].filter(Boolean).some(id=>identidadeMeta(id)===identidadeMeta(m.criadoPor)))&&
   (m.responsaveis||[]).every(id=>usuarios.has(identidadeMeta(id))));
 }
+
+export const podeAnalisarDevolutiva=(meta,usuario)=>!!usuario&&usuario.ativo!==false&&(usuario.setor==='diretoria'||!!meta&&responsavelMeta(meta,usuario));
+// Chaves locais mudam ao sincronizar. IDs permanecem; nomes únicos atendem relatórios antigos.
+export function arquivosOriginaisDevolutiva(meta){
+ const todos=(meta?.arquivos||[]).filter(a=>/^(application\/pdf|image\/)/.test(a.tipo||''));
+ const analise=meta?.devolutiva?.analiseIA;
+ const corresponde=(a,refs)=>refs.some(r=>(r.id&&r.id===a.id)||(r.chave&&r.chave===a.chave)||(!r.id&&r.nome===a.nome&&todos.filter(x=>x.nome===r.nome).length===1));
+ const originais=analise?.etapa1?.arquivosAnalisados||[],respostas=analise?.etapa2?.arquivosAnalisados||[];
+ return originais.length?todos.filter(a=>corresponde(a,originais)):todos.filter(a=>!corresponde(a,respostas));
+}

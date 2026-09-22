@@ -1,3 +1,4 @@
+import {podeEditarOficios} from '../src/oficios-permissoes.js';
 import {respostaOficioIA} from '../src/oficios-regras.js';
 export const config={maxDuration:90};
 export default async function handler(req,res){
@@ -10,8 +11,8 @@ export default async function handler(req,res){
  const body=typeof req.body==='string'?JSON.parse(req.body):req.body,path=body?.caminho;
  if(typeof path!=='string'||!/^[-0-9a-f]{36}\/[-0-9a-f]{36}\/oficio\.(pdf|docx|txt)$/.test(path))return res.status(400).json({message:'Arquivo inválido.'});
  const auth=await fetch(`${url}/auth/v1/user`,{headers,signal:AbortSignal.timeout(10000)});if(!auth.ok)return res.status(401).json({message:'Sua sessão expirou. Entre novamente.'});const user=await auth.json();
- const perfilResponse=await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=ativo,tipo`,{headers,signal:AbortSignal.timeout(10000)});const perfis=perfilResponse.ok?await perfilResponse.json():[];
- if(!perfis.some(p=>p.ativo&&['Administrador','Diretor Técnico','Diretor de Projetos'].includes(p.tipo)))return res.status(403).json({message:'Sem permissão para analisar ofícios.'});
+ const perfilResponse=await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=ativo,tipo,setor`,{headers,signal:AbortSignal.timeout(10000)});const perfis=perfilResponse.ok?await perfilResponse.json():[];
+ if(!perfis.some(p=>p.ativo&&podeEditarOficios(p)))return res.status(403).json({message:'Sem permissão para analisar ofícios.'});
  if(!process.env.ANTHROPIC_API_KEY)return res.status(503).json({message:'A IA está indisponível. Você pode salvar o ofício e gerar o resumo depois.'});
  const arq=await fetch(`${url}/storage/v1/object/authenticated/integracao-oficios/${path}`,{headers,signal:AbortSignal.timeout(15000)});
  if(!arq.ok)return res.status(404).json({message:'Arquivo não encontrado ou sem acesso.'});

@@ -20,6 +20,9 @@
     },
     "api/financeiro-lembretes.js": {
       "maxDuration": 300
+    },
+    "api/oficios-gerar.js": {
+      "maxDuration": 90
     }
   },
   "rewrites": [

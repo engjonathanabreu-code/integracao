@@ -140,7 +140,7 @@ export function projetar(base, local) {
     const extension = extra.get(`${collection}:${view.id}`);
     const saved=unirCampos(existing?._resumo?{}:existing||{},extension?.dados||{});
     const value = { ...saved, ...view };
-    const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP',...(collection==='usuarios'?['setor']:[]),'origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
+    const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP','setorERP',...(collection==='usuarios'?['setor']:[]),'origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
     for(const [field,v] of Object.entries(extension?.dados||{}))if(!canonical.has(field))value[field]=copy(v);
     const ownFields={usuarios:['tema','agendaPessoal','calendarioOculto','online','ultimaAtividade'],nucleos:['remessaId','etapa','campos','checks','criterio','codigo'],processos:['nucleoId','etapa','motivoSituacao','conjuge','endereco','imovel','social','extras','docs','checks','campos','campo','unidades'],planos:['municipioId','municipioNome','uf','remessaId'],conversas:['lidaPor']};
     for(const field of ownFields[collection]||[]) if(saved[field]!==undefined) value[field]=saved[field];
@@ -166,7 +166,7 @@ export function projetar(base, local) {
     rows.forEach(x => { x._compartilhado = true; });
   };
   const direct = fields => Object.fromEntries(fields.split(',').map(x => [x,x]));
-  merge('usuarios', base.profiles.map(p => bind('usuarios',p,{id:userId(p.id),erpRef:p.id,nome:p.nome,email:p.email || '',tipoERP:p.tipo,setor:setorDoPerfilERP(p, sectors),funcao:p.tipo?.startsWith('Diretor') || p.tipo === 'Administrador' ? 'Diretor' : 'Analista',ativo:p.ativo !== false,origem:'ERP',online:false,agendaPessoal:[],calendarioOculto:[]},{nome:'nome',email:'email',ativo:'ativo'},'profiles')));
+  merge('usuarios', base.profiles.map(p => bind('usuarios',p,{id:userId(p.id),erpRef:p.id,nome:p.nome,email:p.email || '',tipoERP:p.tipo,setorERP:p.setor,setor:setorDoPerfilERP(p, sectors),funcao:p.tipo?.startsWith('Diretor') || p.tipo === 'Administrador' ? 'Diretor' : 'Analista',ativo:p.ativo !== false,origem:'ERP',online:false,agendaPessoal:[],calendarioOculto:[]},{nome:'nome',email:'email',ativo:'ativo'},'profiles')));
   const uid = id => db.usuarios.find(x=>x.erpRef===id)?.id || userId(id);
   merge('municipios',base.fin_receb_municipios.map(m=>bind('municipios',m,{id:m.id,nome:m.nome,uf:m.uf,prefixo:m.prefixo,origem:['ERP'],criado:text(m.created_at).slice(0,10)},direct('nome,uf,prefixo'),'fin_receb_municipios')));
   merge('remessas',(base.fin_receb_remessas||[]).map(r=>bind('remessas',r,{id:r.id,municipioId:r.municipio_id,numero:Number(text(r.codigo).match(/\d+$/)?.[0])||1,titulo:r.nome||r.codigo,criada:text(r.created_at).slice(0,10),origem:['ERP'],externo:{financeiro:r.id}}, {titulo:'nome',municipioId:'municipio_id'},'fin_receb_remessas')));
