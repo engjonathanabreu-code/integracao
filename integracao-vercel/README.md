@@ -69,3 +69,13 @@ A análise por IA só funciona publicada, porque depende da função `/api/ia`.
 - O mapa precisa de internet para carregar as imagens de satélite.
 
 A rota antiga `/api/claude` é mantida somente por compatibilidade e também usa OpenAI. As variáveis Anthropic não são mais utilizadas. Configure `OPENAI_API_KEY` como segredo no servidor, sem prefixo `VITE_`, e faça novo deploy após salvar. A Responses API recebe textos, imagens e PDFs com `store: false`; respostas incompletas ou recusadas não são salvas como análises válidas.
+
+Todos os processos de IA executados pelo Integração usam o serviço central `server/openai.js` e as mesmas variáveis `OPENAI_API_KEY` / `OPENAI_MODEL`:
+- análise documental no cadastro, em Documentos e IA e nas fotos do campo/comercial;
+- leitura de devolutivas e comparação do material corrigido;
+- preenchimento e identificação de marcadores nos modelos;
+- geração e resumo de ofícios;
+- leitura de matrículas dos Dados NUI (matrículas, cadeia dominial e usucapião);
+- teste de conexão nas configurações.
+
+O leitor de matrículas não depende mais do serviço externo leitor-de-matriculas. Preserva permissões de Projetos/diretoria, limite de 3 MB, hash do arquivo, modelo utilizado e confirmação humana antes de salvar. Os endpoints de identificação e andamento do CRM são consultas de dados para um agente externo: não escolhem nem executam modelos de IA. A configuração de um eventual agente no Chatwoot é independente deste repositório.
