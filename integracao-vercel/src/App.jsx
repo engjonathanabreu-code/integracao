@@ -9691,7 +9691,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   const [rascunho, setRascunho] = useState(null);
   const [advogado, setAdvogado] = useState(null);
   const [restaurar, setRestaurar] = useState(null);
-  const corpo = corpoDoModelo(db, aberto);
+  const corpo = aberto === "oficio" ? "" : corpoDoModelo(db, aberto);
   const proprio = !!(db.modelosDoc || {})[aberto];
   const texto = rascunho !== null ? rascunho : corpo;
   const sujo = rascunho !== null && rascunho !== corpo;
@@ -9707,7 +9707,6 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <ConfigModeloOficio modelo={db.modelosDoc?.oficio} pode={pode} salvar={modelo=>{mutar(d=>{d.modelosDoc={...(d.modelosDoc||{}),oficio:modelo};return d;},"Modelo de ofício alterado");setToast("Modelo de ofício salvo.");}}/>
       <Secao titulo="Modelos dos documentos" nota="O texto é preenchido pelo próprio sistema com os dados do cadastro, sem depender de IA. Use os marcadores entre chaves para indicar onde cada informação entra.">
         {!pode && <Aviso>Só a Diretoria altera os modelos. Você pode conferir o texto aqui.</Aviso>}
         <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
@@ -9716,7 +9715,11 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
               {m.nome}{(db.modelosDoc || {})[id] ? " ✎" : ""}
             </button>
           ))}
+          <button className={`btn btn-sm${aberto === "oficio" ? " btn-primario" : ""}`} onClick={() => { setAberto("oficio"); setRascunho(null); }}>Ofício{db.modelosDoc?.oficio ? " ✎" : ""}</button>
         </div>
+        {aberto === "oficio" ? (
+      <ConfigModeloOficio modelo={db.modelosDoc?.oficio} pode={pode} salvar={modelo=>{mutar(d=>{d.modelosDoc={...(d.modelosDoc||{}),oficio:modelo};return d;},"Modelo de ofício alterado");setToast("Modelo de ofício salvo.");}}/>
+        ) : <>
         <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
           <Tag tipo={proprio ? "ok" : "neutra"}>{proprio ? "Modelo alterado pela equipe" : "Modelo padrão"}</Tag>
           {pode && proprio && <button className="btn btn-sm" onClick={() => setRestaurar(aberto)}><Undo2 size={13} />Voltar ao padrão</button>}
@@ -9738,6 +9741,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
           ))}
         </div>
         <p className="ajuda">Use também {"{{titulo:TEXTO}}"} para o título e {"{{p:TEXTO}}"} para cada parágrafo.</p>
+        </>}
       </Secao>
 
       <Secao titulo={`Representantes da empresa (${(db.advogados || []).length})`} nota="Quem pode receber a procuração dos moradores. Na hora de gerar, o comercial escolhe quem representa a Integral naquele documento."

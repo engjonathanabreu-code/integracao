@@ -14,7 +14,7 @@ for(const mobile of [false,true]){
  for(const [format,ext] of [['PDF','pdf'],['Word','docx']]){const wait=page.waitForEvent('download');await page.getByRole('button',{name:`Baixar ofício em ${format}`,exact:true}).click();await (await wait).saveAs(`/tmp/modelo-309-${mobile?'mobile':'desktop'}.${ext}`);}
  assert.equal(await page.evaluate(()=>window.oficiosTeste.length),0);
  await page.getByLabel('Conteúdo do ofício',{exact:true}).fill('Rascunho próprio preservado.');await page.getByRole('button',{name:'Fechar e guardar rascunho',exact:true}).click();
- await nav('Configurações');await page.getByRole('tab',{name:'Modelos e representantes',exact:true}).click();
+ await nav('Configurações');await page.getByRole('tab',{name:'Modelos e representantes',exact:true}).click();assert.equal(await page.getByLabel('Introdução padrão do ofício',{exact:true}).count(),0);await page.getByRole('button',{name:'Ofício',exact:true}).click();
  await page.getByLabel('Conteúdo padrão do ofício',{exact:true}).fill('1. Texto alterado nas configurações.');await page.getByLabel('Assinatura padrão do ofício',{exact:true}).fill('Assinatura configurada');await page.getByRole('button',{name:'Salvar modelo de ofício',exact:true}).click();
  await page.waitForFunction(()=>window.baseFixture.integracao_configuracoes.some(x=>x.registro_id==='modelosDoc'&&x.dados.valor.oficio?.assinatura==='Assinatura configurada'));
  await nav('Metas');await page.getByRole('button',{name:'Ofícios',exact:true}).click();await page.getByRole('button',{name:'Gerar ofício',exact:true}).click();
