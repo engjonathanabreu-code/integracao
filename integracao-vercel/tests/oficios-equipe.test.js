@@ -15,7 +15,7 @@ test('permissões de autoria e devolutiva por identificação canônica',()=>{
  assert.ok(!podeAnalisarDevolutiva(null,{id:'123',setor:'projeto'}));
 });
 test('modelo preserva introdução e escapa conteúdo antes de converter documentos',()=>{
- const f={numero:42,data:'2026-09-22',destinatario:'Prefeitura de Teste',assunto:'Pedido',conteudo:'<script>alert(1)</script>\n\nSegundo parágrafo.',assinatura:'Pessoa\nCargo',...modeloOficio({introducao:'Introdução configurada.'})};
+ const f={...modeloOficio({introducao:'Introdução configurada.'}),numero:42,data:'2026-09-22',destinatario:'Prefeitura de Teste',assunto:'Pedido',conteudo:'<script>alert(1)</script>\n\nSegundo parágrafo.',assinatura:'Pessoa\nCargo'};
  const html=htmlOficio(f);assert.ok(html.includes('042/2026'));assert.ok(html.includes('Introdução configurada.'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.throws(()=>htmlOficio({...f,conteudo:''}));
 });
 test('endpoints verificam sessão e perfil antes da IA e não aceitam respostas incompletas',async()=>{
