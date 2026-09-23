@@ -81,6 +81,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       const aliases=result.aliases||{};
       const saved=remap(after,aliases),grupos=gruposDasOperacoes(operations);
       const base=await carregarBase(saved,grupos);
+      // The active route may not have selected a municipality (global search).
+      // Refresh changed financial customers explicitly before projecting the saved form.
+      const clientesAlterados=new Set(operations.filter(o=>o.table==='fin_receb_clientes'&&!o.remove).map(o=>o.key?.id));
+      for(const cliente of saved.processos.filter(p=>clientesAlterados.has(p.financeiroRef||p.id))){
+        const carga=await lerFichaCliente(cliente);
+        base.fin_receb_clientes=[...base.fin_receb_clientes.filter(x=>!carga.clientes.some(c=>c.id===x.id)),...carga.clientes];
+        base.integracao_moradores=[...base.integracao_moradores.filter(x=>!carga.complementos.some(c=>c.registro_id===x.registro_id)),...carga.complementos];
+      }
       if(gen!==generation.current) return;
       await confirmarArquivos(sent,base);
       const state=projetar(base,saved);

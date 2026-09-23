@@ -1,3 +1,6 @@
+import {MODELO_CONTRATO} from './contrato-modelo.js';
+import {dadosContrato} from './contrato-dados.js';
+import {atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
 import {documentoHtml} from './documento-formato.js';
 import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
@@ -8356,7 +8359,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
 /* ---------------- documentos comerciais ---------------- */
 const MODALIDADES_VENDA = ["À vista", "Entrada e parcelas", "Parcelado sem entrada", "Isento (REURB-S)", "Custeado pela prefeitura"];
 const REAJUSTES = ["Sem reajuste", "IPCA anual", "IGP-M anual", "INPC anual"];
-const condicoesVazias = () => ({ modalidade: "Entrada e parcelas", valorTotal: "", entrada: "", parcelas: "", valorParcela: "", diaVencimento: "10", primeiroVencimento: "", reajuste: "Sem reajuste", observacoes: "" });
+const condicoesVazias = () => ({ modalidade: "Entrada e parcelas", valorTotal: "", entrada: "", entradaTipo: "valor", entradaPercentual: "", parcelas: "", valorParcela: "", diaVencimento: "10", primeiroVencimento: "", reajuste: "Sem reajuste", observacoes: "" });
 const condicoesDoCliente = (db, p) => {
   const n = nucleoDe(db, p.nucleoId);
   if (p.comercial) return { ...p.comercial, origem: "cliente" };
@@ -8444,6 +8447,8 @@ function dadosDocumento(db, p, usuario) {
   const hoje = new Date();
   return {
     elaboracao: db.empresa || {},
+    remessa: remessaDe(db,p.remessaId)?.titulo || (remessaDe(db,p.remessaId) ? `Remessa ${remessaDe(db,p.remessaId).numero}` : "____________"),
+    enderecoImovelContrato: `${enderecoLinha(temValor(p.enderecoImovel) ? p.enderecoImovel : p.endereco)}, ${m ? `${m.nome}/${m.uf}` : "____________"}${(p.enderecoImovel?.cep || p.endereco?.cep) ? `, CEP ${p.enderecoImovel?.cep || p.endereco?.cep}` : ""}`,
     nome: p.requerente.nome || "____________", cpf: fmtCPF(p.requerente.cpf) || "____________",
     rg: p.requerente.rg || "____________", nacionalidade: p.requerente.nacionalidade || "brasileiro(a)",
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
@@ -8490,16 +8495,7 @@ const MODELOS_DOC = {
   memorialDescritivo: { nome: "Memorial descritivo da unidade imobiliária", corpo: MODELO_MEMORIAL_DESCRITIVO },
   contrato: {
     nome: "Contrato de prestação de serviços",
-    corpo: `{{titulo:CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE REGULARIZAÇÃO FUNDIÁRIA}}
-{{p:<strong>CONTRATADA:</strong> {{elaboracao.razaoSocial}}, inscrita no CNPJ {{elaboracao.cnpj}}, com sede à {{elaboracao.endereco}}.}}
-{{p:<strong>CONTRATANTE:</strong> {{qualificacao}}.}}
-{{p:<strong>Cláusula 1ª. Objeto.</strong> A CONTRATADA prestará os serviços técnicos necessários à regularização fundiária urbana (REURB) da unidade {{unidades}}, situada no núcleo {{nucleo}}, em {{municipio}}, na modalidade {{modalidade}}, conforme a Lei Federal 13.465/2017.}}
-{{p:<strong>Cláusula 2ª. Serviços.</strong> Estão incluídos o levantamento topográfico da unidade, a elaboração do memorial descritivo, a instrução do processo administrativo, o acompanhamento junto à prefeitura e o encaminhamento ao Registro de Imóveis, até a emissão do título.}}
-{{p:<strong>Cláusula 3ª. Preço e forma de pagamento.</strong> {{pagamento}}{{observacoes_pagamento}}}}
-{{p:<strong>Cláusula 4ª. Obrigações do CONTRATANTE.</strong> Entregar os documentos solicitados, permitir o acesso do técnico ao imóvel para as medições e manter os dados de contato atualizados.}}
-{{p:<strong>Cláusula 5ª. Prazo.</strong> Os prazos dependem da análise da prefeitura e do cartório, não cabendo à CONTRATADA responsabilidade por atrasos de terceiros.}}
-{{p:<strong>Cláusula 6ª. Foro.</strong> Fica eleito o foro da comarca de {{municipio}} para dirimir dúvidas deste contrato.}}
-{{assinatura_com_conjuge}}`,
+    corpo: MODELO_CONTRATO,
   },
   procuracao: {
     nome: "Procuração",
@@ -8581,6 +8577,8 @@ const MARCADORES_DOC = [
   ["endereco", "Endereço"], ["cep", "CEP"], ["trecho_cep", "Trecho com o CEP, quando houver"], ["municipio", "Município e UF"],
   ["nucleo", "Núcleo"], ["codigo", "Código do cliente"], ["unidades", "Códigos das unidades"], ["area", "Área"],
   ["tipoPosse", "Tipo de posse"], ["tempoPosse", "Tempo de posse"], ["renda", "Renda familiar"], ["modalidade", "Modalidade da REURB"],
+  ["remessa", "Remessa do processo"], ["contratada", "Qualificação da empresa"], ["enderecoImovelContrato", "Endereço completo do imóvel"],
+  ["precoContrato", "Preço do contrato"], ["reajusteContrato", "Reajuste do contrato"], ["faturamentoContrato", "Faturamento"], ["pagamentoContrato", "Pagamento e ajuste da última parcela"], ["valorAlteracaoContrato", "30% do valor global"], ["assinatura_contrato", "Assinaturas das partes e testemunhas"],
   ["pagamento", "Texto da forma de pagamento"], ["observacoes_pagamento", "Observações do contrato"],
   ["procuradores", "Representantes escolhidos na procuração"], ["dataExtenso", "Cidade e data por extenso"],
   ["assinatura", "Bloco de assinatura do morador"], ["assinatura_com_conjuge", "Bloco de assinatura com o cônjuge"],
@@ -8617,6 +8615,7 @@ function valoresDocumento(d, extras = {}) {
   const qualifica = d.qualificacaoCompleta && !/\[[^\]]+\]/.test(d.qualificacaoCompleta) ? d.qualificacaoCompleta.replace(/\.$/, "") : `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no CPF sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
   return {
     ...d,
+    ...dadosContrato(d),
     qualificacao: qualifica,
     assinatura_todos: blocoAssinaturaTodos(d),
     trecho_conjuge: d.conjuge ? `, sendo ${d.conjuge}, CPF ${d.cpfConjuge || "____________"}, seu cônjuge ou companheiro(a)` : "",
@@ -8652,21 +8651,21 @@ function montarDocumentoComercial(tipo, d, db, extras) {
 function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
   const [f, setF] = useState(() => ({ ...condicoesVazias(), ...(valor || {}) }));
   useEffect(() => { setF({ ...condicoesVazias(), ...(valor || {}) }); }, [JSON.stringify(valor)]); // eslint-disable-line
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const [erro,setErro] = useState("");
+  const set = (k, v) => { setErro(""); setF((x) => atualizarCondicoes(x,k,v)); };
   const semValores = f.modalidade.startsWith("Isento") || f.modalidade.startsWith("Custeado");
   const semParcelas = semValores || f.modalidade === "À vista";
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...condicoesVazias(), ...(valor || {}) });
-  const calcular = () => {
-    const total = parseNum(f.valorTotal) || 0; const entrada = parseNum(f.entrada) || 0; const qtd = parseInt(f.parcelas, 10) || 0;
-    if (qtd > 0) set("valorParcela", ((total - entrada) / qtd).toFixed(2).replace(".", ","));
-  };
   return (
     <Secao titulo={titulo} nota={nota}>
       <div data-edicao-pendente={sujo} className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><label className="rot" htmlFor={`${titulo}-mod`}>Forma de venda</label><select id={`${titulo}-mod`} className="inp" value={f.modalidade} disabled={!pode} onChange={(e) => set("modalidade", e.target.value)}>{MODALIDADES_VENDA.map((x) => <option key={x}>{x}</option>)}</select></div>
-        {!semValores && <div><label className="rot" htmlFor={`${titulo}-tot`}>Valor total (R$)</label><input id={`${titulo}-tot`} className="inp" inputMode="decimal" value={f.valorTotal} disabled={!pode} onChange={(e) => set("valorTotal", e.target.value)} onBlur={calcular} /></div>}
-        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-ent`}>Entrada (R$)</label><input id={`${titulo}-ent`} className="inp" inputMode="decimal" value={f.entrada} disabled={!pode} onChange={(e) => set("entrada", e.target.value)} onBlur={calcular} /></div>}
-        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-par`}>Parcelas</label><input id={`${titulo}-par`} className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} onBlur={calcular} /></div>}
+        {!semValores && <div><label className="rot" htmlFor={`${titulo}-tot`}>Valor total (R$)</label><input id={`${titulo}-tot`} className="inp" inputMode="decimal" value={f.valorTotal} disabled={!pode} onChange={(e) => set("valorTotal", e.target.value)} /></div>}
+        {f.modalidade === "Entrada e parcelas" && <>
+          <div><label className="rot" htmlFor={`${titulo}-tipo-ent`}>Informar entrada em</label><select id={`${titulo}-tipo-ent`} className="inp" value={f.entradaTipo} disabled={!pode} onChange={e=>set("entradaTipo",e.target.value)}><option value="valor">Valor (R$)</option><option value="percentual">Porcentagem (%)</option></select></div>
+          <div><label className="rot" htmlFor={`${titulo}-ent`}>{f.entradaTipo === "percentual" ? "Entrada (%)" : "Entrada (R$)"}</label><input id={`${titulo}-ent`} className="inp" inputMode="decimal" value={f.entradaTipo === "percentual" ? f.entradaPercentual : f.entrada} disabled={!pode} onChange={e=>set(f.entradaTipo === "percentual" ? "entradaPercentual" : "entrada",e.target.value)} />{f.entradaTipo === "percentual" && <small className="ajuda">Equivale a {reais(f.entrada)}</small>}</div>
+        </>}
+        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-par`}>Parcelas</label><input id={`${titulo}-par`} className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} /></div>}
         {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-vp`}>Valor da parcela (R$)</label><input id={`${titulo}-vp`} className="inp" inputMode="decimal" value={f.valorParcela} disabled={!pode} onChange={(e) => set("valorParcela", e.target.value)} /></div>}
         {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-dia`}>Dia de vencimento</label><input id={`${titulo}-dia`} className="inp" inputMode="numeric" value={f.diaVencimento} disabled={!pode} onChange={(e) => set("diaVencimento", e.target.value)} /></div>}
         {!semValores && <div><label className="rot" htmlFor={`${titulo}-pv`}>Primeiro vencimento</label><input id={`${titulo}-pv`} type="date" className="inp" value={f.primeiroVencimento} disabled={!pode} onChange={(e) => set("primeiroVencimento", e.target.value)} /></div>}
@@ -8675,9 +8674,10 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
       <label className="rot" htmlFor={`${titulo}-obs`} style={{ marginTop: 12 }}>Observações que entram no contrato</label>
       <textarea id={`${titulo}-obs`} className="inp" rows={2} value={f.observacoes} disabled={!pode} onChange={(e) => set("observacoes", e.target.value)} />
       <div className="faixa-especifica" style={{ marginTop: 12 }}>
-        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}</span>
-        {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => onSalvar(f)}><Check size={15} />Salvar</button>}
+        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
+        {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => { const mensagem=validarCondicoesVenda(f); setErro(mensagem); if(!mensagem)onSalvar(f); }}><Check size={15} />Salvar</button>}
       </div>
+      {erro && <p role="alert" className="msg-erro">{erro}</p>}
       {rodape}
     </Secao>
   );
