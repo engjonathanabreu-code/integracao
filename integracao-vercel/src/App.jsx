@@ -7995,6 +7995,43 @@ const ORIGENS_DEVOLUTIVA = ["Prefeitura", "ORI"];
 const PREFIXO_ARQ_DEV = "integracao-devolutiva-v1-";
 const devolutivasDoNucleo = (db, nucleoId) => (db.metas || []).filter((m) => m.devolutiva && (m.associacao_id === nucleoId || (m.nucleos || []).includes(nucleoId)));
 
+function VerArquivoMeta({ arquivo }) {
+  const [aberto, setAberto] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    if (!aberto) return;
+    let ativo = true, url;
+    setPreview(null); setErro("");
+    (async () => {
+      const data = await armazenamento.get(arquivo.chave);
+      if (!data) throw Error("Arquivo não encontrado. Tente abrir novamente.");
+      const blob = await (await fetch(data)).blob();
+      const tipo = arquivo.tipo || blob.type;
+      const pdf = tipo === "application/pdf" || /\.pdf$/i.test(arquivo.nome);
+      const imagem = /^(image\/(png|jpeg|gif|webp|bmp|avif))$/.test(tipo) || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(arquivo.nome);
+      let conteudo;
+      if (pdf || imagem) {
+        url = URL.createObjectURL(pdf ? new Blob([blob], {type:"application/pdf"}) : blob);
+        conteudo = {tipo:pdf ? "pdf" : "imagem", url};
+      } else if (/\.docx$/i.test(arquivo.nome)) {
+        const mammoth = await import("mammoth");
+        const resultado = await (mammoth.default || mammoth).extractRawText({arrayBuffer:await blob.arrayBuffer()});
+        conteudo = {tipo:"texto", texto:resultado.value};
+      } else if (/^text\/(plain|csv)/.test(tipo) || /\.(txt|csv)$/i.test(arquivo.nome)) {
+        conteudo = {tipo:"texto", texto:await blob.text()};
+      } else conteudo = {tipo:"indisponivel"};
+      if (ativo) setPreview(conteudo); else if (url) URL.revokeObjectURL(url);
+    })().catch(e => { if (ativo) setErro(e.message || "Não foi possível visualizar o arquivo."); });
+    return () => { ativo = false; if (url) URL.revokeObjectURL(url); };
+  }, [aberto, arquivo.chave]);
+  return <><button className="btn btn-sm" onClick={() => setAberto(true)}><Eye size={13} />Visualizar</button>
+    {aberto && <Modal titulo={arquivo.nome} largura={1000} onFechar={() => setAberto(false)}>
+      {erro ? <div className="msg-erro">{erro}</div> : !preview ? <p>Carregando arquivo…</p> : preview.tipo === "pdf" ? <iframe title={arquivo.nome} src={preview.url} style={{width:"100%",height:"70vh",border:0}} /> : preview.tipo === "imagem" ? <img alt={arquivo.nome} src={preview.url} style={{display:"block",maxWidth:"100%",maxHeight:"70vh",margin:"auto",objectFit:"contain"}} /> : preview.tipo === "texto" ? <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:"70vh",overflow:"auto"}}>{preview.texto}</pre> : <p>Este formato não tem prévia disponível. Use a opção Baixar na lista de arquivos.</p>}
+    </Modal>}
+  </>;
+}
+
 function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
   const lista = devolutivasDoNucleo(db, n.id).sort((a, b) => (b.devolutiva?.chegada || "").localeCompare(a.devolutiva?.chegada || ""));
   const hoje = new Date().toISOString().slice(0, 10);
@@ -8043,7 +8080,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
               </div>
             )}
             <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
-              {(m.arquivos || []).map((a) => <button key={a.id} className="btn btn-sm" onClick={() => baixar(a)}><Paperclip size={13} />{a.nome}</button>)}
+              {(m.arquivos || []).map((a) => <div key={a.id} className="flex flex-wrap items-center gap-2"><span><Paperclip size={13} /> {a.nome}</span><VerArquivoMeta arquivo={a} /><button className="btn btn-sm" onClick={() => baixar(a)}><Download size={13} />Baixar</button></div>)}
               {!(m.arquivos || []).length && <span className="ajuda" style={{ margin: 0 }}>Sem arquivo anexado.</span>}
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorio(m)}><Sparkles size={13} />Ver relatório da IA</button>}
               {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
@@ -10152,7 +10189,8 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: semanaISO(1), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const [arquivoDev, setArquivoDev] = useState(null);
+  const [arquivosDev, setArquivosDev] = useState([]);
+  const [salvando, setSalvando] = useState(false);
   const [erroDev, setErroDev] = useState("");
   const addItemChecklist = () => setF((x) => (x.checklistItens.some((y) => !y.titulo.trim()) ? x : { ...x, checklistItens: [...x.checklistItens, { id: uid("c"), titulo: "", concluido: false }] }));
   const erros = [];
@@ -10164,29 +10202,36 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     if (!f.chegadaDev) erros.push("Informe a data de chegada da devolutiva");
     if (!f.prazoDev) erros.push("Informe o prazo final para responder");
     if (f.prazoDev && f.chegadaDev && f.prazoDev < f.chegadaDev) erros.push("O prazo não pode ser antes da chegada");
-    if (!arquivoDev && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
+    if (!arquivosDev.length && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
   }
   const opcoesAssoc = f.associacao_tipo === "plano" ? (db.planos || []).map((p) => [p.id, p.titulo])
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
-    let anexo = null;
-    if (arquivoDev) {
-      try {
-        const base64 = await lerBase64(arquivoDev);
-        anexo = { id: uid("ar"), nome: arquivoDev.name, tipo: arquivoDev.type || "application/octet-stream", tamanho: arquivoDev.size, chave: `${PREFIXO_ARQ_DEV}${uid("k")}`, por: usuario.nome, data: new Date().toISOString() };
+    if (salvando || erros.length) return;
+    setSalvando(true); setErroDev("");
+    const anexos = [];
+    try {
+      for (const arquivo of f.devolutiva ? arquivosDev : []) {
+        const base64 = await lerBase64(arquivo);
+        const anexo = { id: uid("ar"), nome: arquivo.name, tipo: arquivo.type || "application/octet-stream", tamanho: arquivo.size, chave: `${PREFIXO_ARQ_DEV}${uid("k")}`, por: usuario.nome, data: new Date().toISOString() };
         await armazenamento.set(anexo.chave, `data:${anexo.tipo};base64,${base64}`);
-      } catch (e) { setErroDev(`Não foi possível guardar o arquivo: ${e.message}.`); return; }
+        anexos.push(anexo);
+      }
+    } catch (e) {
+      await Promise.allSettled(anexos.map(a => armazenamento.del(a.chave)));
+      setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
+      setSalvando(false); return;
     }
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
       devolutiva: f.devolutiva ? { origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
-      const m = { id: uid("mt"), erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexo ? [anexo] : [] };
+      const m = { id: uid("mt"), erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       mutar((d) => {
         d.metas.unshift(m);
         registrarHistoricoMeta(d, m, "Criada", `${m.devolutiva ? `Devolutiva da ${m.devolutiva.origem} recebida em ${dataBR(m.devolutiva.chegada)}` : "Meta"} criada por ${usuario.nome}.`, usuario);
-        if (anexo) registrarHistoricoMeta(d, m, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario);
+        anexos.forEach(anexo => registrarHistoricoMeta(d, m, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario));
         const outros = m.responsaveis.filter((id) => id !== usuario.id);
         if (outros.length) novaNotificacao(d, { titulo: `Nova meta: ${m.titulo}`, texto: `${usuario.nome} atribuiu a você. Semana de ${dataBR(m.semana_inicio)}${m.prazo ? `, prazo ${dataBR(m.prazo)}` : ""}.`, rota: { pag: "metas" }, usuarios: outros });
         return d;
@@ -10210,7 +10255,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
         itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
         antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
-        if (anexo) { q.arquivos = [...(q.arquivos || []), anexo]; registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario); }
+        if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
         return d;
       }, "Meta editada", { detalhe: `${meta.titulo}: ${mud.join(", ") || "sem mudanças"}` });
@@ -10221,7 +10266,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   };
   return (
     <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={640} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={salvar}>Salvar</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || erros.length > 0} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></>}>
       <label className="tag" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, whiteSpace: "normal" }}>
         <span className="chave"><input type="checkbox" checked={f.devolutiva} onChange={(e) => { set("devolutiva", e.target.checked); if (e.target.checked) set("associacao_tipo", "nucleo"); }} /><span /></span>
         Esta meta é uma devolutiva
@@ -10233,10 +10278,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
             <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className="inp" value={f.chegadaDev} onChange={(e) => set("chegadaDev", e.target.value)} /></div>
             <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className="inp" value={f.prazoDev} onChange={(e) => set("prazoDev", e.target.value)} /></div>
           </div>
-          <label className="rot" htmlFor="mtda" style={{ marginTop: 12 }}>Arquivo da devolutiva</label>
-          <input id="mtda" type="file" className="inp" onChange={(e) => { const a = e.target.files?.[0]; setErroDev(""); if (a && a.size > MAX_ARQUIVO) { setErroDev("O arquivo passa do tamanho permitido."); setArquivoDev(null); return; } setArquivoDev(a || null); }} />
+          <label className="rot" htmlFor="mtda" style={{ marginTop: 12 }}>Arquivos da devolutiva (até 5)</label>
+          <input id="mtda" type="file" multiple disabled={salvando} className="inp" onChange={(e) => {
+            const novos = Array.from(e.target.files || []); e.target.value = "";
+            if (novos.length + arquivosDev.length + (meta?.arquivos || []).length > 5) { setErroDev("Cada devolutiva permite até 5 arquivos. Remova um arquivo antes de adicionar outro."); return; }
+            if (novos.some(a => a.size > MAX_ARQUIVO)) { setErroDev("Cada arquivo pode ter até 25 MB."); return; }
+            setErroDev(""); setArquivosDev(atuais => [...atuais, ...novos]);
+          }} />
+          {arquivosDev.map((a, i) => <div key={i} className="flex items-center gap-2" style={{marginTop:6}}><span style={{flex:1}}>{a.name}</span><button className="btn-icone" disabled={salvando} aria-label={`Remover ${a.name}`} onClick={() => {setArquivosDev(atual => atual.filter((_,j) => j !== i));setErroDev("");}}><Trash2 size={14} /></button></div>)}
           {erroDev && <div className="msg-erro">{erroDev}</div>}
-          <div className="ajuda">O arquivo fica guardado com a meta e aparece na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
+          <div className="ajuda">Os arquivos ficam guardados com a meta e aparecem na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
           {meta && (meta.arquivos || []).length > 0 && <div className="ajuda">Já anexado: {(meta.arquivos || []).map((a) => a.nome).join(", ")}</div>}
         </div>
       )}
@@ -10323,6 +10374,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
     if (!arq) return;
+    if (m.devolutiva && (m.arquivos || []).length >= 5) { setErroArquivo("Cada devolutiva permite até 5 arquivos."); return; }
     if (arq.size > MAX_ARQUIVO) { setErroArquivo(`"${arq.name}" passa do tamanho permitido.`); return; }
     setEnviando(true);
     try {
@@ -10420,6 +10472,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
         <div key={a.id} className="flex flex-wrap items-center gap-2" style={{ padding: "8px 0", borderTop: "1px solid var(--line2)" }}>
           <Paperclip size={15} style={{ color: "var(--muted)", flex: "none" }} />
           <span style={{ flex: 1, minWidth: 140 }}><strong style={{ fontWeight: 650 }}>{a.nome}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{(a.tamanho / 1024).toFixed(0)} KB, enviado por {a.por} em {dataBR(a.data)}</span></span>
+          <VerArquivoMeta arquivo={a} />
           <button className="btn btn-sm" onClick={() => baixarAnexo(a)}><Download size={13} />Baixar</button>
           {colabora && <button className="btn-icone" onClick={() => removerAnexo(a)} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
         </div>
@@ -10430,7 +10483,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
           <input ref={entradaArquivo} type="file" style={{ display: "none" }} onChange={(e) => enviarAnexo(e.target.files?.[0])} />
           <button className="btn btn-sm" disabled={enviando} onClick={() => entradaArquivo.current?.click()}>{enviando ? <Loader2 size={13} className="girando" /> : <Upload size={13} />}Enviar arquivo</button>
           {erroArquivo && <div className="msg-erro">{erroArquivo}</div>}
-          <div className="ajuda">PDF, imagem ou documento, até 3 MB. Fica guardado com a meta.</div>
+          <div className="ajuda">PDF, imagem ou documento, até 25 MB. Devolutivas permitem até 5 arquivos.</div>
         </div>
       )}
 

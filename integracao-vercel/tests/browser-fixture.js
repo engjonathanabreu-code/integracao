@@ -69,9 +69,9 @@ window.fetch=async(input,options={})=>{
   if(url.pathname.endsWith('/rpc/integracao_registrar_acesso')){const p=JSON.parse(options.body);base.integracao_acessos.push({id:crypto.randomUUID(),usuario_id:base.profiles[0].id,usuario_nome:base.profiles[0].nome,evento:p.p_evento,motivo:p.p_motivo,ocorrido_em:new Date().toISOString()});return json(null);}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});
   if(url.pathname.includes('/storage/v1/object/')) {
-    const path=url.pathname.split('/integracao/')[1];
-    if(options.method==='POST'){objects.set(path,new TextDecoder().decode(options.body));return json({});}
-    return new Response(objects.get(path)||'');
+    const path=url.pathname.replace(/^\/storage\/v1\/object\/(authenticated\/)?/,'');
+    if(options.method==='POST'){objects.set(path,options.body);return json({});}
+    return objects.has(path) ? new Response(objects.get(path)) : json({message:'Arquivo não encontrado no teste'},404);
   }
   if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:inicio?[]:base.integracao_moradores.filter(e=>base.fin_receb_clientes.some(c=>c.id===e.referencia_id&&c.municipio_id===municipio)),total:0});}
   if(url.pathname.endsWith('/rpc/integracao_contagens_clientes'))return json(base.fin_receb_clientes.map(c=>({municipio_id:c.municipio_id,remessa_id:c.remessa_id,total:1,ativos:c.ativo===false?0:1})));
