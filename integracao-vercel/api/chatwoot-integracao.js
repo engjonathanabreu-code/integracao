@@ -18,7 +18,7 @@ export function eventoChatwoot(p,instalacao,contaConfigurada) {
  if(Number.isNaN(data.getTime()))return null;
  return {instalacao,conta_id:conta,conversa_id:conversa,contato_id:contato,mensagem_id:mensagem,
  agente_id:idExterno(conversation.meta?.assignee?.id||conversation.assignee_id),nome:contact?.name||'Contato Chatwoot',telefone:contact?.phone_number||'',
- conteudo:typeof p.content==='string'?p.content:'',privada:p.private===true,autor:p.sender?.name||'',direcao:String(p.message_type??''),
+ conteudo:typeof p.content==='string'?p.content:'',privada:p.private===true,autor:p.sender?.name||'',autor_chatwoot_id:idExterno(p.sender?.id),autor_tipo:['user','contact','agent_bot'].includes(p.sender?.type)?p.sender.type:null,direcao:String(p.message_type??''),
  anexos:(p.attachments||[]).map(a=>({id:a.id,nome:a.file_name||a.file_type,url:a.data_url,file_type:a.file_type})),data:data.toISOString()};
 }
 export default async function handler(req,res) {

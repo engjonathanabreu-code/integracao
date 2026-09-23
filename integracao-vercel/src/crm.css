@@ -72,3 +72,20 @@
 @media(max-width:600px){.rb .crm-lead-dialogo{padding:20px}.rb .crm-lead-dialogo .inp{font-size:16px}}
 
 .rb .crm-comerciais{border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}.rb .crm-comerciais legend{padding:0 5px;font-weight:650}.rb .crm-comerciais>div{max-height:240px;overflow:auto;display:grid;gap:4px}.rb .crm-form .crm-comerciais label{display:flex;align-items:center;gap:10px;min-height:40px;padding:5px}.rb .crm-comerciais input{width:18px;height:18px;flex-shrink:0;accent-color:var(--primary)}
+
+.rb .crm-followup-resumo,.rb .crm-chatwoot-resumo{display:grid;gap:6px;padding:12px;margin:10px 0;border:1px solid var(--line);border-radius:10px;font-size:12px;overflow-wrap:anywhere;background:var(--bg)}
+.rb .crm-followup-resumo .btn{white-space:normal;height:auto;min-height:34px}
+.rb .crm-followup-resumo.atrasado,.rb .crm-followup-status.atrasado{border-left:4px solid #c16a24}
+.rb .crm-followup fieldset{border:0;padding:0;min-width:0;display:grid;gap:12px}
+.rb .crm-followup .crm-followup-confirmacao{display:flex;align-items:center;gap:8px}.rb .crm-followup-confirmacao input{width:18px;height:18px;flex:none}
+.rb .crm-followup .crm-mensagem p{white-space:pre-wrap;overflow-wrap:anywhere}.rb .crm-followup-status{padding:9px;background:var(--bg);border-radius:6px}
+.rb .crm-dashboard{margin-top:22px}.rb .crm-dashboard h2{display:flex;align-items:center;gap:8px;font-size:23px;color:var(--titulo)}
+.rb .crm-dashboard-filtros{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:20px 0}.rb .crm-dashboard-filtros label{display:grid;gap:6px;font-size:12px;min-width:150px}
+.rb .crm-dashboard-cobertura,.rb .crm-dashboard-definicoes{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;line-height:1.6;font-size:13px}
+.rb .crm-dashboard-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
+.rb .crm-dashboard-agente{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;min-width:0}.rb .crm-dashboard-agente h3{font-size:18px;margin:0 0 16px;color:var(--titulo)}
+.rb .crm-dashboard-agente dl{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rb .crm-dashboard-agente dl>div{background:var(--bg);border-radius:8px;padding:10px;min-width:0}.rb .crm-dashboard-agente dt{font-size:11px;color:var(--muted);line-height:1.5}.rb .crm-dashboard-agente dd{font-size:22px;font-weight:700;color:var(--titulo);margin:6px 0 0}.rb .crm-dashboard-agente .crm-dashboard-alerta{border-left:4px solid #c16a24}
+.rb .crm-dashboard-movimentos article{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.rb .crm-dashboard-movimentos small{color:var(--muted)}
+.rb .crm-visao-reduzido .crm-chatwoot-resumo{padding:7px;font-size:10px}.rb .crm-visao-reduzido .crm-followup-resumo{padding:7px;font-size:11px}
+@media(max-width:600px){.rb .crm-dashboard-filtros>*{flex:1;min-width:140px}.rb .crm-dashboard-agente{padding:14px}.rb .crm-dashboard-agente dd{font-size:20px}}
+.rb .crm-dashboard .btn{background:var(--card);color:var(--titulo);border:1px solid var(--line)}
