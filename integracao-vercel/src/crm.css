@@ -89,3 +89,18 @@
 .rb .crm-visao-reduzido .crm-chatwoot-resumo{padding:7px;font-size:10px}.rb .crm-visao-reduzido .crm-followup-resumo{padding:7px;font-size:11px}
 @media(max-width:600px){.rb .crm-dashboard-filtros>*{flex:1;min-width:140px}.rb .crm-dashboard-agente{padding:14px}.rb .crm-dashboard-agente dd{font-size:20px}}
 .rb .crm-dashboard .btn{background:var(--card);color:var(--titulo);border:1px solid var(--line)}
+
+/* Institutional deals remain inside CRM. */
+.crm-institucionais { margin-top:24px; }
+.crm-institucionais h2 { display:flex; align-items:center; gap:8px; }
+.crm-institucional-card { min-width:0; overflow-wrap:anywhere; }
+.crm-institucional-card dl { display:grid; gap:4px; margin:16px 0; }
+.crm-institucional-card dt { font-size:12px; opacity:.7; }
+.crm-institucional-card dd { margin:0 0 8px; white-space:pre-wrap; }
+.crm-institucional-motivo { white-space:pre-wrap; border-left:3px solid #bd654d; padding-left:12px; }
+.crm-institucional-dialogo { max-width:760px; }
+.crm-institucional-dialogo fieldset { border:0; padding:0; min-width:0; display:grid; gap:14px; }
+.crm-institucional-dialogo h2 { padding-right:40px; }
+.crm-institucional-dialogo .crm-followup { margin-top:24px; }
+
+.rb .crm-institucionais .btn:not(.btn-primario),.rb .crm-institucional-dialogo .btn:not(.btn-primario){background:var(--card);color:var(--titulo);border:1px solid var(--line)}

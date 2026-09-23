@@ -52,7 +52,7 @@ export async function abrirArquivoSemanal(caminho) {
   const body=await r.json();return `${configERP.url}/storage/v1${body.signedURL}`;
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
-const compositeOrder = { meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
+const compositeOrder = { integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
 export async function tokenTempoReal(){if(!session)return null;if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});return session?.access_token||null;}
 export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
   const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {

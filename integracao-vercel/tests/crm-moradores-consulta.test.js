@@ -21,3 +21,8 @@ test('CRM carrega vínculos dos moradores com chave composta e paginação está
   assert.equal(chamadas[0].searchParams.get('order'),'id');
  }finally{globalThis.fetch=original;definirSessao(null);}
 });
+test('CRM pagina resumo Chatwoot pela chave card_id, sem solicitar coluna id inexistente',async()=>{
+ const original=globalThis.fetch,chamadas=[];definirSessao({access_token:'teste',expires_in:3600,user:{id:'teste'}});
+ globalThis.fetch=async input=>{const u=new URL(input);chamadas.push(u);if(u.searchParams.get('order')!=='card_id')return Response.json({message:'column integracao_crm_chatwoot_resumo.id does not exist'},{status:400});const offset=Number(u.searchParams.get('offset'));return Response.json(Array.from({length:offset?1:500},(_,i)=>({card_id:`card-${offset+i}`,conversas:1,mensagens:2})));};
+ try{const rows=await lerTabela('integracao_crm_chatwoot_resumo');assert.equal(rows.length,501);assert.deepEqual(chamadas.map(u=>u.searchParams.get('offset')),['0','500']);assert.equal(rows[500].card_id,'card-500');}finally{globalThis.fetch=original;definirSessao(null);}
+});
