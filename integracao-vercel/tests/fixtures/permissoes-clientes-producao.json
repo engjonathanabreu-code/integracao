@@ -1,0 +1,201 @@
+{
+  "capturadoEm": "2026-09-23",
+  "funcoes": [
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.can_access_fin_recebimentos()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select exists (\n    select 1\n    from public.profiles p\n    where p.id = (select auth.uid())\n      and p.ativo = true\n      and (\n        lower(trim(coalesce(p.tipo,''))) = 'administrador'\n        or lower(trim(coalesce(p.tipo,''))) = 'financeiro'\n        or lower(trim(coalesce(p.setor,''))) = 'financeiro'\n      )\n  );\n$function$\n",
+      "nome": "can_access_fin_recebimentos",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.can_manage_core()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select public.is_admin() or public.is_comercial();\n$function$\n",
+      "nome": "can_manage_core",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.integracao_acesso(tabela text, registro uuid, dono uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\nDECLARE permitido boolean;\nBEGIN\n  IF NOT EXISTS(SELECT 1 FROM public.profiles WHERE id=auth.uid() AND ativo) THEN RETURN false; END IF;\n  IF tabela='integracao_config' THEN RETURN true; END IF;\n  IF tabela IS NULL THEN RETURN dono=auth.uid() OR public.is_erp_admin(); END IF;\n  IF tabela NOT IN ('processos_kanban','metas','ordens_servico','planos_trabalho','erp_eventos','erp_conversas','profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','meta_setores','erp_agendas') THEN RETURN false; END IF;\n  -- SELECT executes with the caller's existing RLS policies, including private chats.\n  EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I WHERE id=$1)',tabela) INTO permitido USING registro;\n  RETURN permitido;\nEND $function$\n",
+      "nome": "integracao_acesso",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.integracao_gravar(operacoes jsonb, pedido uuid DEFAULT gen_random_uuid())\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nDECLARE op jsonb; tabela text; chave jsonb; anterior jsonb; mudancas jsonb;\n atual jsonb; colunas text; valores text; atribuicoes text; resultado jsonb; filtro text; pk text[];\n aliases jsonb:='{}'; a record; consulta text; quantidade integer; recibo public.integracao_pedidos;\nBEGIN\n IF auth.uid() IS NULL OR NOT EXISTS(SELECT 1 FROM public.profiles WHERE id=auth.uid() AND ativo) THEN RAISE EXCEPTION 'Sessão inválida'; END IF;\n IF jsonb_typeof(operacoes)<>'array' OR jsonb_array_length(operacoes)>1000 THEN RAISE EXCEPTION 'Lote inválido'; END IF;\n PERFORM pg_advisory_xact_lock(hashtextextended(auth.uid()::text||pedido::text,0));\n SELECT * INTO recibo FROM public.integracao_pedidos r WHERE r.usuario_id=auth.uid() AND r.pedido=integracao_gravar.pedido;\n IF FOUND THEN\n  IF recibo.resumo<>md5(operacoes::text) THEN RAISE EXCEPTION 'Pedido já utilizado para outra alteração'; END IF;\n  RETURN recibo.resultado;\n END IF;\n FOR op IN SELECT value FROM jsonb_array_elements(operacoes) LOOP\n  FOR a IN SELECT * FROM jsonb_each_text(aliases) LOOP\n   op:=replace(op::text,to_jsonb(a.key)::text,to_jsonb(a.value)::text)::jsonb;\n  END LOOP;\n  tabela:=op->>'table'; chave:=op->'key'; anterior:=op->'expected'; mudancas:=op->'changes';\n  IF tabela IS NOT NULL THEN\n   IF tabela NOT IN ('profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','meta_arquivos','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','erp_agendas','erp_eventos','erp_conversas','integracao_complementos','integracao_moradores','integracao_nucleos','integracao_municipios','integracao_remessas','integracao_metas','integracao_planos','integracao_ordens_servico','integracao_chat','integracao_usuarios','integracao_calendario','integracao_notificacoes','integracao_auditoria','integracao_configuracoes','integracao_arquivos') THEN RAISE EXCEPTION 'Tabela não permitida'; END IF;\n   IF chave IS NULL OR chave='{}' OR jsonb_typeof(chave)<>'object' THEN RAISE EXCEPTION 'Identificador obrigatório'; END IF;\n   SELECT array_agg(attr.attname::text ORDER BY attr.attname) INTO pk FROM pg_catalog.pg_index i JOIN pg_catalog.pg_attribute attr ON attr.attrelid=i.indrelid AND attr.attnum=ANY(i.indkey)\n   WHERE i.indrelid=format('public.%I',tabela)::regclass AND i.indisprimary;\n   IF pk IS DISTINCT FROM ARRAY(SELECT jsonb_object_keys(chave) ORDER BY 1) THEN RAISE EXCEPTION 'Informe exatamente a chave primária do registro'; END IF;\n   SELECT string_agg(format('t.%I=k.%I',key,key),' AND ') INTO filtro FROM jsonb_each(chave);\n   IF NOT coalesce((op->>'insert')::boolean,false) THEN\n    EXECUTE format('SELECT to_jsonb(t) FROM public.%I t, jsonb_populate_record(NULL::public.%I,$1) k WHERE %s FOR UPDATE OF t',tabela,tabela,filtro) INTO atual USING chave;\n    IF atual IS NULL THEN RAISE EXCEPTION 'Registro indisponível ou sem permissão: %',tabela; END IF;\n    FOR a IN SELECT * FROM jsonb_each(coalesce(anterior,'{}')) LOOP\n     IF (atual->a.key) IS DISTINCT FROM a.value THEN RAISE EXCEPTION 'Conflito em %. Outro usuário alterou o registro. Sua edição foi preservada para revisão.',tabela USING ERRCODE='40001'; END IF;\n    END LOOP;\n   END IF;\n  END IF;\n  IF coalesce((op->>'remove')::boolean,false) THEN\n   IF tabela='profiles' THEN RAISE EXCEPTION 'Exclusão não permitida nesta tabela'; END IF;\n   EXECUTE format('DELETE FROM public.%I t USING jsonb_populate_record(NULL::public.%I,$1) k WHERE %s',tabela,tabela,filtro) USING chave;\n   GET DIAGNOSTICS quantidade=ROW_COUNT;\n   IF quantidade<>1 THEN RAISE EXCEPTION 'Exclusão não autorizada'; END IF;\n  ELSIF op ? 'action' THEN\n   IF op->>'action' NOT IN ('agenda','agenda_atualizar','evento','evento_status','evento_cor','evento_mover','resposta','conversa','mensagem','exclusao','decidir_exclusao','lida','pessoal') THEN RAISE EXCEPTION 'Ação não permitida'; END IF;\n   resultado:=public.erp_collab_action(op->>'action',op->'payload');\n   IF op ? 'tempId' THEN aliases:=aliases||jsonb_build_object(op->>'tempId',resultado->>'id'); END IF;\n  ELSE\n   IF tabela IS NULL OR mudancas IS NULL OR jsonb_typeof(mudancas)<>'object' OR mudancas='{}' THEN RAISE EXCEPTION 'Alteração inválida'; END IF;\n   IF NOT coalesce((op->>'insert')::boolean,false) AND (mudancas ? 'id' OR mudancas ? 'created_by' OR mudancas ? 'criado_por' OR mudancas ? 'referencia_tabela' OR mudancas ? 'referencia_id') THEN RAISE EXCEPTION 'Identidade do registro não pode ser alterada'; END IF;\n   IF coalesce((op->>'insert')::boolean,false) THEN\n    mudancas:=mudancas||chave;\n    SELECT string_agg(format('%I',key),','), string_agg(format('r.%I',key),',') INTO colunas,valores FROM jsonb_each(mudancas);\n    consulta:=format('INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I,$1) r',tabela,colunas,valores,tabela);\n    EXECUTE consulta USING mudancas;\n   ELSE\n    SELECT string_agg(format('%I=r.%I',key,key),',') INTO atribuicoes FROM jsonb_each(mudancas);\n    EXECUTE format('UPDATE public.%I t SET %s FROM jsonb_populate_record(NULL::public.%I,$1) r, jsonb_populate_record(NULL::public.%I,$2) k WHERE %s',tabela,atribuicoes,tabela,tabela,filtro) USING mudancas,chave;\n    GET DIAGNOSTICS quantidade=ROW_COUNT;\n    IF quantidade<>1 THEN RAISE EXCEPTION 'Gravação não autorizada ou registro ambíguo'; END IF;\n   END IF;\n  END IF;\n END LOOP;\n resultado:=jsonb_build_object('aliases',aliases);\n INSERT INTO public.integracao_pedidos(usuario_id,pedido,resumo,resultado) VALUES(auth.uid(),pedido,md5(operacoes::text),resultado);\n RETURN resultado;\nEND $function$\n",
+      "nome": "integracao_gravar",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.is_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select exists (\n    select 1\n    from public.profiles p\n    where p.id = (select auth.uid())\n      and p.tipo = 'Administrador'\n      and p.ativo = true\n  );\n$function$\n",
+      "nome": "is_admin",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.is_comercial()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select exists (\n    select 1\n    from public.profiles p\n    where p.id = (select auth.uid())\n      and p.tipo = 'Comercial'\n      and p.ativo = true\n  );\n$function$\n",
+      "nome": "is_comercial",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION public.is_erp_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select exists (\n    select 1 from public.profiles p\n    where p.id = auth.uid()\n      and p.ativo is true\n      and lower(trim(p.tipo)) = lower('Administrador')\n  );\n$function$\n",
+      "nome": "is_erp_admin",
+      "schema": "public"
+    },
+    {
+      "sql": "CREATE OR REPLACE FUNCTION integracao_crm_privado.permite(modulo text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and exists(select 1 from public.profiles p where p.id=auth.uid() and p.ativo and\n (p.tipo in ('Administrador','Diretor Técnico','Diretor de Projetos') or\n (modulo='crm' and p.tipo='Comercial') or (modulo='semanal' and p.tipo='Pós-protocolo') or\n (modulo='marketing' and p.tipo in ('Marketing','Pós-protocolo'))))\n$function$\n",
+      "nome": "permite",
+      "schema": "integracao_crm_privado"
+    }
+  ],
+  "politicas": [
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)",
+      "tablename": "fin_receb_clientes",
+      "policyname": "fin_receb_clientes_admin_financeiro",
+      "with_check": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT is_comercial() AS is_comercial)",
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_comercial_moradores_editar",
+      "with_check": "( SELECT is_comercial() AS is_comercial)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT ( SELECT is_comercial() AS is_comercial) AS is_comercial)",
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_comercial_moradores_ler",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_crm_clientes_criar",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))",
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_crm_clientes_editar",
+      "with_check": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))",
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_crm_clientes_ler",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))",
+      "tablename": "fin_receb_clientes",
+      "policyname": "integracao_financeiro_consulta",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)",
+      "tablename": "fin_receb_municipios",
+      "policyname": "fin_receb_municipios_admin_financeiro",
+      "with_check": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "tablename": "fin_receb_municipios",
+      "policyname": "integracao_comercial_municipios_criar",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)",
+      "tablename": "fin_receb_municipios",
+      "policyname": "integracao_comercial_municipios_editar",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))",
+      "tablename": "fin_receb_municipios",
+      "policyname": "integracao_financeiro_consulta",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(( SELECT integracao_crm_privado.permite('crm'::text) AS permite) OR ( SELECT integracao_crm_privado.permite('semanal'::text) AS permite) OR ( SELECT integracao_crm_privado.permite('marketing'::text) AS permite))",
+      "tablename": "fin_receb_municipios",
+      "policyname": "integracao_modulos_municipios_ler",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)",
+      "tablename": "fin_receb_remessas",
+      "policyname": "fin_receb_remessas_admin_financeiro",
+      "with_check": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "tablename": "fin_receb_remessas",
+      "policyname": "integracao_comercial_remessas_criar",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)",
+      "tablename": "fin_receb_remessas",
+      "policyname": "integracao_comercial_remessas_editar",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))",
+      "tablename": "fin_receb_remessas",
+      "policyname": "integracao_financeiro_consulta",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(( SELECT integracao_crm_privado.permite('crm'::text) AS permite) OR ( SELECT integracao_crm_privado.permite('semanal'::text) AS permite) OR ( SELECT integracao_crm_privado.permite('marketing'::text) AS permite))",
+      "tablename": "fin_receb_remessas",
+      "policyname": "integracao_modulos_remessas_ler",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "tablename": "integracao_pedidos",
+      "policyname": "pedidos_criar",
+      "with_check": "(usuario_id = auth.uid())"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(usuario_id = auth.uid())",
+      "tablename": "integracao_pedidos",
+      "policyname": "pedidos_ler",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "tablename": "processos_kanban",
+      "policyname": "processos_kanban_insert",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))",
+      "tablename": "processos_kanban",
+      "policyname": "processos_kanban_select",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))",
+      "tablename": "processos_kanban",
+      "policyname": "processos_kanban_update",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))"
+    }
+  ]
+}
