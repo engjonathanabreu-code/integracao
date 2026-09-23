@@ -74,7 +74,6 @@ const CHAVE_STORAGE = "integracao-reurb-v4";
 const CHAVE_MODELO_PRF = "integracao-prf-modelo-v4";
 const PREFIXO_FOTO = "integracao-foto-v4-";
 const LIMITE_OCIOSO_MS = 2 * 60 * 60 * 1000;
-const OCULTAR_CPF_MS = 2 * 60 * 1000;
 // O envio para a IA passa por uma função da Vercel, com limite de 4,5 MB por pedido
 const MAX_ARQUIVO = 25 * 1024 * 1024;
 const URL_IA = "/api/ia";
@@ -209,7 +208,6 @@ function fmtCPF(v) {
   if (c.length <= 9) return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6)}`;
   return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`;
 }
-const mascararCPF = (v) => { const c = so(v); if (!c) return "Não informado"; if (c.length !== 11) return "Incompleto"; return `***.${c.slice(3, 6)}.***-${c.slice(9)}`; };
 const fmtCEP = (v) => { const c = so(v).slice(0, 8); return c.length > 5 ? `${c.slice(0, 5)}-${c.slice(5)}` : c; };
 
 const moeda = (n) => (n === null || n === undefined ? "não informado" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
@@ -1189,7 +1187,7 @@ function dadosPRF(db, n, opcoes, fotos) {
   const { teto } = criterioNucleo(n);
   const sn = (v) => (v === "sim" ? "Sim" : v === "nao" ? "Não" : "");
   const tabela = (cab, linhas) => `<table style="width:100%;border-collapse:collapse;font-size:10pt;margin:8px 0" border="1" cellpadding="4"><thead><tr>${cab.map((c) => `<th style="background:#e8f2f1;text-align:left">${e(c)}</th>`).join("")}</tr></thead><tbody>${linhas.map((l) => `<tr>${l.map((c) => `<td>${e(c)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cab.length}">Sem dados</td></tr>`}</tbody></table>`;
-  const cpfDe = (c) => (cpfValido(c) ? (opcoes.cpfCompleto ? fmtCPF(c) : mascararCPF(c)) : "");
+  const cpfDe = (c) => (cpfValido(c) ? fmtCPF(c) : "");
   const itensInfra = checklistDoMunicipio(db, n.municipioId).filter((i) => i.ativo && i.grupo === "Infraestrutura" && i.tipo === "simnao");
   const infra = tabela(["Item", "Unidades com o item", "Unidades visitadas"], itensInfra.map((i) => {
     const visit = ps.filter((p) => ["sim", "nao"].includes(p.campo?.respostas?.[i.id]));
@@ -1197,7 +1195,7 @@ function dadosPRF(db, n, opcoes, fotos) {
   }));
   const ocupantes = tabela(["Unidade", "Ocupante", "CPF", "Cônjuge", "Lote e quadra", "Área (m²)", "Modalidade"], linhasUn.map(({ p, u, codigo }) => [codigo, p.requerente.nome, cpfDe(p.requerente.cpf), p.conjuge.nome || "", u.loteQuadra || "", u.area || "", p.social.modalidade || ""]));
   const lotes = tabela(["Unidade", "Lote e quadra", "Área (m²)"], linhasUn.map(({ u, codigo }) => [codigo, u.loteQuadra || "", u.area || ""]));
-  const qualif = ps.map((p) => `<p><strong>${e(codigosUnidades(p).join(", "))}:</strong> ${e(gerarQualificacao(p, "completa", !!opcoes.cpfCompleto).texto)}</p>`).join("") || "<p>Sem ocupantes ativos.</p>";
+  const qualif = ps.map((p) => `<p><strong>${e(codigosUnidades(p).join(", "))}:</strong> ${e(gerarQualificacao(p, "completa").texto)}</p>`).join("") || "<p>Sem ocupantes ativos.</p>";
   const fotosHtml = `<div>${ps.map((p) => {
     const f = (p.campo?.fotos || []).find((x) => x.tipo === "fachada");
     const src = f && f.chave ? fotos[f.chave] : null;
@@ -2282,20 +2280,15 @@ function Campo({ form, rot, path, span = 1, dis, opcoes, tipo = "text", fmt, err
   );
 }
 
-function CampoCPF({ form, rot, path, dis, visivel, podeVer, onMostrar }) {
+function CampoCPF({ form, rot, path, dis }) {
   const v = getPath(form.rascunho, path) || "";
-  const erro = visivel && v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : "";
+  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : "";
   const ia = form.ia.includes(path);
   return (
     <div>
       <label className="rot" htmlFor={path}>{rot}{ia && <span style={{ color: "var(--primary-3)", marginLeft: 6 }}>sugerido pela IA</span>}</label>
       <div className="flex gap-2">
-        {visivel ? (
-          <input id={path} className={`inp${erro ? " erro" : ""}${ia ? " ia" : ""}`} value={v} disabled={dis} inputMode="numeric" autoComplete="off" onChange={(e) => form.set(path, fmtCPF(e.target.value))} />
-        ) : (
-          <input id={path} className={`inp${ia ? " ia" : ""}`} value={mascararCPF(v)} disabled readOnly />
-        )}
-        {!visivel && podeVer && <button type="button" className="btn-icone" onClick={onMostrar} title="Mostrar CPF (o acesso fica no histórico)" aria-label="Mostrar CPF"><Eye size={15} /></button>}
+        <input id={path} className={`inp${erro ? " erro" : ""}${ia ? " ia" : ""}`} value={v} disabled={dis} inputMode="numeric" autoComplete="off" onChange={(e) => form.set(path, fmtCPF(e.target.value))} />
       </div>
       {erro && <div className="msg-erro">{erro}</div>}
     </div>
@@ -2602,7 +2595,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const cpfDivergente = divergencias.some((d) => d.cpf);
   const docsRecebidos = new Set((rascunho?.docs || []).map((d) => d.tipo));
   const sugeridos = ["identidade", "comp_residencia", "estado_civil", "comp_renda", "comp_posse", ...(rascunho && COM_CONJUGE.includes(rascunho.requerente.estadoCivil) ? ["identidade_conjuge"] : [])];
-  const mostrarValor = (path, v) => (/cpf$/.test(path) ? mascararCPF(v) : /(nascimento|dataUniao)$/.test(path) ? dataBR(v) : v);
+  const mostrarValor = (path, v) => (/cpf$/.test(path) ? fmtCPF(v) : /(nascimento|dataUniao)$/.test(path) ? dataBR(v) : v);
   const resumoFicha = rascunho ? [
     ["Requerente", "requerente", ["nome", "cpf", "rg", "rgOrgao", "nascimento", "mae", "pai", "estadoCivil", "regimeBens", "dataUniao", "profissao", "renda", "telefone"]],
     ["Cônjuge", "conjuge", ["nome", "cpf", "rg", "nascimento", "mae", "profissao", "renda"]],
@@ -2758,7 +2751,6 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
               </div>
             ))}
           </div>
-          {!perm.verCPF && <div className="ajuda">CPFs aparecem mascarados.</div>}
         </div>
       )}
       <div className="ajuda" style={{ marginTop: 12 }}>
@@ -3528,7 +3520,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
                   <td style={{ whiteSpace: "nowrap" }}><strong style={{ color: "var(--titulo)" }}>{p.codigo}</strong>{unidadesDe(p).length > 1 && <div className="ajuda" style={{ margin: 0 }}>{unidadesDe(p).length} unidades</div>}</td>
                   <td><span className="flex items-center gap-2">{p.checks?.liderLocal && <Star size={14} className="estrela-lider" aria-label="Potencial líder local" />}<span>{p.requerente.nome || <span style={{ color: "var(--muted)" }}>Sem nome</span>}</span></span>{p.conjuge.nome && <div className="ajuda" style={{ margin: 0 }}>{p.conjuge.nome}</div>}
                     <div className="flex flex-wrap gap-1" style={{ marginTop: 3 }}>{p.requerente.statusCRM && <Tag tipo={TAG_CRM[p.requerente.statusCRM]}>{p.requerente.statusCRM}</Tag>}{p.requerente.statusFinanceiro && p.requerente.statusFinanceiro !== "Adimplente" && <Tag tipo={TAG_FINANCEIRO[p.requerente.statusFinanceiro]}>{p.requerente.statusFinanceiro}</Tag>}</div></td>
-                  <td style={{ whiteSpace: "nowrap" }}>{mascararCPF(p.requerente.cpf)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{fmtCPF(p.requerente.cpf)}</td>
                   {mostrarNucleo && <td>{n ? n.codigo : <Tag tipo="pend">Sem núcleo</Tag>}</td>}
                   <td><EtapaTag p={p} /></td>
                   <td>
@@ -3654,7 +3646,7 @@ function ExtrasSecao({ defs, secaoId, form, dis }) {
 /* ---------------- blocos de pessoa e endereço (campos do Integrado) ---------------- */
 // Ficha de uma pessoa. base = caminho no rascunho ("requerente", "conjuge", "corequerentes.0.pessoa", "ocupantes.2.pessoa").
 // papel: "requerente" (todos os campos), "conjuge" (sem PJ e sem status) ou "ocupante" (tudo opcional, só a qualificação conta).
-function BlocoPessoa({ form, base, papel = "requerente", dis, cpfVisivel, perm, mostrarCPF, permitirPJ = false, representantes = [] }) {
+function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ = false, representantes = [] }) {
   const x = getPath(form.rascunho, base) || pessoaVazia();
   const pj = permitirPJ && ehPJ(x);
   const hojeISO = new Date().toISOString().slice(0, 10);
@@ -3680,7 +3672,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, cpfVisivel, perm, 
           <Campo form={form} rot="Sexo" path={P("sexo")} opcoes={["Feminino", "Masculino"]} dis={dis} />
           <Campo form={form} rot="Nacionalidade" path={P("nacionalidade")} dis={dis} />
           <Campo form={form} rot="Naturalidade" path={P("naturalidade")} dis={dis} ph="Cidade/UF" />
-          <CampoCPF form={form} rot={papel === "requerente" ? "CPF (obrigatório)" : "CPF"} path={P("cpf")} dis={dis} visivel={cpfVisivel} podeVer={perm.verCPF} onMostrar={mostrarCPF} />
+          <CampoCPF form={form} rot={papel === "requerente" ? "CPF (obrigatório)" : "CPF"} path={P("cpf")} dis={dis} />
           <Campo form={form} rot="RG" path={P("rg")} dis={dis} />
           <Campo form={form} rot="Órgão emissor" path={P("rgOrgao")} dis={dis} />
           <Campo form={form} rot="UF do emissor" path={P("rgUf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
@@ -3725,7 +3717,7 @@ function BlocoEndereco({ form, base, dis, aoCopiar, rotuloCopiar }) {
   );
 }
 // Lista editável de pessoas ligadas ao processo (outros requerentes ou ocupantes)
-function ListaPessoas({ form, chave, dis, cpfVisivel, perm, mostrarCPF, titulo, vazio, novo, cabecalho }) {
+function ListaPessoas({ form, chave, dis, perm, titulo, vazio, novo, cabecalho }) {
   const lista = getPath(form.rascunho, chave) || [];
   const setLista = (nova) => form.set(chave, nova);
   const [aberto, setAberto] = useState(null);
@@ -3756,7 +3748,7 @@ function ListaPessoas({ form, chave, dis, cpfVisivel, perm, mostrarCPF, titulo, 
   );
 }
 
-function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, cpfVisivel, mostrarCPF }) {
+function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
@@ -3778,19 +3770,19 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
     [SECAO_CONFRONTANTES.id]: <FormConfrontantes valores={confrontantesDe(pd)} pode={pode("imovel")} onChange={(lado, valor) => form.set(`extras.${CONFRONTANTES.find((c) => c.lado === lado).id}`, valor)}><ExtrasSecao defs={defs} secaoId={SECAO_CONFRONTANTES.id} form={form} dis={disImovel} /></FormConfrontantes>,
     requerente: (
       <Secao titulo="Requerente" nota={ehPJ(req) ? "Pessoa jurídica: o contrato e a procuração saem em nome da empresa, assinados pelo representante legal." : ""}>
-        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} permitirPJ representantes={representantes.slice(1)} />
+        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} perm={perm} permitirPJ representantes={representantes.slice(1)} />
         <ExtrasSecao defs={defs} secaoId="requerente" form={form} dis={disCad} />
       </Secao>
     ),
     conjuge: mostraConj ? (
       <Secao titulo="Cônjuge ou companheiro(a)">
-        <BlocoPessoa form={form} base="conjuge" papel="conjuge" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+        <BlocoPessoa form={form} base="conjuge" papel="conjuge" dis={disCad} perm={perm} />
         <ExtrasSecao defs={defs} secaoId="conjuge" form={form} dis={disCad} />
       </Secao>
     ) : null,
     corequerentes: (
       <Secao titulo={`Outros requerentes${(rascunho.corequerentes || []).length ? ` (${rascunho.corequerentes.length})` : ""}`} nota="Herdeiros, coproprietários ou quem mais assina como requerente da mesma unidade. Cada um pode ter cônjuge e tipo próprio, como no Integrado.">
-        <ListaPessoas form={form} chave="corequerentes" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} titulo="Requerente" vazio="Só o requerente principal nesta unidade."
+        <ListaPessoas form={form} chave="corequerentes" dis={disCad} perm={perm} titulo="Requerente" vazio="Só o requerente principal nesta unidade."
           cabecalho={(c) => (c.tipo && c.tipo !== "normal" ? ` · ${TIPOS_REQUERENTE.find((t) => t.v === c.tipo)?.t || c.tipo}` : "")}
           novo={{
             rotulo: "Adicionar requerente",
@@ -3807,11 +3799,11 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
                     {precisaRep && <Campo form={form} rot="Representante" path={`${B}.representanteId`} opcoes={representantes.filter((r) => r.v !== c.id)} vazio="Escolha o representante" span={2} dis={disCad} ajuda="Quem responde por esta pessoa: pai, mãe, tutor, curador ou procurador, cadastrado nesta ficha." />}
                     {unidadesDe(pd).length > 1 && <Campo form={form} rot="Unidade" path={`${B}.unidadeId`} opcoes={unidadesDe(pd).map((u, k) => ({ v: u.id, t: codigoUnidade(pd, k) }))} vazio="Todas as unidades" dis={disCad} />}
                   </div>
-                  <BlocoPessoa form={form} base={`${B}.pessoa`} papel="requerente" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} permitirPJ={c.tipo === "juridica"} representantes={representantes.filter((r) => r.v !== c.id)} />
+                  <BlocoPessoa form={form} base={`${B}.pessoa`} papel="requerente" dis={disCad} perm={perm} permitirPJ={c.tipo === "juridica"} representantes={representantes.filter((r) => r.v !== c.id)} />
                   {conj && (
                     <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
                       <div className="rot" style={{ marginBottom: 8 }}>Cônjuge ou companheiro(a) de {c.pessoa.nome || "requerente"}</div>
-                      <BlocoPessoa form={form} base={`${B}.conjuge`} papel="conjuge" dis={disCad} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+                      <BlocoPessoa form={form} base={`${B}.conjuge`} papel="conjuge" dis={disCad} perm={perm} />
                     </div>
                   )}
                 </div>
@@ -3823,7 +3815,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
     ),
     ocupantes: (
       <Secao titulo={`Ocupantes do imóvel${(rascunho.ocupantes || []).length ? ` (${rascunho.ocupantes.length})` : ""}`} nota="Quem mora no imóvel além do requerente e do cônjuge. Nenhum campo é obrigatório, mas a qualificação (nome, CPF, RG, nascimento, mãe, estado civil e profissão) conta na etapa Documental.">
-        <ListaPessoas form={form} chave="ocupantes" dis={!pode("social")} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} titulo="Ocupante" vazio="Nenhum ocupante cadastrado."
+        <ListaPessoas form={form} chave="ocupantes" dis={!pode("social")} perm={perm} titulo="Ocupante" vazio="Nenhum ocupante cadastrado."
           cabecalho={(o) => (o.parentesco ? ` · ${o.parentesco}` : "")}
           novo={{
             rotulo: "Adicionar ocupante",
@@ -3834,7 +3826,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
                   <Campo form={form} rot="Parentesco" path={`ocupantes.${i}.parentesco`} opcoes={PARENTESCOS} vazio="Não informado" dis={!pode("social")} />
                   <Campo form={form} rot="Em relação a" path={`ocupantes.${i}.vinculo`} opcoes={representantes} vazio="Requerente principal" dis={!pode("social")} />
                 </div>
-                <BlocoPessoa form={form} base={`ocupantes.${i}.pessoa`} papel="ocupante" dis={!pode("social")} cpfVisivel={cpfVisivel} perm={perm} mostrarCPF={mostrarCPF} />
+                <BlocoPessoa form={form} base={`ocupantes.${i}.pessoa`} papel="ocupante" dis={!pode("social")} perm={perm} />
               </div>
             ),
           }} />
@@ -3936,7 +3928,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado, c
   );
 }
 
-function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado, cpfVisivel }) {
+function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado }) {
   const regrasMun = regrasDoMunicipio(db, p.municipioId);
   const [tipoEsperado, setTipoEsperado] = useState("auto");
   const [arquivos, setArquivos] = useState([]);
@@ -4052,7 +4044,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   const exigidos = ["identidade", ...(temConjuge(p) ? ["identidade_conjuge"] : []), "comp_residencia", "estado_civil", "comp_renda", "comp_posse"];
   const outros = p.docs.filter((d) => !exigidos.includes(d.tipo));
   const qtdSel = resultado ? resultado.linhas.filter((l) => selecao[l.path]).length : 0;
-  const mostrarValor = (l, v) => (l.cpf && !cpfVisivel ? mascararCPF(v) : l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
+  const mostrarValor = (l, v) => (l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
   const tagResultado = (r) => r.resultado === "atende" ? <Tag tipo="ok">Atende</Tag> : r.resultado === "nao_atende" ? <Tag tipo={r.gravidade === "bloqueia" ? "bloq" : "pend"}>Não atende</Tag> : <Tag>Não verificada</Tag>;
 
   const linhaDoc = (tipo, doc) => {
@@ -4259,11 +4251,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   );
 }
 
-function gerarQualificacao(p, modo, visivel) {
+function gerarQualificacao(p, modo) {
   const faltas = [];
   const token = (v, nome) => { if (preenchido(v)) return String(v).trim(); faltas.push(nome); return `[${nome}]`; };
   const minus = (t) => (String(t).startsWith("[") ? t : String(t).toLowerCase());
-  const cpfTxt = (c, nome) => { if (!cpfValido(c)) { faltas.push(nome); return `[${nome}]`; } return visivel ? fmtCPF(c) : mascararCPF(c); };
+  const cpfTxt = (c, nome) => { if (!cpfValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCPF(c); };
   const cnpjTxt = (c, nome) => { if (!cnpjValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCNPJ(c); };
   const r = p.requerente; const c = p.conjuge; const casal = temConjuge(p) && c.nome;
   const outros = (p.corequerentes || []).filter((x) => x.beneficiario !== "nao");
@@ -4312,16 +4304,14 @@ function atualizarQualificacao(p, usuario, forcar = false) {
   return q;
 }
 
-function AbaQualificacao({ p, usuario, perm, cpfVisivel, mutar, setToast }) {
+function AbaQualificacao({ p, usuario, perm, mutar, setToast }) {
   const [modo, setModo] = useState("simples");
   const [editando, setEditando] = useState(null);
   const q = p.qualificacao || null;
   const salvo = q?.textos?.[modo];
   const origem = q?.origem?.[modo] || "";
-  const gerado = ["simples", "completa"].includes(modo) ? gerarQualificacao(p, modo, cpfVisivel) : null;
-  // Texto mostrado: o salvo (com CPF mascarado se preciso) ou o gerado na hora quando não há nada salvo
-  const mascarar = (t) => (cpfVisivel ? t : String(t || "").replace(/\d{3}\.\d{3}\.\d{3}-\d{2}/g, (c) => mascararCPF(c)));
-  const texto = salvo !== undefined && salvo !== null && salvo !== "" ? mascarar(salvo) : gerado ? gerado.texto : "";
+  const gerado = ["simples", "completa"].includes(modo) ? gerarQualificacao(p, modo) : null;
+  const texto = salvo !== undefined && salvo !== null && salvo !== "" ? salvo : gerado ? gerado.texto : "";
   const faltas = gerado && (origem === "gerada" || !salvo) ? gerado.faltas : q?.faltas?.[modo] || [];
   const modosDisponiveis = MODOS_QUALIFICACAO.filter(([k]) => ["simples", "completa"].includes(k) || preenchido(q?.textos?.[k]));
   const podeEditar = perm.diretor || perm.setor === "comercial" || perm.setor === "juridico" || perm.setor === "posprotocolo";
@@ -4365,7 +4355,6 @@ function AbaQualificacao({ p, usuario, perm, cpfVisivel, mutar, setToast }) {
       ) : (
         <p style={{ margin: 0, padding: 16, fontSize: 15.5, lineHeight: 1.7, background: "var(--hover)", border: "1px solid var(--line)", borderRadius: 12, maxWidth: "78ch", whiteSpace: "pre-wrap" }}>{texto || "Sem texto para este modo."}</p>
       )}
-      {!cpfVisivel && <div className="ajuda">CPFs aparecem mascarados. Use "Mostrar CPFs" no topo do processo para gerar o texto completo.</div>}
       {faltas.length > 0 && <div style={{ marginTop: 10, color: "var(--danger)" }}><strong>Faltam dados:</strong> {Array.from(new Set(faltas)).join(", ")}.</div>}
     </Secao>
   );
@@ -4424,9 +4413,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const baseFormulario=useRef(p?extrair(p):null);
   useEffect(()=>{const anterior=baseFormulario.current,proximo=p?extrair(p):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
   const [iaPaths, setIaPaths] = useState([]);
-  const [cpfVisivel, setCpfVisivel] = useState(false);
   const [modal, setModal] = useState(null);
-  useEffect(() => { if (!cpfVisivel) return undefined; const t = setTimeout(() => setCpfVisivel(false), OCULTAR_CPF_MS); return () => clearTimeout(t); }, [cpfVisivel]);
 
   if (!p || !rascunho) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Morador não encontrado.</p></div>;
   const r = remessaDe(db, p.remessaId);
@@ -4437,12 +4424,6 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const alterados = Object.keys({ ...planoAtual, ...planoSalvo }).filter((k) => String(planoAtual[k] ?? "") !== String(planoSalvo[k] ?? ""));
   const sujo = alterados.length > 0;
 
-  const mostrarCPF = () => {
-    if (!perm.verCPF) return;
-    if (cpfVisivel) { setCpfVisivel(false); return; }
-    setCpfVisivel(true);
-    mutar((d) => d, "CPFs exibidos na tela", { processoId: p.id, remessaId: p.remessaId, detalhe: "Ocultação automática em 2 minutos" });
-  };
   const salvar = () => {
     const invalidos = [];
     if (ehPJ(rascunho.requerente)) { if (!cnpjValido(rascunho.requerente.cnpj)) invalidos.push(rascunho.requerente.cnpj ? "CNPJ do requerente" : "CNPJ do requerente, que é obrigatório"); }
@@ -4504,7 +4485,6 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {p.requerente.statusCRM && <Tag tipo={TAG_CRM[p.requerente.statusCRM]}>{p.requerente.statusCRM}</Tag>}
           {p.requerente.statusFinanceiro && <Tag tipo={TAG_FINANCEIRO[p.requerente.statusFinanceiro]}>{p.requerente.statusFinanceiro}</Tag>}
           {perm.situacao ? <button className={`btn btn-sm${cancelado ? " btn-perigo" : ""}`} onClick={() => setModal({ tipo: "situacao" })}>Situação: {p.situacao}</button> : <Tag tipo={cancelado ? "bloq" : "ok"}>{p.situacao}</Tag>}
-          {perm.verCPF && <button className="btn btn-sm" onClick={mostrarCPF}>{cpfVisivel ? <EyeOff size={14} /> : <Eye size={14} />}{cpfVisivel ? "Ocultar CPFs" : "Mostrar CPFs"}</button>}
           <BotaoArquivar colecao="processos" registro={p} />
         </div>
       </div>
@@ -4545,8 +4525,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </button>
             ))}
           </div>
-          {aba === "cadastro" && <AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} cpfVisivel={cpfVisivel} mostrarCPF={mostrarCPF} />}
-          {aba === "documentos" && <AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} cpfVisivel={cpfVisivel} />}
+          {aba === "cadastro" && <AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} />}
+          {aba === "documentos" && <AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} />}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
               <span className="flex flex-wrap items-center gap-2">
@@ -4561,7 +4541,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       {aba === "comercial" && <AbaComercialCliente db={db} p={p} usuario={usuario} ir={irComCuidado} mutar={mutar} setToast={setToast} />}
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
           {aba === "campo" && <AbaCampo db={db} p={p} usuario={usuario} ir={irComCuidado} />}
-          {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} cpfVisivel={cpfVisivel} mutar={mutar} setToast={setToast} />}
+          {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} />}
           {aba === "observacoes" && <AbaObservacoesProcesso p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
           {aba === "historico" && <Secao titulo="Histórico do processo" nota="Registro de quem fez o quê. Valores de CPF não são gravados no histórico."><ListaHistorico itens={db.auditoria.filter((a) => a.processoId === p.id)} vazio="Nenhuma ação registrada ainda." /></Secao>}
         </div>
@@ -5044,7 +5024,6 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   const [modelo, setModelo] = useState(null);
   const [nomeModelo, setNomeModelo] = useState(db.prf?.nome || "");
   const [carregando, setCarregando] = useState(true);
-  const [cpfCompleto, setCpfCompleto] = useState(false);
   const [mapaSalvo, setMapaSalvo] = useState(null);
   const [origemMapa, setOrigemMapa] = useState("");
   const [estado, setEstado] = useState("ocioso");
@@ -5070,7 +5049,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
   if (!n) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const log = { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId };
   const catalogo = catalogoPRF();
-  const dados = dadosPRF(db, n, { cpfCompleto: cpfCompleto && perm.verCPF }, fotos);
+  const dados = dadosPRF(db, n, {}, fotos);
   const preparo = prepararModeloPRF(modelo, dados);
   const lacunas = preparo.html ? encontrarLacunas(preparo.html) : [];
   const mapa = mapaDoModeloPRF(mapaSalvo, preparo, lacunas);
@@ -5092,7 +5071,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
     const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
     if(tipo==="doc"){const {baixarDocx}=await import("./documento-docx.js");await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
-    mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, ${cpfCompleto && perm.verCPF ? "com CPF completo" : "com CPF mascarado"}` });
+    mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, com CPF completo` });
     }catch(e){setErro(e.message);}finally{setEstado("ocioso");}
   };
   const usarExemplo = () => { setModelo(MODELO_PRF_EXEMPLO); setNomeModelo("Modelo de exemplo"); setMapa(null); };
@@ -5124,7 +5103,6 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
             <div>
               <strong style={{ color: "var(--titulo)" }}>{nomeModelo || db.prf?.nome || "Modelo cadastrado"}</strong>
               <div className="ajuda" style={{ margin: 0 }}>{lacunas.length} espaços para preencher, {dados.ocupantes} ocupantes ativos no núcleo</div>
-              {perm.verCPF && <label className="flex items-center gap-2" style={{ marginTop: 8, fontSize: 14 }}><input type="checkbox" checked={cpfCompleto} onChange={(e) => setCpfCompleto(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#0F5F5B" }} />Mostrar CPF completo no documento (fica registrado no histórico)</label>}
             </div>
             <span className="flex flex-wrap gap-2">
               <button className="btn" onClick={preencherPalavras} disabled={!lacunas.length}>Preencher por palavras-chave</button>
@@ -7060,7 +7038,7 @@ function FichaComercialOffline({ db, pk, cliente, usuario, conexao, comercial, m
       {resultado && (
         <Secao titulo="O que a IA leu" acao={<button className="btn btn-sm" onClick={() => setResultado(null)}>Fechar</button>}
           nota={`${resultado.tipo}${typeof resultado.confianca === "number" ? `, confiança ${Math.round(resultado.confianca * 100)}%` : ""}. Serve de conferência em campo: nada é gravado na ficha automaticamente.`}>
-          {resultado.linhas.map(([k, v]) => <div key={k} className="flex justify-between gap-3" style={{ padding: "4px 0", borderTop: "1px solid var(--line2)", fontSize: 14 }}><span style={{ color: "var(--muted)" }}>{ROTULOS[k] || k}</span><strong style={{ fontWeight: 650 }}>{/cpf/i.test(k) ? mascararCPF(v) : String(v)}</strong></div>)}
+          {resultado.linhas.map(([k, v]) => <div key={k} className="flex justify-between gap-3" style={{ padding: "4px 0", borderTop: "1px solid var(--line2)", fontSize: 14 }}><span style={{ color: "var(--muted)" }}>{ROTULOS[k] || k}</span><strong style={{ fontWeight: 650 }}>{/cpf/i.test(k) ? fmtCPF(v) : String(v)}</strong></div>)}
           {resultado.alertas.map((a) => <div key={a} style={{ color: "var(--warning)", fontSize: 13.5, marginTop: 6 }}>{a}</div>)}
           {!resultado.linhas.length && <p className="ajuda" style={{ margin: 0 }}>A IA não conseguiu ler dados nesta foto.</p>}
         </Secao>
