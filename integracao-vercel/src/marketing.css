@@ -21,7 +21,7 @@
 .rb .mkt-nota svg{flex-shrink:0}
 .rb .mkt-kanban{display:grid;gap:17px;overflow-x:auto;padding-bottom:18px;align-items:start}
 .rb .mkt-grupos-quadro{grid-auto-flow:column;grid-auto-columns:minmax(290px,350px);justify-content:start}
-.rb .mkt-rotina-quadro{grid-template-columns:repeat(4,minmax(225px,1fr))}
+.rb .mkt-rotina-quadro{grid-template-columns:repeat(var(--rotina-colunas,4),minmax(225px,1fr))}
 .rb .mkt-coluna{background:var(--tema-superficie,#edf3f0);border:1px solid #dfe9e3;border-radius:17px;min-height:190px;overflow:hidden}
 .rb .mkt-coluna>header{display:flex;align-items:center;justify-content:space-between;padding:18px;border-bottom:1px solid #dbe7df;background:var(--tema-superficie,#e6f0ea)}
 .rb .mkt-coluna h3{font-size:16px;font-weight:700;margin:7px 0 0;color:var(--tema-texto,#214d43)}
@@ -41,7 +41,15 @@
 .rb .mkt-adicionar:hover{background:var(--tema-superficie,#e0eee5)}
 .rb .mkt-vazio{text-align:center;padding:45px 22px;background:var(--tema-superficie,#fff);border:1px dashed #c8dacf;border-radius:18px;color:var(--tema-texto,#6a8578)}
 .rb .mkt-vazio>svg{margin:0 auto 15px}.rb .mkt-vazio h3{font-weight:700}.rb .mkt-vazio p{font-size:13px;margin:10px 0 20px}
-.rb .mkt-semana-2>header{background:var(--tema-superficie,#e8edf8)}.rb .mkt-semana-3>header{background:var(--tema-superficie,#f5efdf)}.rb .mkt-semana-4>header{background:var(--tema-superficie,#eee8f4)}
+/* Tons das colunas da rotina mensal (mesma paleta das semanas originais). */
+.rb .mkt-tom-verde>header,.rb .mkt-tom-amostra.mkt-tom-verde{background:var(--tema-superficie,#e6f0ea)}.rb .mkt-tom-azul>header,.rb .mkt-tom-amostra.mkt-tom-azul{background:var(--tema-superficie,#e8edf8)}.rb .mkt-tom-areia>header,.rb .mkt-tom-amostra.mkt-tom-areia{background:var(--tema-superficie,#f5efdf)}
+.rb .mkt-tom-lilas>header,.rb .mkt-tom-amostra.mkt-tom-lilas{background:var(--tema-superficie,#eee8f4)}.rb .mkt-tom-rosa>header,.rb .mkt-tom-amostra.mkt-tom-rosa{background:var(--tema-superficie,#fbe9e8)}.rb .mkt-tom-cinza>header,.rb .mkt-tom-amostra.mkt-tom-cinza{background:var(--tema-superficie,#edf1f0)}
+.rb .mkt-coluna-acoes{display:flex;align-items:center;gap:6px}.rb .mkt-coluna-acoes .mkt-icon-button{padding:6px;background:transparent;border-color:transparent}.rb .mkt-coluna-acoes .mkt-icon-button:hover,.rb .mkt-coluna-acoes .mkt-icon-button:focus-visible{border-color:currentColor}
+.rb .mkt-tons{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}.rb .mkt-tons legend{font-size:12px;color:var(--tema-texto,#698075);margin-bottom:8px}
+.rb .mkt-tons label{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 8px;border:1px solid #dce7e0;border-radius:10px;font-size:13px;cursor:pointer}.rb .mkt-tons label.ativo{border-color:#2f7a57;box-shadow:0 0 0 1px #2f7a57}
+.rb .mkt-tons input{position:absolute;opacity:0;pointer-events:none}.rb .mkt-tons label:focus-within{outline:2px solid #2f7a57;outline-offset:2px}
+.rb .mkt-tons .mkt-tom-verde{background:#e6f0ea}.rb .mkt-tons .mkt-tom-azul{background:#e8edf8}.rb .mkt-tons .mkt-tom-areia{background:#f5efdf}.rb .mkt-tons .mkt-tom-lilas{background:#eee8f4}.rb .mkt-tons .mkt-tom-rosa{background:#fbe9e8}.rb .mkt-tons .mkt-tom-cinza{background:#edf1f0}
+.rb .mkt-tom-amostra{width:22px;height:22px;border-radius:6px;border:1px solid #0000001a;display:inline-block}
 .rb .mkt-rotina-filtros{align-items:end}.rb .mkt-rotina-filtros label{display:grid;gap:7px;font-size:12px;color:var(--tema-texto,#698075)}
 .rb .mkt-resumo-rotina{display:flex;flex-wrap:wrap;gap:20px;font-size:12px;color:var(--tema-texto,#6b8378);margin:20px 0}
 .rb .mkt-resumo-rotina span{display:flex;align-items:center;gap:7px}

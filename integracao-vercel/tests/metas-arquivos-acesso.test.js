@@ -1,0 +1,22 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {PGlite} from '@electric-sql/pglite';
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+test('arquivos de meta e de devolutiva abrem para responsáveis, criador e diretoria, e não para outros técnicos',async()=>{const db=new PGlite();try{
+ await db.exec(`create role authenticated;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+  create table public.profiles(id uuid primary key,tipo text,ativo boolean default true);
+  create table public.metas(id uuid primary key,created_by uuid);create table public.meta_responsaveis(meta_id uuid,usuario_id uuid);
+  create table public.meta_arquivos(id uuid primary key default gen_random_uuid(),meta_id uuid,caminho_storage text,enviado_por uuid);
+  create table public.etapas_plano(id uuid primary key,plano_id uuid);create table public.documentos(id uuid primary key default gen_random_uuid(),caminho_storage text,enviado_por uuid,etapa_plano_id uuid);
+  create function public.is_admin() returns boolean language sql stable as $$select exists(select 1 from public.profiles where id=auth.uid() and tipo='Administrador' and ativo)$$;
+  create function public.can_access_plan(uuid) returns boolean language sql stable as $$select false$$;
+  insert into profiles values('${id(1)}','Diretor Técnico',true),('${id(2)}','Projetos',true),('${id(3)}','Projetos',true),('${id(4)}','Diretor de Projetos',true),('${id(5)}','Administrador',true),('${id(6)}','Projetos',false),('${id(7)}','Topografia',true);
+  insert into metas values('${id(10)}','${id(1)}');insert into meta_responsaveis values('${id(10)}','${id(2)}'),('${id(10)}','${id(6)}');
+  insert into meta_arquivos(meta_id,caminho_storage,enviado_por) values('${id(10)}','${id(1)}/metas/${id(10)}/devolutiva.pdf','${id(1)}'),('${id(10)}','${id(2)}/metas/${id(10)}/resposta.pdf','${id(2)}');
+  insert into documentos(caminho_storage,enviado_por) values('${id(3)}/plano.pdf','${id(3)}');`);
+ await db.exec(readFileSync(new URL('../supabase/migrations/20260924190000_metas_arquivos_responsaveis.sql',import.meta.url),'utf8'));
+ const pode=async(u,p)=>{await db.exec(`set request.jwt.claim.sub='${id(u)}'`);return (await db.query('select public.can_access_document_path($1) ok',[p])).rows[0].ok;};
+ const diretor=`${id(1)}/metas/${id(10)}/devolutiva.pdf`,tecnico=`${id(2)}/metas/${id(10)}/resposta.pdf`;
+ for(const u of [1,2,4,5])assert.equal(await pode(u,diretor),true,`usuário ${u}`);
+ for(const u of [3,6,7])assert.equal(await pode(u,diretor),false,`usuário ${u}`);
+ assert.equal(await pode(1,tecnico),true);assert.equal(await pode(3,tecnico),false);
+ assert.equal(await pode(3,`${id(3)}/plano.pdf`),true);assert.equal(await pode(2,`${id(3)}/plano.pdf`),false);assert.equal(await pode(2,'inexistente'),false);
+ }finally{await db.close();}});

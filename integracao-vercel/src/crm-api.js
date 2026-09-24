@@ -7,6 +7,11 @@ export async function editarCRM(tabela, id, dados) {
   if(!rows?.length)throw new Error('Registro indisponível ou sem permissão. Atualize a tela.');
   return rows;
 }
+export async function excluirCRM(tabela,id){
+  const rows=await requisicao(`${tabela}?id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{Prefer:'return=representation'}});
+  if(!rows?.length)throw new Error('Registro indisponível ou sem permissão. Atualize a tela.');
+  return rows;
+}
 export const rpcCRM = (nome, dados) => requisicao(`rpc/${nome}`, {method:'POST',body:JSON.stringify(dados)});
 
 export async function salvarNegociacaoCRM(id,dados,anterior){
