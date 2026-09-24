@@ -105,8 +105,14 @@
 
 .rb .crm-institucionais .btn:not(.btn-primario),.rb .crm-institucional-dialogo .btn:not(.btn-primario){background:var(--card);color:var(--titulo);border:1px solid var(--line)}
 .rb .crm-cliente-card{position:relative}.rb .crm-cliente-card .crm-cliente-abrir{padding-right:32px}
-.rb .crm-lead-lixeira{position:absolute;right:8px;top:8px;width:30px;height:30px;display:grid;place-items:center;padding:0;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--muted);cursor:pointer}
+.rb .crm-card-icones{position:absolute;right:8px;top:8px;display:flex;gap:2px}
+.rb .crm-card-icones .crm-card-editar{display:none}
+/* Na visão reduzida os botões do card ficam ocultos: o lápis mantém a edição acessível. */
+.rb .crm-visao-reduzido .crm-card-icones .crm-card-editar{display:grid}
+.rb .crm-visao-reduzido .crm-cliente-card:has(.crm-lead-lixeira) .crm-cliente-abrir{padding-right:66px}
+.rb .crm-lead-lixeira,.rb .crm-card-editar{width:30px;height:30px;display:grid;place-items:center;padding:0;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--muted);cursor:pointer}
 .rb .crm-lead-lixeira:hover,.rb .crm-lead-lixeira:focus-visible{color:#bd654d;border-color:currentColor;background:var(--card)}
+.rb .crm-card-editar:hover,.rb .crm-card-editar:focus-visible{color:var(--titulo);border-color:currentColor;background:var(--card)}
 .rb .crm-arquivo{margin-top:24px}.rb .crm-arquivo h2{display:flex;gap:8px;align-items:center}
 .rb .crm-arquivo-card{min-width:0;overflow-wrap:anywhere}.rb .crm-arquivo-card p{white-space:pre-wrap}
 .rb .crm-arquivo .btn:not(.btn-primario){background:var(--card);color:var(--titulo);border:1px solid var(--line)}

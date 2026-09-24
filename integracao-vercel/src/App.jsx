@@ -47,6 +47,7 @@ import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } 
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
+import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
@@ -3672,7 +3673,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
           <Campo form={form} rot="Sexo" path={P("sexo")} opcoes={["Feminino", "Masculino"]} dis={dis} />
           <Campo form={form} rot="Nacionalidade" path={P("nacionalidade")} dis={dis} />
           <Campo form={form} rot="Naturalidade" path={P("naturalidade")} dis={dis} ph="Cidade/UF" />
-          <CampoCPF form={form} rot={papel === "requerente" ? "CPF (obrigatório)" : "CPF"} path={P("cpf")} dis={dis} />
+          <CampoCPF form={form} rot={papel === "requerente" ? (exigeDocumentoCRM(x.statusCRM) ? "CPF (obrigatório)" : "CPF (obrigatório a partir do Contrato)") : "CPF"} path={P("cpf")} dis={dis} />
           <Campo form={form} rot="RG" path={P("rg")} dis={dis} />
           <Campo form={form} rot="Órgão emissor" path={P("rgOrgao")} dis={dis} />
           <Campo form={form} rot="UF do emissor" path={P("rgUf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
@@ -4426,8 +4427,10 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
 
   const salvar = () => {
     const invalidos = [];
-    if (ehPJ(rascunho.requerente)) { if (!cnpjValido(rascunho.requerente.cnpj)) invalidos.push(rascunho.requerente.cnpj ? "CNPJ do requerente" : "CNPJ do requerente, que é obrigatório"); }
-    else if (!cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório");
+    // Antes da etapa Contrato o cadastro ainda é comercial: o documento pode ficar em branco, mas, se informado, precisa ser válido.
+    const documentoObrigatorio = exigeDocumentoCRM(rascunho.requerente.statusCRM);
+    if (ehPJ(rascunho.requerente)) { if ((rascunho.requerente.cnpj || documentoObrigatorio) && !cnpjValido(rascunho.requerente.cnpj)) invalidos.push(rascunho.requerente.cnpj ? "CNPJ do requerente" : "CNPJ do requerente, que é obrigatório a partir da etapa Contrato"); }
+    else if ((rascunho.requerente.cpf || documentoObrigatorio) && !cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório a partir da etapa Contrato");
     if (rascunho.conjuge.cpf && !cpfValido(rascunho.conjuge.cpf)) invalidos.push("CPF do cônjuge");
     (rascunho.corequerentes || []).forEach((c) => { if (ehPJ(c.pessoa) ? (c.pessoa.cnpj && !cnpjValido(c.pessoa.cnpj)) : (c.pessoa.cpf && !cpfValido(c.pessoa.cpf))) invalidos.push(`documento de ${c.pessoa.nome || "outro requerente"}`); if (c.conjuge?.cpf && !cpfValido(c.conjuge.cpf)) invalidos.push(`CPF do cônjuge de ${c.pessoa.nome || "outro requerente"}`); });
     (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
