@@ -47,6 +47,7 @@ import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } 
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
+import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10580,9 +10581,11 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const [filtroSetor, setFiltroSetor] = useState("");
   const [colaborador, setColaborador] = useState(null);
   const [compacto, setCompacto] = useState(true);
+  const [mostrarSemMetas, setMostrarSemMetas] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
   const gerencia = gerenciaMetas(usuario);
-  const visiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario)).filter((m) => !filtroSetor || m.setor === filtroSetor);
+  const todasVisiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario));
+  const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
   const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
@@ -10591,11 +10594,14 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const metasDe = (id) => visiveis.filter((m) => respMeta(m, {id}));
   const equipe = (gerencia ? (db.usuarios || []).filter((u) => u.ativo && u.setor !== "consulta") : [usuario]).filter(Boolean);
   const abrir = (m) => setDetalhe(m.id);
-  const moverNaColuna = (lista, i, dir) => {
+  // A ordem é da coluna inteira da pessoa: com filtro de setor, a troca acontece entre as metas visíveis sem embaralhar as demais.
+  const moverNaColuna = (u, lista, i, dir) => {
     const j = i + dir;
     if (j < 0 || j >= lista.length) return;
-    const ordem = lista.map((x) => x.id);
-    [ordem[i], ordem[j]] = [ordem[j], ordem[i]];
+    const ordem = colunaMetasAtivas(todasVisiveis, u).map((x) => x.id);
+    const a = ordem.indexOf(lista[i].id), b = ordem.indexOf(lista[j].id);
+    if (a < 0 || b < 0) return;
+    [ordem[a], ordem[b]] = [ordem[b], ordem[a]];
     mutar((d) => { ordem.forEach((id, k) => { const q = d.metas.find((x) => x.id === id); if (q) q.ordemColuna = k; }); return d; }, "Ordem das metas alterada", { detalhe: `${lista[i].titulo} movida para a posição ${j + 1}` });
   };
   const salvarSetor = (dados) => {
@@ -10619,7 +10625,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <button className="btn btn-sm" onClick={() => setSemanaOffset((x) => x + 1)} aria-label="Próxima semana"><ChevronRight size={16} /></button>
       {semanaOffset !== 0 && <button className="btn btn-sm" onClick={() => setSemanaOffset(0)}>Semana atual</button>}
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
-        <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select>
+        <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
         <button className={`btn btn-sm${tela === "oficios" ? " btn-primario" : ""}`} onClick={()=>{setColaborador(null);setTela(tela === "oficios" ? "home" : "oficios");}}><IconeOficios size={16}/>Ofícios</button>
         <button className={`btn btn-sm${tela === "ativas" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "ativas" ? "home" : "ativas")}><Target size={16} aria-hidden="true"/>Metas Ativas</button>
@@ -10693,10 +10699,18 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
 
       {tela === "ativas" && (
         <>
-          <p className="ajuda" style={{ margin: "0 0 10px" }}>{ativas.length} meta(s) em aberto, uma coluna por pessoa. Use as setas do card para organizar a ordem da coluna.</p>
+          {(() => {
+            const colunas = colunasMetasAtivas(equipe, visiveis, mostrarSemMetas && !filtroSetor);
+            const semColuna = ativas.filter((m) => !colunas.some(({ metas }) => metas.includes(m)));
+            return (<>
+          <div className="flex flex-wrap items-center gap-2" style={{ margin: "0 0 10px" }}>
+            <p className="ajuda" style={{ margin: 0 }}>{ativas.length} meta(s) em aberto{filtroSetor ? ` ${filtroSetor === SEM_SETOR_META ? "sem setor" : `em ${filtroSetor}`}` : ""}, {colunas.length} pessoa(s). Use as setas do card para organizar a ordem da coluna.</p>
+            {gerencia && !filtroSetor && <label className="ajuda" style={{ margin: "0 0 0 auto", display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={mostrarSemMetas} onChange={(e) => setMostrarSemMetas(e.target.checked)} />Mostrar pessoas sem metas ativas</label>}
+          </div>
+          {!colunas.length && !semColuna.length && <p className="card" style={{ padding: 14 }}>{filtroSetor ? "Nenhuma meta ativa neste setor." : "Nenhuma meta ativa."}</p>}
+          {semColuna.length > 0 && <Secao titulo="Metas sem responsável na equipe" nota="Metas em aberto sem responsável ativo na equipe exibida."><div className="grade-metas">{semColuna.map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} />)}</div></Secao>}
           <div className="quadro">
-            {equipe.map((u) => {
-              const suas = metasDe(u.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status)).sort((a, b) => (a.ordemColuna ?? 999) - (b.ordemColuna ?? 999) || (a.prazo || "").localeCompare(b.prazo || ""));
+            {colunas.map(({ usuario: u, metas: suas }) => {
               return (
                 <div key={u.id} className="quadro-col" style={{ minWidth: 300, width: 300 }}>
                   <div className="flex items-center justify-between gap-2">
@@ -10704,13 +10718,15 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
                     <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{suas.length}<span className="ajuda" style={{display:"block"}}>{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s)</span></span>
                   </div>
                   <div className="flex flex-col gap-2" style={{ marginTop: 8 }}>
-                    {suas.map((m, i) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} acoesOrdem={{ primeiro: i === 0, ultimo: i === suas.length - 1, mover: (dir) => moverNaColuna(suas, i, dir) }} />)}
+                    {suas.map((m, i) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} acoesOrdem={{ primeiro: i === 0, ultimo: i === suas.length - 1, mover: (dir) => moverNaColuna(u, suas, i, dir) }} />)}
                   </div>
                   {!suas.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhuma meta ativa</div>}
                 </div>
               );
             })}
           </div>
+            </>);
+          })()}
         </>
       )}
 
