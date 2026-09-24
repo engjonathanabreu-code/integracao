@@ -1,0 +1,15 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_EXECUTABLE,headless:true}:{channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1440,height:1000}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
+await p.goto('http://127.0.0.1:5178/tests/browser.html?crm');await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();await p.getByRole('button',{name:'CRM',exact:true}).click();
+// O funil não tem mais a coluna Cliente ativo.
+await p.getByRole('heading',{name:/^Contrato · /}).waitFor();assert.equal(await p.getByRole('heading',{name:/^Cliente ativo · /}).count(),0);
+const form=p.getByRole('form',{name:'Negociação de Morador Teste'});await form.getByLabel('Valor total (R$)').fill('12.500,00');await form.getByLabel('Forma de negociação').selectOption('avista');await form.getByLabel('Desconto à vista (%)').fill('0');await form.getByLabel('Status',{exact:true}).selectOption('Cliente ativo');await form.getByRole('button',{name:'Salvar negociação e status'}).click();
+await p.getByText('Morador Teste passou a Cliente ativo e saiu do funil.').waitFor();assert.equal(await p.locator('article.crm-cliente-card',{hasText:'Morador Teste'}).count(),0);
+// O registro aparece no relatório do Dashboard comercial.
+await p.getByRole('button',{name:'Dashboard comercial',exact:true}).click();const rel=p.locator('section.crm-ativacoes');await rel.getByRole('table',{name:/Clientes ativados em/}).waitFor();
+const linha=rel.getByRole('row',{name:/Morador Teste/});await linha.waitFor();assert.match(await linha.innerText(),/Município teste[\s\S]*12\.500,00[\s\S]*Ana Comercial/);
+assert.match(await rel.getByRole('table',{name:'Desempenho por comercial'}).innerText(),/Ana Comercial\s+1\s+R\$\s12\.500,00/);
+await rel.getByLabel('Relatório').selectOption('anual');await rel.getByRole('row',{name:/Morador Teste/}).waitFor();assert.equal(await rel.getByLabel('Período').count(),0);await rel.getByLabel('Relatório').selectOption('trimestral');await rel.getByRole('row',{name:/Morador Teste/}).waitFor();
+const download=p.waitForEvent('download');await rel.getByRole('button',{name:'Exportar planilha'}).click();assert.match((await download).suggestedFilename(),/^clientes-ativados-\d{4}-\d\d-01-a-/);
+await rel.screenshot({path:'/tmp/crm-ativacoes.png'});await p.setViewportSize({width:390,height:844});await rel.scrollIntoViewIfNeeded();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await p.screenshot({path:'/tmp/crm-ativacoes-mobile.png'});
+assert.deepEqual(errors,[]);console.log('Clientes ativados: saem do funil e ficam no relatório por período OK');}finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1);});

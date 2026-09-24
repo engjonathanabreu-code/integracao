@@ -117,3 +117,14 @@
 .rb .crm-arquivo-card{min-width:0;overflow-wrap:anywhere}.rb .crm-arquivo-card p{white-space:pre-wrap}
 .rb .crm-arquivo .btn:not(.btn-primario){background:var(--card);color:var(--titulo);border:1px solid var(--line)}
 .rb .crm-arquivo-historico{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+
+.rb .crm-ativacoes-totais{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px;margin:0 0 18px}
+.rb .crm-ativacoes-totais>div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;gap:4px;min-width:0}
+.rb .crm-ativacoes-totais span{font-size:12px;color:var(--muted)}.rb .crm-ativacoes-totais strong{font-size:20px;color:var(--titulo);overflow-wrap:anywhere}
+.rb .crm-tabela-rolagem{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.rb .crm-ativacoes-tabela{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+.rb .crm-ativacoes-tabela caption{text-align:left;font-weight:700;color:var(--titulo);padding:14px 16px 6px}
+.rb .crm-ativacoes-tabela th,.rb .crm-ativacoes-tabela td{text-align:left;padding:10px 16px;border-top:1px solid var(--line);vertical-align:top}
+.rb .crm-ativacoes-tabela thead th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
+.rb .crm-ativacoes-tabela tbody th{font-weight:600;color:var(--titulo)}.rb .crm-ativacoes-tabela small{color:var(--muted)}
+.rb .crm-ativacoes-tabela td:nth-child(n+2):not(:last-child){white-space:nowrap}

@@ -1,4 +1,6 @@
 export const ETAPAS_CRM = ['Cliente novo', 'Negociação', 'Contrato', 'Cliente ativo'];
+// Clientes ativos saem do funil; ficam no relatório de clientes ativados do Dashboard comercial.
+export const ETAPAS_FUNIL = ETAPAS_CRM.filter(s => s !== 'Cliente ativo');
 export const normalizarCRM = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 export function acessoCRM(u) {
   const tipo = normalizarCRM(u?.tipoERP || u?.tipo);
