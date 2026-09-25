@@ -451,7 +451,28 @@ export async function gravarOperacoes(operations,pedido) {
   if(!operations.length) return {aliases:{}};
   const result = await requisicao('rpc/integracao_gravar',{method:'POST',body:JSON.stringify({operacoes:operations,pedido})});
   if (operations.some(op => ['fin_receb_clientes','integracao_moradores','integracao_municipios','integracao_remessas','integracao_nucleos','integracao_complementos'].includes(op.table))) invalidarIndiceClientes();
+  if (operations.some(op => op.table==='erp_eventos' || String(op.action||'').startsWith('evento'))) despacharCalendario();
   return result;
+}
+
+// The queue of invitations is written by the database. This only asks the server
+// to deliver what is already queued, so a convite does not wait for the daily
+// cron; the browser never learns who receives it, and a failure is harmless.
+let despachoCalendario=null;
+export function despacharCalendario() {
+  if(despachoCalendario||!session)return despachoCalendario;
+  const token=session.access_token;
+  despachoCalendario=fetch('/api/calendario-emails',{method:'POST',headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(30000)}).catch(()=>{}).finally(()=>{despachoCalendario=null;});
+  return despachoCalendario;
+}
+
+// Each person reads and changes only their own subscription; the RPC refuses
+// any other account, so the token never travels between users.
+export async function assinaturaCalendario(ajustes={}) {
+  const linhas=await requisicao('rpc/integracao_calendario_assinatura',{method:'POST',body:JSON.stringify({p_convites:ajustes.convites??null,p_resumo:ajustes.resumo??null,p_regerar:!!ajustes.regerar})});
+  const linha=Array.isArray(linhas)?linhas[0]:linhas;
+  if(!linha?.token)throw new Error('Não foi possível abrir sua assinatura do calendário.');
+  return {token:linha.token,convites:linha.receber_convites!==false,resumo:linha.receber_resumo!==false};
 }
 
 export async function lerArquivoERP(chave) {

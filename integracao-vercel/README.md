@@ -25,6 +25,11 @@ Feito em React com Vite. Roda na Vercel, com uma função de servidor para a IA.
    | `VITE_ERP_SUPABASE_URL` | Endereço do Supabase do ERP | não |
    | `VITE_ERP_SUPABASE_KEY` | Chave publicável do ERP | não |
    | `VITE_DEMO` | `1` liga os dados de exemplo, para treinamento | não |
+   | `ERP_SERVICE_ROLE_KEY` | Chave `service_role` do Supabase do ERP, usada só pelas rotas do calendário | para o calendário |
+   | `RESEND_API_KEY` | Envio dos e-mails do calendário | para o calendário |
+   | `CALENDARIO_REMETENTE` | Remetente, ex.: `Integração Integral <agenda@integralse.com.br>` | não |
+   | `CRON_SECRET` | Autoriza os cron da Vercel (financeiro e resumo da agenda) | para os cron |
+   | `INTEGRACAO_URL` | Endereço do sistema usado nos links dos e-mails | não |
 
 4. **Proteger o acesso:** Settings, Deployment Protection, ligar Vercel Authentication. Só quem tem conta no time abre o sistema.
 5. **Conferir:** entrar, ir em Configurações, Prévia com dados do ERP, e usar os botões "Testar o Supabase do ERP" e "Testar o agente de IA".
@@ -48,6 +53,30 @@ O navegador nunca vê a chave. Ele manda o pedido para `/api/ia`, e a função r
 ## Mapa dos núcleos
 
 Imagens de satélite do World Imagery (Esri), sem chave nem cadastro. O contorno vem de um KMZ ou KML exportado do Google Earth. Para usar as imagens do Google, troque o endereço dos blocos em `CAMADAS`, dentro de `src/App.jsx`, e use uma chave do Google Maps Platform.
+
+## Agentes IA da diretoria
+
+Dois analistas de plantão sobre os dados do próprio sistema, na aba **Agentes IA**. A aba só aparece para quem é da diretoria, e o bloqueio é do banco, não da tela: as funções `integracao_agente_tecnico` e `integracao_agente_comercial` conferem o cargo em `profiles` e recusam qualquer outra conta com erro 42501. A rota `/api/agentes` repassa o token do próprio usuário — nenhuma chave de serviço é usada ali.
+
+O **Agente Técnico** olha os núcleos parados na mesma etapa, os andamentos travados em "Aguardando Prefeitura", "Aguardando Cartório", "Aguardando cliente" e "Pausado", as metas e etapas de planos vencidas, as devolutivas abertas e o ranking das falhas que mais voltam, por categoria da análise. O **Agente Comercial** olha o funil, o índice de fechamento, as ativações, o follow-up atrasado, os leads parados e os clientes que ficaram sem resposta.
+
+Os números são apurados em SQL e entregues prontos ao modelo, que só lê e prioriza: ele não soma nem estima nada. O botão **Conferir os números** mostra as mesmas listas sem passar pela IA, para a diretoria checar a leitura. As funções são `STABLE`: o banco recusa qualquer escrita vinda delas, então os agentes observam e não alteram nada.
+
+Duas decisões de contagem que valem saber: o índice de fechamento fica em branco quando há menos de cinco desfechos na janela, em vez de mostrar um número redondo sem base; e um card que vai de Contrato para Cliente ativo não conta como ganho de novo, porque é o mesmo negócio avançando. Cada painel termina com um bloco de **cobertura do cadastro** — quantos núcleos estão sem responsável, sem andamento ou sem SLA, quantos cards estão sem valor — porque campo vazio não é o mesmo que estar tudo em ordem, e o agente é instruído a dizer isso em vez de concluir do vazio.
+
+Para ligar basta a `OPENAI_API_KEY` que a análise de documentos já usa, e a migration `20260925120000_agentes_diretoria.sql` aplicada no Supabase do ERP.
+
+## Calendário no Google Agenda e no e-mail
+
+O calendário do ERP continua sendo a fonte única: nada no ERP foi alterado. Quando um evento é criado, alterado ou cancelado, um gatilho no banco monta a fila `integracao_calendario_fila` com um convite por participante (e para quem criou), e a rota `/api/calendario-emails` entrega essa fila pela Resend. Mudança só de cor ou de visibilidade não gera e-mail, e os eventos que já existiam no ERP foram adotados em silêncio: o próximo ajuste neles sai como alteração, não como convite novo.
+
+O e-mail leva o evento anexado (`METHOD:REQUEST`), que o Gmail, o Outlook e o iCloud colocam direto na agenda, com os botões de confirmar e recusar; a resposta vai para quem criou o evento. Cancelar o evento manda um `METHOD:CANCEL`, que retira o compromisso das agendas. Como o `UID` é o mesmo e a `SEQUENCE` sobe a cada mudança, nunca aparece um evento duplicado.
+
+Em **Calendário**, o botão *Google Agenda e e-mail* abre o endereço particular de cada pessoa (`/api/calendario-ics?t=…`) para assinar no Google Agenda em **Outras agendas → Aceitar URL**. O endereço é uma senha: quem o tiver vê aqueles compromissos, e o botão *Gerar um novo endereço* invalida o anterior. Ali também ficam as duas opções de e-mail (convites e resumo da manhã); desligar vale só para quem desligou. O feed é pessoal — só o que a pessoa participa ou criou — e o Google o relê de tempo em tempo, então uma mudança pode levar horas para aparecer lá; no e-mail ela chega na hora.
+
+O cron `/api/calendario-resumo` roda às 10h UTC (7h de Brasília), manda o resumo do dia para quem tem compromisso e ainda drena a fila, caso algum convite tenha ficado para trás. O dia começa e termina em Brasília, não no relógio UTC do servidor.
+
+Para ligar: `ERP_SERVICE_ROLE_KEY`, `RESEND_API_KEY` e `CRON_SECRET` nas variáveis da Vercel, o domínio `integralse.com.br` verificado na Resend, e a migration `20260924210000_calendario_google_email.sql` aplicada no Supabase do ERP.
 
 ## Campo offline
 

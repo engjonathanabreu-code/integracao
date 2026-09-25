@@ -16,6 +16,7 @@ import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
+import AgentesIA from './AgentesIA.jsx';
 import GestaoSemanal from './GestaoSemanal.jsx';
 import Marketing from './Marketing.jsx';
 import Andamentos from './Andamentos.jsx';
@@ -52,7 +53,7 @@ import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
-import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal} from './dados-compartilhados.js';
+import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal, assinaturaCalendario} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -61,7 +62,7 @@ import {
   Radio, FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
   Loader2, Ban, Download, Lock, Copy, Undo2, Plus, X, SlidersHorizontal, Menu, ArrowUp, Star,
   ArrowDown, Pencil, Trash2, Fingerprint, Database, MapPin, ChevronRight, ChevronDown, Link2, UserPlus, DatabaseZap,
-  Bell, Users, Camera, Target, ScrollText, ClipboardCheck, MessageSquare, Crosshair, RefreshCw, Image as ImageIcon, Settings, GripVertical, Home, Calendar, CalendarDays, ListTodo, Columns3, Send, Flag, ClipboardList, Wallet, Building2, FolderOpen, Filter, Wifi, WifiOff, CloudUpload, Smartphone, TrendingUp, TrendingDown, BarChart3, Clock, HardDriveDownload,
+  Bot, Bell, Users, Camera, Target, ScrollText, ClipboardCheck, MessageSquare, Crosshair, RefreshCw, Image as ImageIcon, Settings, GripVertical, Home, Calendar, CalendarDays, ListTodo, Columns3, Send, Flag, ClipboardList, Wallet, Building2, FolderOpen, Filter, Wifi, WifiOff, CloudUpload, Smartphone, TrendingUp, TrendingDown, BarChart3, Clock, HardDriveDownload,
 } from "lucide-react";
 
 /* ============================================================
@@ -11144,6 +11145,51 @@ function ModalEditarAgenda({ agenda, onFechar, onSalvar }) {
   </Modal>;
 }
 
+// The feed address is a calendar password: it comes from the RPC of the person
+// signed in, is never stored in the browser and can be replaced at any time.
+function ModalGoogleAgenda({ usuario, onFechar, setToast }) {
+  const [estado, setEstado] = useState({ carregando: true, erro: "", token: "", convites: true, resumo: true });
+  const pedir = (ajustes) => {
+    setEstado((e) => ({ ...e, carregando: true, erro: "" }));
+    assinaturaCalendario(ajustes).then((dados) => setEstado({ carregando: false, erro: "", ...dados }))
+      .catch((e) => setEstado((x) => ({ ...x, carregando: false, erro: e.message })));
+  };
+  useEffect(() => { pedir(); }, []);
+  const endereco = estado.token ? `${window.location.origin}/api/calendario-ics?t=${estado.token}` : "";
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(endereco); setToast("Endereço copiado. Cole no Google Agenda."); }
+    catch { setToast("Selecione o endereço e copie com Ctrl+C."); }
+  };
+  return (
+    <Modal titulo="Google Agenda e e-mail" largura={620} onFechar={onFechar} rodape={<button className="btn" onClick={onFechar}>Fechar</button>}>
+      <Secao titulo="Assinar no Google Agenda" nota="Os seus eventos passam a aparecer no Google Agenda, no celular e no Outlook, e continuam atualizados sozinhos.">
+        {estado.carregando && !endereco ? <p className="ajuda">Preparando o seu endereço…</p> : (
+          <>
+            <label className="rot" htmlFor="ics-endereco">Endereço particular da sua agenda</label>
+            <div className="flex items-center gap-2">
+              <input id="ics-endereco" className="inp" readOnly value={endereco} onFocus={(e) => e.target.select()} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} />
+              <button className="btn btn-sm" onClick={copiar} disabled={!endereco}><Copy size={14} />Copiar</button>
+            </div>
+            <ol className="ajuda" style={{ margin: "10px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
+              <li>Abra o Google Agenda no computador.</li>
+              <li>Ao lado de <strong>Outras agendas</strong>, clique no <strong>+</strong> e escolha <strong>Aceitar URL</strong>.</li>
+              <li>Cole o endereço acima e clique em <strong>Adicionar agenda</strong>.</li>
+            </ol>
+            <p className="ajuda" style={{ marginTop: 8 }}>Guarde o endereço só para você: quem tiver o link vê os seus compromissos. O Google releva a agenda de tempos em tempos, então uma mudança pode levar algumas horas para aparecer ali — no e-mail ela chega na hora.</p>
+            <button className="btn btn-sm" style={{ marginTop: 10 }} disabled={estado.carregando} onClick={() => pedir({ regerar: true })}><RefreshCw size={14} />Gerar um novo endereço</button>
+          </>
+        )}
+      </Secao>
+      <Secao titulo="E-mails do calendário" nota={usuario.email ? `Enviados para ${usuario.email}, o e-mail do seu cadastro no ERP.` : "Seu cadastro no ERP está sem e-mail; peça à diretoria para incluir."}>
+        <label className="flex items-center gap-2"><span className="chave"><input type="checkbox" checked={estado.convites} disabled={estado.carregando} onChange={(e) => pedir({ convites: e.target.checked })} /><span /></span>Convites, alterações e cancelamentos dos meus eventos</label>
+        <label className="flex items-center gap-2" style={{ marginTop: 8 }}><span className="chave"><input type="checkbox" checked={estado.resumo} disabled={estado.carregando} onChange={(e) => pedir({ resumo: e.target.checked })} /><span /></span>Resumo da minha agenda toda manhã</label>
+        <p className="ajuda" style={{ marginTop: 10 }}>O convite vem com o evento anexado: no Gmail e no Outlook ele entra na agenda direto, com os botões de confirmar ou recusar.</p>
+      </Secao>
+      {estado.erro && <div className="msg-erro" style={{ marginTop: 10 }}>{estado.erro}</div>}
+    </Modal>
+  );
+}
+
 function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
@@ -11160,6 +11206,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [agendasOcultas, setAgendasOcultas] = useState([]);
   const [verOcultos, setVerOcultos] = useState(false);
   const [novoEm, setNovoEm] = useState(null);
+  const [googleAgenda, setGoogleAgenda] = useState(false);
   const cardDia=useCardCalendario(visao,ref,evento,novoEm);
   const abrirDia=iso=>{setDia(iso);cardDia.abrir();};
   const perm = permissoes(usuario);
@@ -11200,7 +11247,10 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
     <div className="contem largo">
       <div className="cabeca">
         <div><h1>Calendário</h1><p>Reuniões, reservas da sala e do carro, idas a campo e os prazos das metas e dos planos. Dois cliques em um dia ou em um horário criam um evento ali.</p></div>
-        {perm.setor !== "consulta" && <button className="btn btn-primario" onClick={() => setEvento("novo")}><Plus size={16} />Novo evento</button>}
+        <span className="flex flex-wrap items-center gap-2">
+          <button className="btn" onClick={() => setGoogleAgenda(true)}><Link2 size={16} />Google Agenda e e-mail</button>
+          {perm.setor !== "consulta" && <button className="btn btn-primario" onClick={() => setEvento("novo")}><Plus size={16} />Novo evento</button>}
+        </span>
       </div>
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
         <button className="btn btn-sm" onClick={() => mudarPeriodo(-1)} aria-label="Período anterior"><ChevronLeft size={16} /></button>
@@ -11357,6 +11407,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
         setAgendaEditando(null); setToast("Agenda atualizada. Acompanhe a confirmação de gravação.");
       }} />}
       {evento && <ModalEvento db={db} usuario={usuario} inicial={evento === "novo" ? null : evento} diaPadrao={dia} mutar={mutar} setToast={setToast} onFechar={() => setEvento(null)} />}
+      {googleAgenda && <ModalGoogleAgenda usuario={usuario} setToast={setToast} onFechar={() => setGoogleAgenda(false)} />}
       {novoEm && <ModalEvento key={`${novoEm.dia}_${novoEm.hora}`} db={db} usuario={usuario} inicial={null} diaPadrao={novoEm.dia} horaPadrao={novoEm.hora} mutar={mutar} setToast={setToast} onFechar={() => setNovoEm(null)} />}
       {verOcultos && (
         <Modal titulo="Itens ocultados" onFechar={() => setVerOcultos(false)} rodape={<button className="btn" onClick={() => setVerOcultos(false)}>Fechar</button>}>
@@ -12030,7 +12081,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat" }[rota.pag] || "Clientes";
+  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -12040,7 +12091,7 @@ export default function App() {
     await ir({ pag: "processo", id: ficha.id, aba: "cadastro" });
   };
   const props = { carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
-  const telaLarga = ["calendario", "processos", "metas", "chat", "home"].includes(rota.pag);
+  const telaLarga = ["calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
     <div className={`rb${usuario?.tema?.modo === "escuro" ? " escuro" : ""}`}>
@@ -12060,6 +12111,7 @@ export default function App() {
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
+          {perm.diretor && usuario.ativo !== false && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
           {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
@@ -12105,6 +12157,7 @@ export default function App() {
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
           {rota.pag === "calendario" && <PaginaCalendario {...props} />}
           {rota.pag === "chat" && <PaginaChat key={rota.id || "chat"} {...props} conversaId={rota.id} abrirJanela={(id) => setJanela({ id, minimizada: false })} />}
+          {rota.pag === "agentes" && perm.diretor && <AgentesIA usuario={usuario} />}
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
           {rota.pag === "municipio" && <PaginaMunicipio key={rota.id} {...props} municipioId={rota.id} />}
           {rota.pag === "remessa" && <PaginaRemessa key={rota.id} {...props} remessaId={rota.id} aba={rota.aba || "nucleos"} />}

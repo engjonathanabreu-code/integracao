@@ -1,0 +1,38 @@
+/* Painel dos agentes da diretoria. Segue as cores e as medidas do ERP. */
+.rb .agente-painel{display:flex;flex-direction:column;gap:16px}
+.rb .agente-cabeca{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+.rb .agente-cabeca h2{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:18px;color:var(--titulo)}
+.rb .agente-cabeca .ajuda{margin:0;max-width:64ch}
+.rb .agente-controles{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rb .agente-controles .rot{margin:0}
+.rb .agente-controles .inp{width:auto;min-width:130px}
+.rb .agente-inicio{max-width:70ch}
+
+.rb .agente-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.rb .agente-tile{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.rb .agente-tile-alerta{border-left-color:var(--danger)}
+.rb .agente-tile-atencao{border-left-color:var(--warning)}
+.rb .agente-tile-valor{font-size:26px;font-weight:800;color:var(--titulo);line-height:1.1}
+.rb .agente-tile-rotulo{font-size:13px;font-weight:700;color:var(--titulo)}
+.rb .agente-tile-detalhe{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+
+.rb .agente-resposta{padding:18px 20px}
+.rb .agente-pergunta{margin:0 0 12px;padding-left:12px;border-left:3px solid var(--primary);font-weight:600;color:var(--titulo)}
+.rb .agente-resposta>.ajuda:last-child{margin:14px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+.rb .agente-leitura p{margin:0 0 10px;line-height:1.6}
+.rb .agente-leitura h3{margin:16px 0 6px;font-size:15px;color:var(--titulo)}
+.rb .agente-leitura ul{margin:0 0 10px;padding-left:20px;line-height:1.6}
+.rb .agente-leitura li{margin-bottom:4px}
+.rb .agente-leitura>:last-child{margin-bottom:0}
+
+.rb .agente-perguntar{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.rb .agente-perguntar .inp{flex:1;min-width:0}
+
+.rb .agente-conferencia-corpo{display:flex;flex-direction:column;gap:14px;margin-top:12px}
+.rb .agente-tabela>strong,.rb .agente-vazio>strong{display:block;color:var(--titulo);font-size:14px;margin-bottom:6px}
+.rb .agente-vazio{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.rb .agente-vazio>span{font-size:13px;color:var(--muted)}
+.rb .agente-tabela .tab{font-size:13px}
+
+@media (prefers-reduced-motion:no-preference){.rb .girando{animation:agente-girar 1s linear infinite}}
+@keyframes agente-girar{to{transform:rotate(360deg)}}

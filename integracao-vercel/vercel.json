@@ -21,6 +21,12 @@
     "api/financeiro-lembretes.js": {
       "maxDuration": 300
     },
+    "api/calendario-emails.js": {
+      "maxDuration": 120
+    },
+    "api/calendario-resumo.js": {
+      "maxDuration": 120
+    },
     "api/oficios-gerar.js": {
       "maxDuration": 150
     },
@@ -69,6 +75,10 @@
     {
       "path": "/api/financeiro-lembretes",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/calendario-resumo",
+      "schedule": "0 10 * * *"
     }
   ]
 }
