@@ -1,37 +1,15 @@
 import { useState } from 'react';
-import { Bot, Sparkles, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Send } from 'lucide-react';
-import { tokenTempoReal } from './dados-compartilhados.js';
-import { AGENTES, destaques, dinheiro, porcento } from './agentes-ia.js';
+import { Bot, Sparkles, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Send, LayoutDashboard, MessageSquare } from 'lucide-react';
+import { AGENTES, SETOR_PAINEL_VALIDO, destaques, dinheiro, porcento } from './agentes-ia.js';
+import { pedirAgentes as pedir } from './agentes-api.js';
+import { Leitura } from './agentes-graficos.jsx';
+import AgentesPanorama from './AgentesPanorama.jsx';
+import AgentesConversa from './AgentesConversa.jsx';
 import './agentes.css';
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 const diasAtras = n => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 const dataBR = v => /^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10).split('-').reverse().join('/') : '—';
-
-async function pedir(corpo) {
-  const token = await tokenTempoReal();
-  if (!token) throw new Error('Entre novamente para abrir o painel da diretoria.');
-  const r = await fetch('/api/agentes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(corpo),
-    signal: AbortSignal.timeout(150000),
-  });
-  const dados = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(dados?.erro || 'Não foi possível falar com o agente agora.');
-  return dados;
-}
-
-// The model writes plain text; it is rendered as text, never as markup.
-function Leitura({ texto }) {
-  const partes = String(texto || '').split(/\n{2,}/).filter(p => p.trim());
-  return <div className="agente-leitura">{partes.map((parte, i) => {
-    const linhas = parte.split('\n').filter(l => l.trim());
-    if (linhas.every(l => /^\s*[-•*]\s+/.test(l))) return <ul key={i}>{linhas.map((l, j) => <li key={j}>{l.replace(/^\s*[-•*]\s+/, '')}</li>)}</ul>;
-    if (linhas.length === 1 && /^#{1,3}\s+/.test(linhas[0])) return <h3 key={i}>{linhas[0].replace(/^#{1,3}\s+/, '')}</h3>;
-    return <p key={i}>{linhas.join(' ')}</p>;
-  })}</div>;
-}
 
 function Tabela({ titulo, colunas, linhas, vazio }) {
   if (!Array.isArray(linhas) || !linhas.length) return <div className="agente-vazio"><strong>{titulo}</strong><span>{vazio}</span></div>;
@@ -211,23 +189,36 @@ function Painel({ agente }) {
   );
 }
 
+const ABAS = [
+  ['panorama', 'Panorama do setor', LayoutDashboard],
+  ['conversa', 'Conversa', MessageSquare],
+  ...Object.entries(AGENTES).map(([id, a]) => [id, a.nome, Bot]),
+];
+
 export default function AgentesIA({ usuario }) {
-  const [aba, setAba] = useState('tecnico');
+  const [aba, setAba] = useState('panorama');
+  // The panorama opens on the viewer's own sector when it has one; the
+  // diretoria starts from the overview.
+  const [setor, setSetor] = useState(() => SETOR_PAINEL_VALIDO(usuario?.setor) ? usuario.setor : 'geral');
   if (usuario?.setor !== 'diretoria') return <div className="contem"><p className="ajuda">Este painel é da diretoria.</p></div>;
   return (
     <div className="contem largo">
       <div className="cabeca">
         <div>
           <h1>Agentes IA</h1>
-          <p>Dois analistas de plantão sobre os dados do Integração: um olha a operação técnica, o outro o comercial. Só a diretoria enxerga esta tela.</p>
+          <p>O panorama de cada setor em gráficos, uma conversa para perguntar andamentos e os dois analistas de plantão, técnico e comercial. Só a diretoria enxerga esta tela.</p>
         </div>
       </div>
       <div className="abas" role="tablist" aria-label="Agentes">
-        {Object.entries(AGENTES).map(([id, a]) => (
-          <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => setAba(id)}><Bot size={15} />{a.nome}</button>
+        {ABAS.map(([id, nome, Icone]) => (
+          <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>
         ))}
       </div>
-      <div style={{ marginTop: 16 }}><Painel key={aba} agente={aba} /></div>
+      <div style={{ marginTop: 16 }}>
+        {aba === 'panorama' && <AgentesPanorama setor={setor} onSetor={setSetor} onConversar={s => { setSetor(s); setAba('conversa'); }} />}
+        {aba === 'conversa' && <AgentesConversa setor={setor} onSetor={setSetor} />}
+        {AGENTES[aba] && <Painel key={aba} agente={aba} />}
+      </div>
     </div>
   );
 }

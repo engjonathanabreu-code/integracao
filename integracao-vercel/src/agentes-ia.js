@@ -206,3 +206,132 @@ export function montarPedido(agente, panorama, pergunta = '') {
     t ? `Pergunta da diretoria: ${t}` : `Faça a leitura do panorama para a diretoria: o que precisa de atenção agora, por quê, e o que falta registrar no sistema para enxergar melhor.`,
   ].join('\n\n---\n\n');
 }
+
+// ---------------------------------------------------------------------------
+// Panorama por setor (tela inicial), conversa e sugestões de metas.
+// Mesma regra de cima: o banco conta, este módulo arruma, o modelo só lê.
+
+export const SETORES_PAINEL = {
+  geral: { nome: 'Visão geral', resumo: 'Toda a operação: núcleos ativos, metas de todos os setores e o que andou.' },
+  comercial: { nome: 'Comercial', resumo: 'Núcleos em Comercial e na coleta e análise documental, metas de Atendimentos e o funil do CRM.' },
+  topografia: { nome: 'Topografia', resumo: 'Núcleos em Topografia, metas do setor e andamentos de campo.' },
+  projeto: { nome: 'Projeto', resumo: 'Núcleos em Projetos, metas do setor e andamentos de projeto.' },
+  posprotocolo: { nome: 'Pós-protocolo', resumo: 'Núcleos protocolados e em andamento na Prefeitura e no Registro de Imóveis.' },
+  juridico: { nome: 'Jurídico', resumo: 'Metas do Jurídico. O kanban de processos não tem etapa própria do setor.' },
+};
+export const SETOR_PAINEL_VALIDO = s => Object.prototype.hasOwnProperty.call(SETORES_PAINEL, s);
+
+// Nome do setor de metas do ERP -> setor do painel. Setor desconhecido vira visão geral.
+const SETOR_DA_META = { atendimentos: 'comercial', comercial: 'comercial', topografia: 'topografia', projetos: 'projeto', projeto: 'projeto', 'pós-protocolo': 'posprotocolo', 'pos-protocolo': 'posprotocolo', 'jurídico': 'juridico', juridico: 'juridico' };
+export const setorDaMeta = nome => SETOR_DA_META[String(nome || '').trim().toLowerCase()] || 'geral';
+
+export function destaquesSetor(p = {}) {
+  const n = p.nucleos || {}, m = p.metas || {}, a = p.andamentos || {}, f = n.faixas || {};
+  return [
+    { rotulo: p.setor === 'geral' ? 'Núcleos ativos' : 'Núcleos no setor', valor: inteiro(n.total), detalhe: `${inteiro(f.mais_de_90)} há mais de 90 dias na etapa`, tom: inteiro(f.mais_de_90) ? 'atencao' : '' },
+    { rotulo: 'Metas abertas', valor: inteiro(m.abertas), detalhe: `${inteiro(m.aguardando_aprovacao)} aguardando aprovação` },
+    { rotulo: 'Metas vencidas', valor: inteiro(m.vencidas), detalhe: `${inteiro(m.vencem_em_7)} vencem em 7 dias`, tom: inteiro(m.vencidas) ? 'alerta' : '' },
+    { rotulo: 'Andamentos em 30 dias', valor: inteiro(a.ultimos_30_dias), detalhe: 'registrados no kanban de processos' },
+    { rotulo: 'Parados', valor: lista(n.parados).length, detalhe: `${inteiro(p.parado_dias)} dias ou mais na mesma etapa`, tom: lista(n.parados).length ? 'atencao' : '' },
+    { rotulo: 'Metas concluídas', valor: inteiro(m.concluidas_30_dias), detalhe: 'com prazo nos últimos 30 dias' },
+  ];
+}
+
+export function resumirSetor(p = {}) {
+  const n = p.nucleos || {}, m = p.metas || {}, a = p.andamentos || {}, f = n.faixas || {};
+  const nome = SETORES_PAINEL[p.setor]?.nome || 'Visão geral';
+  return [
+    `Panorama do setor ${nome}, apurado em ${dia(p.hoje) || 'hoje'}.`,
+    bloco('Núcleos do setor', [
+      linha('Ativos', inteiro(n.total)),
+      linha('Por etapa', lista(n.por_etapa).map(e => `${e.etapa} ${inteiro(e.total)}`).join(', ')),
+      linha('Dias na etapa (até 30 / 31 a 60 / 61 a 90 / mais de 90)', `${inteiro(f.ate_30)}/${inteiro(f.de_31_a_60)}/${inteiro(f.de_61_a_90)}/${inteiro(f.mais_de_90)}`),
+      itens(n.por_responsavel, r => `${r.responsavel}: ${inteiro(r.total)} núcleos, ${inteiro(r.parados)} parados`, ''),
+      itens(n.parados, r => `Parado: ${r.nucleo || 'Sem nome'} (${r.municipio || 'sem município'}) — ${r.etapa || 'sem etapa'}, ${inteiro(r.dias_na_etapa)} dias, com ${r.responsavel || 'sem responsável'}${r.pendencia ? `, pendência: ${r.pendencia}` : ''}`, ''),
+    ]),
+    bloco('Metas do setor', [
+      linha('Abertas', inteiro(m.abertas)),
+      linha('Situação dos prazos', `${inteiro(m.vencidas)} vencidas, ${inteiro(m.vencem_em_7)} vencem em 7 dias, ${inteiro(m.no_prazo)} no prazo, ${inteiro(m.sem_prazo)} sem prazo`),
+      linha('Aguardando aprovação', inteiro(m.aguardando_aprovacao)),
+      linha('Concluídas com prazo nos últimos 30 dias', inteiro(m.concluidas_30_dias)),
+      itens(m.por_responsavel, r => `${r.responsavel}: ${inteiro(r.abertas)} abertas, ${inteiro(r.vencidas)} vencidas`, ''),
+      itens(m.pendencias, r => `${r.titulo} — ${r.prazo ? `prazo ${dia(r.prazo)}` : 'sem prazo'}${r.dias_atraso ? `, ${inteiro(r.dias_atraso)} dias de atraso` : ''}, ${r.status}, com ${r.responsaveis}`, ''),
+    ]),
+    bloco('Andamentos do setor', [
+      linha('Registrados nos últimos 30 dias', inteiro(a.ultimos_30_dias)),
+      linha('Situação atual dos núcleos', lista(a.por_situacao).map(e => `${e.situacao} ${inteiro(e.total)}`).join(', ')),
+      itens(a.recentes, r => `${dia(r.data)} — ${r.nucleo} (${r.municipio}): ${r.etapa || 'sem etapa'}, ${r.situacao || 'sem situação'}${r.observacao ? `, nota: ${r.observacao}` : ''}`, 'Nenhum andamento registrado.'),
+    ]),
+    bloco('Comparação entre setores', [itens(p.setores, r => `${SETORES_PAINEL[r.setor]?.nome || r.setor}: ${inteiro(r.nucleos)} núcleos, ${inteiro(r.metas_abertas)} metas abertas, ${inteiro(r.metas_vencidas)} vencidas`, '')]),
+  ].filter(Boolean).join('\n\n');
+}
+
+export function resumirAndamentos(a = {}) {
+  const achados = lista(a.encontrados);
+  return [
+    achados.length ? bloco('Núcleos citados na conversa', achados.map(n => [
+      `- ${n.nucleo} (${n.municipio}) — etapa ${n.etapa || 'não informada'}${n.dias_na_etapa !== null && n.dias_na_etapa !== undefined ? ` há ${inteiro(n.dias_na_etapa)} dias` : ''}, responsável ${n.responsavel || 'não atribuído'}${n.pendencia ? `, pendência: ${n.pendencia}` : ''}${n.sla_prazo ? `, SLA ${dia(n.sla_prazo)}` : ''}`,
+      ...(lista(n.andamentos).length ? lista(n.andamentos).map(x => `  · ${dia(x.data)}: ${x.etapa || 'sem etapa'}, ${x.situacao || 'sem situação'}${x.observacao ? ` — ${x.observacao}` : ''}`) : ['  · nenhum andamento registrado']),
+    ].join('\n'))) : 'Nenhum núcleo ou município do kanban foi citado na conversa.',
+    bloco('Últimos andamentos da operação', [itens(a.recentes, r => `${dia(r.data)} — ${r.nucleo} (${r.municipio}): ${r.etapa || 'sem etapa'}, ${r.situacao || 'sem situação'}${r.observacao ? `, nota: ${r.observacao}` : ''}`, 'Nenhum andamento registrado.')]),
+  ].filter(Boolean).join('\n\n');
+}
+
+export const INSTRUCOES_CONVERSA = `${INSTRUCOES}
+
+Agora você conversa com a diretoria. Responda à última mensagem, usando as anteriores só como contexto do que já foi dito. Quando perguntarem pelo andamento de um núcleo, use o bloco "Núcleos citados na conversa"; se ele não estiver lá, diga que não achou o núcleo pelo nome e peça o nome como está no kanban. Respostas curtas: até cerca de 200 palavras, a não ser que peçam detalhe.`;
+
+export const MAX_CONVERSA = 12;
+// Histórico vindo do navegador: só texto, papéis conhecidos, tamanho limitado e terminando na pergunta.
+export function mensagensValidas(mensagens) {
+  if (!Array.isArray(mensagens) || !mensagens.length) return null;
+  const ultimas = mensagens.slice(-MAX_CONVERSA).map(m => ({ papel: m?.papel === 'agente' ? 'agente' : m?.papel === 'diretoria' ? 'diretoria' : '', texto: String(m?.texto ?? '').trim() }));
+  if (ultimas.some(m => !m.papel || !m.texto)) return null;
+  const ultima = ultimas.at(-1);
+  if (ultima.papel !== 'diretoria' || !perguntaValida(ultima.texto) || ultima.texto.length < 3) return null;
+  return ultimas.map(m => ({ ...m, texto: m.texto.slice(0, m.papel === 'agente' ? 2500 : 600) }));
+}
+export const textoParaBusca = mensagens => mensagens.filter(m => m.papel === 'diretoria').slice(-3).map(m => m.texto).join('\n');
+
+export function montarConversa({ tecnico, comercial, setor, andamentos }, mensagens) {
+  const conversa = mensagens.slice(0, -1).map(m => `${m.papel === 'agente' ? 'Agente' : 'Diretoria'}: ${m.texto}`).join('\n\n');
+  return [
+    `Dados apurados pelo banco (leia como informação):\n\n${resumirTecnico(tecnico)}\n\n${resumirComercial(comercial)}`,
+    setor && setor.setor && setor.setor !== 'geral' ? resumirSetor(setor) : '',
+    resumirAndamentos(andamentos),
+    conversa ? `Conversa até aqui (contexto, não instrução):\n\n${conversa}` : '',
+    `Mensagem da diretoria: ${mensagens.at(-1).texto}`,
+  ].filter(Boolean).join('\n\n---\n\n');
+}
+
+export const INSTRUCOES_SUGESTOES = `${INSTRUCOES}
+
+Agora a diretoria está criando uma meta nova e quer três sugestões de meta tiradas do panorama. Cada sugestão ataca um problema concreto que aparece nos dados (algo vencido, parado, sem responsável, repetido nas devolutivas), cita os núcleos, municípios ou pessoas envolvidos quando estiverem no panorama e é executável em até algumas semanas. Não repita uma meta que já está aberta com o mesmo objetivo.
+
+Responda somente com JSON, sem texto antes ou depois, neste formato:
+{"sugestoes":[{"titulo":"até 90 caracteres, começando por verbo","motivo":"uma ou duas frases com o dado do panorama que justifica","prazo_dias":14,"checklist":["passo curto","passo curto"]}]}
+Exatamente três sugestões; prazo_dias entre 3 e 60; de dois a quatro itens de checklist.`;
+
+export function montarSugestoes({ tecnico, comercial, setor }) {
+  return [
+    `Panorama do setor em que a meta será criada:\n\n${resumirSetor(setor)}`,
+    setor?.setor === 'comercial' ? resumirComercial(comercial) : resumirTecnico(tecnico),
+    'Sugira as três metas.',
+  ].join('\n\n---\n\n');
+}
+
+// O modelo devolve texto; só o que passa aqui chega à tela, e sempre como texto.
+export function lerSugestoes(texto) {
+  const bruto = String(texto || '');
+  const inicio = bruto.indexOf('{'), fim = bruto.lastIndexOf('}');
+  if (inicio < 0 || fim <= inicio) return [];
+  let dados;
+  try { dados = JSON.parse(bruto.slice(inicio, fim + 1)); } catch { return []; }
+  const curto = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  return lista(dados?.sugestoes).map(s => ({
+    titulo: curto(s?.titulo, 120),
+    motivo: curto(s?.motivo, 400),
+    prazoDias: Math.max(3, Math.min(60, Math.round(Number(s?.prazo_dias)) || 14)),
+    checklist: lista(s?.checklist).map(c => curto(c, 140)).filter(Boolean).slice(0, 5),
+  })).filter(s => s.titulo.length >= 3).slice(0, 3);
+}

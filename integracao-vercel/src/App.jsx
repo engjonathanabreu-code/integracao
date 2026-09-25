@@ -17,6 +17,7 @@ import {registrarAcesso} from './acessos-api.js';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
 import AgentesIA from './AgentesIA.jsx';
+import SugestoesMetas from './SugestoesMetas.jsx';
 import GestaoSemanal from './GestaoSemanal.jsx';
 import Marketing from './Marketing.jsx';
 import Andamentos from './Andamentos.jsx';
@@ -10269,9 +10270,20 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     onFechar();
     if (onDetalhe && nova) onDetalhe();
   };
+  // Directors creating a goal get three suggestions from the AI agent beside the form.
+  const sugerir = nova && usuario?.setor === "diretoria" && usuario.ativo !== false;
+  const usarSugestao = (s) => {
+    const prazo = new Date(); prazo.setDate(prazo.getDate() + s.prazoDias);
+    setF((x) => ({ ...x, titulo: s.titulo, observacoes: s.motivo ? `${s.motivo}${x.observacoes.trim() ? `\n\n${x.observacoes.trim()}` : ""}` : x.observacoes,
+      prazo: x.devolutiva ? x.prazo : `${prazo.getFullYear()}-${String(prazo.getMonth() + 1).padStart(2, "0")}-${String(prazo.getDate()).padStart(2, "0")}`,
+      checklistItens: [...x.checklistItens.filter((c) => c.titulo.trim()), ...s.checklist.map((titulo) => ({ id: uid("c"), titulo, concluido: false }))] }));
+    setToast("Sugestão aplicada. Revise e escolha os responsáveis.");
+  };
   return (
-    <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={640} onFechar={onFechar}
+    <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || erros.length > 0} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></>}>
+      <div className={sugerir ? "meta-com-sugestoes" : undefined}>
+      <div className="meta-formulario">
       <label className="tag" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, whiteSpace: "normal" }}>
         <span className="chave"><input type="checkbox" checked={f.devolutiva} onChange={(e) => { set("devolutiva", e.target.checked); if (e.target.checked) set("associacao_tipo", "nucleo"); }} /><span /></span>
         Esta meta é uma devolutiva
@@ -10339,6 +10351,9 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         ))}
       </div>
       {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 10 }}>{erros.join(". ")}.</div>}
+      </div>
+      {sugerir && <SugestoesMetas setorMeta={f.setor} onUsar={usarSugestao} />}
+      </div>
     </Modal>
   );
 }

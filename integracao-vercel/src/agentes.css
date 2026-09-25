@@ -36,3 +36,83 @@
 
 @media (prefers-reduced-motion:no-preference){.rb .girando{animation:agente-girar 1s linear infinite}}
 @keyframes agente-girar{to{transform:rotate(360deg)}}
+
+/* Panorama por setor */
+.rb .agente-setores{display:flex;flex-wrap:wrap;gap:6px}
+.rb .agente-setor{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:6px 14px;font:inherit;font-size:13.5px;font-weight:650;cursor:pointer}
+.rb .agente-setor:hover{border-color:var(--primary-3);background:var(--hover)}
+.rb .agente-setor.ativo{background:var(--primary);border-color:var(--primary);color:#fff}
+.rb .agente-carregando{opacity:.55;transition:opacity .2s}
+.rb .agente-graficos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.rb .agente-listas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.rb .agente-grafico{padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.rb .agente-grafico>header{display:flex;justify-content:space-between;gap:8px}
+.rb .agente-grafico h3{margin:0;font-size:15px}
+.rb .agente-grafico header .ajuda{margin:2px 0 0}
+.rb .agente-grafico-vazio{margin:0;font-size:13px;color:var(--muted);background:var(--soft);border-radius:10px;padding:10px 12px}
+
+.rb .agente-barra{display:block;background:var(--primary-3);border-radius:4px;min-width:2px}
+.rb .agente-barra-base{background:var(--primary-3)}
+.rb .agente-barra-alerta{background:var(--danger)}
+.rb .agente-barra-atencao{background:var(--warning)}
+.rb .agente-barra-neutro{background:var(--muted);opacity:.55}
+
+.rb .agente-barras{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.rb .agente-barra-linha{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;align-items:center;gap:10px;width:100%;padding:4px 6px;border-radius:8px;border:0;background:none;font:inherit;color:var(--text);text-align:left}
+.rb button.agente-barra-linha{cursor:pointer}
+.rb .agente-barra-linha:hover{background:var(--hover)}
+.rb .agente-barra-rotulo{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb .agente-barra-trilho{display:flex;gap:2px;height:12px}
+.rb .agente-barra-trilho .agente-barra{height:100%}
+.rb .agente-barra-valor{font-size:13px;font-weight:700;color:var(--titulo);white-space:nowrap}
+.rb .agente-barra-valor small{font-weight:500;color:var(--muted)}
+
+.rb .agente-empilhada-barra{display:flex;gap:2px;height:22px}
+.rb .agente-empilhada-barra .agente-barra{height:100%;border-radius:4px}
+.rb .agente-legenda{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
+.rb .agente-legenda li{display:flex;align-items:center;gap:6px}
+.rb .agente-legenda strong{color:var(--titulo)}
+.rb .agente-marca{display:inline-block;width:10px;height:10px;border-radius:3px}
+
+.rb .agente-colunas{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;height:150px;align-items:end}
+.rb .agente-coluna{display:flex;flex-direction:column;align-items:center;height:100%;gap:4px;min-width:0}
+.rb .agente-coluna-valor{font-size:12px;font-weight:700;color:var(--titulo);min-height:15px}
+.rb .agente-coluna-trilho{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.rb .agente-coluna-trilho .agente-barra{width:min(100%,28px)}
+.rb .agente-coluna-rotulo{font-size:11px;color:var(--muted);white-space:nowrap}
+
+.rb .agente-itens{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:340px;overflow:auto}
+.rb .agente-itens li{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 2px;border-top:1px solid var(--line2)}
+.rb .agente-itens li:first-child{border-top:0}
+.rb .agente-itens li>div{display:flex;flex-direction:column;min-width:0}
+.rb .agente-itens strong{font-size:13.5px;color:var(--titulo);overflow-wrap:anywhere}
+.rb .agente-itens .ajuda{margin:1px 0 0;overflow-wrap:anywhere}
+.rb .agente-itens .tag{flex-shrink:0;white-space:nowrap}
+
+/* Conversa */
+.rb .agente-chat{padding:16px;display:flex;flex-direction:column;gap:10px;min-height:320px;max-height:min(62vh,640px);overflow:auto}
+.rb .agente-chat-vazio{margin:auto;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:8px;max-width:560px}
+.rb .agente-chat-vazio p{margin:0}
+.rb .agente-msg{max-width:min(760px,88%);border-radius:14px;padding:10px 14px;line-height:1.55}
+.rb .agente-msg p{margin:0}
+.rb .agente-msg-diretoria{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px;white-space:pre-wrap}
+.rb .agente-msg-agente{align-self:flex-start;background:var(--soft);border:1px solid var(--line);border-bottom-left-radius:4px}
+.rb .agente-msg-agente .ajuda{margin:8px 0 0}
+.rb .agente-msg-pensando{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13.5px}
+.rb .agente-perguntar textarea.inp{flex:1;min-width:0;resize:vertical}
+
+/* Sugestões ao criar meta */
+.rb .meta-com-sugestoes{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+.rb .meta-formulario{min-width:0}
+.rb .sugestoes-metas{position:sticky;top:0;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.rb .sugestoes-metas>header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rb .sugestoes-metas h3{display:flex;align-items:center;gap:6px;margin:0;font-size:15px}
+.rb .sugestoes-metas>.ajuda{margin:0}
+.rb .sugestao-meta{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--primary-3);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.rb .sugestao-meta strong{color:var(--titulo);font-size:14px}
+.rb .sugestao-meta p{margin:0;font-size:13px;color:var(--text)}
+.rb .sugestao-meta ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.rb .sugestao-meta-rodape{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rb .sugestao-meta-rodape .ajuda{margin:0}
+@media (max-width:900px){.rb .meta-com-sugestoes{grid-template-columns:1fr}.rb .sugestoes-metas{position:static}}
+.rb.escuro .agente-setor.ativo,.rb.escuro .agente-msg-diretoria{color:#07201E}

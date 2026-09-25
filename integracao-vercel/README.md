@@ -64,7 +64,13 @@ Os números são apurados em SQL e entregues prontos ao modelo, que só lê e pr
 
 Duas decisões de contagem que valem saber: o índice de fechamento fica em branco quando há menos de cinco desfechos na janela, em vez de mostrar um número redondo sem base; e um card que vai de Contrato para Cliente ativo não conta como ganho de novo, porque é o mesmo negócio avançando. Cada painel termina com um bloco de **cobertura do cadastro** — quantos núcleos estão sem responsável, sem andamento ou sem SLA, quantos cards estão sem valor — porque campo vazio não é o mesmo que estar tudo em ordem, e o agente é instruído a dizer isso em vez de concluir do vazio.
 
-Para ligar basta a `OPENAI_API_KEY` que a análise de documentos já usa, e a migration `20260925120000_agentes_diretoria.sql` aplicada no Supabase do ERP.
+A tela abre na aba **Panorama do setor**: botões para Visão geral, Comercial, Topografia, Projeto, Pós-protocolo e Jurídico, e para cada um os destaques, gráficos (metas abertas por prazo, andamentos por semana, núcleos por etapa, tempo na etapa, metas por responsável, situação dos núcleos, funil do CRM no Comercial e na visão geral, e os setores lado a lado na visão geral) e as listas de principais pendências, núcleos parados e últimas ações registradas. Esses números vêm da função `integracao_agente_setor` e não passam pela IA. O setor de cada núcleo é a etapa atual do kanban (Comercial, Coleta e Análise Documental → Comercial; Topografia; Projetos; Protocolo e Andamento → Pós-protocolo); o de cada meta é o nome em `meta_setores` (Atendimentos conta como Comercial).
+
+A aba **Conversa** é um chat com o agente. A cada mensagem o servidor lê de novo os dois panoramas, o do setor em foco e, pela função `integracao_agente_andamentos`, os últimos andamentos de qualquer núcleo ou município citado nas três últimas perguntas (sem acento e sem diferença de maiúsculas). A resposta mostra de quais núcleos os andamentos foram consultados. O histórico fica só nesta aba do navegador e as últimas 12 mensagens vão como contexto.
+
+Ao criar uma meta, quem é da diretoria vê ao lado do formulário o quadro **Sugestões do agente**, com três metas tiradas do panorama do setor escolhido no campo Setor (sem setor, da visão geral). **Usar** preenche título, observações, prazo e checklist; os responsáveis continuam sendo escolhidos à mão. As sugestões ficam guardadas por 30 minutos por setor nesta aba do navegador, e o botão de atualizar pede outras.
+
+Para ligar basta a `OPENAI_API_KEY` que a análise de documentos já usa, e as migrations `20260925120000_agentes_diretoria.sql` e `20260925160000_agentes_setores_conversa.sql` aplicadas no Supabase do ERP.
 
 ## Calendário no Google Agenda e no e-mail
 
