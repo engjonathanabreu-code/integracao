@@ -1,0 +1,21 @@
+.rb .os-municipio{border:1px solid var(--line2);border-radius:10px;overflow:hidden;margin:16px 0}
+.rb .os-municipio .os-municipio-titulo{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:13px 16px;background:var(--bg);border-left:5px solid var(--primary,#147a74);border-bottom:1px solid var(--line2);color:var(--titulo);font-size:18px;font-weight:750}
+.rb .os-municipio .linha-link{padding:10px 16px}
+.rb .metas-grupos{display:grid;gap:10px}
+.rb .metas-grupo-setor{border:1px solid var(--line2);border-left:4px solid;border-radius:8px;min-width:0}
+.rb .metas-grupo-setor>summary{cursor:pointer;padding:8px 10px;font-weight:700;color:var(--titulo);font-size:14px}
+.rb .metas-grupo-setor>summary .tag{margin-left:8px;font-weight:400}
+.rb .metas-grupo-pessoas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:start;gap:10px;padding:0 10px 10px}
+.rb .metas-grupo-pessoa{min-width:0;background:var(--bg);border-radius:6px;padding:7px}
+.rb .metas-grupo-pessoa h4{margin:0 0 6px;font-size:12px;font-weight:650;color:var(--muted)}
+.rb .metas-grupo-pessoa .grade-metas{grid-template-columns:1fr;gap:6px}
+.rb .metas-grupo-pessoa .meta-card.compacto .meta-card-corpo{padding:7px 9px;gap:3px}
+.rb .cal-cores-setores{margin:0 0 12px}
+.rb .cal-paleta{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0}
+.rb .cal-paleta label{display:flex;align-items:center;gap:7px;font-size:13px}
+.rb .cal-paleta input{width:32px;height:28px;cursor:pointer;border:1px solid var(--line2);padding:2px;border-radius:5px}
+@media(max-width:600px){.rb .os-municipio .os-municipio-titulo{font-size:16px;padding:10px}.rb .metas-grupo-pessoas{grid-template-columns:1fr}}
+.rb .pagina-metas>.cabeca{margin-bottom:12px}
+.rb .pagina-metas .grade-indicadores{gap:8px}
+.rb .pagina-metas .grade-indicadores>.card{padding:9px 12px}
+.rb .metas-grupos{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));align-items:start}

@@ -207,7 +207,7 @@ export default function AgentesIA({ usuario }) {
       <div className="cabeca">
         <div>
           <h1>Agentes IA</h1>
-          <p>O panorama de cada setor em gráficos, uma conversa para perguntar andamentos e os dois analistas de plantão, técnico e comercial. Só a diretoria enxerga esta tela.</p>
+          <p>Sugestões de ações por setor com base nas movimentações e urgências, uma conversa para perguntar andamentos e os analistas técnico e comercial. Só a diretoria enxerga esta tela.</p>
         </div>
       </div>
       <div className="abas" role="tablist" aria-label="Agentes">

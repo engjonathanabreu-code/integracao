@@ -44,6 +44,16 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
   const [paradoDias, setParadoDias] = useState(45);
   const [estado, setEstado] = useState({ ocupado: true, erro: '', dados: null });
   const [recarga, setRecarga] = useState(0);
+  const [acoes, setAcoes] = useState({ ocupado: true, texto: '', erro: '' });
+
+  useEffect(() => {
+    let vivo = true;
+    setAcoes({ ocupado: true, texto: '', erro: '' });
+    pedirAgentes({ modo: 'acoes', setor, paradoDias }, 145000)
+      .then(r => { if (vivo) setAcoes({ ocupado: false, texto: r.acoes, erro: '' }); })
+      .catch(e => { if (vivo) setAcoes({ ocupado: false, texto: '', erro: e.message }); });
+    return () => { vivo = false; };
+  }, [setor, paradoDias, recarga]);
 
   useEffect(() => {
     let vivo = true;
@@ -70,19 +80,25 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
       <div className="agente-cabeca">
         <div>
           <h2>{SETORES_PAINEL[setor].nome}</h2>
-          <p className="ajuda">{SETORES_PAINEL[setor].resumo} Números lidos agora do banco, sem passar pela IA.</p>
+          <p className="ajuda">Ações sugeridas a partir das últimas movimentações, dos prazos e das pendências do setor.</p>
         </div>
         <div className="agente-controles">
           <label className="rot" htmlFor="painel-parado">Parado há</label>
           <select id="painel-parado" className="inp" value={paradoDias} onChange={e => setParadoDias(Number(e.target.value))}>
             {[30, 45, 60, 90, 180].map(d => <option key={d} value={d}>{d} dias ou mais</option>)}
           </select>
-          <button className="btn" disabled={estado.ocupado} onClick={() => setRecarga(r => r + 1)}><RefreshCw size={15} className={estado.ocupado ? 'girando' : ''} />Atualizar</button>
+          <button className="btn" disabled={estado.ocupado || acoes.ocupado} onClick={() => setRecarga(r => r + 1)}><RefreshCw size={15} className={estado.ocupado || acoes.ocupado ? 'girando' : ''} />Atualizar sugestões</button>
           <button className="btn btn-primario" onClick={() => onConversar(setor)}><MessageSquare size={15} />Perguntar ao agente</button>
         </div>
       </div>
 
       {estado.erro && <div className="msg-erro"><AlertTriangle size={15} />{estado.erro}</div>}
+      <section className="agente-acoes" aria-live="polite" aria-busy={acoes.ocupado}>
+        <h3>Ações prioritárias sugeridas</h3>
+        {acoes.ocupado && <p className="ajuda">Analisando movimentações recentes e urgências…</p>}
+        {acoes.erro && <div className="msg-erro">{acoes.erro} Use “Atualizar sugestões” para tentar novamente.</div>}
+        {acoes.texto && <><div style={{whiteSpace:'pre-wrap',lineHeight:1.65}}>{acoes.texto}</div><p className="ajuda">Sugestões da IA para avaliação da diretoria. Nenhuma ação é executada automaticamente.</p></>}
+      </section>
       {!p && estado.ocupado && <p className="ajuda">Carregando o panorama do setor…</p>}
 
       {p && <>
@@ -94,7 +110,7 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
           </div>)}
         </div>
 
-        <div className={`agente-graficos${estado.ocupado ? ' agente-carregando' : ''}`}>
+        <details><summary style={{cursor:'pointer',margin:'14px 0'}}>Ver indicadores e registros que apoiam a análise</summary><div className={`agente-graficos${estado.ocupado ? ' agente-carregando' : ''}`}>
           <Grafico titulo="Metas abertas por prazo" detalhe={`${n(m.abertas)} metas abertas no setor.`}>
             <Empilhada vazio="Nenhuma meta aberta." partes={[
               { rotulo: 'vencidas', valor: m.vencidas, tom: 'alerta' },
@@ -146,6 +162,7 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
         </div>
 
         <Listas p={p} />
+        </details>
       </>}
     </div>
   );
