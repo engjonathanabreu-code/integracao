@@ -1,5 +1,5 @@
 import { chamarOpenAI, ErroIA } from '../server/openai.js';
-import { INSTRUCOES_ACOES, montarAcoes } from '../src/agentes-ia.js';
+import { INSTRUCOES_ACOES, montarAcoes, diretrizAgente } from '../src/agentes-ia.js';
 import { AGENTES, AGENTE_VALIDO, INSTRUCOES, INSTRUCOES_CONVERSA, INSTRUCOES_SUGESTOES, SETOR_PAINEL_VALIDO, lerSugestoes, mensagensValidas, montarConversa, montarPedido, montarSugestoes, perguntaValida, textoParaBusca } from '../src/agentes-ia.js';
 export const config = { maxDuration: 150 };
 
@@ -55,8 +55,9 @@ async function modoSetor(corpo, authorization) {
 
 async function modoAcoes(corpo, authorization) {
   const dados = await modoSetor(corpo, authorization);
+  const estrategias = await rpc('integracao_agente_estrategias_ler', {}, authorization);
   const resposta = await chamarOpenAI({
-    messages: [{ role: 'user', content: montarAcoes(dados) }],
+    messages: [{ role: 'user', content: montarAcoes(dados) + diretrizAgente(estrategias, dados.setor === 'comercial' ? 'comercial' : 'tecnico') + (dados.setor === 'geral' ? diretrizAgente(estrategias, 'comercial') : '') }],
     system: INSTRUCOES_ACOES,
     max_tokens: 1600,
   });
@@ -78,7 +79,7 @@ async function modoConversa(corpo, authorization) {
     setor === 'geral' ? null : painelSetor(setor, authorization),
   ]);
   const resposta = await chamarOpenAI({
-    messages: [{ role: 'user', content: montarConversa({ tecnico, comercial, setor: painel, andamentos }, mensagens) }],
+    messages: [{ role: 'user', content: montarConversa({ tecnico, comercial, setor: painel, andamentos }, mensagens) + diretrizAgente(await rpc('integracao_agente_estrategias_ler', {}, authorization), setor === 'comercial' ? 'comercial' : 'tecnico') }],
     system: `Neste pedido você atua como o assistente da diretoria da Integral sobre a operação técnica e o comercial. ${INSTRUCOES_CONVERSA}`,
     max_tokens: 1400,
   });
@@ -94,7 +95,7 @@ async function modoSugestoes(corpo, authorization) {
     panorama(setor === 'comercial' ? 'comercial' : 'tecnico', authorization, {}),
   ]);
   const resposta = await chamarOpenAI({
-    messages: [{ role: 'user', content: montarSugestoes({ setor: painel, tecnico: outro, comercial: outro }) }],
+    messages: [{ role: 'user', content: montarSugestoes({ setor: painel, tecnico: outro, comercial: outro }) + diretrizAgente(await rpc('integracao_agente_estrategias_ler', {}, authorization), setor === 'comercial' ? 'comercial' : 'tecnico') }],
     system: `Neste pedido você ajuda a diretoria da Integral a definir metas. ${INSTRUCOES_SUGESTOES}`,
     max_tokens: 1200,
   });
@@ -125,7 +126,7 @@ export default async function handler(req, res) {
     if (corpo?.somentePanorama) return res.status(200).json({ agente, panorama: dados });
 
     const resposta = await chamarOpenAI({
-      messages: [{ role: 'user', content: montarPedido(agente, dados, corpo?.pergunta) }],
+      messages: [{ role: 'user', content: montarPedido(agente, dados, corpo?.pergunta) + diretrizAgente(await rpc('integracao_agente_estrategias_ler', {}, authorization), agente) }],
       system: `Neste pedido você atua como o ${AGENTES[agente].nome} da Integral, encarregado de ${AGENTES[agente].papel}. ${INSTRUCOES}`,
       max_tokens: 1800,
     });

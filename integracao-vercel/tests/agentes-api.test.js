@@ -97,3 +97,11 @@ test('ações não chamam IA quando o banco recusa o usuário', async () => {
   assert.equal(res.code,403); assert.ok(vistos.every(v=>!v.url.includes('openai')));
  });
 });
+
+test('estratégia técnica persistida orienta sugestões de novas metas',async()=>{
+ await comFetch(url=>url.endsWith('integracao_agente_estrategias_ler')?Response.json({tecnico:'Priorizar prefeituras paradas há 60 dias'}):url.includes('openai')?openai(JSON.stringify({sugestoes:[{titulo:'Contatar prefeitura',motivo:'Parada',prazo_dias:7,checklist:['Conferir','Contatar']}]})):Response.json({}),async vistos=>{
+ const res=response();await handler(pedido({modo:'sugestoes',setor:'topografia'}),res);
+ assert.equal(res.code,200);assert.match(JSON.stringify(vistos.find(x=>x.url.includes('openai')).corpo),/Priorizar prefeituras paradas há 60 dias/);
+ assert.equal(vistos.find(x=>x.url.endsWith('integracao_agente_estrategias_ler')).auth,'Bearer diretor-fixture');
+ });
+});

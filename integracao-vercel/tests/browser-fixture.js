@@ -1,3 +1,4 @@
+import {instalarMetasVendasFixture} from './metas-vendas-browser-fixture.js';
 import {instalarOficiosFixture} from './oficios-browser-fixture.js';
 const oficiosFixture=new URLSearchParams(location.search).has('oficios')?instalarOficiosFixture():null;
 // Realtime is isolated too: no test connects to a production WebSocket.
@@ -17,6 +18,7 @@ import {fixture,id} from './fixture.js';
 import {instalarCRMFixture} from './crm-browser-fixture.js';
 const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
+const vendasFixture=instalarMetasVendasFixture(base);
 if(new URLSearchParams(location.search).has('calendario')) {
   const hoje=new Date().toISOString().slice(0,10);
   base.profiles.push({id:id(70),nome:'Ana Topografia',tipo:'Topografia',ativo:true},{id:id(71),nome:'Bia Projetos',tipo:'Projetos',ativo:true});
@@ -77,6 +79,7 @@ window.fetch=async(input,options={})=>{
   // Fail closed: the fixture cannot send any request to a real external API.
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
   if(pontoFixture){const result=pontoFixture(url,options,json);if(result!==undefined)return result;}
+  if(vendasFixture){const result=vendasFixture(url,options,json);if(result!==undefined)return result;}
   if(crmFixture){const result=crmFixture(url,options,json);if(result!==undefined)return result;}
   if(url.pathname.endsWith('/rpc/integracao_registrar_acesso')){const p=JSON.parse(options.body);base.integracao_acessos.push({id:crypto.randomUUID(),usuario_id:base.profiles[0].id,usuario_nome:base.profiles[0].nome,evento:p.p_evento,motivo:p.p_motivo,ocorrido_em:new Date().toISOString()});return json(null);}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});

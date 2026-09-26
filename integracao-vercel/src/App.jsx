@@ -1,3 +1,5 @@
+import MetasVendas from './MetasVendas.jsx';
+import EstrategiasAgentes from './EstrategiasAgentes.jsx';
 import { catalogoDevolutivas } from "./devolutivas-catalogo.js";
 import { podeUsarAgentes } from "./permissoes.js";
 import * as documentoPdf from "./documento-pdf.js";
@@ -6309,6 +6311,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     ["ponto", "Folha Ponto", Clock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
+    podeUsarAgentes(usuario) && ["agentes", "Agentes IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
     perm.importar && ["previa", "Prévia com dados do ERP", Sparkles],
     perm.diretor && ["integrado", "Importar do Integrado", HardDriveDownload],
@@ -6342,6 +6345,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {atual === "campos" && (perm.config
           ? <PaginaCamposConfig db={db} usuario={usuario} sub={sub} setSub={(x) => ir({ pag: "config", aba: "campos", sub: x })} mutar={mutar} setToast={setToast} />
           : <ConfigPRF db={db} usuario={usuario} mutar={mutar} setToast={setToast} />)}
+        {atual === "agentes" && <EstrategiasAgentes usuario={usuario} />}
         {atual === "historico" && (
           <div className="flex flex-col gap-3">
             <HistoricoGeral db={db} />
@@ -7648,6 +7652,7 @@ function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
         </div>
       )}
       {buscaClientes && <Modal titulo="Buscar cliente" onFechar={() => setBuscaClientes(false)}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} autoFocus emModal /></Modal>}
+      {!AMBIENTE.DEMO && <MetasVendas usuario={usuario} db={db} resumo />}
       <div className="layout-home">
         <Secao titulo="Suas pendências" nota="Em ordem cronológica: o que está esperando há mais tempo aparece primeiro. Metas aparecem pelo prazo.">
           {!pend.length && <p style={{ margin: 0, color: "var(--muted)" }}>Nenhuma pendência para você agora.</p>}
