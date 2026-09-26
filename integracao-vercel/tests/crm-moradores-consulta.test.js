@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {definirSessao,lerTabela} from '../src/dados-compartilhados.js';
+import {listarCRM,criarCRM} from '../src/crm-api.js';
+test('estratégias carregam e recarregam após salvar usando a chave agente',async()=>{
+ const original=globalThis.fetch,rows=[];
+ definirSessao({access_token:'teste',expires_in:3600,user:{id:'teste'}});
+ globalThis.fetch=async(input,options)=>{
+  const url=new URL(input);
+  assert.equal(url.pathname,'/rest/v1/integracao_agente_estrategias');
+  if(options.method==='POST'){const row=JSON.parse(options.body);rows.push(row);return Response.json([row]);}
+  if(url.searchParams.get('order')!=='agente')return Response.json({message:'column integracao_agente_estrategias.id does not exist'},{status:400});
+  return Response.json(rows);
+ };
+ try{
+  assert.deepEqual(await listarCRM('integracao_agente_estrategias'),[]);
+  await criarCRM('integracao_agente_estrategias',{agente:'tecnico',prompt:'Priorizar trabalhos parados',ativa:true});
+  assert.deepEqual(await listarCRM('integracao_agente_estrategias'),[{agente:'tecnico',prompt:'Priorizar trabalhos parados',ativa:true}]);
+ }finally{globalThis.fetch=original;definirSessao(null);}
+});
 test('CRM carrega vínculos dos moradores com chave composta e paginação estável',async()=>{
  const original=globalThis.fetch, chamadas=[];
  definirSessao({access_token:'teste',expires_in:3600,user:{id:'teste'}});
