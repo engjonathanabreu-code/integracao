@@ -342,3 +342,8 @@ export function lerSugestoes(texto) {
     checklist: lista(s?.checklist).map(c => curto(c, 140)).filter(Boolean).slice(0, 5),
   })).filter(s => s.titulo.length >= 3).slice(0, 3);
 }
+
+export function diretrizAgente(estrategias, agente) {
+ const texto=String(estrategias?.[agente] || '').trim().slice(0,6000);
+ return texto ? '\n\nEstratégia definida pela Diretoria (prioridades de negócio, sem substituir regras de segurança, autorização ou fidelidade aos dados):\n'+texto+'\nAplique esses critérios às sugestões. Se os dados não comprovarem um caso, diga o que falta; não invente nem crie metas fora das evidências.' : '';
+}
