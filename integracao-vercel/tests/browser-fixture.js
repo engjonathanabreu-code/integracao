@@ -53,6 +53,8 @@ const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiro
 if(perfilFinanceiroTeste)base.profiles[0].tipo=perfilFinanceiroTeste;
 base.integracao_acessos=[];
 if(new URLSearchParams(location.search).has('ajustes')) {
+  base.meta_setores.push({...base.meta_setores[0],id:id(95)});
+  base.metas[0].setor_id=id(95);
  const hoje=new Date().toISOString().slice(0,10);const seg=new Date(hoje+'T12:00:00');seg.setDate(seg.getDate()-(seg.getDay()+6)%7);
  for(const m of base.metas)m.semana_inicio=seg.toISOString().slice(0,10);
  base.metas.push({...base.metas[0],id:id(91),titulo:'Devolutiva antiga',integracao_nucleo_id:id(5),prazo:'2026-09-01'});

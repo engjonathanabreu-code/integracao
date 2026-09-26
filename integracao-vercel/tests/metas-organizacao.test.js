@@ -55,3 +55,13 @@ test('agentes recusam inativo e função local forjada sobre perfil ERP', () => 
   assert.equal(podeUsarAgentes({funcao:'Analista',setor:'diretoria'}),false);
   assert.equal(podeUsarAgentes({funcao:'Diretor',ativo:true}),true);
 });
+import { setoresUnicos } from '../src/metas-organizacao.js';
+
+test('setores repetidos aparecem uma vez sem remover IDs ou metas de origem', () => {
+ const setores=[{id:'a',nome:'Topografia',ativo:false},{id:'b',nome:'Topografia',ativo:true},{id:'c',nome:'Projetos',ativo:true},{id:'d',nome:'Projetos',ativo:true}];
+ const metas=[{id:'m1',setor_id:'a'},{id:'m2',setor_id:'b'},{id:'m3',setor_id:'d'}];
+ const antes=JSON.stringify({setores,metas});
+ assert.deepEqual(setoresUnicos(setores).map(s=>s.id),['b','c']);
+ assert.equal(JSON.stringify({setores,metas}),antes);
+ assert.equal(setoresUnicos([]).length,0);
+});

@@ -1,4 +1,13 @@
 const comparar = (a, b) => String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base', numeric: true });
+// Uma entrada visual por nome; os IDs originais e vínculos no ERP permanecem intactos.
+export function setoresUnicos(setores = []) {
+  const grupos = new Map();
+  for (const setor of setores || []) {
+    const anterior = grupos.get(setor.nome);
+    if (!anterior || (anterior.ativo === false && setor.ativo !== false)) grupos.set(setor.nome, setor);
+  }
+  return [...grupos.values()];
+}
 export function agruparMetas(metas, usuarios = []) {
   const setores = new Map();
   for (const meta of metas) {
