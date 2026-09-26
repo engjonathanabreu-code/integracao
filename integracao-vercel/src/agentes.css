@@ -116,3 +116,4 @@
 .rb .sugestao-meta-rodape .ajuda{margin:0}
 @media (max-width:900px){.rb .meta-com-sugestoes{grid-template-columns:1fr}.rb .sugestoes-metas{position:static}}
 .rb.escuro .agente-setor.ativo,.rb.escuro .agente-msg-diretoria{color:#07201E}
+.agente-acoes{border:1px solid var(--line2);border-left:4px solid #147a74;border-radius:10px;padding:16px;margin-bottom:16px;background:var(--card,#fff)} .agente-acoes h3{margin:0 0 12px;color:var(--titulo)}

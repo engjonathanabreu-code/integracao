@@ -281,6 +281,13 @@ export const INSTRUCOES_CONVERSA = `${INSTRUCOES}
 
 Agora você conversa com a diretoria. Responda à última mensagem, usando as anteriores só como contexto do que já foi dito. Quando perguntarem pelo andamento de um núcleo, use o bloco "Núcleos citados na conversa"; se ele não estiver lá, diga que não achou o núcleo pelo nome e peça o nome como está no kanban. Respostas curtas: até cerca de 200 palavras, a não ser que peçam detalhe.`;
 
+export const INSTRUCOES_ACOES = `${INSTRUCOES}
+Sugira ações concretas para a diretoria, em ordem de urgência, em vez de apenas descrever indicadores. Cruze os últimos andamentos com metas vencidas, prazos próximos, aprovações e pendências. Para cada ação informe: o que fazer, qual registro e data justificam agir, quem pode executar (apenas se constar nos dados) e quando agir, deixando claro que o prazo sugerido não é um prazo já cadastrado. Considere movimentações recentes que já resolveram uma pendência; não recomende refazer uma ação concluída nem duplicar metas abertas. Diferencie fatos de hipóteses. Se não houver evidências suficientes, diga o que precisa ser atualizado, sem inventar urgência. Traga até cinco ações curtas em lista numerada, até 350 palavras. Não execute ações: são recomendações para avaliação da diretoria.`;
+
+export function montarAcoes({ painel, comercial }) {
+  return [resumirSetor(painel), comercial ? resumirComercial(comercial) : '', 'Quais ações devem ser priorizadas agora, considerando as últimas movimentações e as urgências registradas?'].filter(Boolean).join('\n\n');
+}
+
 export const MAX_CONVERSA = 12;
 // Histórico vindo do navegador: só texto, papéis conhecidos, tamanho limitado e terminando na pergunta.
 export function mensagensValidas(mensagens) {

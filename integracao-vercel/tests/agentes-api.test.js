@@ -80,3 +80,20 @@ test('quem não é da diretoria recebe 403 também nos modos novos',async()=>{
   }
  });
 });
+
+test('ações prioritárias usam andamentos recentes e urgências com autorização do Diretor', async () => {
+ await comFetch(url => url.includes('openai') ? openai('1. Revisar o memorial do NUI03 hoje.') : Response.json({setor:'topografia',hoje:'2026-09-26',metas:{pendencias:[{titulo:'Memorial NUI03',prazo:'2026-09-25',dias_atraso:1,status:'Em andamento',responsaveis:'Ana'}]},andamentos:{recentes:[{data:'2026-09-26',nucleo:'NUI03',municipio:'Ibirama',situacao:'Aguardando revisão',observacao:'Memorial corrigido recebido'}]}}), async vistos => {
+  const res=response(); await handler(pedido({modo:'acoes',setor:'topografia'}),res);
+  assert.equal(res.code,200); assert.match(res.body.acoes,/Revisar o memorial/);
+  const ia=JSON.stringify(vistos.find(v=>v.url.includes('openai')).corpo);
+  assert.match(ia,/Memorial corrigido recebido/); assert.match(ia,/1 dias de atraso/); assert.match(ia,/não recomende refazer/);
+  assert.equal(vistos[0].auth,'Bearer diretor-fixture');
+ });
+});
+
+test('ações não chamam IA quando o banco recusa o usuário', async () => {
+ await comFetch(()=>Response.json({code:'42501'},{status:403}), async vistos=>{
+  const res=response(); await handler(pedido({modo:'acoes',setor:'topografia'}),res);
+  assert.equal(res.code,403); assert.ok(vistos.every(v=>!v.url.includes('openai')));
+ });
+});

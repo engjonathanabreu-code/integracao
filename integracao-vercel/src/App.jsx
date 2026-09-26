@@ -3,6 +3,7 @@ import { podeUsarAgentes } from "./permissoes.js";
 import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
+import "./metas-visual.css";
 import { agruparOrdens, corSetor } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
@@ -10686,7 +10687,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   );
 
   return (
-    <div className="contem largo">
+    <div className="contem largo pagina-metas">
       {!AMBIENTE.DEMO && metasLocais.length>0 && <p role="status" className="card" style={{padding:14}}>Há {metasLocais.length} meta(s) neste aparelho ainda sem confirmação de envio. Elas só aparecerão aos responsáveis após a sincronização. Confira o aviso de salvamento no topo.</p>}
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {barra}
@@ -10785,7 +10786,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       {tela === "os" && !osAberta && (
         <Secao titulo="Ordens de Serviço" nota="Demandas avulsas que recebem metas da equipe." acao={gerenciaOS(usuario) && <button className="btn btn-sm btn-primario" onClick={() => setOsModal({})}><Plus size={14} />Nova Ordem de Serviço</button>}>
           {!(db.ordensServico || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma ordem de serviço cadastrada.</p>}
-          {agruparOrdens(db.ordensServico || []).map(grupo => <section key={grupo.chave}><h3>{grupo.nome}{grupo.estado ? ` / ${grupo.estado}` : ""}</h3>{grupo.ordens.map((o, i) => (
+          {agruparOrdens(db.ordensServico || []).map(grupo => <section className="os-municipio" key={grupo.chave}><h3 className="os-municipio-titulo"><span>{grupo.nome}{grupo.estado ? ` / ${grupo.estado}` : ""}</span><span className="tag">{grupo.ordens.length} {grupo.ordens.length === 1 ? "ordem" : "ordens"}</span></h3>{grupo.ordens.map((o, i) => (
             <button key={o.id} className="linha-link" style={{ borderTop: i ? "1px solid var(--line2)" : "none" }} onClick={() => setOsAberta(o.id)}>
               <span>
                 <strong style={{ color: "var(--titulo)" }}>{o.nome}</strong>
@@ -11248,6 +11249,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [metaAberta, setMetaAberta] = useState(null);
   const [metaEditando, setMetaEditando] = useState(null);
   const [agendaEditando, setAgendaEditando] = useState(null);
+  const [coresAbertas, setCoresAbertas] = useState(false);
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
   const [visao, setVisao] = useState("mes");
@@ -11326,6 +11328,10 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
       </div>
       : <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}><div><label className="rot" htmlFor="cal-metas">Metas</label><select id="cal-metas" className="inp" value={filtroMetas} onChange={(e) => setFiltroMetas(e.target.value)}><option value="">Ativas e atrasadas</option><option value="ativas">Ativas no prazo</option><option value="atrasadas">Atrasadas</option></select></div><p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p></div>}
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
+      <div className="cal-cores-setores">
+        <button className="btn btn-sm" aria-expanded={coresAbertas} onClick={() => setCoresAbertas(v => !v)}>Cores das metas por setor</button>
+        {coresAbertas && <><p className="ajuda">Cada setor já tem uma cor. Alterar a cor atualiza todas as suas metas no calendário.{!gerenciaMetas(usuario) && " A diretoria pode editar as cores."}</p><div className="cal-paleta">{(db.setoresMeta || []).filter(s => s.ativo !== false || todos.some(i => i.meta?.setor === s.nome)).map(s => <label key={s.id}><input type="color" aria-label={`Cor das metas de ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} disabled={!gerenciaMetas(usuario)} onInput={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.id === s.id ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /><span>{s.nome}</span></label>)}</div></>}
+      </div>
       <div className="layout-calendario" style={cardDia.aberto ? undefined : {gridTemplateColumns:"minmax(0,1fr)"}}>
         {colunasHora ? (
           <div className="card agenda-horas" style={{ padding: 10 }}>

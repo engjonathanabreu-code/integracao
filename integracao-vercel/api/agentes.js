@@ -1,4 +1,5 @@
 import { chamarOpenAI, ErroIA } from '../server/openai.js';
+import { INSTRUCOES_ACOES, montarAcoes } from '../src/agentes-ia.js';
 import { AGENTES, AGENTE_VALIDO, INSTRUCOES, INSTRUCOES_CONVERSA, INSTRUCOES_SUGESTOES, SETOR_PAINEL_VALIDO, lerSugestoes, mensagensValidas, montarConversa, montarPedido, montarSugestoes, perguntaValida, textoParaBusca } from '../src/agentes-ia.js';
 export const config = { maxDuration: 150 };
 
@@ -52,6 +53,18 @@ async function modoSetor(corpo, authorization) {
   return { setor, painel, comercial, gerado_em: new Date().toISOString() };
 }
 
+async function modoAcoes(corpo, authorization) {
+  const dados = await modoSetor(corpo, authorization);
+  const resposta = await chamarOpenAI({
+    messages: [{ role: 'user', content: montarAcoes(dados) }],
+    system: INSTRUCOES_ACOES,
+    max_tokens: 1600,
+  });
+  const acoes = textoDe(resposta);
+  if (!acoes) throw new ErroIA('O agente não retornou sugestões. Tente novamente.', 502);
+  return { setor: dados.setor, acoes, gerado_em: new Date().toISOString() };
+}
+
 // Chat tab: both panoramas, the sector in focus and the andamentos of any
 // núcleo named in the last questions go in, read fresh on every message.
 async function modoConversa(corpo, authorization) {
@@ -101,6 +114,7 @@ export default async function handler(req, res) {
     let corpo;
     try { corpo = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch { return res.status(400).json({ erro: 'Pedido inválido.' }); }
     if (corpo?.modo === 'setor') return res.status(200).json(await modoSetor(corpo, authorization));
+    if (corpo?.modo === 'acoes') return res.status(200).json(await modoAcoes(corpo, authorization));
     if (corpo?.modo === 'conversa') return res.status(200).json(await modoConversa(corpo, authorization));
     if (corpo?.modo === 'sugestoes') return res.status(200).json(await modoSugestoes(corpo, authorization));
     const agente = String(corpo?.agente || 'tecnico');
