@@ -1,3 +1,4 @@
+import { podeUsarAgentes } from "./permissoes.js";
 import { useState } from 'react';
 import { Bot, Sparkles, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Send, LayoutDashboard, MessageSquare } from 'lucide-react';
 import { AGENTES, SETOR_PAINEL_VALIDO, destaques, dinheiro, porcento } from './agentes-ia.js';
@@ -200,7 +201,7 @@ export default function AgentesIA({ usuario }) {
   // The panorama opens on the viewer's own sector when it has one; the
   // diretoria starts from the overview.
   const [setor, setSetor] = useState(() => SETOR_PAINEL_VALIDO(usuario?.setor) ? usuario.setor : 'geral');
-  if (usuario?.setor !== 'diretoria') return <div className="contem"><p className="ajuda">Este painel é da diretoria.</p></div>;
+  if (!podeUsarAgentes(usuario)) return <div className="contem"><p className="ajuda">Este painel é da diretoria.</p></div>;
   return (
     <div className="contem largo">
       <div className="cabeca">

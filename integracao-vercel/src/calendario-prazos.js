@@ -1,3 +1,4 @@
+import { corSetor } from "./metas-organizacao.js";
 const normalizar = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 export const setorCalendario = value => ({atendimentos:'comercial',projetos:'projeto',diretortecnico:'diretoria',diretordeprojetos:'diretoria',administrador:'diretoria'}[normalizar(value)] || normalizar(value));
 const encerrado = status => ['concluido','concluida','cancelado','cancelada','arquivado','arquivada','inativo','inativa'].includes(normalizar(status));
@@ -22,7 +23,7 @@ export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().to
     const inicioInformado=dataPrazo(meta.semana_inicio) || dataPrazo(meta.criadoEm) || dia;
     const inicio=inicioInformado > dia ? dia : inicioInformado;
     const fim=atrasada ? hoje : dia;
-    itens.push({inicio,fim,tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:atrasada?'#B63A3A':'#B87912',atrasada});
+    itens.push({inicio,fim,tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:corSetor(meta.setor,db.setoresMeta),atrasada});
   }
   for(const plano of db.planos || []) {
     if(encerrado(plano.status))continue;

@@ -18,7 +18,8 @@ async function rpc(rota, argumentos, authorization) {
     signal: AbortSignal.timeout(25000),
   });
   if (r.status === 401) throw new ErroIA('Sua sessão expirou. Entre novamente.', 401);
-  if (r.status === 403 || r.status === 404) throw new ErroIA('Este painel é da diretoria.', 403);
+  if (r.status === 404) throw new ErroIA('O painel precisa de uma atualização no banco de dados. Informe a administração.', 503);
+  if (r.status === 403) throw new ErroIA('Este painel é da diretoria.', 403);
   const corpoResposta = await r.json().catch(() => null);
   if (!r.ok) {
     if (String(corpoResposta?.code) === '42501' || /diretoria/i.test(corpoResposta?.message || '')) throw new ErroIA('Este painel é da diretoria.', 403);

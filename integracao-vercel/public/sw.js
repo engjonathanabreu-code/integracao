@@ -7,8 +7,9 @@ self.addEventListener("install", (evento) => {
 });
 
 self.addEventListener("activate", (evento) => {
+  // Keep two previous builds so open tabs can still load their hashed chunks.
   evento.waitUntil(
-    caches.keys().then((chaves) => Promise.all(chaves.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+    caches.keys().then((chaves) => Promise.all(chaves.filter(k => k.startsWith("integracao-") && k !== CACHE).slice(0, -2).map(k => caches.delete(k)))).then(() => self.clients.claim())
   );
 });
 
@@ -20,10 +21,12 @@ self.addEventListener("fetch", (evento) => {
     // Página: tenta a versão mais nova; sem internet, usa a guardada
     evento.respondWith(
       fetch(pedido).then((resposta) => {
-        const copia = resposta.clone();
-        caches.open(CACHE).then((c) => c.put("/index.html", copia));
+        if (resposta.ok && resposta.headers.get("content-type")?.includes("text/html")) {
+          const copia = resposta.clone();
+          caches.open(CACHE).then((c) => c.put("/index.html", copia));
+        }
         return resposta;
-      }).catch(() => caches.match("/index.html"))
+      }).catch(() => caches.open(CACHE).then(c => c.match("/index.html")))
     );
     return;
   }
@@ -31,7 +34,7 @@ self.addEventListener("fetch", (evento) => {
   evento.respondWith(
     caches.match(pedido).then((guardado) => {
       const daRede = fetch(pedido).then((resposta) => {
-        if (resposta.ok) { const copia = resposta.clone(); caches.open(CACHE).then((c) => c.put(pedido, copia)); }
+        if (resposta.ok && !(url.pathname.startsWith("/assets/") && resposta.headers.get("content-type")?.includes("text/html"))) { const copia = resposta.clone(); caches.open(CACHE).then((c) => c.put(pedido, copia)); }
         return resposta;
       }).catch(() => guardado);
       return guardado || daRede;
