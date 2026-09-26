@@ -4,7 +4,7 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
 import {atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
@@ -10175,7 +10175,7 @@ function ModalSetorMeta({ db, inicial, onSalvar, onFechar }) {
   const [nome, setNome] = useState(inicial?.nome || "");
   const [cor, setCor] = useState(corSetor(inicial?.nome, db.setoresMeta));
   const [ativo, setAtivo] = useState(inicial ? inicial.ativo !== false : true);
-  const dup = (db.setoresMeta || []).some((s) => s.id !== inicial?.id && normalizar(s.nome) === normalizar(nome));
+  const dup = (db.setoresMeta || []).some((s) => s.nome !== inicial?.nome && normalizar(s.nome) === normalizar(nome));
   return (
     <Modal titulo={inicial ? "Editar setor" : "Novo setor"} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo, cor })}>Salvar setor</button></>}>
@@ -10356,7 +10356,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} /></div>
         <div><label className="rot" htmlFor="mtp">Prazo (opcional)</label><input id="mtp" type="date" className="inp" value={f.devolutiva ? f.prazoDev : f.prazo} disabled={f.devolutiva} onChange={(e) => set("prazo", e.target.value)} />{f.devolutiva && <div className="ajuda">Vem do prazo final da devolutiva.</div>}</div>
         <div><label className="rot" htmlFor="mtst">Status</label><select id="mtst" className="inp" value={f.status} onChange={(e) => set("status", e.target.value)}>{META_STATUS.map((x) => <option key={x}>{x}</option>)}</select></div>
-        <div><label className="rot" htmlFor="mtse">Setor</label><select id="mtse" className="inp" value={f.setor} onChange={(e) => set("setor", e.target.value)}><option value="">Sem setor</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select></div>
+        <div><label className="rot" htmlFor="mtse">Setor</label><select id="mtse" className="inp" value={f.setor} onChange={(e) => set("setor", e.target.value)}><option value="">Sem setor</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="mta">Associar meta a</label>
           <select id="mta" className="inp" value={f.associacao_tipo} onChange={(e) => { set("associacao_tipo", e.target.value); set("associacao_id", ""); }}>{ASSOC_TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
@@ -10654,7 +10654,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   };
   const salvarSetor = (dados) => {
     const inicial = setorModal?.id ? setorModal : null;
-    mutar((d) => { d.setoresMeta = inicial ? d.setoresMeta.map((s) => (s.id === inicial.id ? { ...s, ...dados } : s)) : [...(d.setoresMeta || []), { id: uid("st"), ...dados }]; return d; }, inicial ? "Setor de metas alterado" : "Setor de metas criado", { detalhe: dados.nome });
+    mutar((d) => { d.setoresMeta = inicial ? d.setoresMeta.map((s) => (s.nome === inicial.nome ? { ...s, ...dados } : s)) : [...(d.setoresMeta || []), { id: uid("st"), ...dados }]; return d; }, inicial ? "Setor de metas alterado" : "Setor de metas criado", { detalhe: dados.nome });
     setSetorModal(null); setToast("Setor salvo.");
   };
   const salvarOS = (dados) => {
@@ -10673,7 +10673,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <button className="btn btn-sm" onClick={() => setSemanaOffset((x) => x + 1)} aria-label="Próxima semana"><ChevronRight size={16} /></button>
       {semanaOffset !== 0 && <button className="btn btn-sm" onClick={() => setSemanaOffset(0)}>Semana atual</button>}
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
-        <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
+        <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
         <button className={`btn btn-sm${tela === "devolutivas" ? " btn-primario" : ""}`} onClick={() => setTela("devolutivas")}><Reply size={16} />Devolutivas</button>
         <button className={`btn btn-sm${tela === "oficios" ? " btn-primario" : ""}`} onClick={()=>{setColaborador(null);setTela(tela === "oficios" ? "home" : "oficios");}}><IconeOficios size={16}/>Ofícios</button>
@@ -10726,14 +10726,14 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
           </div>
           {gerencia && (
             <Secao titulo="Setores" nota="Crie, edite ou exclua setores usados na organização das metas." acao={<button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Novo setor</button>}>
-              {(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => {
-                const qtd = visiveis.filter((m) => m.setor === s.nome).length;
+              {setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => {
+                const qtd = (db.metas || []).filter((m) => m.setor === s.nome).length;
                 return (
                   <div key={s.id} className="flex items-center justify-between gap-2" style={{ padding: "9px 0", borderTop: "1px solid var(--line2)" }}>
                     <button className="btn-link" onClick={() => setFiltroSetor(filtroSetor === s.nome ? "" : s.nome)}><strong>{s.nome}</strong> <span className="ajuda" style={{ margin: 0 }}>{qtd} meta(s)</span></button>
                     <span className="flex gap-1">
                       <button className="btn-icone" onClick={() => setSetorModal(s)} aria-label={`Editar ${s.nome}`}><Pencil size={14} /></button>
-                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.id !== s.id); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
+                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
                     </span>
                   </div>
                 );
@@ -11330,7 +11330,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
       <div className="cal-cores-setores">
         <button className="btn btn-sm" aria-expanded={coresAbertas} onClick={() => setCoresAbertas(v => !v)}>Cores das metas por setor</button>
-        {coresAbertas && <><p className="ajuda">Cada setor já tem uma cor. Alterar a cor atualiza todas as suas metas no calendário.{!gerenciaMetas(usuario) && " A diretoria pode editar as cores."}</p><div className="cal-paleta">{(db.setoresMeta || []).filter(s => s.ativo !== false || todos.some(i => i.meta?.setor === s.nome)).map(s => <label key={s.id}><input type="color" aria-label={`Cor das metas de ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} disabled={!gerenciaMetas(usuario)} onInput={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.id === s.id ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /><span>{s.nome}</span></label>)}</div></>}
+        {coresAbertas && <><p className="ajuda">Cada setor já tem uma cor. Alterar a cor atualiza todas as suas metas no calendário.{!gerenciaMetas(usuario) && " A diretoria pode editar as cores."}</p><div className="cal-paleta">{setoresUnicos(db.setoresMeta).filter(s => s.ativo !== false || todos.some(i => i.meta?.setor === s.nome)).map(s => <label key={s.id}><input type="color" aria-label={`Cor das metas de ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} disabled={!gerenciaMetas(usuario)} onInput={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.nome === s.nome ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /><span>{s.nome}</span></label>)}</div></>}
       </div>
       <div className="layout-calendario" style={cardDia.aberto ? undefined : {gridTemplateColumns:"minmax(0,1fr)"}}>
         {colunasHora ? (
@@ -11351,7 +11351,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
-            <FaixasMetas itens={todos.filter(i => !i.atrasada)} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
+            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
             <div className="faixa-prazos" style={{ gridTemplateColumns: `52px repeat(${diasSemana.length}, minmax(0, 1fr))` }}>
               <span className="rot" style={{ margin: 0, alignSelf: "center" }}>prazos</span>
               {diasSemana.map((d) => {
@@ -11397,7 +11397,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
-            <FaixasMetas itens={todos.filter(i => i.atrasada)} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
+
             </div>
             ))}
           </div>
