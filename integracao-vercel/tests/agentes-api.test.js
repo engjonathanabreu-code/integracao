@@ -6,6 +6,14 @@ const response=()=>({headers:{},code:0,body:null,setHeader(k,v){this.headers[k]=
 const pedido=body=>({method:'POST',headers:{authorization:'Bearer diretor-fixture'},body});
 const openai=texto=>Response.json({status:'completed',model:'modelo-teste',output:[{type:'message',content:[{type:'output_text',text:texto}]}]});
 
+test('função ausente no banco é indisponibilidade, não falsa negação ao Diretor',async()=>{
+ await comFetch(()=>Response.json({code:'PGRST202'},{status:404}),async vistos=>{
+  const res=response();await handler(pedido({modo:'setor',setor:'topografia'}),res);
+  assert.equal(res.code,503);assert.match(res.body.erro,/atualização no banco/);
+  assert.ok(vistos.every(v=>!v.url.includes('openai')));
+ });
+});
+
 async function comFetch(responder,fn){
  const old=global.fetch,oldKey=process.env.OPENAI_API_KEY,vistos=[];
  process.env.OPENAI_API_KEY='chave-teste';

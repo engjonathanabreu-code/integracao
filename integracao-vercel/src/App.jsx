@@ -1,3 +1,9 @@
+import { catalogoDevolutivas } from "./devolutivas-catalogo.js";
+import { podeUsarAgentes } from "./permissoes.js";
+import * as documentoPdf from "./documento-pdf.js";
+import * as documentoDocx from "./documento-docx.js";
+import MetasAgrupadas from "./MetasAgrupadas.jsx";
+import { agruparOrdens, corSetor } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
 import {atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
@@ -1329,7 +1335,7 @@ function PreviaDocumento({ html, titulo, timbrado }) {
   useEffect(()=>{
     let cancelado=false,url;
     setArquivo(null);setErro("");
-    import("./documento-pdf.js").then(m=>m.gerarPdf(html,titulo,JSON.parse(chaveTimbrado))).then(blob=>{
+    Promise.resolve(documentoPdf).then(m=>m.gerarPdf(html,titulo,JSON.parse(chaveTimbrado))).then(blob=>{
       if(cancelado)return;
       url=URL.createObjectURL(blob);setArquivo(url);
     }).catch(e=>{if(!cancelado)setErro(e.message);});
@@ -1341,10 +1347,10 @@ function PreviaDocumento({ html, titulo, timbrado }) {
 }
 async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
   if(formato === "pdf") {
-    const {baixarPdf}=await import("./documento-pdf.js");
+    const {baixarPdf}=await Promise.resolve(documentoPdf);
     await baixarPdf(html,titulo,timbrado,nome);
   } else {
-    const {baixarDocx}=await import("./documento-docx.js");
+    const {baixarDocx}=await Promise.resolve(documentoDocx);
     await baixarDocx(html,titulo,timbrado,nome);
   }
 }
@@ -4718,10 +4724,10 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
               montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
-              baixarDocumento={(item, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
+              baixarDocumento={(item, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
               <IntegracaoMemoriais por={usuario.nome} key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
-              baixarDocumento={(unidade, html) => import("./documento-docx.js").then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
+              baixarDocumento={(unidade, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "dadosNui" && n && <DadosNUI usuario={usuario} key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
@@ -5076,7 +5082,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
     setErro("");setEstado("exportando");try{
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
     const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
-    if(tipo==="doc"){const {baixarDocx}=await import("./documento-docx.js");await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
+    if(tipo==="doc"){const {baixarDocx}=await Promise.resolve(documentoDocx);await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
     mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, com CPF completo` });
     }catch(e){setErro(e.message);}finally{setEstado("ocioso");}
   };
@@ -8194,6 +8200,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
   const nova = !meta;
   const autorizado = podeAnalisarDevolutiva(meta,usuario);
   const [nucleoId, setNucleoId] = useState(meta?.associacao_id || "");
+  const [municipioId, setMunicipioId] = useState((db.nucleos || []).find(n => n.id === meta?.associacao_id)?.municipioId || "");
   const [chegada, setChegada] = useState(meta?.devolutiva?.chegada || new Date().toISOString().slice(0, 10));
   const [prazo, setPrazo] = useState(meta?.devolutiva?.prazo || "");
   const [textoLivre, setTextoLivre] = useState(meta?.devolutiva?.textoOriginal || meta?.observacoes || "");
@@ -8204,7 +8211,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
   const [etapa1, setEtapa1] = useState(meta?.devolutiva?.analiseIA?.etapa1 || null);
   const [etapa2, setEtapa2] = useState(meta?.devolutiva?.analiseIA?.etapa2 || null);
   const [salvando, setSalvando] = useState(false);
-  const opcoesNucleo = (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`]).sort((a, b) => a[1].localeCompare(b[1], "pt-BR", { numeric: true, sensitivity: "base" }));
+  const opcoesNucleo = (db.nucleos || []).filter(n => !nova || n.municipioId === municipioId).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`]).sort((a, b) => a[1].localeCompare(b[1], "pt-BR", { numeric: true, sensitivity: "base" }));
 
   const validarArquivos = (lista) => {
     const arr = Array.from(lista);
@@ -8217,7 +8224,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
 
   const rodarEtapa1 = async () => {
     if (!autorizado || carregando || salvando) return;
-    if (!nucleoId) { setErro("Selecione o núcleo antes de analisar."); return; }
+    if (!nucleoId || !municipioId || !(db.nucleos || []).some(n => n.id === nucleoId && n.municipioId === municipioId)) { setErro("Selecione Município e Núcleo antes de analisar."); return; }
     setErro(""); setCarregando("etapa1");
     try {
       const originais = arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais();
@@ -8252,12 +8259,18 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
-  const podeSalvar = autorizado && !!nucleoId && !!etapa1 && !salvando && !carregando;
+  const podeSalvar = autorizado && !!municipioId && !!nucleoId && (!!etapa1 || arquivosEtapa1.length > 0 || !!textoLivre.trim()) && !salvando && !carregando;
 
   const salvar = async () => {
     if (!podeSalvar) return;
     setSalvando(true); setErro("");
     try {
+      let etapa1Salvar = etapa1;
+      if (!etapa1Salvar) {
+        const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais(), textoLivre);
+        etapa1Salvar = {geradoEm:new Date().toISOString(),resumo:resultado.resumo || "",itens:(resultado.itens || []).map(it => ({...it,id:uid("iv")})),naoIdentificado:resultado.naoIdentificado || []};
+        setEtapa1(etapa1Salvar);
+      }
       const gravarLote = async (arquivos) => {
         const anexos = [];
         for (const a of arquivos) {
@@ -8275,7 +8288,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         origem: meta?.devolutiva?.origem || "Prefeitura",
         ...meta?.devolutiva, chegada, prazo, textoOriginal: textoLivre.trim(),
         analiseIA: {
-          etapa1: etapa1 ? { ...etapa1, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
+          etapa1: etapa1Salvar ? { ...etapa1Salvar, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1Salvar.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
           etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: anexosEtapa2.length ? anexosEtapa2.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa2.arquivosAnalisados || []) } : null,
         },
       };
@@ -8320,6 +8333,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>1. Devolutiva recebida</h3>
         {nova ? (
           <div style={{ marginBottom: 10 }}>
+            <BuscaItem id="admun" rotulo="Município (obrigatório)" mostrarTodos itens={(db.municipios || []).map(m => [m.id,m.nome])} valor={municipioId} onEscolher={id => {setMunicipioId(id);setNucleoId("");}} placeholder="Selecione o município" />
             <BuscaItem id="adnu" mostrarTodos ajuda="Todos os núcleos cadastrados e não arquivados, mesmo sem metas." rotulo="Núcleo (obrigatório)" itens={opcoesNucleo} valor={nucleoId} onEscolher={setNucleoId} placeholder="Buscar por município, remessa ou núcleo" />
           </div>
         ) : (
@@ -10158,13 +10172,14 @@ function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
 
 function ModalSetorMeta({ db, inicial, onSalvar, onFechar }) {
   const [nome, setNome] = useState(inicial?.nome || "");
+  const [cor, setCor] = useState(corSetor(inicial?.nome, db.setoresMeta));
   const [ativo, setAtivo] = useState(inicial ? inicial.ativo !== false : true);
   const dup = (db.setoresMeta || []).some((s) => s.id !== inicial?.id && normalizar(s.nome) === normalizar(nome));
   return (
     <Modal titulo={inicial ? "Editar setor" : "Novo setor"} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo })}>Salvar setor</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo, cor })}>Salvar setor</button></>}>
       <label className="rot" htmlFor="stn">Nome do setor</label>
-      <input id="stn" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} />
+      <input id="stn" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} /><label className="rot" htmlFor="stcor">Cor no calendário</label><input id="stcor" type="color" value={cor} onChange={e => setCor(e.target.value)} />
       {dup && <div className="msg-erro">Já existe um setor com esse nome.</div>}
       <label className="flex items-center gap-2" style={{ marginTop: 14 }}><span className="chave"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /><span /></span>Setor ativo</label>
     </Modal>
@@ -10196,6 +10211,8 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [arquivosDev, setArquivosDev] = useState([]);
+  const [registroDevId, setRegistroDevId] = useState("");
+  const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
   const [erroDev, setErroDev] = useState("");
   const addItemChecklist = () => setF((x) => (x.checklistItens.some((y) => !y.titulo.trim()) ? x : { ...x, checklistItens: [...x.checklistItens, { id: uid("c"), titulo: "", concluido: false }] }));
@@ -10204,11 +10221,14 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   if (!f.responsaveis.length) erros.push("Selecione ao menos um responsável");
   if (f.associacao_tipo !== "avulsa" && !f.associacao_id) erros.push("Selecione o item que será associado à meta");
   if (f.devolutiva) {
+    if (nova && !registroDev) erros.push("Cadastre a devolutiva em Metas > Devolutivas e selecione o registro acima");
+    if (registroDev && f.associacao_id !== registroDev.associacao_id) erros.push("O núcleo deve ser o mesmo da devolutiva vinculada");
+    if (nova && !(db.nucleos || []).some(n => n.id === f.associacao_id && (db.municipios || []).some(m => m.id === n.municipioId))) erros.push("A devolutiva precisa de Município e Núcleo válidos");
     if (f.associacao_tipo !== "nucleo" || !f.associacao_id) erros.push("Uma devolutiva precisa estar ligada a um processo");
     if (!f.chegadaDev) erros.push("Informe a data de chegada da devolutiva");
     if (!f.prazoDev) erros.push("Informe o prazo final para responder");
     if (f.prazoDev && f.chegadaDev && f.prazoDev < f.chegadaDev) erros.push("O prazo não pode ser antes da chegada");
-    if (!arquivosDev.length && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
+    if (!registroDev && !arquivosDev.length && !meta?.devolutiva?.textoOriginal?.trim() && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
   }
   const opcoesAssoc = f.associacao_tipo === "plano" ? (db.planos || []).map((p) => [p.id, p.titulo])
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
@@ -10216,8 +10236,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const salvar = async () => {
     if (salvando || erros.length) return;
     setSalvando(true); setErroDev("");
-    const anexos = [];
+    const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
+    let novaAnalise = null;
     try {
+      if (f.devolutiva && arquivosDev.length) {
+        const resultado = await analisarTeorDevolutivaIA(arquivosDev, f.observacoes);
+        novaAnalise = { geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map(it => ({...it,id:uid("iv")})), naoIdentificado: resultado.naoIdentificado || [] };
+      }
       for (const arquivo of f.devolutiva ? arquivosDev : []) {
         const base64 = await lerBase64(arquivo);
         const anexo = { id: uid("ar"), nome: arquivo.name, tipo: arquivo.type || "application/octet-stream", tamanho: arquivo.size, chave: `${PREFIXO_ARQ_DEV}${uid("k")}`, por: usuario.nome, data: new Date().toISOString() };
@@ -10225,13 +10250,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         anexos.push(anexo);
       }
     } catch (e) {
-      await Promise.allSettled(anexos.map(a => armazenamento.del(a.chave)));
+      await Promise.allSettled(anexos.filter(a => !registroDev || !arquivosOriginaisDevolutiva(registroDev).some(original => original.chave === a.chave)).map(a => armazenamento.del(a.chave)));
       setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
       setSalvando(false); return;
     }
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
-      devolutiva: f.devolutiva ? { origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
+      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: uid("mt"), erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       mutar((d) => {
@@ -10271,7 +10296,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     if (onDetalhe && nova) onDetalhe();
   };
   // Directors creating a goal get three suggestions from the AI agent beside the form.
-  const sugerir = nova && usuario?.setor === "diretoria" && usuario.ativo !== false;
+  const sugerir = nova && podeUsarAgentes(usuario);
   const usarSugestao = (s) => {
     const prazo = new Date(); prazo.setDate(prazo.getDate() + s.prazoDias);
     setF((x) => ({ ...x, titulo: s.titulo, observacoes: s.motivo ? `${s.motivo}${x.observacoes.trim() ? `\n\n${x.observacoes.trim()}` : ""}` : x.observacoes,
@@ -10288,6 +10313,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         <span className="chave"><input type="checkbox" checked={f.devolutiva} onChange={(e) => { set("devolutiva", e.target.checked); if (e.target.checked) set("associacao_tipo", "nucleo"); }} /><span /></span>
         Esta meta é uma devolutiva
       </label>
+      {f.devolutiva && <BuscaItem id="devregistrada" rotulo="Vincular devolutiva cadastrada" mostrarTodos itens={catalogoDevolutivas(db.metas).filter(r => r.meta.id !== meta?.id).map(({meta:m}) => [m.id, m.titulo + " — " + rotuloAssociacao(db,m)])} valor={registroDevId} onEscolher={id => { const m = db.metas.find(x => x.id === id); setRegistroDevId(id); if(m) {setArquivosDev([]);setF(x => ({...x, associacao_tipo:"nucleo", associacao_id:m.associacao_id, origemDev:m.devolutiva.origem, chegadaDev:m.devolutiva.chegada, prazoDev:m.devolutiva.prazo || m.prazo}));} }} placeholder="Buscar por título, município ou núcleo" />}
       {f.devolutiva && (
         <div className="card" style={{ padding: 14, marginBottom: 12 }}>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
@@ -10367,6 +10393,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [enviando, setEnviando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
   const [analiseIA, setAnaliseIA] = useState(false);
+  const [confirmarRevisao, setConfirmarRevisao] = useState(false);
   const [relatorioIA, setRelatorioIA] = useState(false);
   const entradaArquivo = useRef(null);
   const m = (db.metas || []).find((x) => x.id === metaId);
@@ -10375,7 +10402,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const colabora = podeColaborarMeta(m, usuario);
   const nomeUsuario = (id) => (db.usuarios || []).find((u) => u.id === id)?.nome || "Usuário removido";
   const alterar = (fn, acao, descricao) => mutar((d) => { const q = d.metas.find((x) => x.id === m.id); fn(q, d); registrarHistoricoMeta(d, q, acao, descricao, usuario); return d; }, `Meta: ${acao.toLowerCase()}`, { detalhe: `${m.titulo}${descricao ? `: ${descricao}` : ""}` });
-  const concluir = () => {
+  const concluir = (semRevisao = false) => {
+    if (m.devolutiva && semRevisao !== true) {setConfirmarRevisao(true);return;}
     const id = uid("h"), data = new Date().toISOString();
     mutar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !solicitarConclusaoMeta(q,usuario,id,data)) return d;
       novaNotificacao(d,{titulo:`Conclusão solicitada: ${q.titulo}`,texto:`${usuario.nome} enviou para aprovação.`,rota:{pag:"metas"},setores:["diretoria"]});return d;
@@ -10443,6 +10471,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </div>
       <p className="obs-modal">{m.observacoes || "Sem observações."}</p>
 
+      {confirmarRevisao && <Modal titulo="Revisão altamente recomendada" onFechar={() => setConfirmarRevisao(false)} rodape={<><button className="btn" onClick={() => concluir(true)}>Concluir sem revisão</button><button className="btn btn-primario" onClick={() => {setConfirmarRevisao(false);setAnaliseIA(true);}}>Enviar material corrigido à IA</button></>}><p>Antes de enviar a meta para aprovação, recomendamos conferir o material corrigido com a devolutiva original. Essa revisão é opcional.</p></Modal>}
       {m.devolutiva && (() => {
         const etapa1 = m.devolutiva.analiseIA?.etapa1;
         const etapa2 = m.devolutiva.analiseIA?.etapa2;
@@ -10450,6 +10479,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
         return (
           <section className="bloco-modal">
             <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
+            {etapa1?.resumo && <p>{etapa1.resumo}</p>}
             {!etapa1 && <p className="ajuda" style={{ margin: "0 0 8px" }}>A devolutiva ainda não foi analisada pela IA.</p>}
             {etapa1 && (
               <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
@@ -10458,7 +10488,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
                 {!!contagem.nao_verificavel && <Tag tipo="pend">{contagem.nao_verificavel} não verificável(is)</Tag>}
               </div>
             )}
-            {etapa1 && !etapa2 && <p className="ajuda" style={{ margin: "0 0 8px" }}>Depois de executar o que a devolutiva pede, anexe o trabalho corrigido e a mesma IA compara com a devolutiva original para dizer se ainda falta algo.</p>}
+            {etapa1 && !etapa2 && <p className="ajuda" style={{ margin: "0 0 8px" }}>Altamente recomendado antes de concluir: envie o material corrigido para revisão pela IA. A revisão é opcional e compara o material com a devolutiva original.</p>}
             <div className="flex flex-wrap gap-2">
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorioIA(true)}><Sparkles size={13} />Ver relatório da IA</button>}
               {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm btn-primario" onClick={() => setAnaliseIA(true)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
@@ -10586,6 +10616,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
 function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const timbradoOficios = useTimbrado(db);
   const [tela, setTela] = useState("home");
+  const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [detalhe, setDetalhe] = useState(null);
   const [editando, setEditando] = useState(null);
@@ -10643,11 +10674,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
         <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{(db.setoresMeta || []).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
+        <button className={`btn btn-sm${tela === "devolutivas" ? " btn-primario" : ""}`} onClick={() => setTela("devolutivas")}><Reply size={16} />Devolutivas</button>
         <button className={`btn btn-sm${tela === "oficios" ? " btn-primario" : ""}`} onClick={()=>{setColaborador(null);setTela(tela === "oficios" ? "home" : "oficios");}}><IconeOficios size={16}/>Ofícios</button>
         <button className={`btn btn-sm${tela === "ativas" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "ativas" ? "home" : "ativas")}><Target size={16} aria-hidden="true"/>Metas Ativas</button>
         <button className="btn btn-sm" onClick={() => setCompacto((x) => !x)} title="Alterna entre a visão condensada e a detalhada">{compacto ? <><Eye size={13} />Detalhado</> : <><ListTodo size={13} />Condensado</>}</button>
         {gerencia && <button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Setor</button>}
-        {gerencia && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva("nova")}><Sparkles size={14} />Análise de Devolutivas</button>}
+
         {gerencia && <button className="btn btn-sm btn-primario" onClick={() => setEditando("nova")}><Plus size={14} />Nova Meta</button>}
       </span>
     </div>
@@ -10659,6 +10691,10 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {barra}
 
+      {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia && <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button>}>
+        <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
+        {catalogoDevolutivas(todasVisiveis).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => <div key={m.id} className="card" style={{padding:14,marginTop:10}}><strong>{m.titulo}</strong><p className="ajuda">{rotuloAssociacao(db,m)}</p><p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p><p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>{vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}<div className="flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>{podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}{gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}</div></div>)}
+      </Secao>}
       {tela === "oficios" && <Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/>}
       {tela === "home" && !colaborador && (
         <>
@@ -10668,10 +10704,10 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
             <Indicador titulo="Em atraso" valor={atrasadas.length} alerta={atrasadas.length > 0} />
           </div>
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
-            {daSemana.length ? <div className="grade-metas">{daSemana.map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta programada para esta semana.</p>}
+            {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta programada para esta semana.</p>}
           </Secao>
-          <Secao titulo="Metas atrasadas" nota="Até 15 metas vencidas para acompanhamento rápido.">
-            {atrasadas.length ? <div className="grade-metas">{atrasadas.slice(0, 15).map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />)}</div> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
+          <Secao titulo="Metas atrasadas" nota="Metas vencidas organizadas por setor e responsável.">
+            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
           </Secao>
           <h3 style={{ fontSize: 17, margin: "18px 0 10px" }}>Colaboradores</h3>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
@@ -10749,7 +10785,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       {tela === "os" && !osAberta && (
         <Secao titulo="Ordens de Serviço" nota="Demandas avulsas que recebem metas da equipe." acao={gerenciaOS(usuario) && <button className="btn btn-sm btn-primario" onClick={() => setOsModal({})}><Plus size={14} />Nova Ordem de Serviço</button>}>
           {!(db.ordensServico || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma ordem de serviço cadastrada.</p>}
-          {(db.ordensServico || []).map((o, i) => (
+          {agruparOrdens(db.ordensServico || []).map(grupo => <section key={grupo.chave}><h3>{grupo.nome}{grupo.estado ? ` / ${grupo.estado}` : ""}</h3>{grupo.ordens.map((o, i) => (
             <button key={o.id} className="linha-link" style={{ borderTop: i ? "1px solid var(--line2)" : "none" }} onClick={() => setOsAberta(o.id)}>
               <span>
                 <strong style={{ color: "var(--titulo)" }}>{o.nome}</strong>
@@ -10757,7 +10793,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
               </span>
               <ChevronRight size={16} style={{ color: "var(--muted)" }} />
             </button>
-          ))}
+          ))}</section>)}
         </Secao>
       )}
 
@@ -11247,7 +11283,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
     : visao === "trimestre" ? `${MESES[periodo.ini.getMonth()]} a ${MESES[periodo.fim.getMonth()]} de ${periodo.fim.getFullYear()}`
     : `${periodo.ini.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${periodo.fim.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
   const hoje = agora.toISOString().slice(0, 10);
-  const doDia = todos.filter((i) => ocorreNoDia(i, dia)).sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+  const doDia = todos.filter((i) => ocorreNoDia(i, dia)).sort((a, b) => Number(a.tipo === "meta" && a.atrasada) - Number(b.tipo === "meta" && b.atrasada) || (a.hora || "").localeCompare(b.hora || ""));
   const mudarPeriodo = (n) => {
     if (visao === "mes" || visao === "trimestre") { const passo = visao === "mes" ? 1 : 3; const d = new Date(ref.ano, ref.mes + n * passo, 1); setRef({ ano: d.getFullYear(), mes: d.getMonth(), dia: 1 }); setDia(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`); return; }
     const d = new Date(periodo.ini); d.setDate(d.getDate() + n * (visao === "dia" ? 1 : visao === "semana" ? 7 : 14));
@@ -11309,7 +11345,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
-            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
+            <FaixasMetas itens={todos.filter(i => !i.atrasada)} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
             <div className="faixa-prazos" style={{ gridTemplateColumns: `52px repeat(${diasSemana.length}, minmax(0, 1fr))` }}>
               <span className="rot" style={{ margin: 0, alignSelf: "center" }}>prazos</span>
               {diasSemana.map((d) => {
@@ -11355,6 +11391,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
                 );
               })}
             </div>
+            <FaixasMetas itens={todos.filter(i => i.atrasada)} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} recuo />
             </div>
             ))}
           </div>
@@ -11363,13 +11400,13 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
           <div className="grade-calendario cabecalho-calendario" style={{ gridTemplateColumns: `repeat(${colunas}, 1fr)` }}>{DIAS_SEMANA.map((d) => <span key={d}>{d}</span>)}</div>
           <div>
           {Array.from({ length: Math.ceil(dias.length / 7) }, (_, semana) => dias.slice(semana * 7, semana * 7 + 7)).map((diasSemana) => <div key={diasSemana[0].toISOString()} style={{ position: "relative" }}>
-            <FaixasMetas itens={todos} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} noMes limite={2} />
+            <FaixasMetas itens={todos.filter(i => !i.atrasada)} dias={diasSemana.map(d => d.toISOString().slice(0, 10))} aoAbrir={abrirItem} noMes limite={2} />
             <div className={`grade-calendario${visao === "trimestre" ? " compacta" : ""}`} style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`, marginBottom: 4 }}>
             {diasSemana.map((d) => {
               const iso = d.toISOString().slice(0, 10);
               const noMes = noPeriodo(d);
-              const itens = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "meta");
-              const metasSemana = todos.filter(i => i.tipo === "meta" && diasSemana.some(d => ocorreNoDia(i, d.toISOString().slice(0, 10))));
+              const itens = todos.filter((i) => ocorreNoDia(i, iso) && (i.tipo !== "meta" || i.atrasada)).sort((a,b) => Number(a.tipo === "meta" && a.atrasada) - Number(b.tipo === "meta" && b.atrasada));
+              const metasSemana = todos.filter(i => i.tipo === "meta" && !i.atrasada && diasSemana.some(d => ocorreNoDia(i, d.toISOString().slice(0, 10))));
               const metasOcultas = metasSemana.slice(2).filter(i => ocorreNoDia(i, iso)).length;
               const limiteEventos = visao === "trimestre" ? 1 : 2;
               const excedentes = Math.max(0, itens.length - limiteEventos) + metasOcultas;
@@ -12126,7 +12163,7 @@ export default function App() {
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
-          {perm.diretor && usuario.ativo !== false && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
+          {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
           {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
@@ -12172,7 +12209,7 @@ export default function App() {
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
           {rota.pag === "calendario" && <PaginaCalendario {...props} />}
           {rota.pag === "chat" && <PaginaChat key={rota.id || "chat"} {...props} conversaId={rota.id} abrirJanela={(id) => setJanela({ id, minimizada: false })} />}
-          {rota.pag === "agentes" && perm.diretor && <AgentesIA usuario={usuario} />}
+          {rota.pag === "agentes" && podeUsarAgentes(usuario) && <AgentesIA usuario={usuario} />}
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
           {rota.pag === "municipio" && <PaginaMunicipio key={rota.id} {...props} municipioId={rota.id} />}
           {rota.pag === "remessa" && <PaginaRemessa key={rota.id} {...props} remessaId={rota.id} aba={rota.aba || "nucleos"} />}

@@ -9,6 +9,13 @@ export const SETORES = {
   consulta: { nome: "Consulta", descricao: "Só visualiza" },
 };
 export const FUNCOES = ["Diretor", "Coordenador", "Analista", "Técnico", "Advogado", "Assistente", "Estagiário"];
+// ERP Administrador is mapped to the application's Diretor role at login.
+// A locally edited function/sector must never override the canonical ERP type.
+export function podeUsarAgentes(usuario) {
+  if (!usuario || usuario.ativo === false) return false;
+  if (usuario.tipoERP) return ['Administrador', 'Diretor Técnico', 'Diretor de Projetos', 'Diretor de Projeto'].includes(usuario.tipoERP);
+  return usuario.funcao === 'Diretor';
+}
 export const SETOR_DA_ETAPA = { mobilizacao: "comercial", contrato: "comercial", documental: "comercial", topografia: "topografia", projeto: "projeto", prefeitura: "posprotocolo", crf: "posprotocolo" };
 export function permissoes(u) {
   const s = u?.setor || "consulta";
