@@ -10985,7 +10985,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   return (
     <div className="contem largo">
       <div className="cabeca">
-        <div><h1>Processos</h1><p>Kanban por etapa, agrupado por município, como no ERP. Cada processo é um núcleo, com os moradores por trás.</p></div>
+        <div><h1>Processos</h1><p>Distribuição por município e etapa. Clique nas quantidades para consultar os processos.</p></div>
       </div>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 14 }}>
         <input className="inp" style={{ maxWidth: 250 }} placeholder="Buscar núcleo, responsável ou pendência" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar processo" />
@@ -11018,43 +11018,31 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
           return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} aria-pressed={etapa === st} onClick={() => escolherEtapa(st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
-      {municipios.map((m) => {
-        const doMunicipio = lista.filter((n) => n.municipioId === m.id);
-        const aberto = abertos[m.id] === true;
-        const comPendencia = doMunicipio.filter((n) => n.pendencia).length;
-        return (
-          <section key={m.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
-            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: a[m.id] !== true }))} aria-expanded={aberto}>
-              {aberto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                <strong style={{ color: "var(--titulo)", fontSize: 16 }}>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></strong>
-                <span className="ajuda" style={{ display: "block", margin: 0 }}>{doMunicipio.length} processo(s){comPendencia ? `, ${comPendencia} com pendência` : ""}</span>
-              </span>
-              <span className="flex flex-wrap gap-1">
-                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
-              </span>
-            </button>
-            {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
-              {etapas.filter((s) => !etapa || s === etapa).map((s) => {
-                const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
-
-                return (
-                  <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px", display: "flex", flexDirection: "column" }}>
-                    <div className="cabeca-coluna">
-                      <span className="icone-coluna"><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={19} cor="currentColor" corCheck="currentColor" /></span>
-                      <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: "var(--titulo)", fontSize: 13.5 }}>{s}</span>
-                      <span className="contagem-coluna">{itens.length}</span>
-                    </div>
-                    {itens.map(cartao)}
-                    {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
-                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /></div>
-                  </div>
-                );
-              })}
-            </div>}
-          </section>
-        );
-      })}
+      <div className="card processos-matriz-rolagem" role="region" aria-label="Distribuição por município e etapa" tabIndex={0}>
+        <table className="processos-matriz">
+          <caption className="sr-only">Processos por município e etapa</caption>
+          <thead><tr><th scope="col">Município</th>{etapas.map(st => <th scope="col" key={st}>{st}</th>)}<th scope="col">Total</th></tr></thead>
+          <tbody>{municipios.map(m => {
+            const itensMunicipio = lista.filter(n => n.municipioId === m.id);
+            const expandidoMunicipio = abertos[m.id] === true;
+            return <tr key={m.id}>
+              <th scope="row"><button className="processos-municipio" aria-expanded={expandidoMunicipio} onClick={() => setAbertos(a => ({...a, [m.id]: a[m.id] !== true}))}><strong>{m.nome}/{m.uf}</strong><span className="ajuda">{itensMunicipio.length} processo(s)</span></button></th>
+              {etapas.map(st => {
+                const itens = itensMunicipio.filter(n => etapaProcesso(n) === st);
+                const expandido = expandidoMunicipio || (Array.isArray(abertos[m.id]) && abertos[m.id].includes(st));
+                return <td key={st}>
+                  <button className={`btn btn-sm processos-quantidade${itens.length ? ' com-itens' : ''}`} aria-label={`${m.nome}, ${st}: ${itens.length} processo(s)`} aria-expanded={expandido} onClick={() => setAbertos(a => {
+                    const atuais = a[m.id] === true ? etapas : Array.isArray(a[m.id]) ? a[m.id] : [];
+                    return {...a, [m.id]: atuais.includes(st) ? atuais.filter(e => e !== st) : [...atuais, st]};
+                  })}>{itens.length}{expandido ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>
+                  {expandido && <div className="processos-celula-detalhes">{itens.map(cartao)}{!itens.length && <p className="ajuda">Nenhum processo</p>}<BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={st} /></div>}
+                </td>;
+              })}<td><strong>{itensMunicipio.length}</strong></td>
+            </tr>;
+          })}</tbody>
+          <tfoot><tr><th scope="row">Total nos filtros</th>{etapas.map(st => <td key={st}>{lista.filter(n => etapaProcesso(n) === st).length}</td>)}<td>{lista.length}</td></tr></tfoot>
+        </table>
+      </div>
       {!municipios.length && <p className="ajuda">Nenhum processo com esses filtros.</p>}
       {atual && <ModalProcesso db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
     </div>

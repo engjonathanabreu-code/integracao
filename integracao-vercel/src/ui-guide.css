@@ -124,3 +124,19 @@ body:has(.rb.escuro[data-ui-guide]){background:#101B1B}
 /* Keep absolute accessible labels inside horizontally scrollable tables. */
 .rb[data-ui-guide] .rolagem{position:relative}
 
+/* One shared stage header and one row per municipality. */
+.rb .processos-matriz-rolagem{position:relative;padding:0;overflow:auto;max-height:72vh;isolation:isolate}
+.rb .processos-matriz{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.rb .processos-matriz th,.rb .processos-matriz td{padding:12px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);vertical-align:top;min-width:160px;background:var(--card)}
+.rb .processos-matriz thead th{position:sticky;top:0;z-index:3;background:var(--soft);color:var(--titulo);font-weight:700}
+.rb .processos-matriz tr>:first-child{position:sticky;left:0;z-index:2;min-width:210px;max-width:240px;background:var(--card)}
+.rb .processos-matriz thead tr>:first-child{z-index:4;background:var(--soft)}
+.rb .processos-matriz tr>:last-child{min-width:70px;text-align:center}
+.rb .processos-matriz tfoot :is(th,td){background:var(--soft);font-weight:700;color:var(--titulo)}
+.rb .processos-municipio{border:0;padding:0;background:transparent;text-align:left;color:var(--titulo);cursor:pointer;width:100%;font:inherit}
+.rb .processos-municipio .ajuda{display:block;font-weight:400}
+.rb .processos-quantidade{min-width:64px;justify-content:space-between;font-variant-numeric:tabular-nums}
+.rb .processos-quantidade.com-itens{background:var(--soft);border-color:var(--primary);color:var(--primary)}
+.rb .processos-celula-detalhes{width:245px;padding-top:10px}
+.rb .processos-celula-detalhes .cartao{margin-bottom:8px}
+@media(max-width:640px){.rb .processos-matriz tr>:first-child{min-width:150px;max-width:160px}.rb .processos-matriz th,.rb .processos-matriz td{padding:10px}}
