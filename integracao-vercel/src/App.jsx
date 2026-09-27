@@ -5641,7 +5641,6 @@ function ChuvaLogin() {
   return (
     <>
       <canvas ref={tela} className="login-chuva" onClick={clicar} aria-hidden="true" />
-      {dica && <span className="login-dica" aria-hidden="true">Toque na tela para ler o que está passando</span>}
     </>
   );
 }
@@ -5730,7 +5729,6 @@ function Login({ usuarios, onEntrar, aviso, progresso }) {
         </div>
       </div>
       <div className="login-rodape">
-        <span>{demo ? "Modo demonstração: qualquer senha entra." : "Entre com a mesma conta e senha do ERP Integral."}</span>
         <span>Esqueceu a senha? Peça à Diretoria para redefinir no ERP.</span>
       </div>
     </div>
