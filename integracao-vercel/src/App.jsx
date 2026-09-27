@@ -8492,7 +8492,8 @@ function dadosDocumento(db, p, usuario) {
     elaboracao: db.empresa || {},
     remessa: remessaDe(db,p.remessaId)?.titulo || (remessaDe(db,p.remessaId) ? `Remessa ${remessaDe(db,p.remessaId).numero}` : "____________"),
     enderecoImovelContrato: `${enderecoLinha(temValor(p.enderecoImovel) ? p.enderecoImovel : p.endereco)}, ${m ? `${m.nome}/${m.uf}` : "____________"}${(p.enderecoImovel?.cep || p.endereco?.cep) ? `, CEP ${p.enderecoImovel?.cep || p.endereco?.cep}` : ""}`,
-    nome: p.requerente.nome || "____________", cpf: fmtCPF(p.requerente.cpf) || "____________",
+    nome: p.requerente.nome || "____________", cpf: (ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)) || "____________",
+    tipoDocumento: ehPJ(p.requerente) ? "CNPJ" : "CPF",
     rg: p.requerente.rg || "____________", nacionalidade: p.requerente.nacionalidade || "brasileiro(a)",
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
     profissao: p.requerente.profissao || "____________", telefone: p.requerente.telefone || "____________",
@@ -8508,11 +8509,11 @@ function dadosDocumento(db, p, usuario) {
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
     qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
     compromissos: textoCompromissos(p.compromisso, n?.prazosCompromisso), observacao_compromisso: p.compromisso?.observacao || "",
-    municipio: m ? `${m.nome}/${m.uf}` : "____________", cep: p.endereco.cep || "",
+    municipio: m ? `${m.nome}/${m.uf}` : "____________", cep: p.endereco?.cep || "",
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
     area: un[0]?.area || p.imovel?.area || "____________", tipoPosse: p.imovel?.tipoPosse || "posse",
     tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || tempoDesde(p.imovel?.aquisicao) || "____________",
-    renda: p.social?.rendaFamiliar ? reais(p.social.rendaFamiliar) : "____________",
+    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar) : "____________",
     modalidade: p.social?.modalidade || "REURB-S",
     condicoes: c, pagamento: textoPagamento(c),
     dataExtenso: `${m ? m.nome : "____________"}, ${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
@@ -8522,8 +8523,8 @@ function dadosDocumento(db, p, usuario) {
 function faltandoPara(doc, d, p) {
   const falta = [];
   if (doc.precisa.includes("nome") && !preenchido(p.requerente.nome)) falta.push("nome do requerente");
-  if (doc.precisa.includes("cpf") && !preenchido(p.requerente.cpf)) falta.push("CPF");
-  if (doc.precisa.includes("endereco") && !preenchido(p.endereco.logradouro)) falta.push("endereço");
+  if (doc.precisa.includes("cpf") && !preenchido(ehPJ(p.requerente) ? p.requerente.cnpj : p.requerente.cpf)) falta.push(ehPJ(p.requerente) ? "CNPJ" : "CPF");
+  if (doc.precisa.includes("endereco") && !preenchido(p.endereco?.logradouro)) falta.push("endereço");
   if (doc.precisa.includes("nucleo") && !p.nucleoId) falta.push("núcleo");
   if (doc.precisa.includes("condicoes") && !d.condicoes) falta.push("forma de pagamento");
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
@@ -8640,31 +8641,31 @@ const qualificacaoAdvogado = (a) => [
 ].filter(Boolean).join(", ");
 function blocoAssinatura(d, comConjuge) {
   return `
-<p style="margin:36px 0 6px;text-align:center">${d.dataExtenso}.</p>
+<p style="margin:36px 0 6px;text-align:center">${escaparHtml(d.dataExtenso)}.</p>
 <table data-assinaturas="true" style="width:100%;margin-top:40px"><tr>
-<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${d.nome}<br/>CPF ${d.cpf}</div></td>
-${comConjuge && d.conjuge ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${d.conjuge}<br/>CPF ${d.cpfConjuge || "____________"}</div></td>` : ""}
+<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.nome)}<br/>${d.tipoDocumento || "CPF"} ${escaparHtml(d.cpf)}</div></td>
+${comConjuge && d.conjuge ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.conjuge)}<br/>CPF ${escaparHtml(d.cpfConjuge || "____________")}</div></td>` : ""}
 </tr></table>`;
 }
 function blocoAssinaturaTodos(d) {
   const lista = d.assinantes && d.assinantes.length ? d.assinantes : [[d.nome, d.cpf]];
-  const celulas = lista.map(([nome, doc]) => `<td style="text-align:center;padding:14px 12px 0;width:${Math.floor(100 / Math.min(lista.length, 2))}%"><div style="border-top:1px solid #000;padding-top:4px">${nome}<br/>${doc ? `CPF/CNPJ ${doc}` : ""}</div></td>`);
+  const celulas = lista.map(([nome, doc]) => `<td style="text-align:center;padding:14px 12px 0;width:${Math.floor(100 / Math.min(lista.length, 2))}%"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(nome)}<br/>${doc ? `CPF/CNPJ ${escaparHtml(doc)}` : ""}</div></td>`);
   const linhas = []; for (let i = 0; i < celulas.length; i += 2) linhas.push(`<tr>${celulas.slice(i, i + 2).join("")}</tr>`);
   return `
-<p style="margin:36px 0 6px;text-align:center">${d.dataExtenso}.</p>
+<p style="margin:36px 0 6px;text-align:center">${escaparHtml(d.dataExtenso)}.</p>
 <table data-assinaturas="true" style="width:100%;margin-top:26px">${linhas.join("")}</table>`;
 }
 function valoresDocumento(d, extras = {}) {
-  const qualifica = d.qualificacaoCompleta && !/\[[^\]]+\]/.test(d.qualificacaoCompleta) ? d.qualificacaoCompleta.replace(/\.$/, "") : `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no CPF sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
+  const qualifica = d.qualificacaoCompleta && !/\[[^\]]+\]/.test(d.qualificacaoCompleta) ? d.qualificacaoCompleta.replace(/\.$/, "") : d.tipoDocumento === "CNPJ" ? `${d.nome}, pessoa jurídica inscrita no CNPJ sob o nº ${d.cpf}, com sede na ${d.endereco}, em ${d.municipio}` : `${d.nome}, ${d.nacionalidade}, ${d.estadoCivil}, ${d.profissao}, inscrito(a) no ${d.tipoDocumento || "CPF"} sob o nº ${d.cpf}, portador(a) do documento de identidade nº ${d.rg}, residente na ${d.endereco}, em ${d.municipio}`;
   return {
-    ...d,
+    ...Object.fromEntries(Object.entries(d).map(([k,v]) => [k, typeof v === "string" ? escaparHtml(v) : v])),
     ...dadosContrato(d),
-    qualificacao: qualifica,
+    qualificacao: escaparHtml(qualifica),
     assinatura_todos: blocoAssinaturaTodos(d),
-    trecho_conjuge: d.conjuge ? `, sendo ${d.conjuge}, CPF ${d.cpfConjuge || "____________"}, seu cônjuge ou companheiro(a)` : "",
-    trecho_cep: d.cep ? `, CEP ${d.cep}` : "",
-    observacoes_pagamento: d.condicoes?.observacoes ? ` ${d.condicoes.observacoes}` : "",
-    procuradores: extras.procuradores || "____________",
+    trecho_conjuge: d.conjuge ? escaparHtml(`, sendo ${d.conjuge}, CPF ${d.cpfConjuge || "____________"}, seu cônjuge ou companheiro(a)`) : "",
+    trecho_cep: d.cep ? escaparHtml(`, CEP ${d.cep}`) : "",
+    observacoes_pagamento: d.condicoes?.observacoes ? escaparHtml(` ${d.condicoes.observacoes}`) : "",
+    procuradores: escaparHtml(extras.procuradores || "____________"),
     assinatura: blocoAssinatura(d, false),
     assinatura_com_conjuge: blocoAssinatura(d, true),
   };
