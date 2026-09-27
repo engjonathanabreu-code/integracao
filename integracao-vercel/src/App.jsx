@@ -10600,7 +10600,6 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         <span className="meta-card-rodape">
           <span className="flex flex-wrap items-center gap-2">
             <span className="chip-setor">{m.setor || "Sem setor"}</span>
-            <span className="tag tag-pend" title="Cada recusa de conclusão conta uma vez. Reenviar não aumenta o total." aria-label={`${totalRecusasMeta(m)} recusas de aprovação`}><Undo2 size={12} />{totalRecusasMeta(m)} recusa(s)</span>
             {(m.checklist || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><ListTodo size={12} /> {feitos}/{m.checklist.length}</span>}
             {(m.comentarios || []).length > 0 && !compacto && <span className="ajuda" style={{ margin: 0 }}><MessageSquare size={12} /> {m.comentarios.length}</span>}
             {(m.arquivos || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><Paperclip size={12} /> {m.arquivos.length}</span>}
