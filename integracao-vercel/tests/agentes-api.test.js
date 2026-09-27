@@ -82,7 +82,7 @@ test('quem não é da diretoria recebe 403 também nos modos novos',async()=>{
 });
 
 test('ações prioritárias usam andamentos recentes e urgências com autorização do Diretor', async () => {
- await comFetch(url => url.includes('openai') ? openai('1. Revisar o memorial do NUI03 hoje.') : Response.json({setor:'topografia',hoje:'2026-09-26',metas:{pendencias:[{titulo:'Memorial NUI03',prazo:'2026-09-25',dias_atraso:1,status:'Em andamento',responsaveis:'Ana'}]},andamentos:{recentes:[{data:'2026-09-26',nucleo:'NUI03',municipio:'Ibirama',situacao:'Aguardando revisão',observacao:'Memorial corrigido recebido'}]}}), async vistos => {
+ await comFetch(url => url.includes('openai') ? openai(Array.from({length:10},(_,i)=>`${i+1}. Revisar o memorial do NUI03, item ${i+1}.`).join('\n')) : Response.json({setor:'topografia',hoje:'2026-09-26',metas:{pendencias:[{titulo:'Memorial NUI03',prazo:'2026-09-25',dias_atraso:1,status:'Em andamento',responsaveis:'Ana'}]},andamentos:{recentes:[{data:'2026-09-26',nucleo:'NUI03',municipio:'Ibirama',situacao:'Aguardando revisão',observacao:'Memorial corrigido recebido'}]}}), async vistos => {
   const res=response(); await handler(pedido({modo:'acoes',setor:'topografia'}),res);
   assert.equal(res.code,200); assert.match(res.body.acoes,/Revisar o memorial/);
   const ia=JSON.stringify(vistos.find(v=>v.url.includes('openai')).corpo);
@@ -103,5 +103,22 @@ test('estratégia técnica persistida orienta sugestões de novas metas',async()
  const res=response();await handler(pedido({modo:'sugestoes',setor:'topografia'}),res);
  assert.equal(res.code,200);assert.match(JSON.stringify(vistos.find(x=>x.url.includes('openai')).corpo),/Priorizar prefeituras paradas há 60 dias/);
  assert.equal(vistos.find(x=>x.url.endsWith('integracao_agente_estrategias_ler')).auth,'Bearer diretor-fixture');
+ });
+});
+
+
+test('7 e 15 dias chegam às duas fontes do panorama e das ações', async () => {
+ for (const modo of ['setor','acoes']) for (const paradoDias of [7,15]) {
+  await comFetch(url=>url.includes('openai')?openai(Array.from({length:10},(_,i)=>(i+1)+'. Conferir lacuna '+i).join('\n')):Response.json({}),async vistos=>{
+   const res=response();await handler(pedido({modo,setor:'geral',paradoDias}),res);
+   assert.equal(res.code,200);
+   for(const rota of ['integracao_agente_setor','integracao_agente_comercial'])assert.equal(vistos.find(v=>v.url.endsWith(rota)).corpo.p_parado_dias,paradoDias);
+  });
+ }
+});
+test('respostas com menos ou mais de dez ações são recusadas sem inventar sugestões',async()=>{
+ for(const total of [0,5,11])await comFetch(url=>url.includes('openai')?openai(Array.from({length:total},(_,i)=>(i+1)+'. Conferir registro').join('\n') || 'Sem lista numerada'):Response.json({}),async()=>{
+  const res=response();await handler(pedido({modo:'acoes',setor:'geral'}),res);
+  assert.equal(res.code,502);assert.match(res.body.erro,/10 sugestões completas/);
  });
 });

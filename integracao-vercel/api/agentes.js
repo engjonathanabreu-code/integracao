@@ -1,3 +1,4 @@
+import { separarAcoes } from '../src/panorama-acoes.js';
 import { chamarOpenAI, ErroIA } from '../server/openai.js';
 import { INSTRUCOES_ACOES, montarAcoes, diretrizAgente } from '../src/agentes-ia.js';
 import { AGENTES, AGENTE_VALIDO, INSTRUCOES, INSTRUCOES_CONVERSA, INSTRUCOES_SUGESTOES, SETOR_PAINEL_VALIDO, lerSugestoes, mensagensValidas, montarConversa, montarPedido, montarSugestoes, perguntaValida, textoParaBusca } from '../src/agentes-ia.js';
@@ -48,7 +49,7 @@ async function modoSetor(corpo, authorization) {
   const setor = setorPedido(corpo);
   const [painel, comercial] = await Promise.all([
     painelSetor(setor, authorization, corpo?.paradoDias),
-    setor === 'comercial' || setor === 'geral' ? panorama('comercial', authorization, {}) : null,
+    setor === 'comercial' || setor === 'geral' ? panorama('comercial', authorization, { paradoDias: corpo?.paradoDias }) : null,
   ]);
   return { setor, painel, comercial, gerado_em: new Date().toISOString() };
 }
@@ -59,10 +60,10 @@ async function modoAcoes(corpo, authorization) {
   const resposta = await chamarOpenAI({
     messages: [{ role: 'user', content: montarAcoes(dados) + diretrizAgente(estrategias, dados.setor === 'comercial' ? 'comercial' : 'tecnico') + (dados.setor === 'geral' ? diretrizAgente(estrategias, 'comercial') : '') }],
     system: INSTRUCOES_ACOES,
-    max_tokens: 1600,
+    max_tokens: 3000,
   });
   const acoes = textoDe(resposta);
-  if (!acoes) throw new ErroIA('O agente não retornou sugestões. Tente novamente.', 502);
+  if (separarAcoes(acoes).itens.length !== 10) throw new ErroIA('O agente não retornou as 10 sugestões completas. Atualize as sugestões para tentar novamente.', 502);
   return { setor: dados.setor, acoes, gerado_em: new Date().toISOString() };
 }
 
