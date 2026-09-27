@@ -116,4 +116,19 @@
 .rb .sugestao-meta-rodape .ajuda{margin:0}
 @media (max-width:900px){.rb .meta-com-sugestoes{grid-template-columns:1fr}.rb .sugestoes-metas{position:static}}
 .rb.escuro .agente-setor.ativo,.rb.escuro .agente-msg-diretoria{color:#07201E}
-.agente-acoes{border:1px solid var(--line2);border-left:4px solid #147a74;border-radius:10px;padding:16px;margin-bottom:16px;background:var(--card,#fff)} .agente-acoes h3{margin:0 0 12px;color:var(--titulo)}
+/* Priority actions: bounded list keeps the existing indicators within reach. */
+.rb .agente-acoes{border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:14px;padding:16px;background:var(--card);min-width:0}
+.rb .agente-acoes h3{display:flex;align-items:center;gap:8px;margin:0;color:var(--titulo);font-size:16px}
+.rb .agente-acoes>.ajuda{margin:8px 0}
+.rb .agente-acoes>.ajuda:last-child{margin-bottom:0}
+.rb .agente-acoes-rolagem{max-height:540px;overflow:auto;scrollbar-gutter:stable;padding:2px 6px 2px 2px;border-radius:10px}
+.rb .agente-acoes-rolagem:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.rb .agente-acoes-grade{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0;margin:0}
+.rb .agente-acao{min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--soft);padding:12px;overflow-wrap:anywhere}
+.rb .agente-acao h4{display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:14px;line-height:1.45;color:var(--titulo)}
+.rb .agente-acao-numero{flex:none;display:grid;place-items:center;min-width:26px;height:26px;border-radius:7px;background:var(--card);border:1px solid var(--line);color:var(--primary);font-size:12px}
+.rb .agente-acao p{display:flex;align-items:flex-start;gap:6px;margin:5px 0 0;font-size:13px;line-height:1.5;color:var(--text)}
+.rb .agente-acao p svg{flex:none;margin-top:3px;color:var(--muted)}
+.rb .agente-acao strong,.rb .agente-acoes-intro strong{font-weight:700;color:var(--titulo)}
+.rb .agente-acoes-intro{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.5}
+@media(max-width:760px){.rb .agente-acoes-grade{grid-template-columns:1fr}.rb .agente-acoes{padding:12px}.rb .agente-acoes-rolagem{max-height:480px}}

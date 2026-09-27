@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, AlertTriangle, MessageSquare } from 'lucide-react';
+import { RefreshCw, AlertTriangle, MessageSquare, ListChecks, ArrowRight, CalendarClock, UserRound, MapPin } from 'lucide-react';
+import { separarAcoes } from './panorama-acoes.js';
 import { SETORES_PAINEL, destaquesSetor, dinheiro } from './agentes-ia.js';
 import { pedirAgentes } from './agentes-api.js';
 import { BarrasH, Colunas, Empilhada, Grafico, Vazio } from './agentes-graficos.jsx';
@@ -8,6 +9,34 @@ const dataBR = v => /^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice
 const diaMes = v => dataBR(v).slice(0, 5);
 const lista = v => (Array.isArray(v) ? v : []);
 const n = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+function DestaquesAcao({ texto }) {
+  return texto.split(/(\*\*[^*]+\*\*)/g).map((parte, i) =>
+    parte.startsWith('**') && parte.endsWith('**') ? <strong key={i}>{parte.slice(2, -2)}</strong> : parte);
+}
+
+function AcoesPrioritarias({ texto }) {
+  const { introducao, itens } = separarAcoes(texto);
+  return <>
+    {introducao && <p className="agente-acoes-intro"><DestaquesAcao texto={introducao} /></p>}
+    {itens.length > 0 && <div className="agente-acoes-rolagem" role="region" aria-label="Lista de ações prioritárias, em ordem de urgência" tabIndex={0}>
+      <ol className="agente-acoes-grade">
+        {itens.map((textoAcao, i) => {
+          const [titulo, ...linhas] = textoAcao.split('\n').filter(l => l.trim());
+          return <li className="agente-acao" key={i}>
+            <h4><span className="agente-acao-numero" aria-label={`Prioridade ${i + 1}`}>{String(i + 1).padStart(2, '0')}</span><span><DestaquesAcao texto={titulo} /></span></h4>
+            {linhas.map((linha, j) => {
+              const limpa = linha.replace(/^\s*[-*]\s+/, '');
+              const rotulo = limpa.replace(/\*\*/g, '').trim();
+              const Icone = /^Prazo/i.test(rotulo) ? CalendarClock : /^Responsável/i.test(rotulo) ? UserRound : /^(Cliente|Município|Núcleo|Contexto)/i.test(rotulo) ? MapPin : /^(Motivo|Risco)/i.test(rotulo) ? AlertTriangle : ArrowRight;
+              return <p key={j}><Icone size={14} aria-hidden="true" /><span><DestaquesAcao texto={limpa} /></span></p>;
+            })}
+          </li>;
+        })}
+      </ol>
+    </div>}
+  </>;
+}
 
 function situacaoMeta(m) {
   if (!m.prazo) return { rotulo: 'Sem prazo', classe: 'tag' };
@@ -85,7 +114,7 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
         <div className="agente-controles">
           <label className="rot" htmlFor="painel-parado">Parado há</label>
           <select id="painel-parado" className="inp" value={paradoDias} onChange={e => setParadoDias(Number(e.target.value))}>
-            {[30, 45, 60, 90, 180].map(d => <option key={d} value={d}>{d} dias ou mais</option>)}
+            {[7, 15, 30, 45, 60, 90, 180].map(d => <option key={d} value={d}>{d} dias ou mais</option>)}
           </select>
           <button className="btn" disabled={estado.ocupado || acoes.ocupado} onClick={() => setRecarga(r => r + 1)}><RefreshCw size={15} className={estado.ocupado || acoes.ocupado ? 'girando' : ''} />Atualizar sugestões</button>
           <button className="btn btn-primario" onClick={() => onConversar(setor)}><MessageSquare size={15} />Perguntar ao agente</button>
@@ -94,10 +123,10 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
 
       {estado.erro && <div className="msg-erro"><AlertTriangle size={15} />{estado.erro}</div>}
       <section className="agente-acoes" aria-live="polite" aria-busy={acoes.ocupado}>
-        <h3>Ações prioritárias sugeridas</h3>
+        <h3><ListChecks size={18} aria-hidden="true" />Ações prioritárias sugeridas</h3>
         {acoes.ocupado && <p className="ajuda">Analisando movimentações recentes e urgências…</p>}
         {acoes.erro && <div className="msg-erro">{acoes.erro} Use “Atualizar sugestões” para tentar novamente.</div>}
-        {acoes.texto && <><div style={{whiteSpace:'pre-wrap',lineHeight:1.65}}>{acoes.texto}</div><p className="ajuda">Sugestões da IA para avaliação da diretoria. Nenhuma ação é executada automaticamente.</p></>}
+        {acoes.texto && <><p className="ajuda">Em ordem de urgência · Role a lista para consultar todas as sugestões.</p><AcoesPrioritarias texto={acoes.texto} /><p className="ajuda">Sugestões da IA para avaliação da diretoria. Nenhuma ação é executada automaticamente.</p></>}
       </section>
       {!p && estado.ocupado && <p className="ajuda">Carregando o panorama do setor…</p>}
 
