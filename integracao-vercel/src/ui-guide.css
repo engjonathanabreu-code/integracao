@@ -1,0 +1,142 @@
+/* UI guide preview. Explicit scope, semantic pairs, no changes to document output. */
+.rb[data-ui-guide]{
+  --bg:#F1F8F4;--card:#FFFFFF;--soft:#EAF4F2;--hover:#F0F5F3;
+  --line:#D6E2DF;--line2:#E4EAE6;--text:#183532;--titulo:#102F2D;--muted:#5D726E;
+  --primary:#115E59;--primary-2:#0F766E;--primary-3:#187D73;--on-primary:#FFFFFF;
+  --danger:#B33434;--danger-bg:#FBEAEA;--on-danger:#FFFFFF;
+  --ok:#216C49;--ok-bg:#E7F4EC;--on-ok:#FFFFFF;
+  --warning:#8B4A13;--warning-bg:#FFF0DB;--on-warning:#FFFFFF;
+  --pill:#E4EFEB;--ink:var(--text);--primario:var(--primary);--surface:var(--card);--border:var(--line);
+  --sombra:0 4px 12px #18353208;--shadow-modal:0 20px 60px #18353226;
+  --focus-ring:#158577;--focus-soft:#15857722;--disabled-bg:#E7EBE7;--disabled-text:#66716C;
+  --nav-bg:#103F3B;--nav-text:#F2FAF7;--nav-active:#FFFFFF1F;
+  font-family:NunitoMarca,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;
+  color:var(--text);background:var(--bg);color-scheme:light;
+}
+.rb.escuro[data-ui-guide]{
+  --bg:#101B1B;--card:#192A29;--soft:#213735;--hover:#29423F;
+  --line:#39504C;--line2:#2D413E;--text:#DEEAE5;--titulo:#F4F8F5;--muted:#AEC1B9;
+  --primary:#77D2BF;--primary-2:#9AE2D3;--primary-3:#70CDB9;--on-primary:#102F29;
+  --danger:#FFA6A0;--danger-bg:#422C2E;--on-danger:#381818;
+  --ok:#8CDBAF;--ok-bg:#203B2E;--on-ok:#153522;
+  --warning:#F5C282;--warning-bg:#3E3325;--on-warning:#382811;
+  --pill:#29423E;--tema-superficie:var(--card);--tema-texto:var(--text);
+  --sombra:0 4px 12px #0000001F;--shadow-modal:0 20px 60px #00000066;
+  --focus-ring:#9AE2D3;--focus-soft:#77D2BF26;--disabled-bg:#283936;--disabled-text:#9BAEA6;
+  --nav-bg:#0D2523;--nav-text:#E5F3ED;--nav-active:#77D2BF24;color-scheme:dark;
+}
+body:has(.rb[data-ui-guide]){background:#F1F8F4}
+body:has(.rb.escuro[data-ui-guide]){background:#101B1B}
+.rb[data-ui-guide] :is(h1,h2,h3,h4){color:var(--titulo);font-weight:700;letter-spacing:-.025em}
+.rb[data-ui-guide] .cabeca h1{font-size:32px;line-height:1.2}
+.rb[data-ui-guide] .cabeca p{line-height:1.65}
+.rb[data-ui-guide] .contem{padding-top:28px}
+.rb[data-ui-guide] :is(.card,.crm-card,.meta-card,.agente-acao,.agente-tile,.indicador,.vendas-meta){border-radius:12px;box-shadow:var(--sombra);border-color:var(--line)}
+.rb[data-ui-guide] :is(.modal,dialog){border-radius:16px;background:var(--card);color:var(--text);border-color:var(--line);box-shadow:var(--shadow-modal)}
+.rb[data-ui-guide] :is(.btn,.btn-icone){border-radius:8px;background:var(--card);color:var(--primary);border-color:var(--line);font-weight:700;min-height:36px;transition:box-shadow .15s}
+.rb[data-ui-guide] .btn:hover:not(:disabled){background:var(--hover);border-color:var(--primary);color:var(--primary)}
+.rb[data-ui-guide] .btn.btn-primario{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.rb[data-ui-guide] .btn.btn-primario:hover:not(:disabled){background:var(--primary-2);border-color:var(--primary-2);color:var(--on-primary)}
+.rb[data-ui-guide] .btn.btn-perigo{color:var(--danger);border-color:var(--danger);background:var(--card)}
+.rb[data-ui-guide] .btn.btn-perigo:hover:not(:disabled){background:var(--danger-bg);color:var(--danger)}
+.rb[data-ui-guide] :is(.btn,.btn-icone,.login-botao):disabled{opacity:1;background:var(--disabled-bg);color:var(--disabled-text);border-color:var(--line);box-shadow:none;cursor:not-allowed}
+.rb[data-ui-guide] :is(.btn-link,summary){color:var(--primary)}
+.rb[data-ui-guide] :is(.inp,.login-inp){border-radius:8px;border-color:var(--line);background:var(--card);color:var(--text);min-height:40px}
+.rb[data-ui-guide] :is(.inp,.login-inp)::placeholder{color:var(--muted);opacity:1}
+.rb[data-ui-guide] :is(.inp,.login-inp):focus{border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--focus-soft)}
+.rb[data-ui-guide] :is(.inp,.login-inp):disabled{background:var(--disabled-bg);color:var(--disabled-text);opacity:1}
+.rb[data-ui-guide] .inp.erro{background:var(--danger-bg);border-color:var(--danger)}
+.rb[data-ui-guide] .inp.ia{background:var(--soft);border-color:var(--primary)}
+.rb[data-ui-guide] :is(input,select,textarea,button){font-family:inherit}
+.rb[data-ui-guide] :is(input[type=checkbox],input[type=radio],progress,meter){accent-color:var(--primary)}
+.rb[data-ui-guide] :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+.rb[data-ui-guide] .nav{background:var(--nav-bg);color:var(--nav-text);border-right:1px solid var(--line2)}
+.rb[data-ui-guide] .nav-item{color:var(--nav-text);border-radius:8px;font-size:14px;min-height:44px}
+.rb[data-ui-guide] .nav-item[aria-current=page]{background:var(--nav-active);box-shadow:inset 3px 0 0 #8BD9C8}
+.rb[data-ui-guide] .nav .btn-nav{background:var(--nav-active);color:var(--nav-text);border:1px solid #FFFFFF26}
+.rb[data-ui-guide] .topo{background:var(--card);padding-top:16px;padding-bottom:16px}
+.rb[data-ui-guide] .topo h2{font-size:20px}
+.rb[data-ui-guide] .aba{color:var(--muted);font-size:14px}
+/* Underlined tabs must use accent text, never the dark text of a filled button. */
+.rb[data-ui-guide] .aba[aria-selected=true]{color:var(--primary);border-bottom-color:var(--primary)}
+.rb[data-ui-guide] .abas-destaque{background:var(--soft);border-radius:12px}
+.rb[data-ui-guide] .abas-destaque .aba{border-radius:8px;background:var(--card);color:var(--text)}
+.rb[data-ui-guide] .abas-destaque .aba[aria-selected=true]{background:var(--primary);color:var(--on-primary);box-shadow:none;border-color:var(--primary)}
+.rb[data-ui-guide] .abas-destaque .aba[aria-selected=true] :is(.conta-aba,.nota-aba){color:var(--on-primary)}
+.rb[data-ui-guide] .agente-setor.ativo{background:var(--primary);color:var(--on-primary)}
+.rb[data-ui-guide] .agente-msg-diretoria{background:var(--primary);color:var(--on-primary)}
+.rb[data-ui-guide] :is(.acao-icone,.estaca.feita .marco,.topo-janela){background:var(--primary);color:var(--on-primary)}
+.rb[data-ui-guide] .tag{border-radius:999px;font-size:12px}
+.rb[data-ui-guide] .tag-ok{background:var(--ok-bg);color:var(--ok)}
+.rb[data-ui-guide] .tag-pend{background:var(--warning-bg);color:var(--warning)}
+.rb[data-ui-guide] .tag-bloq{background:var(--danger-bg);color:var(--danger)}
+.rb[data-ui-guide] .contador{background:var(--danger);color:var(--on-danger);border-color:var(--card)}
+.rb[data-ui-guide] .contador-atalho{background:var(--warning-bg);color:var(--warning)}
+.rb[data-ui-guide] :is(.acao-meta,.opcao-icone.ativa,.avatar-usuario,.foto-vazia.foto-pendente,.dia-cal.hoje .numero-dia,.bolha-respirar.enchendo,.bolha-respirar.segurando){background:var(--primary);color:var(--on-primary)}
+.rb[data-ui-guide] .topo-janela :is(.btn-janela,.conta-aba){color:var(--on-primary)}
+.rb[data-ui-guide] .mensagem.minha{color:var(--chat-texto-meu,var(--on-primary))}
+.rb[data-ui-guide] .selo{background:var(--warning-bg);color:var(--warning);border-color:var(--card)}
+.rb[data-ui-guide] :is(.nui-conteudo,.nui-item,.nui-separador,.acessos-tabela th,.acessos-tabela td){border-color:var(--line)}
+.rb[data-ui-guide] .nui-aviso{background:var(--warning-bg);color:var(--warning)}
+.rb[data-ui-guide] .andamentos-editor{border-top-color:var(--primary)}
+.rb[data-ui-guide] .login-pagina{background:var(--bg)}
+.rb[data-ui-guide] :is(.login-cartao,.login-perfis){background:var(--card);border-color:var(--line);box-shadow:var(--shadow-modal)}
+.rb[data-ui-guide] .login-titulo{color:var(--titulo)}
+.rb[data-ui-guide] :is(.login-rot,.login-rodape){color:var(--muted)}
+.rb[data-ui-guide] .login-botao{background:var(--primary);color:var(--on-primary);height:42px}
+.rb[data-ui-guide] .login-botao:hover:not(:disabled){background:var(--primary-2)}
+.rb[data-ui-guide] .soltar-docs:hover{background:var(--hover)}
+.rb[data-ui-guide] .loteamento-carregando{color:var(--primary)}
+/* Module surfaces and navigation share the same token pairs. */
+.rb[data-ui-guide] :is(.crm-ficha-dialogo,.crm-ficha-painel,.crm-ficha-cabeca,.crm-ficha-dados>div,.mkt-coluna,.mkt-coluna>header,.mkt-grupo-card,.mkt-rotina-card,.mkt-nota,.mkt-dialogo,.mkt-historico,.mkt-checklist-edicao,.mkt-card-meta,.acessos-filtros,.acessos-tabela,.andamentos-interno,.andamentos-etapa){border-color:var(--line)}
+.rb[data-ui-guide] :is(.crm-ficha-dialogo,.crm-cliente-card,.semanal-dialogo,.mkt-dialogo,.mkt-grupo-card,.mkt-rotina-card){background:var(--card);color:var(--text)}
+.rb[data-ui-guide] .mkt-hero{background:linear-gradient(115deg,var(--soft),var(--card));border-color:var(--line);border-radius:16px}
+.rb[data-ui-guide] .mkt-hero-simbolo{background:var(--primary);color:var(--on-primary);box-shadow:none}
+.rb[data-ui-guide] .mkt-abas{border-color:var(--line);flex-wrap:wrap}
+.rb[data-ui-guide] .mkt-abas button{color:var(--muted)}
+.rb[data-ui-guide] .mkt-abas button.ativa{color:var(--primary);background:var(--soft);border-color:var(--primary)}
+.rb[data-ui-guide] .mkt-contagem{background:var(--pill);color:var(--text)}
+.rb[data-ui-guide] :is(.mkt-coluna,.semanal-coluna,.crm-coluna){background:var(--soft)}
+.rb[data-ui-guide] .semanal-card{border-color:var(--line)}
+.rb[data-ui-guide] :is(.semanal-card.concluido,.mkt-rotina-card.concluido){border-color:var(--ok);background:var(--card)}
+.rb[data-ui-guide] .mkt-tag.verde{background:var(--ok-bg);color:var(--ok)}
+.rb[data-ui-guide] .mkt-tag.amarelo{background:var(--warning-bg);color:var(--warning)}
+.rb[data-ui-guide] .mkt-tag.cinza{background:var(--pill);color:var(--muted)}
+.rb[data-ui-guide] :is(.crm-nav,.crm-visoes){gap:8px}
+.rb[data-ui-guide] table.tab th{letter-spacing:.045em;font-size:12px;background:var(--soft)}
+.rb[data-ui-guide] .ui-preview-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 24px;background:var(--soft);border-bottom:1px solid var(--line);color:var(--text)}
+.rb[data-ui-guide] .ui-preview-label{display:flex;align-items:center;gap:10px}
+.rb[data-ui-guide] .ui-preview-label strong{display:block;font-size:13px;color:var(--titulo)}
+.rb[data-ui-guide] .ui-preview-label span{display:block;font-size:12px;color:var(--muted)}
+.rb[data-ui-guide] .ui-preview-temas{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.rb[data-ui-guide] .ui-preview-temas .btn[aria-pressed=true]{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.rb[data-ui-guide] .ui-preview-temas .btn-link{font-size:12px;padding:8px}
+@media(max-width:640px){
+  .rb[data-ui-guide] .cabeca h1{font-size:26px}
+  .rb[data-ui-guide] .ui-preview-bar{padding:12px;gap:10px}
+  .rb[data-ui-guide] .topo{padding:12px}
+  .rb[data-ui-guide] :is(.inp,.login-inp){font-size:16px}
+  .rb[data-ui-guide] :is(.btn,.btn-icone,.aba,.mkt-abas button){min-height:44px}
+  .rb[data-ui-guide] .btn{max-width:100%;white-space:normal}
+}
+@media(prefers-reduced-motion:reduce){.rb[data-ui-guide] :is(.btn,.inp,.aba){transition:none}}
+
+/* Keep absolute accessible labels inside horizontally scrollable tables. */
+.rb[data-ui-guide] .rolagem{position:relative}
+
+/* One shared stage header and one row per municipality. */
+.rb .processos-matriz-rolagem{position:relative;padding:0;overflow:auto;max-height:72vh;isolation:isolate}
+.rb .processos-matriz{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.rb .processos-matriz th,.rb .processos-matriz td{padding:12px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);vertical-align:top;min-width:160px;background:var(--card)}
+.rb .processos-matriz thead th{position:sticky;top:0;z-index:3;background:var(--soft);color:var(--titulo);font-weight:700}
+.rb .processos-matriz tr>:first-child{position:sticky;left:0;z-index:2;min-width:210px;max-width:240px;background:var(--card)}
+.rb .processos-matriz thead tr>:first-child{z-index:4;background:var(--soft)}
+.rb .processos-matriz tr>:last-child{min-width:70px;text-align:center}
+.rb .processos-matriz tfoot :is(th,td){background:var(--soft);font-weight:700;color:var(--titulo)}
+.rb .processos-municipio{border:0;padding:0;background:transparent;text-align:left;color:var(--titulo);cursor:pointer;width:100%;font:inherit}
+.rb .processos-municipio .ajuda{display:block;font-weight:400}
+.rb .processos-quantidade{min-width:64px;justify-content:space-between;font-variant-numeric:tabular-nums}
+.rb .processos-quantidade.com-itens{background:var(--soft);border-color:var(--primary);color:var(--primary)}
+.rb .processos-celula-detalhes{width:245px;padding-top:10px}
+.rb .processos-celula-detalhes .cartao{margin-bottom:8px}
+@media(max-width:640px){.rb .processos-matriz tr>:first-child{min-width:150px;max-width:160px}.rb .processos-matriz th,.rb .processos-matriz td{padding:10px}}

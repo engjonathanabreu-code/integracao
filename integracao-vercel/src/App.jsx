@@ -1,3 +1,5 @@
+import UiGuidePreview, { useTemaPrevia } from './UiGuidePreview.jsx';
+import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
 import EstrategiasAgentes from './EstrategiasAgentes.jsx';
 import { catalogoDevolutivas } from "./devolutivas-catalogo.js";
@@ -3205,7 +3207,7 @@ function PaginaImportar({ db, ir, mutar, setToast, embutido = false }) {
                     <thead><tr><th style={{ width: 36 }}><span className="sr-only">Importar</span></th><th>Nome no ERP</th><th>Vai para</th><th>Código</th><th>Situação</th><th>Avisos</th></tr></thead>
                     <tbody>
                       {pm.nucleos.map((n) => (
-                        <tr key={n.chave} style={n.avisos.some((a) => a.grave) && selecionavel(n) ? { background: "#FDF8EE" } : undefined}>
+                        <tr key={n.chave} style={n.avisos.some((a) => a.grave) && selecionavel(n) ? { background: "var(--warning-bg)" } : undefined}>
                           <td><input type="checkbox" checked={selecionavel(n) && !!selNuc[n.chave]} disabled={!selecionavel(n) || !munAtivo} onChange={() => setSelNuc((s) => ({ ...s, [n.chave]: !s[n.chave] }))} aria-label={`Importar ${n.nomeOriginal}`} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                           <td>{n.nomeOriginal}</td>
                           <td style={{ whiteSpace: "nowrap" }}>{n.naoNucleo ? "—" : n.remessaNumero !== null ? <>{pm.nome} {pad2(n.remessaNumero)}{n.titulo ? `, ${n.titulo}` : ""}{!n.remessaExistente && selecionavel(n) && <span className="ajuda" style={{ margin: "0 0 0 6px" }}>(nova)</span>}</> : <span style={{ color: "var(--muted)" }}>Direto no município</span>}</td>
@@ -3370,7 +3372,7 @@ function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAb
   return (
     <section className="card" style={{ padding: 18 }}>
       <div className="flex items-center gap-3">
-        <span style={{ width: 48, height: 48, borderRadius: 999, background: "var(--primary)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}><IconeEtapa id={et.id} tamanho={30} corCheck="#0F5F5B" /></span>
+        <span style={{ width: 48, height: 48, borderRadius: 999, background: "var(--primary)", color: "var(--on-primary, #fff)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}><IconeEtapa id={et.id} tamanho={30} corCheck="#0F5F5B" /></span>
         <div>
           <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>{et.grupo === 0 ? `Documental, parte ${p.etapa + 1} de 3` : `Etapa ${p.etapa + 1} de ${TOTAL} da unidade`}. Setor {setorNome}</div>
           <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.2 }}>{et.completo}</h3>
@@ -3425,7 +3427,7 @@ function PainelEtapaNucleo({ db, n, usuario, mutar, setToast, setModal }) {
   return (
     <section className="card" style={{ padding: 18 }}>
       <div className="flex items-center gap-3">
-        <span style={{ width: 48, height: 48, borderRadius: 999, background: "var(--primary)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}><IconeEtapa id={et.icone} tamanho={30} corCheck="#0F5F5B" /></span>
+        <span style={{ width: 48, height: 48, borderRadius: 999, background: "var(--primary)", color: "var(--on-primary, #fff)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}><IconeEtapa id={et.icone} tamanho={30} corCheck="#0F5F5B" /></span>
         <div>
           <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Etapa {n.etapa + 1} de {TOTAL_NUCLEO} do núcleo. Setor {setorNome}</div>
           <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.2 }}>{et.completo}</h3>
@@ -4226,7 +4228,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                     {resultado.linhas.map((l) => {
                       const permitido = podeSecao(l.path);
                       return (
-                        <tr key={l.path} style={l.diverge ? { background: "#FDF8EE" } : undefined}>
+                        <tr key={l.path} style={l.diverge ? { background: "var(--warning-bg)" } : undefined}>
                           <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path]} disabled={!permitido} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                           <td>{l.rot}{!permitido && <div className="ajuda" style={{ margin: 0 }}>Fora da permissão do seu perfil</div>}</td>
                           <td style={{ color: l.atual ? "var(--text)" : "var(--muted)" }}>{mostrarValor(l, l.atual)}</td>
@@ -5172,7 +5174,7 @@ function ModalSituacao({ p, onSalvar, onFechar }) {
     <Modal titulo={`Situação de ${p.codigo}`} onFechar={onFechar} rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className={`btn ${situacao === "Ativo" ? "btn-primario" : "btn-perigo"}`} disabled={!valido} onClick={() => onSalvar(situacao, motivo.trim())}>Salvar situação</button></>}>
       <div className="flex flex-col gap-2" role="radiogroup" aria-label="Situação">
         {SITUACOES.map((s) => (
-          <label key={s} className="flex items-start gap-2" style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 10, background: situacao === s ? "var(--soft)" : "#fff", cursor: "pointer" }}>
+          <label key={s} className="flex items-start gap-2" style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 10, background: situacao === s ? "var(--soft)" : "var(--card)", cursor: "pointer" }}>
             <input type="radio" name="situacao" checked={situacao === s} onChange={() => setSituacao(s)} style={{ marginTop: 3, accentColor: "#0F5F5B" }} />
             <span><strong style={{ color: "var(--titulo)" }}>{s}</strong>{s === p.situacao ? " (atual)" : ""}<span className="ajuda" style={{ display: "block", margin: 0 }}>{efeito[s]}</span></span>
           </label>
@@ -5764,7 +5766,7 @@ function SinoNotificacoes({ db, usuario, ir, mutar }) {
             {lista.map((nt) => {
               const lida = (nt.lidaPor || []).includes(usuario.id);
               return (
-                <button key={nt.id} className="item-notif" style={{ background: lida ? "#fff" : "var(--soft)" }} onClick={() => { marcar([nt.id]); setAberto(false); if (nt.rota) ir(nt.rota); }}>
+                <button key={nt.id} className="item-notif" style={{ background: lida ? "var(--card)" : "var(--soft)" }} onClick={() => { marcar([nt.id]); setAberto(false); if (nt.rota) ir(nt.rota); }}>
                   <span className="flex items-center gap-2">{!lida && <span className="ponto" aria-label="Não lida" />}<strong style={{ color: "var(--titulo)", fontWeight: lida ? 600 : 750 }}>{nt.titulo}</strong></span>
                   <span style={{ fontSize: 13.5, color: "var(--text)" }}>{nt.texto}</span>
                   <span className="ajuda" style={{ margin: 0 }}>{dataHoraBR(nt.data)}{nt.autor ? `, por ${nt.autor}` : ""}</span>
@@ -5830,7 +5832,7 @@ function SincronizarUsuariosERP({ db, onImportar, onFechar }) {
           <thead><tr><th style={{ width: 36 }}><span className="sr-only">Importar</span></th><th>Usuário no ERP</th><th>Tipo e setor no ERP</th><th>Setor no Integração</th><th>Situação</th></tr></thead>
           <tbody>
             {linhas.map((l) => (
-              <tr key={l.ref} style={l.avisos.length && !l.vinculado ? { background: "#FDF8EE" } : undefined}>
+              <tr key={l.ref} style={l.avisos.length && !l.vinculado ? { background: "var(--warning-bg)" } : undefined}>
                 <td><input type="checkbox" checked={!l.vinculado && !!sel[l.ref]} disabled={!!l.vinculado} onChange={() => setSel((s) => ({ ...s, [l.ref]: !s[l.ref] }))} aria-label={`Importar ${l.nome}`} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                 <td><strong style={{ color: "var(--titulo)" }}>{l.nome}</strong>{l.avisos.map((a) => <div key={a} style={{ fontSize: 12.5, color: "var(--warning)" }}>{a}</div>)}</td>
                 <td>{l.tipo}<div className="ajuda" style={{ margin: 0 }}>{l.setor}</div></td>
@@ -10983,7 +10985,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   return (
     <div className="contem largo">
       <div className="cabeca">
-        <div><h1>Processos</h1><p>Kanban por etapa, agrupado por município, como no ERP. Cada processo é um núcleo, com os moradores por trás.</p></div>
+        <div><h1>Processos</h1><p>Distribuição por município e etapa. Clique nas quantidades para consultar os processos.</p></div>
       </div>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 14 }}>
         <input className="inp" style={{ maxWidth: 250 }} placeholder="Buscar núcleo, responsável ou pendência" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar processo" />
@@ -11016,43 +11018,31 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
           return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} aria-pressed={etapa === st} onClick={() => escolherEtapa(st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
-      {municipios.map((m) => {
-        const doMunicipio = lista.filter((n) => n.municipioId === m.id);
-        const aberto = abertos[m.id] !== false;
-        const comPendencia = doMunicipio.filter((n) => n.pendencia).length;
-        return (
-          <section key={m.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
-            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: !(a[m.id] !== false) }))} aria-expanded={aberto}>
-              {aberto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                <strong style={{ color: "var(--titulo)", fontSize: 16 }}>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></strong>
-                <span className="ajuda" style={{ display: "block", margin: 0 }}>{doMunicipio.length} processo(s){comPendencia ? `, ${comPendencia} com pendência` : ""}</span>
-              </span>
-              <span className="flex flex-wrap gap-1">
-                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
-              </span>
-            </button>
-            {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
-              {etapas.filter((s) => !etapa || s === etapa).map((s) => {
-                const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
-
-                return (
-                  <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px", display: "flex", flexDirection: "column" }}>
-                    <div className="cabeca-coluna">
-                      <span className="icone-coluna"><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={19} cor="currentColor" corCheck="currentColor" /></span>
-                      <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: "var(--titulo)", fontSize: 13.5 }}>{s}</span>
-                      <span className="contagem-coluna">{itens.length}</span>
-                    </div>
-                    {itens.map(cartao)}
-                    {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
-                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /></div>
-                  </div>
-                );
-              })}
-            </div>}
-          </section>
-        );
-      })}
+      <div className="card processos-matriz-rolagem" role="region" aria-label="Distribuição por município e etapa" tabIndex={0}>
+        <table className="processos-matriz">
+          <caption className="sr-only">Processos por município e etapa</caption>
+          <thead><tr><th scope="col">Município</th>{etapas.map(st => <th scope="col" key={st}>{st}</th>)}<th scope="col">Total</th></tr></thead>
+          <tbody>{municipios.map(m => {
+            const itensMunicipio = lista.filter(n => n.municipioId === m.id);
+            const expandidoMunicipio = abertos[m.id] === true;
+            return <tr key={m.id}>
+              <th scope="row"><button className="processos-municipio" aria-expanded={expandidoMunicipio} onClick={() => setAbertos(a => ({...a, [m.id]: a[m.id] !== true}))}><strong>{m.nome}/{m.uf}</strong><span className="ajuda">{itensMunicipio.length} processo(s)</span></button></th>
+              {etapas.map(st => {
+                const itens = itensMunicipio.filter(n => etapaProcesso(n) === st);
+                const expandido = expandidoMunicipio || (Array.isArray(abertos[m.id]) && abertos[m.id].includes(st));
+                return <td key={st}>
+                  <button className={`btn btn-sm processos-quantidade${itens.length ? ' com-itens' : ''}`} aria-label={`${m.nome}, ${st}: ${itens.length} processo(s)`} aria-expanded={expandido} onClick={() => setAbertos(a => {
+                    const atuais = a[m.id] === true ? etapas : Array.isArray(a[m.id]) ? a[m.id] : [];
+                    return {...a, [m.id]: atuais.includes(st) ? atuais.filter(e => e !== st) : [...atuais, st]};
+                  })}>{itens.length}{expandido ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>
+                  {expandido && <div className="processos-celula-detalhes">{itens.map(cartao)}{!itens.length && <p className="ajuda">Nenhum processo</p>}<BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={st} /></div>}
+                </td>;
+              })}<td><strong>{itensMunicipio.length}</strong></td>
+            </tr>;
+          })}</tbody>
+          <tfoot><tr><th scope="row">Total nos filtros</th>{etapas.map(st => <td key={st}>{lista.filter(n => etapaProcesso(n) === st).length}</td>)}<td>{lista.length}</td></tr></tfoot>
+        </table>
+      </div>
       {!municipios.length && <p className="ajuda">Nenhum processo com esses filtros.</p>}
       {atual && <ModalProcesso db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
     </div>
@@ -11675,7 +11665,7 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
               onDragEnd={() => { setArrastando(null); setAlvo(null); }}>
               <span className="alca" title="Arraste para mudar a ordem" aria-hidden="true"><GripVertical size={18} /></span>
               <button className="linha-etapa-corpo" onClick={() => setAberta(e)}>
-              <span className="numero-etapa" style={{ background: e.status === "Concluída" ? "var(--ok)" : e.status === "Pendente" ? "var(--pill)" : "var(--primary)", color: e.status === "Pendente" ? "var(--muted)" : "#fff" }} title={`Etapa ${i + 1}`}>
+              <span className="numero-etapa" style={{ background: e.status === "Concluída" ? "var(--ok)" : e.status === "Pendente" ? "var(--pill)" : "var(--primary)", color: e.status === "Pendente" ? "var(--muted)" : e.status === "Concluída" ? "var(--on-ok, #fff)" : "var(--on-primary, #fff)" }} title={`Etapa ${i + 1}`}>
                 <IconeEscolhido valor={normalizarEscolhaIcone(e.icone) || sugerirIcone(e.titulo)} tamanho={17} />
                 {!(normalizarEscolhaIcone(e.icone) || sugerirIcone(e.titulo)) && (e.status === "Concluída" ? <Check size={15} strokeWidth={3} /> : i + 1)}
               </span>
@@ -12007,6 +11997,9 @@ export default function App() {
   const ultimoUso = useRef(Date.now());
   const usuarioRef = useRef(null);
   const usuario = db && usuarioId ? (db.usuarios || []).find((u) => u.id === usuarioId && u.ativo) || null : null;
+  const [temaPrevia, setTemaPrevia] = useTemaPrevia();
+  const modoVisual = temaPrevia || usuario?.tema?.modo || 'claro';
+  const barraPrevia = <UiGuidePreview tema={modoVisual} escolher={setTemaPrevia} personalizado={temaPrevia !== null} />;
   usuarioRef.current = usuario;
 
   useEffect(() => {
@@ -12138,8 +12131,8 @@ export default function App() {
   }, [usuario?.id]); // eslint-disable-line
   const comercial = useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio });
   if (db) sincronizarTiposDocumento(db.tiposDocumento);
-  if (!db) return <div className="rb" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
-  if (!usuario) return <div className="rb"><style>{CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
+  if (!db) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}{UI_GUIDE_CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
+  if (!usuario) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}><style>{CSS}{UI_GUIDE_CSS}</style>{barraPrevia}<Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
 
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
@@ -12157,8 +12150,8 @@ export default function App() {
   const telaLarga = ["calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
-    <div className={`rb${usuario?.tema?.modo === "escuro" ? " escuro" : ""}`}>
-      <style>{CSS}{cssDoTema(usuario?.tema)}</style>
+    <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}>
+      <style>{CSS}{UI_GUIDE_CSS}{cssDoTema(usuario?.tema)}</style>
       {!AMBIENTE.DEMO && <SincronizadorPonto key={usuario.id} usuario={usuario} />}
       <div className="app">
         <nav className={`nav${menuAberto ? " aberta" : ""}`} aria-label="Menu principal">
@@ -12187,6 +12180,7 @@ export default function App() {
         </nav>
         {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(16,42,42,.4)", zIndex: 60 }} aria-hidden="true" />}
         <div style={{ minWidth: 0 }}>
+          {barraPrevia}
           <header className="topo">
             <div className="topo-titulo">
               <button className="btn-icone btn-menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Menu size={18} /></button>
