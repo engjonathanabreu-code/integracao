@@ -1,4 +1,3 @@
-import UiGuidePreview, { useTemaPrevia } from './UiGuidePreview.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
 import EstrategiasAgentes from './EstrategiasAgentes.jsx';
@@ -12009,9 +12008,7 @@ export default function App() {
   const ultimoUso = useRef(Date.now());
   const usuarioRef = useRef(null);
   const usuario = db && usuarioId ? (db.usuarios || []).find((u) => u.id === usuarioId && u.ativo) || null : null;
-  const [temaPrevia, setTemaPrevia] = useTemaPrevia();
-  const modoVisual = temaPrevia || usuario?.tema?.modo || 'claro';
-  const barraPrevia = <UiGuidePreview tema={modoVisual} escolher={setTemaPrevia} personalizado={temaPrevia !== null} />;
+  const modoVisual = usuario?.tema?.modo || 'claro';
   usuarioRef.current = usuario;
 
   useEffect(() => {
@@ -12144,7 +12141,7 @@ export default function App() {
   const comercial = useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio });
   if (db) sincronizarTiposDocumento(db.tiposDocumento);
   if (!db) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}{UI_GUIDE_CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
-  if (!usuario) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}><style>{CSS}{UI_GUIDE_CSS}</style>{barraPrevia}<Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
+  if (!usuario) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}><style>{CSS}{UI_GUIDE_CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
 
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
@@ -12192,7 +12189,7 @@ export default function App() {
         </nav>
         {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(16,42,42,.4)", zIndex: 60 }} aria-hidden="true" />}
         <div style={{ minWidth: 0 }}>
-          {barraPrevia}
+          
           <header className="topo">
             <div className="topo-titulo">
               <button className="btn-icone btn-menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Menu size={18} /></button>
