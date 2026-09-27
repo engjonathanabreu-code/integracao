@@ -44,3 +44,10 @@
 .rb .semanal-historico-colunas .btn{display:block;margin-top:10px}
 @media(max-width:800px){.rb .semanal-detalhe-colunas,.rb .semanal-historico-colunas{grid-template-columns:1fr}}
 @media(max-width:700px){.rb .semanal-filtros{grid-template-columns:1fr 1fr}.rb .semanal-totais{gap:8px}.rb .semanal-totais>div{padding:12px;flex-direction:column;align-items:start;gap:4px}.rb .semanal-totais strong{font-size:23px}.rb .semanal-totais span{font-size:11px}.rb .semanal-dialogo{padding:18px}}
+
+.rb .semanal-concluir{margin-top:10px}
+.rb .semanal-card.concluido,.rb[data-ui-guide] .semanal-card.concluido{background:#164e43;border-color:#164e43;color:#fff}
+.rb .semanal-card.concluido h3,.rb .semanal-card.concluido p,.rb .semanal-card.concluido .semanal-detalhes span{color:#fff}
+.rb .semanal-card.concluido .btn,.rb .semanal-card.concluido .semanal-detalhes{background:#ffffff12;border-color:#ffffff55;color:#fff}
+.rb .semanal-card.concluido .btn:hover,.rb .semanal-card.concluido .semanal-detalhes:hover{background:#ffffff24;color:#fff}
+.rb .semanal-card.concluido .semanal-concluir:disabled{opacity:1;cursor:default}
