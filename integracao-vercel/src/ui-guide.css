@@ -1,6 +1,6 @@
 /* UI guide preview. Explicit scope, semantic pairs, no changes to document output. */
 .rb[data-ui-guide]{
-  --bg:#F5F3ED;--card:#FFFFFF;--soft:#EAF4F2;--hover:#F0F5F3;
+  --bg:#F1F8F4;--card:#FFFFFF;--soft:#EAF4F2;--hover:#F0F5F3;
   --line:#D6E2DF;--line2:#E4EAE6;--text:#183532;--titulo:#102F2D;--muted:#5D726E;
   --primary:#115E59;--primary-2:#0F766E;--primary-3:#187D73;--on-primary:#FFFFFF;
   --danger:#B33434;--danger-bg:#FBEAEA;--on-danger:#FFFFFF;
@@ -25,7 +25,7 @@
   --focus-ring:#9AE2D3;--focus-soft:#77D2BF26;--disabled-bg:#283936;--disabled-text:#9BAEA6;
   --nav-bg:#0D2523;--nav-text:#E5F3ED;--nav-active:#77D2BF24;color-scheme:dark;
 }
-body:has(.rb[data-ui-guide]){background:#F5F3ED}
+body:has(.rb[data-ui-guide]){background:#F1F8F4}
 body:has(.rb.escuro[data-ui-guide]){background:#101B1B}
 .rb[data-ui-guide] :is(h1,h2,h3,h4){color:var(--titulo);font-weight:700;letter-spacing:-.025em}
 .rb[data-ui-guide] .cabeca h1{font-size:32px;line-height:1.2}
