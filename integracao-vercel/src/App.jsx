@@ -11020,11 +11020,11 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
       </div>
       {municipios.map((m) => {
         const doMunicipio = lista.filter((n) => n.municipioId === m.id);
-        const aberto = abertos[m.id] !== false;
+        const aberto = abertos[m.id] === true;
         const comPendencia = doMunicipio.filter((n) => n.pendencia).length;
         return (
           <section key={m.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
-            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: !(a[m.id] !== false) }))} aria-expanded={aberto}>
+            <button className="cabeca-municipio" onClick={() => setAbertos((a) => ({ ...a, [m.id]: a[m.id] !== true }))} aria-expanded={aberto}>
               {aberto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <strong style={{ color: "var(--titulo)", fontSize: 16 }}>{m.nome}<span style={{ color: "var(--muted)", fontWeight: 600 }}>/{m.uf}</span></strong>
