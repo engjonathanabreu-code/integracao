@@ -11258,7 +11258,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const [coresAbertas, setCoresAbertas] = useState(false);
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
-  const [visao, setVisao] = useState("mes");
+  const [visao, setVisao] = useState("semana");
   const [ref, setRef] = useState({ ano: agora.getFullYear(), mes: agora.getMonth(), dia: agora.getDate() });
   const [dia, setDia] = useState(agora.toISOString().slice(0, 10));
   const [evento, setEvento] = useState(null);
