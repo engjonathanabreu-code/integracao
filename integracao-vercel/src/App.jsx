@@ -12026,7 +12026,16 @@ export default function App() {
   const ultimoUso = useRef(Date.now());
   const usuarioRef = useRef(null);
   const usuario = db && usuarioId ? (db.usuarios || []).find((u) => u.id === usuarioId && u.ativo) || null : null;
-  const modoVisual = usuario?.tema?.modo || 'claro';
+  const [temaLogin, setTemaLogin] = useState(() => {
+    try { return localStorage.getItem('integracao-tema-login-v1') === 'escuro' ? 'escuro' : 'claro'; }
+    catch { return 'claro'; }
+  });
+  const modoVisual = usuario ? (usuario.tema?.modo === 'escuro' ? 'escuro' : 'claro') : temaLogin;
+  useEffect(() => {
+    if (!usuario) return;
+    setTemaLogin(modoVisual);
+    try { localStorage.setItem('integracao-tema-login-v1', modoVisual); } catch { /* mantém o tema nesta sessão */ }
+  }, [usuario?.id, modoVisual]);
   usuarioRef.current = usuario;
 
   useEffect(() => {
