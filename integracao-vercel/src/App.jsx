@@ -1930,6 +1930,9 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .meta-card-rodape{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--line2);padding-top:7px}
 .rb .chip-setor{background:var(--soft);color:var(--primary);font-size:12px;font-weight:700;border-radius:999px;padding:3px 9px}
 .rb .meta-resp{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb .meta-arrastavel,.rb .meta-arrastavel .meta-card-corpo{cursor:grab}
+.rb .meta-arrastavel:active,.rb .meta-arrastavel:active .meta-card-corpo{cursor:grabbing}
+.rb .meta-destino{outline:2px solid var(--meta-setor-cor);outline-offset:3px}
 .rb .ordem-card{display:flex;flex-direction:column;gap:4px;padding:10px 8px;border-left:1px solid var(--line2);background:var(--hover)}
 .rb .ordem-card .btn-icone{width:28px;height:26px}
 .rb .grade-icones{display:flex;flex-wrap:wrap;gap:6px}
@@ -10576,6 +10579,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
 }
 
 function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto }) {
+  const [destinoArraste, setDestinoArraste] = useState(false);
   const nomeUsuario = (id) => (db.usuarios || []).find((u) => u.id === id)?.nome || "";
   const acao = podeSolicitarConclusao(m, usuario) ? "Concluir" : podeAprovarConclusao(m, usuario) ? "Aprovar conclusão" : vePendenteAprovacao(m) && respMeta(m, usuario) ? "Aguardando aprovação" : "";
   const icone = normalizarEscolhaIcone(m.icone) || sugerirIcone(`${m.titulo} ${m.setor || ""}`);
@@ -10586,7 +10590,15 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     : m.status === "Concluído" ? { Ic: Check, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Concluído" }
     : { Ic: X, cor: "var(--muted)", fundo: "var(--pill)", titulo: "Cancelado" };
   return (
-    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}>
+    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
+      draggable={!!acoesOrdem}
+      onDragStart={e => { if (!acoesOrdem) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); acoesOrdem.iniciar(); }}
+      onDragOver={e => { if (!acoesOrdem?.aceita()) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDestinoArraste(true); }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDestinoArraste(false); }}
+      onDrop={e => { setDestinoArraste(false); if (!acoesOrdem?.aceita()) return; e.preventDefault(); acoesOrdem.soltar(); }}
+      onDragEnd={() => { setDestinoArraste(false); acoesOrdem?.finalizar(); }}
+      onKeyDown={e => { if (acoesOrdem && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); acoesOrdem.mover(e.key === "ArrowUp" ? -1 : 1); } }}
+      title={acoesOrdem ? "Clique e segure para arrastar na coluna. Pelo teclado: Alt + seta para cima ou para baixo." : undefined}>
       <button className="meta-card-corpo" onClick={() => onAbrir(m)}>
         <span className="meta-card-topo">
           <span className="meta-icone">{m.devolutiva ? <Reply size={19} /> : <IconeEscolhido valor={icone} tamanho={20} />}</span>
@@ -10610,17 +10622,13 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         {acao && !compacto && <span className={`acao-meta${acao === "Aguardando aprovação" ? " pendente" : ""}`}>{acao}</span>}
         {acao && compacto && <span className="meta-acao-compacta">{acao}</span>}
       </button>
-      {acoesOrdem && (
-        <span className="ordem-card">
-          <button className="btn-icone" disabled={acoesOrdem.primeiro} onClick={() => acoesOrdem.mover(-1)} aria-label={`Subir ${m.titulo}`} title="Subir"><ArrowUp size={13} /></button>
-          <button className="btn-icone" disabled={acoesOrdem.ultimo} onClick={() => acoesOrdem.mover(1)} aria-label={`Descer ${m.titulo}`} title="Descer"><ArrowDown size={13} /></button>
-        </span>
-      )}
+
     </div>
   );
 }
 function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const timbradoOficios = useTimbrado(db);
+  const arrasteMeta = useRef(null);
   const [tela, setTela] = useState("home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
@@ -10654,7 +10662,11 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
     const ordem = colunaMetasAtivas(todasVisiveis, u).map((x) => x.id);
     const a = ordem.indexOf(lista[i].id), b = ordem.indexOf(lista[j].id);
     if (a < 0 || b < 0) return;
-    [ordem[a], ordem[b]] = [ordem[b], ordem[a]];
+    const visiveisOrdenadas = lista.map(x => x.id);
+    visiveisOrdenadas.splice(j, 0, visiveisOrdenadas.splice(i, 1)[0]);
+    const idsVisiveis = new Set(visiveisOrdenadas);
+    let proxima = 0;
+    ordem.forEach((id, k) => { if (idsVisiveis.has(id)) ordem[k] = visiveisOrdenadas[proxima++]; });
     mutar((d) => { ordem.forEach((id, k) => { const q = d.metas.find((x) => x.id === id); if (q) q.ordemColuna = k; }); return d; }, "Ordem das metas alterada", { detalhe: `${lista[i].titulo} movida para a posição ${j + 1}` });
   };
   const salvarSetor = (dados) => {
@@ -10763,7 +10775,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
             const semColuna = ativas.filter((m) => !colunas.some(({ metas }) => metas.includes(m)));
             return (<>
           <div className="flex flex-wrap items-center gap-2" style={{ margin: "0 0 10px" }}>
-            <p className="ajuda" style={{ margin: 0 }}>{ativas.length} meta(s) em aberto{filtroSetor ? ` ${filtroSetor === SEM_SETOR_META ? "sem setor" : `em ${filtroSetor}`}` : ""}, {colunas.length} pessoa(s). Use as setas do card para organizar a ordem da coluna.</p>
+            <p className="ajuda" style={{ margin: 0 }}>{ativas.length} meta(s) em aberto{filtroSetor ? ` ${filtroSetor === SEM_SETOR_META ? "sem setor" : `em ${filtroSetor}`}` : ""}, {colunas.length} pessoa(s). Clique e segure um card para arrastar e organizar a ordem da coluna.</p>
             {gerencia && !filtroSetor && <label className="ajuda" style={{ margin: "0 0 0 auto", display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={mostrarSemMetas} onChange={(e) => setMostrarSemMetas(e.target.checked)} />Mostrar pessoas sem metas ativas</label>}
           </div>
           {!colunas.length && !semColuna.length && <p className="card" style={{ padding: 14 }}>{filtroSetor ? "Nenhuma meta ativa neste setor." : "Nenhuma meta ativa."}</p>}
@@ -10777,7 +10789,13 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
                     <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>{suas.length}<span className="ajuda" style={{display:"block"}}>{totalRecusasUsuario(db.metas,u.id,db.usuarios)} recusa(s)</span></span>
                   </div>
                   <div className="flex flex-col gap-2" style={{ marginTop: 8 }}>
-                    {suas.map((m, i) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} acoesOrdem={{ primeiro: i === 0, ultimo: i === suas.length - 1, mover: (dir) => moverNaColuna(u, suas, i, dir) }} />)}
+                    {suas.map((m, i) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} acoesOrdem={{
+                      mover: dir => moverNaColuna(u, suas, i, dir),
+                      iniciar: () => { arrasteMeta.current = {coluna: u.id, id: m.id}; },
+                      aceita: () => arrasteMeta.current?.coluna === u.id && arrasteMeta.current.id !== m.id,
+                      finalizar: () => { arrasteMeta.current = null; },
+                      soltar: () => { const origem = suas.findIndex(x => x.id === arrasteMeta.current?.id); if (origem >= 0) moverNaColuna(u, suas, origem, i - origem); arrasteMeta.current = null; }
+                    }} />)}
                   </div>
                   {!suas.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhuma meta ativa</div>}
                 </div>
