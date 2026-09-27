@@ -10186,7 +10186,7 @@ function ModalSetorMeta({ db, inicial, onSalvar, onFechar }) {
     <Modal titulo={inicial ? "Editar setor" : "Novo setor"} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo, cor })}>Salvar setor</button></>}>
       <label className="rot" htmlFor="stn">Nome do setor</label>
-      <input id="stn" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} /><label className="rot" htmlFor="stcor">Cor no calendário</label><input id="stcor" type="color" value={cor} onChange={e => setCor(e.target.value)} />
+      <input id="stn" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} /><label className="rot" htmlFor="stcor">Cor do setor (cards e calendário)</label><input id="stcor" type="color" value={cor} onChange={e => setCor(e.target.value)} />
       {dup && <div className="msg-erro">Já existe um setor com esse nome.</div>}
       <label className="flex items-center gap-2" style={{ marginTop: 14 }}><span className="chave"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /><span /></span>Setor ativo</label>
     </Modal>
@@ -10586,7 +10586,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     : m.status === "Concluído" ? { Ic: Check, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Concluído" }
     : { Ic: X, cor: "var(--muted)", fundo: "var(--pill)", titulo: "Cancelado" };
   return (
-    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}`}>
+    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}>
       <button className="meta-card-corpo" onClick={() => onAbrir(m)}>
         <span className="meta-card-topo">
           <span className="meta-icone">{m.devolutiva ? <Reply size={19} /> : <IconeEscolhido valor={icone} tamanho={20} />}</span>
@@ -10607,7 +10607,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
           </span>
           <span className="ajuda" style={{ margin: 0 }}>{m.prazo ? `Prazo ${dataBR(m.prazo)}` : "Sem prazo"}</span>
         </span>
-        {!compacto && <span className="ajuda meta-resp" style={{ margin: 0 }}>{(m.responsaveis || []).map(nomeUsuario).join(", ") || "Sem responsável"}</span>}
+        <span className="ajuda meta-resp" style={{ margin: 0 }}>{(m.responsaveis || []).map(nomeUsuario).join(", ") || "Sem responsável"}</span>
         {acao && !compacto && <span className={`acao-meta${acao === "Aguardando aprovação" ? " pendente" : ""}`}>{acao}</span>}
         {acao && compacto && <span className="meta-acao-compacta">{acao}</span>}
       </button>
@@ -10713,7 +10713,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
             {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta programada para esta semana.</p>}
           </Secao>
-          <Secao titulo="Metas atrasadas" nota="Metas vencidas organizadas por setor e responsável.">
+          <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
             {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
           </Secao>
           <h3 style={{ fontSize: 17, margin: "18px 0 10px" }}>Colaboradores</h3>
@@ -10731,13 +10731,14 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
             })}
           </div>
           {gerencia && (
-            <Secao titulo="Setores" nota="Crie, edite ou exclua setores usados na organização das metas." acao={<button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Novo setor</button>}>
+            <Secao titulo="Setores" nota="A cor de cada setor é compartilhada pelos cards e pelas metas ativas no calendário." acao={<button className="btn btn-sm" onClick={() => setSetorModal({})}><Plus size={14} />Novo setor</button>}>
               {setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => {
                 const qtd = (db.metas || []).filter((m) => m.setor === s.nome).length;
                 return (
-                  <div key={s.id} className="flex items-center justify-between gap-2" style={{ padding: "9px 0", borderTop: "1px solid var(--line2)" }}>
+                  <div key={s.id} className="flex items-center justify-between gap-2 setor-meta-linha" style={{ padding: "12px 0", borderTop: "1px solid var(--line2)" }}>
                     <button className="btn-link" onClick={() => setFiltroSetor(filtroSetor === s.nome ? "" : s.nome)}><strong>{s.nome}</strong> <span className="ajuda" style={{ margin: 0 }}>{qtd} meta(s)</span></button>
-                    <span className="flex gap-1">
+                    <span className="flex items-center gap-2">
+                      <label className="setor-cor-controle">Cor<input type="color" aria-label={`Cor do setor ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} onChange={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.nome === s.nome ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /></label>
                       <button className="btn-icone" onClick={() => setSetorModal(s)} aria-label={`Editar ${s.nome}`}><Pencil size={14} /></button>
                       <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
                     </span>

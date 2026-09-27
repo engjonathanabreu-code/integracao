@@ -1,4 +1,14 @@
 const comparar = (a, b) => String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base', numeric: true });
+const chaveSetor = nome => String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const ordemSetores = ['topografia', 'projetos', 'posprotocolo'];
+// Ordenação apenas visual: conserva objetos, responsáveis, IDs e ordem persistida.
+export function ordenarMetasContinuas(metas = []) {
+  const prioridade = nome => { const i = ordemSetores.indexOf(chaveSetor(nome)); return i < 0 ? 3 : i; };
+  return [...metas].sort((a, b) => prioridade(a.setor) - prioridade(b.setor)
+    || comparar(a.setor || 'Sem setor', b.setor || 'Sem setor')
+    || comparar(a.prazo || '9999', b.prazo || '9999')
+    || comparar(a.titulo, b.titulo) || comparar(a.id, b.id));
+}
 // Uma entrada visual por nome; os IDs originais e vínculos no ERP permanecem intactos.
 export function setoresUnicos(setores = []) {
   const grupos = new Map();

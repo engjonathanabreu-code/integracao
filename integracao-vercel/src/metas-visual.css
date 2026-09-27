@@ -19,3 +19,17 @@
 .rb .pagina-metas .grade-indicadores{gap:8px}
 .rb .pagina-metas .grade-indicadores>.card{padding:9px 12px}
 .rb .metas-grupos{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));align-items:start}
+.rb .metas-grade-continua{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;align-items:stretch}
+.rb .metas-grade-continua .meta-card{min-width:0;height:100%;border-radius:12px;box-shadow:var(--sombra);border-top:4px solid var(--meta-setor-cor)}
+.rb .metas-grade-continua .meta-card-corpo{height:100%;padding:16px;gap:8px}
+.rb .metas-grade-continua .meta-card.compacto .meta-card-corpo{padding:12px;gap:8px}
+.rb .metas-grade-continua .meta-card-topo strong{white-space:normal;overflow:visible;display:block;-webkit-line-clamp:unset;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.rb .metas-grade-continua .meta-card-topo .ajuda{white-space:normal;overflow-wrap:anywhere}
+.rb .metas-grade-continua .meta-resp{display:block!important;white-space:normal;overflow-wrap:anywhere}
+.rb .meta-card .chip-setor{border-left:4px solid var(--meta-setor-cor);padding-left:8px}
+.rb .metas-paginacao{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:16px}
+.rb .metas-paginacao .ajuda{margin:0 auto 0 0}
+.rb .setor-cor-controle{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.rb .setor-cor-controle input,.rb #stcor{width:40px;height:36px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+.rb .setor-meta-linha{flex-wrap:wrap}
+.rb[data-ui-guide] .metas-grade-continua .meta-card{border-top-color:var(--meta-setor-cor)}
