@@ -1,4 +1,5 @@
 // navigator.onLine is a hint, not proof that the server cannot be reached.
+// The shared save queue and visible badge consume the same verified state.
 export function criarMonitorConexao({navegador,alvo,buscar,agendar=setInterval,cancelar=clearInterval}) {
  let online=navegador?.onLine!==false,job=null,intervalo=null;
  const ouvintes=new Set();
