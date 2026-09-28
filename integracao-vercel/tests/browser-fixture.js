@@ -18,6 +18,13 @@ import {fixture,id} from './fixture.js';
 import {instalarCRMFixture} from './crm-browser-fixture.js';
 const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
+const chatFixture=new URLSearchParams(location.search).has('chat');
+if(chatFixture){
+ base.profiles.push({id:id(70),nome:'Ana Teste',tipo:'Topografia',ativo:true});
+ base.erp_conversas=[{id:id(80),tipo:'direto',titulo:'Conversa teste',participantes:[id(1),id(70)],created_by:id(1)},{id:id(81),tipo:'grupo',titulo:'Grupo teste',participantes:[id(1),id(70)],created_by:id(1)}];
+ base.erp_mensagens=[{id:id(82),conversa_id:id(80),autor_id:id(70),texto:'Você pode revisar os documentos do núcleo?',created_at:'2026-09-28T12:00:00Z'}];
+}
+
 const vendasFixture=instalarMetasVendasFixture(base);
 if(new URLSearchParams(location.search).has('calendario')) {
   const hoje=new Date().toISOString().slice(0,10);
@@ -97,6 +104,7 @@ window.fetch=async(input,options={})=>{
     const {operacoes}=JSON.parse(options.body);
     if(new URLSearchParams(location.search).has('sincronizacao')&&!window.permissaoCorrigida&&operacoes.some(o=>o.table==='fin_receb_municipios'))return json({message:'new row violates row-level security policy for table fin_receb_municipios'},403);
     for(const op of operacoes) {
+      if(chatFixture&&op.action==='mensagem'){base.erp_mensagens.push({...op.payload,id:op.tempId,autor_id:id(1),created_at:new Date().toISOString()});continue;}
       if(!op.table)return json({message:'Ação não implementada no simulador'},400);
       const rows=base[op.table] ||= [];
       const matches=r=>Object.entries(op.key).every(([k,v])=>r[k]===v);

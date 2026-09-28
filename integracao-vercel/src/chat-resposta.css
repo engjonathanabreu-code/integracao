@@ -1,0 +1,12 @@
+.rb .chat-citacao{display:flex;flex-direction:column;gap:3px;text-align:left;color:inherit;background:color-mix(in srgb,currentColor 8%,transparent);border:0;border-left:3px solid currentColor;border-radius:6px;padding:8px 10px;margin:3px 0 6px;min-width:0;max-width:100%;font:inherit;cursor:pointer}
+.rb .chat-citacao:disabled{cursor:default;opacity:.7}
+.rb .chat-citacao strong,.rb .chat-resposta-previa strong{font-size:14px}
+.rb .chat-citacao-texto{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap;font-size:14px;line-height:1.4}
+.rb .chat-resposta-previa{display:flex;align-items:center;gap:10px;padding:10px 12px;border-left:3px solid var(--primary);background:var(--soft);color:var(--titulo);border-radius:8px;margin:8px}
+.rb .chat-resposta-previa>div{flex:1;min-width:0;display:flex;flex-direction:column}
+.rb .chat-resposta-rotulo{font-size:12px;color:var(--muted)}
+.rb .chat-responder{align-self:flex-end;display:flex;align-items:center;gap:4px;border:0;background:transparent;color:inherit;font:inherit;font-size:12px;padding:6px 3px;min-height:32px;cursor:pointer;opacity:.8}
+.rb .chat-responder:hover{opacity:1;text-decoration:underline}
+.rb .chat-responder:focus-visible,.rb .chat-citacao:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.rb .mensagem{overflow-wrap:anywhere;min-width:0}
+@media(pointer:coarse){.rb .chat-responder{min-height:44px}}

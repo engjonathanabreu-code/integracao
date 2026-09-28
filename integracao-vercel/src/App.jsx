@@ -1,3 +1,4 @@
+import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
 import EstrategiasAgentes from './EstrategiasAgentes.jsx';
@@ -9050,7 +9051,10 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
   const [pos, setPos] = useState(() => ({ x: Math.max(12, (typeof window !== "undefined" ? window.innerWidth : 1200) - 380), y: Math.max(12, (typeof window !== "undefined" ? window.innerHeight : 800) - 470) }));
   const arrasto = useRef(null);
   const fim = useRef(null);
+  const area = useRef(null);
+  const [mostrarTodas, setMostrarTodas] = useState(false);
   const c = (db.conversas || []).find((x) => x.id === conversaId);
+  const resposta = useRespostaChat(c, area);
   const naoLidasAqui = c ? naoLidas(c, usuario) : 0;
   useEffect(() => {
     if (!c || minimizada) return;
@@ -9063,7 +9067,7 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
   const online = c.tipo === "grupo" ? (c.participantes || []).some((id) => id !== usuario.id && estaOnline((db.usuarios || []).find((u) => u.id === id))) : estaOnline(outro);
   const enviar = () => {
     const t = texto.trim(); if (!t) return;
-    const msg = { id: uid("ms"), autorId: usuario.id, texto: t, data: new Date().toISOString() };
+    const msg = { id: uid("ms"), autorId: usuario.id, texto: t, respostaId: resposta.citada?.id || null, data: new Date().toISOString() };
     mutar((d) => {
       const q = d.conversas.find((x) => x.id === c.id);
       q.mensagens = [...q.mensagens, msg];
@@ -9072,7 +9076,7 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
       if (outros.length) novaNotificacao(d, { titulo: `Mensagem de ${usuario.nome}`, texto: t.length > 70 ? `${t.slice(0, 70)}…` : t, rota: { pag: "chat", id: c.id }, usuarios: outros });
       return d;
     }, "Mensagem enviada no chat", { detalhe: `${titulo}: ${t.length} caracteres` });
-    setTexto("");
+    setTexto(""); resposta.cancelar();
   };
   const inicioArrasto = (e) => {
     if (e.target.closest("button")) return;
@@ -9099,20 +9103,23 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
       {!minimizada && (
         <>
           <div className="mensagens mensagens-janela" ref={fim}>
-            {(c.mensagens || []).slice(-30).map((m) => {
+            {(mostrarTodas ? (c.mensagens || []) : (c.mensagens || []).slice(-30)).map((m) => {
               const meu = m.autorId === usuario.id;
               return (
-                <div key={m.id} className={`mensagem${meu ? " minha" : ""}`}>
+                <div key={m.id} data-mensagem-id={m.id} tabIndex={-1} className={`mensagem${meu ? " minha" : ""}`}>
                   {!meu && c.tipo === "grupo" && <span className="ajuda" style={{ margin: 0 }}>{(db.usuarios || []).find((u) => u.id === m.autorId)?.nome}</span>}
+                  {m.respostaId && <CitacaoMensagem mensagem={c.mensagens.find(x => x.id === m.respostaId)} usuarios={db.usuarios || []} usuarioId={usuario.id} onIr={() => { if (!irParaMensagem(fim.current, m.respostaId)) { setMostrarTodas(true); requestAnimationFrame(() => irParaMensagem(fim.current, m.respostaId)); } }}/>}
                   <span style={estiloMensagem(m)}><TextoFormatado texto={m.texto} /></span>
+                  <BotaoResponder onClick={() => resposta.responder(m)}/>
                   <span className="hora-msg">{hhmm(m.data)}</span>
                 </div>
               );
             })}
             {!(c.mensagens || []).length && <p className="ajuda">Sem mensagens.</p>}
           </div>
+          <PreviaResposta mensagem={resposta.citada} usuarios={db.usuarios || []} usuarioId={usuario.id} onCancelar={resposta.cancelar}/>
           <div className="flex gap-2" style={{ padding: 8, borderTop: "1px solid var(--line)" }}>
-            <input className="inp" value={texto} placeholder="Responder" aria-label="Responder" onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+            <input ref={area} className="inp" value={texto} placeholder="Responder" aria-label="Responder" onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") resposta.cancelar(); if (e.key === "Enter" && !e.nativeEvent.isComposing) enviar(); }} />
             <button className="btn btn-primario btn-sm" disabled={!texto.trim()} onClick={enviar}><Send size={14} /></button>
           </div>
         </>
@@ -11766,6 +11773,7 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
   const todas = minhasConversas(db, usuario).slice().sort((a, b) => ((b.mensagens || []).slice(-1)[0]?.data || "").localeCompare((a.mensagens || []).slice(-1)[0]?.data || ""));
   const lista = todas.filter((c) => (aba === "grupos" ? c.tipo === "grupo" : aba === "diretas" ? c.tipo === "direto" : true));
   const atual = todas.find((c) => c.id === conversaId) || lista[0] || null;
+  const resposta = useRespostaChat(atual, area);
   useEffect(() => {
     if (!atual) return;
     const n = naoLidas(atual, usuario);
@@ -11774,7 +11782,7 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
   }, [atual?.id, atual?.mensagens.length]); // eslint-disable-line
   const enviar = () => {
     const t = texto.trim(); if (!t || !atual) return;
-    const msg = { id: uid("ms"), autorId: usuario.id, texto: t, data: new Date().toISOString(), fonte: formato.fonte, tamanho: formato.tamanho, alinhamento: formato.alinhamento };
+    const msg = { id: uid("ms"), autorId: usuario.id, texto: t, respostaId: resposta.citada?.id || null, data: new Date().toISOString(), fonte: formato.fonte, tamanho: formato.tamanho, alinhamento: formato.alinhamento };
     mutar((d) => {
       const c = d.conversas.find((x) => x.id === atual.id);
       c.mensagens = [...c.mensagens, msg];
@@ -11783,7 +11791,7 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
       if (outros.length) novaNotificacao(d, { titulo: `Mensagem de ${usuario.nome}`, texto: t.length > 70 ? `${t.slice(0, 70)}…` : t, rota: { pag: "chat", id: c.id }, usuarios: outros });
       return d;
     }, "Mensagem enviada no chat", { detalhe: `${tituloConversa(db, atual, usuario)}: ${t.length} caracteres` });
-    setTexto("");
+    setTexto(""); resposta.cancelar();
   };
   const criar = () => {
     const parts = Array.from(new Set([usuario.id, ...pessoas]));
@@ -11873,20 +11881,23 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
                 {atual.mensagens.map((m) => {
                   const meu = m.autorId === usuario.id;
                   return (
-                    <div key={m.id} className={`mensagem${meu ? " minha" : ""}`}>
+                    <div key={m.id} data-mensagem-id={m.id} tabIndex={-1} className={`mensagem${meu ? " minha" : ""}`}>
                       {!meu && <span className="ajuda" style={{ margin: 0 }}>{(db.usuarios || []).find((u) => u.id === m.autorId)?.nome || "Usuário"}</span>}
+                      {m.respostaId && <CitacaoMensagem mensagem={atual.mensagens.find(x => x.id === m.respostaId)} usuarios={db.usuarios || []} usuarioId={usuario.id} onIr={() => irParaMensagem(fim.current, m.respostaId)}/>}
                       <span style={estiloMensagem(m)}><TextoFormatado texto={m.texto} /></span>
                       {m.arquivoERP && <button className="btn btn-sm" onClick={async()=>{try{const url=await lerArquivoERP(`erp-storage|erp-chat|${m.arquivoERP.caminho}`);baixarArquivo(m.arquivoERP.nome,await(await fetch(url)).blob());}catch(e){setToast(e.message);}}}><Download size={13}/>{m.arquivoERP.nome||'Baixar anexo'}</button>}
+                      <BotaoResponder onClick={() => resposta.responder(m)}/>
                       <span className="hora-msg">{dataHoraBR(m.data)}</span>
                     </div>
                   );
                 })}
               </div>
               <div style={{ padding: 12, borderTop: "1px solid var(--line)" }}>
+                <PreviaResposta mensagem={resposta.citada} usuarios={db.usuarios || []} usuarioId={usuario.id} onCancelar={resposta.cancelar}/>
                 <BarraFormato f={formato} setF={setFormato} area={area} texto={texto} setTexto={setTexto} />
                 <div className="flex gap-2" style={{ marginTop: 8 }}>
                   <textarea ref={area} className="inp" rows={2} value={texto} placeholder="Escreva uma mensagem. **negrito**, _itálico_, - para tópicos" style={estiloMensagem(formato)}
-                    onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} aria-label="Mensagem" />
+                    onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") resposta.cancelar(); if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); enviar(); } }} aria-label="Mensagem" />
                   <button className="btn btn-primario" style={{ alignSelf: "stretch" }} disabled={!texto.trim()} onClick={enviar}><Send size={16} />Enviar</button>
                 </div>
                 <div className="ajuda" style={{ margin: "4px 0 0" }}>Enter envia, Shift+Enter pula linha.</div>
