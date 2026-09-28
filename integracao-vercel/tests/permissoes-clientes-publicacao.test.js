@@ -101,3 +101,22 @@ test('todos os setores ativos editam os quatro cadastros; anônimos e inativos c
   for(const [t] of alvos)assert.equal((await db.query('select id from '+ident(t)+' for update')).rows.length,0);
  }finally{await db.close();}
 });
+
+test('todos os usuários ativos criam núcleos e remessas pela RPC; inativos e anônimos não',async()=>{
+ const db=await banco();try{
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260928135847_remessas_criacao_todos_usuarios.sql',import.meta.url),'utf8'));
+  let sequencia=200;
+  const criar=(t,campo)=>db.query('select integracao_gravar($1::jsonb)',[JSON.stringify([{table:t,key:{id:id(sequencia++)},insert:true,changes:{[campo]:'Cadastro de teste'}}])]);
+  for(const tipo of tipos){
+   const {usuario}=await perfil(db,tipo);
+   assert.equal(permissoes(usuario).criarNucleosRemessas,true,tipo);
+   for(const [t,campo] of [['fin_receb_remessas','nome'],['processos_kanban','nucleo']])await criar(t,campo);
+   await perfil(db,tipo,false);
+   for(const [t,campo] of [['fin_receb_remessas','nome'],['processos_kanban','nucleo']])await assert.rejects(()=>criar(t,campo),/Sessão inválida/);
+  }
+  for(const usuario of [null,{setor:'consulta',ativo:false}])assert.equal(permissoes(usuario).criarNucleosRemessas,false);
+  await db.exec("reset role;select set_config('request.jwt.claim.sub','',false);set role anon;");
+  await assert.rejects(()=>criar('fin_receb_remessas','nome'),/Sessão inválida/);
+  await assert.rejects(()=>criar('processos_kanban','nucleo'),/Sessão inválida/);
+ }finally{await db.close();}
+});
