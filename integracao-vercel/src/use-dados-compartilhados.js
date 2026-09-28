@@ -1,3 +1,4 @@
+import {temConexao} from './conexao-rede.js';
 import {temEdicaoEmAndamento} from './protecao-edicao.js';
 import {conectarTempoReal} from './tempo-real.js';
 import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
@@ -49,7 +50,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const processarAvisos=async()=>{
     clearTimeout(avisoTimer.current);avisoTimer.current=null;
     if(!actor.current||!avisos.current.size)return;
-    if(opening.current||busy.current||pending.current||temEdicaoEmAndamento()||document.visibilityState==='hidden'||!navigator.onLine){avisoTimer.current=setTimeout(processarAvisos,1500);return;}
+    if(opening.current||busy.current||pending.current||temEdicaoEmAndamento()||document.visibilityState==='hidden'||!temConexao()){avisoTimer.current=setTimeout(processarAvisos,1500);return;}
     const grupos=[...avisos.current];avisos.current.clear();
     const ok=await refresh({force:true,grupos:grupos.includes('*')?null:grupos});
     if(!ok)grupos.forEach(g=>avisos.current.add(g));
@@ -59,7 +60,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const iniciarTempoReal=()=>{vivo.current?.fechar();vivo.current=conectarTempoReal({url:configERP.url,chave:configERP.chave,token:tokenTempoReal,alterou:avisar,estado:setTempoReal});};
   const flush=async()=>{
     if(busy.current || !pending.current || !server.current || !temSessao()) return;
-    if(!navigator.onLine) {setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
+    if(!temConexao()) {setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
     busy.current=true;const gen=generation.current;
     const who=actor.current;
     setStatus('Salvando alterações no Supabase…');setError('');
@@ -197,13 +198,13 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const refresh=async({force=false,manual=false,grupos=null}={})=>{
     if(!force&&Date.now()-lastRefresh.current<120000)return;
     if(manual) {
-      if(!navigator.onLine)throw new Error('Conecte-se à internet para atualizar os dados.');
+      if(!temConexao())throw new Error('Conecte-se à internet para atualizar os dados.');
       if(!actor.current||!server.current||!temSessao())throw new Error('Não há conexão autenticada disponível para atualizar os dados.');
       if(opening.current||busy.current)throw new Error('Há uma sincronização em andamento. Aguarde e tente novamente.');
       if(pending.current)await flush();
       if(pending.current)throw new Error('Há alterações aguardando gravação. Elas foram preservadas; resolva o aviso de sincronização antes de atualizar.');
     }
-    if(!actor.current||opening.current||!server.current||busy.current||pending.current||(!manual&&temEdicaoEmAndamento())||!temSessao()||!navigator.onLine||(!manual&&document.visibilityState==='hidden'))return;
+    if(!actor.current||opening.current||!server.current||busy.current||pending.current||(!manual&&temEdicaoEmAndamento())||!temSessao()||!temConexao()||(!manual&&document.visibilityState==='hidden'))return;
     busy.current=true;const gen=generation.current;
     try {const base=await carregarBase(current.current,grupos);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');}
     catch(e){setError(e.message);if(manual)throw e;return false;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
@@ -223,14 +224,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);
-    const online=()=>{if(!actor.current)return;if(navigator.onLine){if(!vivo.current)iniciarTempoReal();else vivo.current.reconectar();if(pending.current)flush();avisar(null);}else{vivo.current?.fechar();vivo.current=null;setTempoReal('offline');}};
+    const online=()=>{if(!actor.current)return;if(temConexao()){if(!vivo.current)iniciarTempoReal();else vivo.current.reconectar();if(pending.current)flush();avisar(null);}else{vivo.current?.fechar();vivo.current=null;setTempoReal('offline');}};
     const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){if(pending.current)flush();avisar(null);}};
     const filePending=()=>{if(!actor.current)return;pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,250);};
     const protegerSaida=e=>{if(pending.current){e.preventDefault();e.returnValue='';}};
     window.addEventListener('beforeunload',protegerSaida);
     window.addEventListener('integracao:arquivo-pendente',filePending);
-    window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
-    return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
+    window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
+    return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
   return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,tempoReal,ready:()=>!!server.current};
 }
