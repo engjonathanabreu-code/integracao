@@ -2450,7 +2450,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
   if (dup) erros.push(`Já existe ${dup.codigo} ${remessaId ? `em ${nomeRemessa(db, remessaDe(db, remessaId))}` : "sem remessa neste município"}`);
   if (sm && !(smN > 0)) erros.push("Salário mínimo precisa ser maior que zero");
   if (teto && !(tetoN > 0)) erros.push("Renda máxima precisa ser maior que zero");
-  const disEstr = !perm.estrutura;
+  const disEstr = !(editando ? perm.editarEstrutura : perm.estrutura);
   return (
     <Modal titulo={editando ? `Editar ${nomeNucleo(inicial)}` : "Novo núcleo"} largura={640} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={() => onSalvar({ remessaId: remessaId || null, codigo: codigo.trim(), nome: nome.trim(), responsavel: responsavel.trim(), criterio: { salarioMinimo: sm.trim(), rendaMaxima: teto.trim() }, endereco: end })}>Salvar núcleo</button></>}>
@@ -2470,8 +2470,8 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
       <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Critério para REURB-S neste núcleo</h3>
       <p className="ajuda" style={{ margin: "0 0 10px" }}>Use o valor definido pelo município. Confira o salário mínimo vigente na data de referência.</p>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div><label className="rot" htmlFor="nsm">Salário mínimo de referência (R$)</label><input id="nsm" className="inp" inputMode="decimal" value={sm} disabled={!perm.criterio} onChange={(e) => setSm(e.target.value)} /></div>
-        <div><label className="rot" htmlFor="nteto">Renda familiar máxima (R$)</label><input id="nteto" className="inp" inputMode="decimal" value={teto} disabled={!perm.criterio} onChange={(e) => setTeto(e.target.value)} /></div>
+        <div><label className="rot" htmlFor="nsm">Salário mínimo de referência (R$)</label><input id="nsm" className="inp" inputMode="decimal" value={sm} disabled={!(editando ? perm.editarEstrutura : perm.criterio)} onChange={(e) => setSm(e.target.value)} /></div>
+        <div><label className="rot" htmlFor="nteto">Renda familiar máxima (R$)</label><input id="nteto" className="inp" inputMode="decimal" value={teto} disabled={!(editando ? perm.editarEstrutura : perm.criterio)} onChange={(e) => setTeto(e.target.value)} /></div>
       </div>
       {tetoN > 0 && smN > 0 && <div className="tag tag-neutra" style={{ marginTop: 10, borderRadius: 10, padding: "8px 12px" }}>Equivale a {qtdSalarios(tetoN, smN)} salários mínimos</div>}
       <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Localização do núcleo</h3>
@@ -2964,8 +2964,8 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
         </table>
       </div>
 
-      {municipioPRF && <Modal titulo="Dados do PRF" largura={900} onFechar={() => setMunicipioPRF(null)}><FormularioDadosPRF key={municipioPRF} municipio={municipioDe(db, municipioPRF)} dados={municipioDe(db, municipioPRF)?.prf} podeEditar={cad.perm.estrutura} aoFechar={() => setMunicipioPRF(null)} aoSalvar={(prf) => {
-        if (!cad.perm.estrutura) throw new Error("Sem permissão");
+      {municipioPRF && <Modal titulo="Dados do PRF" largura={900} onFechar={() => setMunicipioPRF(null)}><FormularioDadosPRF key={municipioPRF} municipio={municipioDe(db, municipioPRF)} dados={municipioDe(db, municipioPRF)?.prf} podeEditar={cad.perm.editarEstrutura} aoFechar={() => setMunicipioPRF(null)} aoSalvar={(prf) => {
+        if (!cad.perm.editarEstrutura) throw new Error("Sem permissão");
         return mutar((d) => { const m = municipioDe(d, municipioPRF); m.prf = unirCampos(m.prf, prf); return d; }, "Dados do PRF atualizados", { municipioId: municipioPRF });
       }} /></Modal>}
 
@@ -2999,7 +2999,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
         <div className="flex flex-wrap gap-2">
           <button className={`btn btn-sm${aba === "regras" ? " btn-primario" : ""}`} onClick={() => setAba(aba === "regras" ? "conteudo" : "regras")}><ClipboardList size={14} />Regras{temAjusteAlgum ? " (específicas)" : ""}</button>
           {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}><History size={17} aria-hidden="true"/>Andamentos</button>}
-          {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
+          {perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
           {perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "remessa", municipio: m })}><Plus size={15} />Nova remessa</button>}
@@ -3029,7 +3029,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
 
                         <td>Abra Núcleos para ver pendências e etapas</td>
                         <td>{dataBR(r.criada)}</td>
-                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{perm.estrutura && <button className="btn-icone" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })} aria-label={`Editar ${nomeRemessa(db, r)}`}><Pencil size={14} /></button>}<BotaoArquivar colecao="remessas" registro={r} /></td>
+                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{perm.editarEstrutura && <button className="btn-icone" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })} aria-label={`Editar ${nomeRemessa(db, r)}`}><Pencil size={14} /></button>}<BotaoArquivar colecao="remessas" registro={r} /></td>
                       </tr>
                     );
                   })}
@@ -3043,7 +3043,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
           <div>
             <h3 style={{ margin: "8px 0 4px", fontSize: 17 }}>{remessas.length ? "Núcleos sem remessa" : "Núcleos"}</h3>
             <p className="ajuda" style={{ margin: "0 0 10px" }}>{remessas.length ? "Núcleos importados ou criados sem remessa. Coloque-os em uma remessa para cadastrar moradores." : "Núcleos importados ou criados direto no município."}</p>
-            <div className="flex flex-col gap-2">{semRemessa.map(n=><div className="card flex flex-wrap items-center gap-2" style={{padding:12}} key={n.id}><button className="btn" onClick={()=>ir({pag:"nucleo",id:n.id})}>{nomeNucleo(n)}<ChevronRight size={15}/></button><span className="ajuda">Abra o núcleo para consultar moradores e pendências.</span>{perm.estrutura&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"nucleo",municipio:m,inicial:n})}><Pencil size={14}/>Editar</button>}{perm.estrutura&&remessas.length>0&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"vincular",nucleo:n})}>Vincular remessa</button>}<BotaoArquivar colecao="nucleos" registro={n}/></div>)}</div>
+            <div className="flex flex-col gap-2">{semRemessa.map(n=><div className="card flex flex-wrap items-center gap-2" style={{padding:12}} key={n.id}><button className="btn" onClick={()=>ir({pag:"nucleo",id:n.id})}>{nomeNucleo(n)}<ChevronRight size={15}/></button><span className="ajuda">Abra o núcleo para consultar moradores e pendências.</span>{perm.editarEstrutura&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"nucleo",municipio:m,inicial:n})}><Pencil size={14}/>Editar</button>}{perm.estrutura&&remessas.length>0&&<button className="btn btn-sm" onClick={()=>cad.abrir({tipo:"vincular",nucleo:n})}>Vincular remessa</button>}<BotaoArquivar colecao="nucleos" registro={n}/></div>)}</div>
           </div>
         )}
         {!remessas.length && !semRemessa.length && <p style={{ color: "var(--muted)" }}>Nada cadastrado ainda neste município.</p>}
@@ -3077,7 +3077,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <BotaoArquivo remessaId={r.id} />
-          {perm.estrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })}><Pencil size={14} />Editar</button>}
+          {perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && livres.length > 0 && <button className="btn" onClick={() => cad.abrir({ tipo: "trazer", remessa: r })} title="Trazer um núcleo que está sem remessa"><Link2 size={15} />Trazer núcleo sem remessa</button>}
           {perm.estrutura && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: r.id })}><Plus size={15} />Novo núcleo</button>}
           {perm.cadastro && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id })}><UserPlus size={15} />Novo morador</button>}
@@ -3472,7 +3472,7 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
                 <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: "nowrap" }}>
                   <span className="flex gap-1" style={{ justifyContent: "flex-end" }}>
                     {onVincular && perm.estrutura && <button className="btn btn-sm" onClick={() => onVincular(n)}><Link2 size={13} />Pôr em remessa</button>}
-                    {(perm.estrutura || perm.criterio) && <button className="btn-icone" onClick={() => onEditar(n)} aria-label={`Editar ${n.codigo}`}><Pencil size={14} /></button>}
+                    {perm.editarEstrutura && <button className="btn-icone" onClick={() => onEditar(n)} aria-label={`Editar ${n.codigo}`}><Pencil size={14} /></button>}
                     <BotaoArquivar colecao="nucleos" registro={n} />
                   </span>
                 </td>
@@ -3770,7 +3770,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
   const form = { rascunho, ia: iaPaths, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
-  const pode = (k) => !cancelado && !!perm[k];
+  const pode = (k) => !cancelado && (perm.editarClientes || !!perm[k]);
   const pd = { ...p, ...rascunho };
   const nucleoDraft = db.nucleos.find((n) => n.id === pd.nucleoId) || null;
   const alertas = alertasDados(pd, { nucleo: nucleoDraft, duplicado: acharDuplicado(db, pd) });
@@ -3923,9 +3923,9 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
   const blocoPersonalizado = (sec) => {
     const lista = defs.filter((d) => d.ativo && d.secao === sec.id);
         if (!lista.length) return null;
-        const dis = cancelado || !perm.secao(sec.setor);
+        const dis = cancelado || !(perm.editarClientes || perm.secao(sec.setor));
         return (
-          <Secao key={sec.id} titulo={sec.nome} nota={`Seção criada nas configurações. Setor que edita: ${SETORES[sec.setor]?.nome || "Diretoria"}.`}>
+          <Secao key={sec.id} titulo={sec.nome} nota="Informações compartilhadas entre os setores.">
             <div className="fg">{lista.map((d) => <CampoExtra key={d.id} def={d} form={form} dis={dis} />)}</div>
           </Secao>
         );
@@ -3938,7 +3938,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
           <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>{alertas.map((a) => <li key={a}>{a}</li>)}</ul>
         </div>
       )}
-      {!perm.cadastro && !perm.imovel && !perm.social && <div className="tag tag-neutra" style={{ borderRadius: 10, padding: "9px 12px", whiteSpace: "normal" }}><Lock size={14} />Seu perfil consulta o cadastro, mas não altera dados.</div>}
+      {!perm.editarClientes && !perm.cadastro && !perm.imovel && !perm.social && <div className="tag tag-neutra" style={{ borderRadius: 10, padding: "9px 12px", whiteSpace: "normal" }}><Lock size={14} />Seu perfil consulta o cadastro, mas não altera dados.</div>}
 
       {secoesOrdenadas(db.campos).map((sec) => <Fragment key={sec.id}>{Object.prototype.hasOwnProperty.call(blocos, sec.id) ? blocos[sec.id] : blocoPersonalizado(sec)}</Fragment>)}
     </div>
@@ -4654,7 +4654,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         </div>
         <div className="flex flex-wrap gap-2">
           {n && <BotaoArquivo nucleoId={n.id} />}
-          {n && (perm.estrutura || perm.criterio) && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
+          {n && perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
           {perm.cadastro && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
           {n && <BotaoArquivar colecao="nucleos" registro={n} />}
         </div>

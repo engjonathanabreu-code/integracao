@@ -77,3 +77,27 @@ test('operação real do formulário passa pela RPC com idempotência, conflito 
   await assert.rejects(()=>salvar([valido],id(93)),/Registro indisponível/,'reintroduzir a falha original é detectado');
  }finally{await db.close();}
 });
+
+
+test('todos os setores ativos editam os quatro cadastros; anônimos e inativos continuam bloqueados',async()=>{
+ const db=await banco();try{
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260928125709_clientes_edicao_todos_setores.sql',import.meta.url),'utf8'));
+  // A política de consulta compartilhada já está em produção desde o módulo financeiro.
+  for(const [t] of alvos)await db.exec(`create policy leitura_teste_ativos on ${ident(t)} for select to authenticated using (exists(select 1 from profiles where id=auth.uid() and ativo))`);
+  for(const tipo of tipos){
+   const {usuario}=await perfil(db,tipo);const perm=permissoes(usuario);
+   assert.equal(perm.editarClientes,true,tipo);assert.equal(perm.editarEstrutura,true,tipo);
+   for(const [t,,chave] of alvos){
+    const campo=t==='processos_kanban'?'nucleo':'nome';
+    const ops=[{table:t,key:{id:id(chave)},changes:{[campo]:tipo}}];
+    await db.query('select integracao_gravar($1::jsonb)',[JSON.stringify(ops)]);
+    assert.equal((await db.query(`select ${campo} from ${ident(t)} where id=$1`,[id(chave)])).rows[0][campo],tipo);
+   }
+   await perfil(db,tipo,false);
+   for(const [t,,chave] of alvos)assert.equal((await db.query('select id from '+ident(t)+' where id=$1 for update',[id(chave)])).rows.length,0,'inativo: '+tipo+'/'+t);
+  }
+  for(const u of [null,{setor:'consulta',ativo:false}])for(const acao of ['editarClientes','editarEstrutura'])assert.equal(permissoes(u)[acao],false);
+  await db.exec("reset role;select set_config('request.jwt.claim.sub','',false);set role anon;");
+  for(const [t] of alvos)assert.equal((await db.query('select id from '+ident(t)+' for update')).rows.length,0);
+ }finally{await db.close();}
+});

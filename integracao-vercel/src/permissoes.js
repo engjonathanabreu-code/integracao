@@ -22,6 +22,8 @@ export function permissoes(u) {
   const dir = s === "diretoria";
   return {
     setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
+    editarClientes: !!u && u.ativo !== false,
+    editarEstrutura: !!u && u.ativo !== false,
     financeiro: !!u && u.ativo !== false && (dir || s === "financeiro"),
     planos: dir || s === "comercial" || s === "financeiro",
     verCPF: s === "financeiro" || dir || s === "comercial" || s === "projeto",
