@@ -1,3 +1,4 @@
+import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
@@ -6374,13 +6375,9 @@ const rotuloNucleo = (db, id) => {
 };
 
 function useConexao() {
-  const [navOnline, setNavOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+  const [navOnline, setNavOnline] = useState(temConexao);
   const [simularOffline, setSimularOffline] = useState(false);
-  useEffect(() => {
-    const on = () => setNavOnline(true); const off = () => setNavOnline(false);
-    window.addEventListener("online", on); window.addEventListener("offline", off);
-    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
-  }, []);
+  useEffect(() => observarConexao(setNavOnline), []);
   return { online: navOnline && !simularOffline, navOnline, simularOffline, setSimularOffline };
 }
 
