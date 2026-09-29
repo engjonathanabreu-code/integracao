@@ -3,6 +3,7 @@ import {temEdicaoEmAndamento} from './protecao-edicao.js';
 import {conectarTempoReal} from './tempo-real.js';
 import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
 import {filaRascunho} from './fila-rascunho.js';
+import {clientesDasOperacoes,atualizarFichas} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
@@ -28,12 +29,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     }
     // Keep opened clients without a municipality available during refresh/save.
     const avulsos=(seed?.processos||[]).filter(p=>!p.municipioId&&!p._resumo&&p._compartilhado);
-    for(const cliente of (!grupos||grupos.includes('clientes')?avulsos:[])){
-      const carga=await lerFichaCliente(cliente);
-      base.fin_receb_clientes.push(...carga.clientes.filter(c=>!base.fin_receb_clientes.some(x=>x.id===c.id)));
-      base.integracao_moradores.push(...carga.complementos.filter(e=>!base.integracao_moradores.some(x=>x.registro_id===e.registro_id)));
-    }
     base._moradoresResumo=server.current?.base._moradoresResumo||[];
+    await atualizarFichas(base,!grupos||grupos.includes('clientes')?avulsos:[],lerFichaCliente);
     lastRefresh.current=Date.now();return base;
   };
   const storageKey=()=>`integracao-compartilhado-${actor.current?.erpRef}`;
@@ -77,19 +74,22 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       }
       const {after,operations,id,sent}=attempt.current;
       if(!operations.length){server.current={...server.current,db:copy(after)};attempt.current=null;pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(after);setStatus('Dados atualizados');await saveDraft();if(pending.current)timer.current=setTimeout(flush,500);return;}
-      const result=await gravarOperacoes(operations,id);
+      let result=attempt.current.confirmacao;
+      if(!result){
+        result=await gravarOperacoes(operations,id);
+        if(gen!==generation.current)return;
+        attempt.current.confirmacao=result;
+        // Persist the receipt before any read. A reload resumes reconciliation, not the write.
+        await saveDraft();
+      }
       if(gen!==generation.current) return;
+      setStatus('Alterações salvas; atualizando dados…');
       const aliases=result.aliases||{};
       const saved=remap(after,aliases),grupos=gruposDasOperacoes(operations);
       const base=await carregarBase(saved,grupos);
       // The active route may not have selected a municipality (global search).
       // Refresh changed financial customers explicitly before projecting the saved form.
-      const clientesAlterados=new Set(operations.filter(o=>o.table==='fin_receb_clientes'&&!o.remove).map(o=>o.key?.id));
-      for(const cliente of saved.processos.filter(p=>clientesAlterados.has(p.financeiroRef||p.id))){
-        const carga=await lerFichaCliente(cliente);
-        base.fin_receb_clientes=[...base.fin_receb_clientes.filter(x=>!carga.clientes.some(c=>c.id===x.id)),...carga.clientes];
-        base.integracao_moradores=[...base.integracao_moradores.filter(x=>!carga.complementos.some(c=>c.registro_id===x.registro_id)),...carga.complementos];
-      }
+      await atualizarFichas(base,clientesDasOperacoes(remap(operations,aliases),saved.processos),lerFichaCliente);
       if(gen!==generation.current) return;
       await confirmarArquivos(sent,base);
       const state=projetar(base,saved);
@@ -104,7 +104,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(pending.current) timer.current=setTimeout(flush,500);
     } catch(e) {
       if(gen!==generation.current)return;
-      setError(e.message);setStatus('Alterações pendentes — dados locais preservados.');await saveDraft();
+      console.warn('[sincronizacao]',{fase:attempt.current?.confirmacao?'atualizacao':'gravacao',codigo:e.code||e.status||e.name});
+      setError(e.message);setStatus(attempt.current?.confirmacao?'Alterações já salvas — aguardando atualização da tela.':'Alterações pendentes — dados locais preservados.');await saveDraft();
       if(falhaTransitoria(e)){clearTimeout(timer.current);timer.current=setTimeout(flush,Math.min(30000,2000*2**Math.min(retentativas.current++,4)));}
     } finally {busy.current=false;}
   };
@@ -123,7 +124,18 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       setStatus('Modo offline. Entre novamente conectado para enviar as alterações.');
       return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
     }
-    const base=await carregarBase(baseLimpa());
+    let base;
+    try {base=await carregarBase(baseLimpa());}
+    catch(e){
+      if(!draft?.base||!draft?.baseline||!falhaTransitoria(e))throw e;
+      await abrirArquivos(user,draft.base,storage);
+      server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);
+      pending.current=!!draft.pending||!!attempt.current;municipios.current=new Set(draft.municipios||[]);
+      setSummaryReady(true);setStatus(attempt.current?.confirmacao?'Alterações já salvas — retomando atualização automaticamente.':'Dados locais disponíveis; retomando a conexão automaticamente.');
+      if(pending.current)timer.current=setTimeout(flush,2000);else timer.current=setTimeout(()=>refresh({force:true}),2000);
+      iniciarTempoReal();
+      return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
+    }
     await abrirArquivos(user,base,storage);
     if(legacy && !(await storage.get('integracao-antes-compartilhamento'))) await storage.set('integracao-antes-compartilhamento',JSON.stringify(legacy));
     const legacyOwner=await storage.get('integracao-dono-base-local');
@@ -233,5 +245,5 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
     return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
-  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,tempoReal,ready:()=>!!server.current};
+  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush,refresh,reopen,loadMunicipio,status,error,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
