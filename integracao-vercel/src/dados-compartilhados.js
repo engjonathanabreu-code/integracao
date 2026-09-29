@@ -362,7 +362,9 @@ export function mesclarEdicoes(base,local,remote) {
     return ids.flatMap(id=>{
       const b=base.find(x=>x.id===id),l=local.find(x=>x.id===id),r=remote.find(x=>x.id===id);
       if(!l && b) return [];
-      if(!r) return l ? [copy(l)] : [];
+      // A vanished remote row must not be resurrected by an unrelated local edit.
+      // Keep only genuine local changes to that row for explicit conflict handling.
+      if(!r) return l && (!b || !eq(b,l)) ? [copy(l)] : [];
       return [b && l ? mesclarEdicoes(b,l,r) : copy(l||r)];
     });
   }
@@ -546,13 +548,19 @@ async function carregarIndiceClientes() {
   return {clientes, complementos};
 }
 
-export async function lerFichaCliente(cliente) {
+export async function lerFichaCliente(cliente,{permitirAusente=false}={}) {
   const filtro = cliente.financeiroRef ? `referencia_id=eq.${encodeURIComponent(cliente.financeiroRef)}` : `registro_id=eq.${encodeURIComponent(cliente.id)}`;
-  const [clientes, complementos] = await Promise.all([
-    cliente.financeiroRef ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(cliente.financeiroRef)}`) : [],
+  const referencia=cliente.financeiroRef||(uuid(cliente.id)?cliente.id:null);
+  let [clientes, complementos] = await Promise.all([
+    referencia ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(referencia)}`) : [],
     requisicao(`integracao_moradores?colecao=eq.processos&${filtro}`),
   ]);
-  if (!clientes.length && !complementos.length) throw new Error('Cliente indisponível para esta conta.');
+  const vinculo=complementos.find(e=>e.referencia_tabela==='fin_receb_clientes'&&e.referencia_id);
+  if(!clientes.length&&vinculo&&vinculo.referencia_id!==referencia)clientes=await lerTabela('fin_receb_clientes','*',`&id=eq.${encodeURIComponent(vinculo.referencia_id)}`);
+  if (!clientes.length && !complementos.length) {
+    if(permitirAusente)return {clientes,complementos,indisponivel:true};
+    throw Object.assign(new Error('Cliente indisponível para esta conta.'),{code:'CLIENTE_INDISPONIVEL'});
+  }
   return {clientes, complementos};
 }
 
