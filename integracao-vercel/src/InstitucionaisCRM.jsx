@@ -1,3 +1,5 @@
+import PrazoFollowUp from './PrazoFollowUp.jsx';
+import {diasPrazoFollowup} from './crm-followup.js';
 import {useEffect,useRef,useState} from 'react';
 import {Building2,Plus,X} from 'lucide-react';
 import {listarCRM,rpcCRM} from './crm-api.js';
@@ -8,6 +10,7 @@ const ESTADOS=['Em negociação','Ganho','Perdido'];
 const moeda=v=>Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 function Ficha({registro,usuario,usuarios,salvar,fechar,atualizar,ocupado,erro}){
  const [f,setF]=useState(()=>registro||{id:crypto.randomUUID(),versao:0,nome:'',contato:'',produto:'',valor:'',responsavel_id:usuario.erpRef||usuario.id,status:'Em negociação',motivo_perda:'',dias:''});
+ const [prazo,setPrazo]=useState({modo:''});
  const dialog=useRef(null),[alterado,setAlterado]=useState(false);
  useEffect(()=>{const d=dialog.current;d.showModal();return()=>d.close();},[]);
  const campo=(k,v)=>{setF(a=>({...a,[k]:v}));setAlterado(true);};
@@ -17,16 +20,16 @@ function Ficha({registro,usuario,usuarios,salvar,fechar,atualizar,ocupado,erro})
  <button className="btn crm-ficha-fechar" aria-label="Fechar ficha institucional" disabled={ocupado} onClick={fechar}><X size={20}/></button>
  <h2>{registro?'Cliente institucional':'Cadastrar cliente institucional'}</h2><p>Negócio com prefeitura ou órgão público, registrado no CRM.</p>
  {erro&&<p className="crm-erro" role="alert">{erro}</p>}
- <form className="crm-form" data-edicao-pendente={alterado} onSubmit={e=>{e.preventDefault();salvar(f);}}><fieldset disabled={ocupado}>
+ <form className="crm-form" data-edicao-pendente={alterado} onSubmit={e=>{e.preventDefault();const dias=registro?null:diasPrazoFollowup(prazo);if(!registro&&!dias)return;salvar({...f,dias});}}><fieldset disabled={ocupado}>
  <CampoCRM nome="Nome do cliente"><input className="inp" required minLength={2} maxLength={200} value={f.nome} onChange={e=>campo('nome',e.target.value)} placeholder="Prefeitura / órgão público"/></CampoCRM>
  <CampoCRM nome="Contato"><textarea className="inp" required minLength={2} maxLength={500} rows={2} value={f.contato} onChange={e=>campo('contato',e.target.value)} placeholder="Pessoa, cargo, telefone ou e-mail"/></CampoCRM>
  <CampoCRM nome="Produto ou serviço"><input className="inp" required minLength={2} maxLength={500} value={f.produto} onChange={e=>campo('produto',e.target.value)}/></CampoCRM>
  <CampoCRM nome="Valor (R$)"><input className="inp" type="number" min="0" max="999999999999.99" step="0.01" required value={f.valor} onChange={e=>campo('valor',e.target.value)}/></CampoCRM>
  {admin&&<CampoCRM nome="Comercial responsável"><select aria-label="Comercial responsável" className="inp" required value={f.responsavel_id} onChange={e=>campo('responsavel_id',e.target.value)}>{responsaveis.map(u=><option key={u.id} value={u.erpRef||u.id}>{u.nome}{u.ativo===false?' (inativo)':''}</option>)}</select></CampoCRM>}
- {registro?<CampoCRM nome="Status do negócio"><select aria-label="Status do negócio" className="inp" value={f.status} onChange={e=>campo('status',e.target.value)}>{ESTADOS.map(s=><option key={s}>{s}</option>)}</select></CampoCRM>:<CampoCRM nome="Prazo inicial de FollowUp"><select aria-label="Prazo inicial de FollowUp" className="inp" required value={f.dias} onChange={e=>campo('dias',e.target.value)}><option value="">Selecione o prazo</option>{[1,2,4].map(d=><option key={d} value={d}>{d} {d===1?'dia':'dias'}</option>)}</select></CampoCRM>}
+ {registro?<CampoCRM nome="Status do negócio"><select aria-label="Status do negócio" className="inp" value={f.status} onChange={e=>campo('status',e.target.value)}>{ESTADOS.map(s=><option key={s}>{s}</option>)}</select></CampoCRM>:<PrazoFollowUp nome="Prazo inicial de FollowUp" value={prazo} onChange={v=>{setPrazo(v);setAlterado(true);}}/>}
  {f.status==='Perdido'&&<CampoCRM nome="Motivo da perda"><textarea className="inp" required minLength={5} maxLength={2000} rows={3} value={f.motivo_perda} onChange={e=>campo('motivo_perda',e.target.value)} placeholder="Resuma por que o negócio foi perdido."/></CampoCRM>}
  {registro&&f.status!=='Em negociação'&&<p>Ao salvar, o FollowUp pendente será encerrado e o histórico será mantido.</p>}
- <div className="crm-acoes"><button className="btn btn-primario" disabled={ocupado}>{ocupado?'Salvando…':registro?'Salvar negócio':'Cadastrar cliente institucional'}</button><button type="button" className="btn" disabled={ocupado} onClick={fechar}>Cancelar</button></div>
+ <div className="crm-acoes"><button className="btn btn-primario" disabled={ocupado||!registro&&!diasPrazoFollowup(prazo)}>{ocupado?'Salvando…':registro?'Salvar negócio':'Cadastrar cliente institucional'}</button><button type="button" className="btn" disabled={ocupado} onClick={fechar}>Cancelar</button></div>
  </fieldset></form>
  {registro&&<FollowUpCRM card={registro} usuarios={usuarios} atualizar={atualizar} tabela="integracao_crm_institucionais_followups" rpc="integracao_crm_institucional_followup" encerrado={registro.status!=='Em negociação'}/>}
  </dialog>;

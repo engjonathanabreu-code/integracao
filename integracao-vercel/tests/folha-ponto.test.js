@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {readFileSync} from 'node:fs';
 const admin='00000000-0000-4000-8000-000000000001',clt='00000000-0000-4000-8000-000000000002',outro='00000000-0000-4000-8000-000000000003';
-async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text);insert into profiles values('${admin}',true,'Administrador'),('${clt}',true,'Comercial'),('${outro}',true,'Topografia');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;`);await db.exec(readFileSync(new URL('../supabase/operacoes/folha-ponto.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-offline.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-solicitacoes.sql',import.meta.url),'utf8'));return db;}
+async function banco(){const db=new PGlite();await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,ativo boolean,tipo text);insert into profiles values('${admin}',true,'Administrador'),('${clt}',true,'Comercial'),('${outro}',true,'Topografia');grant select on profiles to authenticated;create schema integracao_crm_privado;grant usage on schema integracao_crm_privado to authenticated;create function integracao_crm_privado.permite(text) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;`);await db.exec(readFileSync(new URL('../supabase/operacoes/folha-ponto.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-offline.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/operacoes/ponto-solicitacoes.sql',import.meta.url),'utf8'));await db.exec(readFileSync(new URL('../supabase/migrations/20260929202319_ponto_tolerancia_cinco_minutos.sql',import.meta.url),'utf8'));return db;}
 async function como(db,u,sql,params=[]){await db.exec(`set role authenticated;set request.jwt.claim.sub='${u}';`);try{return(await db.query(sql,params)).rows;}finally{await db.exec('reset role');}}
 const rpc=(db,u,acao,dados)=>como(db,u,'select integracao_ponto($1,$2::jsonb) as r',[acao,JSON.stringify(dados)]).then(r=>r[0].r);
 async function jornada(db){await db.exec(`insert into integracao_ponto_jornadas(usuario_id,vigencia,vinculo,dias,entrada,saida,intervalo,autor) values('${clt}','2026-01-01','CLT',array[1,2,3,4,5],'08:00','17:00',60,'${admin}');`);}
@@ -85,4 +85,26 @@ test('recusa, cancelamento, pedido desatualizado e conta inativa preservam regis
  ({r}=await solicitar(db));await assert.rejects(()=>rpc(db,outro,'cancelar_correcao',{pedido:r.id}),/somente suas/);await rpc(db,clt,'cancelar_correcao',{pedido:r.id});
  ({r}=await solicitar(db));await marcas(db,'2026-01-05',['08:00','12:00']);await assert.rejects(()=>rpc(db,admin,'decidir_correcao',{pedido:r.id,aprovada:true,motivo:'Tentativa antiga'}),/mudaram/);
  await db.exec(`update profiles set ativo=false where id='${clt}'`);await assert.rejects(()=>rpc(db,clt,'cancelar_correcao',{pedido:r.id}),/Sessão ativa/);assert.equal((await como(db,clt,'select * from integracao_ponto_solicitacoes')).length,0);
+ }finally{await db.close();}});
+
+test('tolerância: até cinco minutos em cada extremidade, segundos, pausas e histórico',async()=>{const db=await banco();try{await jornada(db);
+ const casos=[
+  {horas:['08:05:00','12:00:00','13:00:00','16:55:00'],saldo:0,abono:10,trabalhado:470},
+  {horas:['08:05:01','12:00:00','13:00:00','17:00:00'],saldo:-6,abono:0,trabalhado:474},
+  {horas:['08:00:00','12:00:00','13:00:00','16:54:59'],saldo:-6,abono:0,trabalhado:474},
+  {horas:['08:06:00','12:00:00','13:00:00','16:56:00'],saldo:-6,abono:4,trabalhado:470},
+  {horas:['08:05:00','12:00:00','13:10:00','16:55:00'],saldo:-10,abono:10,trabalhado:460},
+  {horas:['07:55:00','12:00:00','13:00:00','17:05:00'],saldo:0,abono:0,trabalhado:490,extra:10},
+  {horas:['08:00:00','12:00:00','13:00:00','17:00:00'],saldo:0,abono:0,trabalhado:480},
+  {horas:['08:04:30','12:00:00','13:00:00','16:55:30'],saldo:0,abono:9,trabalhado:471},
+  {horas:['08:05:00'],saldo:0,abono:0,trabalhado:0},
+ ];
+ for(const c of casos){await db.exec('delete from integracao_ponto_batidas');
+  for(let i=0;i<c.horas.length;i++)await db.query('insert into integracao_ponto_batidas(id,usuario_id,ocorrido_em,tipo) values(gen_random_uuid(),$1,$2,$3)',[clt,`2026-09-29T${c.horas[i]}-03:00`,i%2?'saida':'entrada']);
+  const d=(await como(db,clt,"select integracao_crm_privado.ponto_dia($1,'2026-09-29') d",[clt]))[0].d;
+  assert.equal(d.saldo,c.saldo,JSON.stringify(c));assert.equal(d.tolerancia_abonada,c.abono);assert.equal(d.trabalhado,c.trabalhado);assert.equal(d.extra,c.extra||0);assert.equal(d.batidas.length,c.horas.length);
+ }
+ await marcas(db,'2026-01-05',['08:05','12:00','13:00','16:55']);
+ const antes=(await como(db,clt,"select integracao_crm_privado.ponto_dia($1,'2026-01-05') d",[clt]))[0].d;
+ assert.equal(antes.saldo,-10);assert.equal(antes.tolerancia_abonada,0);
  }finally{await db.close();}});
