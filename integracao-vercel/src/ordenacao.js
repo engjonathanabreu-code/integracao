@@ -9,3 +9,10 @@ export function ordenarLinhas(linhas, valor, direcao = 'asc') {
     return (direcao === 'desc' ? -comparacao : comparacao) || a.indice-b.indice;
   }).map(x=>x.item);
 }
+
+// Imported and preserved drafts can contain absent text fields. Sort without changing them.
+export function compararTextos(a,b) {
+ const va=vazio(a),vb=vazio(b);
+ if(va||vb)return va===vb?0:va?1:-1;
+ return comparador.compare(String(a),String(b));
+}

@@ -1,3 +1,4 @@
+import {compararTextos} from './ordenacao.js';
 import {normalizar} from './requisitos-moradores.js';
 import {dadosVisiveis} from './arquivamento.js';
 
@@ -24,5 +25,5 @@ export function filtrarClientes(clientes, busca, municipioId) {
   if (!termo) return [];
   return clientes.filter(p => (!municipioId || p.municipioId === municipioId)
     && [p.requerente?.nome, p.codigo].some(v => normalizar(v || '').includes(termo)))
-    .sort((a,b) => (a.requerente?.nome || '').localeCompare(b.requerente?.nome || '', 'pt-BR') || String(a.codigo || '').localeCompare(String(b.codigo || '')) || a.id.localeCompare(b.id));
+    .sort((a,b) => compararTextos(a.requerente?.nome,b.requerente?.nome) || compararTextos(a.codigo,b.codigo) || compararTextos(a.id,b.id));
 }

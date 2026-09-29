@@ -1,3 +1,4 @@
+import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
@@ -1195,7 +1196,7 @@ function prontidaoPRF(db, n) {
 }
 function dadosPRF(db, n, opcoes, fotos) {
   const r = remessaDe(db, n.remessaId); const m = municipioDe(db, n.municipioId);
-  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const e = escaparHtml;
   const linhasUn = ps.flatMap((p) => unidadesDe(p).map((u, i) => ({ p, u, codigo: codigoUnidade(p, i) })));
   const areaTotal = linhasUn.reduce((s, x) => s + (parseNum(x.u.area) || 0), 0);
@@ -1493,7 +1494,7 @@ function migrarParaV5(n) {
   n.municipios.forEach((m) => { if (!m.prefixo) { m.prefixo = gerarPrefixo(m.nome, usados); usados.add(m.prefixo); } });
   const porRemessa = {};
   n.processos.forEach((p) => { (porRemessa[p.remessaId] = porRemessa[p.remessaId] || []).push(p); });
-  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => a.codigo.localeCompare(b.codigo)).forEach((p, i) => { p.numeroCliente = i + 1; }));
+  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => compararTextos(a.codigo, b.codigo)).forEach((p, i) => { p.numeroCliente = i + 1; }));
   n.processos.forEach((p) => {
     p.codigo = codigoCliente(n, p.remessaId, p.numeroCliente);
     if (!Array.isArray(p.unidades) || !p.unidades.length) p.unidades = [{ id: `${p.id}_u1`, area: p.imovel?.area || "", memorial: "", loteQuadra: p.campos?.loteQuadra || "" }];
@@ -2799,7 +2800,7 @@ function ModalVincular({ db, nucleo, onSalvar, onFechar }) {
 }
 
 function ModalTrazer({ db, remessa, onSalvar, onFechar }) {
-  const livres = db.nucleos.filter((n) => n.municipioId === remessa.municipioId && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const livres = db.nucleos.filter((n) => n.municipioId === remessa.municipioId && !n.remessaId).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const [nucleoId, setNucleoId] = useState(livres[0]?.id || "");
   const nuc = nucleoDe(db, nucleoId);
   const dup = nuc && db.nucleos.find((n) => n.id !== nuc.id && n.remessaId === remessa.id && codigoNorm(n.codigo) === codigoNorm(nuc.codigo));
@@ -2897,7 +2898,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
   const linhas = db.municipios
     .filter((m) => (uf === "Todas" || m.uf === uf) && normalizar(`${m.nome} ${m.prefixo}`).includes(normalizar(busca)))
     .map((m) => ({ m, remessas: db.remessas.filter((r) => r.municipioId === m.id).length, nucleos: db.nucleos.filter((n) => n.municipioId === m.id).length, ultima: db.auditoria.find((a) => a.municipioId === m.id && a.usuarioId), ...contagemClientes(db, m.id) }))
-    .sort((a, b) => a.m.nome.localeCompare(b.m.nome));
+    .sort((a, b) => compararTextos(a.m.nome, b.m.nome));
   const sugestoes = busca ? linhas.slice(0, 8) : [];
   const tot = { nucleos: db.nucleos.length, moradores: contagemClientes(db).ativos };
   return (
@@ -2951,7 +2952,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
           <tbody>
             {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
+                <td><strong style={{ color: "var(--titulo)" }}>{m.nome || "Município sem nome"}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
@@ -2985,7 +2986,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
   const perm = cad.perm;
   const remessas = db.remessas.filter((r) => r.municipioId === m.id).sort((a, b) => a.numero - b.numero);
   const resumoRemessas = new Map(remessas.map(r => [r.id, contagemClientes(db, m.id, r.id)]));
-  const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const qtdNucleos = db.nucleos.filter((n) => n.municipioId === m.id).length;
   const rs = contagemClientes(db, m.id);
   const ajustes = ajustesDoMunicipio(db, m.id);
@@ -3061,8 +3062,8 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
   if (!r) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Remessa não encontrada.</p></div>;
   const m = municipioDe(db, r.municipioId);
   const perm = cad.perm;
-  const nucleos = db.nucleos.filter((n) => n.remessaId === r.id).sort((a, b) => a.codigo.localeCompare(b.codigo));
-  const ps = db.processos.filter((p) => p.remessaId === r.id).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const nucleos = db.nucleos.filter((n) => n.remessaId === r.id).sort((a, b) => compararTextos(a.codigo, b.codigo));
+  const ps = db.processos.filter((p) => p.remessaId === r.id).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const at = soAtivos(ps);
   const semNuc = at.filter((p) => !p.nucleoId).length;
   const x = resumoMoradores(db, ps);
@@ -4602,7 +4603,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   const m = n ? municipioDe(db, n.municipioId) : r ? municipioDe(db, r.municipioId) : null;
   if ((!n && !r) || !m) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const perm = cad.perm;
-  const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const at = ps.filter(ativo);
   const x = resumoMoradores(db, ps);
   const { teto, sm } = criterioNucleo(n);
@@ -4969,14 +4970,14 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
 function PaginaCampo({ db, usuario, nucleoId, processoId, ir, mutar, setToast, offline, conexao }) {
   const n = nucleoDe(db, nucleoId);
   const [selId, setSelId] = useState(() => {
-    const ps0 = n ? db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)) : [];
+    const ps0 = n ? db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)) : [];
     return processoId || ps0.find((p) => !campoCompleto(db, p))?.id || ps0[0]?.id || "";
   });
   const [sujo, setSujo] = useState(false);
   const [trocar, setTrocar] = useState(null);
   if (!n) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const perm = permissoes(usuario);
-  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const p = ps.find((x) => x.id === selId);
   const escolher = (id) => { if (id === selId) return; if (sujo) setTrocar(id); else setSelId(id); };
   const irCuidado = (rota) => { if (sujo) setTrocar(rota); else ir(rota); };
@@ -5854,7 +5855,7 @@ function ConfigUsuarios({ db, usuario, mutar, setToast }) {
   const [sincronizar, setSincronizar] = useState(false);
   const [senhaDe, setSenhaDe] = useState(null);
   const [filtro, setFiltro] = useState("todos");
-  const lista = (db.usuarios || []).filter((u) => filtro === "todos" || u.setor === filtro).sort((a, b) => Number(b.ativo) - Number(a.ativo) || a.nome.localeCompare(b.nome));
+  const lista = (db.usuarios || []).filter((u) => filtro === "todos" || u.setor === filtro).sort((a, b) => Number(b.ativo) - Number(a.ativo) || compararTextos(a.nome, b.nome));
   const acoesDe = (u) => db.auditoria.filter((a) => a.usuarioId === u.id).length;
   const salvar = (u) => {
     const existe = db.usuarios.some((x) => x.id === u.id);
@@ -6387,7 +6388,7 @@ function montarPacote(db, n, usuario) {
     nucleoId: n.id, baixadoEm: new Date().toISOString(), baixadoPor: usuario.nome, usuarioId: usuario.id, ultimaSincronizacao: "",
     nucleo: { id: n.id, codigo: n.codigo, nome: n.nome, remessa: r ? nomeRemessa(db, r) : "", municipio: m?.nome || "", uf: m?.uf || "" },
     checklist: clone(checklistDoMunicipio(db, n.municipioId).filter((i) => i.ativo)),
-    unidades: db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)).map((p) => ({
+    unidades: db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)).map((p) => ({
       id: p.id, codigo: p.codigo, remessaId: p.remessaId, municipioId: p.municipioId, etapa: p.etapa,
       requerente: { nome: p.requerente.nome, telefone: p.requerente.telefone }, conjuge: { nome: p.conjuge.nome }, endereco: clone(p.endereco),
       campo: campoComConfrontantes(p), versaoConfrontantesBase: versaoConfrontantes(p), versaoBase: p.campo?.data || "", alterado: false, alteradoEm: "", conflito: null, sincronizadoEm: "",
@@ -6539,7 +6540,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   const [removerPk, setRemoverPk] = useState(null);
   const { pacotes, carregado } = offline;
   const pk = nucleoId ? pacotes[nucleoId] : null;
-  const lista = Object.values(pacotes).sort((a, b) => a.nucleo.codigo.localeCompare(b.nucleo.codigo));
+  const lista = Object.values(pacotes).sort((a, b) => compararTextos(a.nucleo.codigo, b.nucleo.codigo));
   const irCuidado = (destino) => { if (sujo) setSair(destino); else destino(); };
 
   if (!carregado || !comercial.carregado) return <div className="offline"><p><Loader2 size={16} className="girando" /> Lendo o aparelho</p></div>;
@@ -6611,7 +6612,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
         <div className="grade-unidades">
           {[...pk.unidades]
             .filter((u) => !buscaUnidade || normalizar(`${u.codigo} ${u.requerente.nome || ""} ${u.endereco.logradouro || ""}`).includes(normalizar(buscaUnidade)))
-            .sort((a, b) => (unidadeCompleta(pk, a) ? 1 : 0) - (unidadeCompleta(pk, b) ? 1 : 0) || a.codigo.localeCompare(b.codigo))
+            .sort((a, b) => (unidadeCompleta(pk, a) ? 1 : 0) - (unidadeCompleta(pk, b) ? 1 : 0) || compararTextos(a.codigo, b.codigo))
             .map((u) => {
             const completa = unidadeCompleta(pk, u);
             return (
@@ -6730,7 +6731,7 @@ function montarPacoteComercial(db, r, usuario) {
     remessaId: r.id, baixadoEm: new Date().toISOString(), baixadoPor: usuario.nome, usuarioId: usuario.id,
     remessa: { id: r.id, nome: nomeRemessa(db, r), titulo: r.titulo || "", municipio: m?.nome || "", uf: m?.uf || "", municipioId: r.municipioId },
     campos: clone(camposComercialAtivos(db)),
-    clientes: db.processos.filter((p) => p.remessaId === r.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)).map((p) => ({
+    clientes: db.processos.filter((p) => p.remessaId === r.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)).map((p) => ({
       id: p.id, codigo: p.codigo, municipioId: p.municipioId, remessaId: p.remessaId,
       nome: p.requerente.nome, telefone: p.requerente.telefone, cpf: p.requerente.cpf, conjuge: p.conjuge.nome,
       endereco: `${p.endereco.logradouro || ""}${p.endereco.numero ? `, ${p.endereco.numero}` : ""}`,
@@ -9342,7 +9343,7 @@ async function montarPreviaERP(db, usuario) {
       comercial: null, geo: null, memorial: null,
     });
   });
-  novo.municipios = municipios.sort((a, b) => a.nome.localeCompare(b.nome));
+  novo.municipios = municipios.sort((a, b) => compararTextos(a.nome, b.nome));
   novo.remessas = [];
   novo.nucleos = nucleos;
   novo.processos = [];
@@ -12007,7 +12008,7 @@ class Protecao extends Component {
     return (
       <div className="contem">
         <div className="cabeca"><div><h1>Esta tela não abriu</h1><p>O restante do sistema continua funcionando. Use o menu para ir a outra tela.</p></div></div>
-        <Secao titulo="O que aconteceu" nota="Se acontecer de novo, restaurar os dados de exemplo em Configurações costuma resolver.">
+        <Secao titulo="O que aconteceu" nota="Tente abrir a tela novamente. Não apague os dados do navegador; as alterações locais devem ser preservadas.">
           <p style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{String(this.state.erro?.message || this.state.erro)}</p>
           <button className="btn" style={{ marginTop: 12 }} onClick={() => this.setState({ erro: null })}><Undo2 size={16} />Tentar de novo</button>
         </Secao>
