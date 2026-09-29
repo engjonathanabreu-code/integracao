@@ -1,3 +1,4 @@
+import {compararTextos} from './ordenacao.js';
 const normalizar = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
 
 export function filtrarProcessos(nucleos, { etapa = '', busca = '', municipio = '' } = {}, etapaDe, rotuloDe) {
@@ -10,7 +11,7 @@ export function filtrarProcessos(nucleos, { etapa = '', busca = '', municipio = 
 export function municipiosDosProcessos(municipios, nucleos) {
   const ids = new Set(nucleos.map(n => n.municipioId));
   return municipios.filter(m => ids.has(m.id)).sort((a, b) =>
-    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }) || String(a.uf || '').localeCompare(String(b.uf || '')));
+    compararTextos(a.nome,b.nome) || String(a.uf || '').localeCompare(String(b.uf || '')));
 }
 
 export function etapasDosProcessos(padroes, nucleos, etapaDe) {

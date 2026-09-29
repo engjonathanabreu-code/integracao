@@ -43,8 +43,11 @@ if(new URLSearchParams(location.search).has('calendario')) {
  base.erp_eventos=[{...evento,id:id(83),titulo:'Reserva compartilhada',agenda_id:id(81)},{...evento,id:id(84),titulo:'Compromisso pessoal da Bia'},{...evento,id:id(85),titulo:'Compromisso pessoal da Ana',participantes:[id(70)]}];
 }
 base.fin_receb_municipios.push({id:id(102),nome:'Segundo município',uf:'SC',prefixo:'SEG'});
+if(new URLSearchParams(location.search).has('incompletos')){delete base.fin_receb_municipios[1].nome;base.fin_receb_municipios.push({id:id(105),nome:null,uf:'SC'});base.profiles[0].tipo=new URLSearchParams(location.search).get('tipo')||'Comercial';}
 base.fin_receb_remessas.push({id:id(103),municipio_id:id(102),codigo:'SEG01',nome:'Segunda remessa'});
 base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(104),municipio_id:id(102),remessa_id:id(103),nome:'Morador do segundo',codigo:'SEG01_001'});
+if(new URLSearchParams(location.search).has('incompletos')){base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(106),codigo:undefined,nome:'Morador sem código'});}
+
 if(new URLSearchParams(location.search).has('confrontantes') || new URLSearchParams(location.search).has('prf')) {
   base.fin_receb_clientes[0].cpf_cnpj='52998224725';
   base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:3,nucleoId:id(5),extras:{'2be328c2-7ccd-4448-a942-cfc6f62631fc':'Rua já cadastrada'},checks:{medicao:true,lepac:true,conferencia:true},unidades:[{id:'un1',area:'200',memorial:'Memorial fictício suficientemente longo para validar a etapa.'}],campo:{respostas:{},fotos:[],data:''}}});
