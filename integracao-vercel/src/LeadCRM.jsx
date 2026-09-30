@@ -7,6 +7,7 @@ import {rpcCRM,listarCRM} from './crm-api.js';
 import {useModulo,EstadoModulo} from './modulo-ui.jsx';
 import {invalidarIndiceClientes} from './dados-compartilhados.js';
 import {CAMPOS_NEGOCIACAO} from './crm-negociacao.js';
+import {editarConciliado} from './edicao-conciliada.js';
 export function CadastrarLead({salvar,cancelar,ocupado,comerciais,usuario,erro}){
  const m=useModulo(()=>listarCRM('fin_receb_municipios','&order=nome.asc'),[],['clientes']);
  const [buscaMunicipio,setBuscaMunicipio]=useState('');
@@ -17,4 +18,9 @@ export function RemessaLead({card,municipio,setMunicipio,remessa,setRemessa}){
  const m=useModulo(async()=>{const [municipios,remessas]=await Promise.all([listarCRM('fin_receb_municipios','&order=nome.asc'),municipio?listarCRM('fin_receb_remessas',`&municipio_id=eq.${encodeURIComponent(municipio)}&ativo=eq.true&order=created_at.desc,id.desc`):Promise.resolve([])]);return {municipios,remessas};},[municipio],['clientes']);
  return <section className="crm-painel"><h3>Confirmar cadastro no município</h3><EstadoModulo modulo={m}/><CampoCRM nome="Município do contrato"><select className="inp" required disabled={!!card.lead_municipio_id} value={municipio} onChange={e=>{setMunicipio(e.target.value);setRemessa('');}}><option value="">Selecione</option>{m.dados?.municipios.map(x=><option key={x.id} value={x.id}>{x.nome} / {x.uf}</option>)}</select></CampoCRM><CampoCRM nome="Remessa do contrato"><select className="inp" required value={remessa} onChange={e=>setRemessa(e.target.value)}><option value="">Confirme a remessa</option>{m.dados?.remessas.map((x,i)=><option key={x.id} value={x.id}>{x.codigo} · {x.nome||'Sem título'}{i===0?' — mais recente':''}</option>)}</select></CampoCRM>{m.dados?.remessas[0]&&<button className="btn btn-sm" type="button" onClick={()=>setRemessa(m.dados.remessas[0].id)}>Usar remessa mais recente: {m.dados.remessas[0].codigo}</button>}{municipio&&m.dados&&!m.dados.remessas.length&&<p>Este município não possui remessa ativa. Solicite o cadastro de uma remessa à administração antes de confirmar.</p>}<p className="ajuda">Ao salvar, o lead vira cliente desta remessa. Os documentos poderão ser cadastrados depois em Abrir cadastro.</p></section>;
 }
-export const converterLead=async(card,dados,anterior,municipio,remessa)=>{const resultado=await rpcCRM('integracao_crm_converter_lead',{p_card:card.id,p_municipio:municipio,p_remessa:remessa,p_dados:dados,p_anterior:Object.fromEntries(['status',...CAMPOS_NEGOCIACAO].map(k=>[k,anterior[k]??null]))});invalidarIndiceClientes();return resultado;};
+export const converterLead=async(card,dados,anterior,municipio,remessa)=>{
+ const campos=['status',...CAMPOS_NEGOCIACAO],selecionar=x=>Object.fromEntries(campos.map(k=>[k,x[k]??null]));
+ return editarConciliado({anterior:selecionar(anterior),local:selecionar(dados),sempreGravar:true,
+ ler:async()=>{const r=(await listarCRM('integracao_crm_cards',`&id=eq.${encodeURIComponent(card.id)}`))[0];return r?selecionar(r):null;},
+ gravar:async(novo,base)=>{const resultado=await rpcCRM('integracao_crm_converter_lead',{p_card:card.id,p_municipio:municipio,p_remessa:remessa,p_dados:{...base,...novo},p_anterior:base});invalidarIndiceClientes();return resultado;}});
+};

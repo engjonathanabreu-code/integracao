@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {fixture,blank,id} from './fixture.js';
 import {projetar,copy,definirSessao} from '../src/dados-compartilhados.js';
 import {useDadosCompartilhados} from '../src/use-dados-compartilhados.js';
+import RevisaoConcorrencia from '../src/RevisaoConcorrencia.jsx';
 
 // Isolated real-hook harness. Never forwards requests or credentials to an external host.
 const scenario=new URLSearchParams(location.search).get('cenario')||'fantasma';
@@ -25,6 +26,9 @@ if(!localStorage.getItem(key)){
  const operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},expected:{dados:initial.integracao_moradores[0].dados},changes:{dados:{etapa:1,checks:{}}}}];
  localStorage.setItem(key,JSON.stringify({db:after,baseline:before,base:initial,pending:true,attempt:{id:crypto.randomUUID(),before,after,operations,sent:{}},municipios:[id(2)]}));
 }
+if(scenario==='concorrente-igual')base.integracao_moradores[0].dados.etapa=1;
+if(scenario==='concorrente-divergente')base.integracao_moradores[0].dados.etapa=2;
+if(scenario==='concorrente-independente')base.integracao_moradores[0].dados.checks={remoto:true};
 const response=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
  const url=new URL(typeof input==='string'?input:input.url,location.href);
@@ -69,6 +73,6 @@ function Harness(){
  const sync=useDadosCompartilhados({setDb,storage,baseLimpa:blank});
  useEffect(()=>{definirSessao({user:{id:id(1)},access_token:'isolated-fixture',expires_in:3600});sync.open(actor,null).then(()=>setReady(true)).catch(e=>setFatal(e.message));},[]);
  window.syncHarness={stats,flags,db,sync,ready,base:()=>base,draft:()=>JSON.parse(localStorage.getItem(key)),recover:()=>{flags.failReads=false;localStorage.setItem('harness-recovered','1');window.dispatchEvent(new Event('online'));}};
- return <main><h1>Sincronização — {tipo}</h1><p id="status">{sync.status}</p><p id="error">{sync.error||fatal}</p><p id="etapa">Etapa: {db.processos.find(x=>x.id===id(4))?.etapa}</p><p id="ghost">Ficha antiga: {db.processos.some(x=>x.id===id(99))?'presente':'ausente'}</p><button disabled={!ready} onClick={()=>sync.mutate(d=>{d.processos.find(x=>x.id===id(4)).etapa=2;return d;})}>Editar novamente</button><button onClick={()=>window.syncHarness.recover()}>Restaurar conexão</button></main>;
+ return <main><h1>Sincronização — {tipo}</h1><p id="status">{sync.status}</p><p id="error">{sync.error||fatal}</p>{sync.conflitos.length>0&&<RevisaoConcorrencia dados={db} conflitos={sync.conflitos} resolver={sync.resolverConflitos}/>}<p id="etapa">Etapa: {db.processos.find(x=>x.id===id(4))?.etapa}</p><p id="ghost">Ficha antiga: {db.processos.some(x=>x.id===id(99))?'presente':'ausente'}</p><button disabled={!ready} onClick={()=>sync.mutate(d=>{d.processos.find(x=>x.id===id(4)).etapa=2;return d;})}>Editar novamente</button><button onClick={()=>window.syncHarness.recover()}>Restaurar conexão</button></main>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
