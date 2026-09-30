@@ -4,5 +4,5 @@ export const etapaProcesso = n => n.etapaProcesso || etapaProcessoPadrao(n);
 export const referenciaNucleo = n => n.externo?.kanbanId || n.id;
 export function etapaDoAndamento(nucleos, id) {
   const n = nucleos.find(n => referenciaNucleo(n) === id);
-  return n ? etapaProcesso(n) : '';
+  return n ? n.etapaPrefeitura || etapaProcesso(n) : '';
 }

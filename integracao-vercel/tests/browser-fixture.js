@@ -75,6 +75,12 @@ if(new URLSearchParams(location.search).has('ajustes')) {
  base.integracao_metas.push({colecao:'metas',registro_id:id(91),referencia_tabela:'metas',referencia_id:id(91),dados:{devolutiva:{origem:'Prefeitura',chegada:'2026-09-01',prazo:'2026-09-30',textoOriginal:'Corrigir a área do memorial.',analiseIA:{etapa1:{resumo:'Corrigir a área do memorial.',itens:[{id:'i1',descricao:'Área divergente',oQueFazer:'Corrigir memorial',categoria:'Topografia'}]}}}}});
  base.ordens_servico=[{id:id(92),nome:'OS 10',municipio:'Zortéa',estado:'SC'},{id:id(93),nome:'OS 2',municipio:'Água Doce',estado:'SC'}];
 }
+if(new URLSearchParams(location.search).has('protocolados')) {
+ base.profiles[0].tipo=new URLSearchParams(location.search).get('tipo')||'Administrador';
+ Object.assign(base.processos_kanban[0],{etapa_atual:'Protocolo',etapa_prefeitura:'Parecer Social',etapa_prefeitura_iniciada_em:'2026-09-25T12:00:00Z'});
+ base.processos_kanban.push({...base.processos_kanban[0],id:id(400),nucleo:'NUI02',etapa_prefeitura:null});
+ base.integracao_nucleo_ia=[{id:id(5),habilitado:false,instrucao:'Autorização anterior desativada'}];
+}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
