@@ -70,6 +70,7 @@ import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal, assinaturaCalendario} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
+import {useAvisoChat} from './use-aviso-chat.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
@@ -9015,36 +9016,6 @@ function Presenca({ online, texto }) {
   return <span className={`presenca${online ? " ligado" : ""}`} title={texto || (online ? "No sistema agora" : "Fora do sistema")} aria-label={texto || (online ? "no sistema agora" : "fora do sistema")} />;
 }
 
-// Avisa quando chega mensagem de alguém que também está no sistema
-function useAvisoChat({ db, usuario, entrouEm }) {
-  const [aviso, setAviso] = useState(null);
-  const vistas = useRef(null);
-  const de = useRef(null);
-  useEffect(() => {
-    if (!db || !usuario) return;
-    // Troca de pessoa recomeça a contagem do que já foi visto
-    if (de.current !== usuario.id) { de.current = usuario.id; vistas.current = null; }
-    const minhas = (db.conversas || []).filter((c) => (c.participantes || []).includes(usuario.id));
-    const ids = new Set(minhas.flatMap((c) => (c.mensagens || []).map((m) => m.id)));
-    const primeiraVez = vistas.current === null;
-    const novas = [];
-    minhas.forEach((c) => {
-      const lidaAte = (c.lidaPor || {})[usuario.id] || "";
-      (c.mensagens || []).forEach((m) => {
-        if (m.autorId === usuario.id) return;
-        // Na entrada, avisa o que chegou e ainda não foi lido; depois, só o que chegar durante a sessão
-        const nova = primeiraVez ? m.data > lidaAte : !vistas.current.has(m.id) && m.data >= entrouEm;
-        if (!nova) return;
-        const autor = (db.usuarios || []).find((u) => u.id === m.autorId);
-        if (estaOnline(autor)) novas.push({ conversa: c, mensagem: m, autor });
-      });
-    });
-    vistas.current = ids;
-    if (novas.length) setAviso(novas.sort((x, y) => x.mensagem.data.localeCompare(y.mensagem.data))[novas.length - 1]);
-  }, [db, usuario?.id]); // eslint-disable-line
-  return [aviso, setAviso];
-}
-
 function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar, onAbrirChat, mutar }) {
   const [texto, setTexto] = useState("");
   const [pos, setPos] = useState(() => ({ x: Math.max(12, (typeof window !== "undefined" ? window.innerWidth : 1200) - 380), y: Math.max(12, (typeof window !== "undefined" ? window.innerHeight : 800) - 470) }));
@@ -12129,7 +12100,7 @@ export default function App() {
       u = await compartilhado.open(u, db);
       if(temSessao()) await registrarAcesso("login", "autenticacao");
     }
-    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setEntrouEm(new Date().toISOString());
+    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]);
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
@@ -12157,12 +12128,11 @@ export default function App() {
     setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setToast("Dados de exemplo restaurados.");
   };
 
-  const [entrouEm, setEntrouEm] = useState(() => new Date().toISOString());
   const [janela, setJanela] = useState(null);
   const [respirar, setRespirar] = useState(false);
   const conexao = useConexao();
   const offline = useCampoOffline({ db, usuario, mutar, setToast, online: conexao.online, carregarMunicipio });
-  const [avisoChat, setAvisoChat] = useAvisoChat({ db, usuario, entrouEm });
+  const [avisoChat, setAvisoChat] = useAvisoChat({ db, usuario });
   useEffect(() => {
     if (!avisoChat) return;
     setJanela({ id: avisoChat.conversa.id, minimizada: false });
