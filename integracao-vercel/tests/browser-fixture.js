@@ -20,6 +20,7 @@ const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_excl
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 const chatFixture=new URLSearchParams(location.search).has('chat');
 if(chatFixture){
+ base.profiles[0].tipo=new URLSearchParams(location.search).get('chatPerfil')||base.profiles[0].tipo;
  base.profiles.push({id:id(70),nome:'Ana Teste',tipo:'Topografia',ativo:true});
  base.erp_conversas=[{id:id(80),tipo:'direto',titulo:'Conversa teste',participantes:[id(1),id(70)],created_by:id(1)},{id:id(81),tipo:'grupo',titulo:'Grupo teste',participantes:[id(1),id(70)],created_by:id(1)}];
  base.erp_mensagens=[{id:id(82),conversa_id:id(80),autor_id:id(70),texto:'Você pode revisar os documentos do núcleo?',created_at:'2026-09-28T12:00:00Z'}];
