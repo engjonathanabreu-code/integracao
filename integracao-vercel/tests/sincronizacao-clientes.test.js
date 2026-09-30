@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clientesDasOperacoes,atualizarFichas} from '../src/sincronizacao-clientes.js';
+import {clientesDasOperacoes,clientesComEdicao,atualizarFichas} from '../src/sincronizacao-clientes.js';
 import {lerFichaCliente,definirSessao,mesclarEdicoes} from '../src/dados-compartilhados.js';
 import {id} from './fixture.js';
 import {falhaTransitoria} from '../src/sincronizacao-regras.js';
+
+test('a pending refresh reloads edited or locally removed full residents, without loading untouched summaries',()=>{
+ const antigo={id:id(1),_compartilhado:true,etapa:0},apagado={id:id(2),_compartilhado:true},resumo={id:id(3),_resumo:true,_compartilhado:true},igual={id:id(4),_compartilhado:true};
+ assert.deepEqual(clientesComEdicao({processos:[antigo,apagado,resumo,igual]},{processos:[{...antigo,etapa:1},resumo,igual]}),[antigo,apagado]);
+});
 
 test('metadata-only edits reload the full customer and ignore deletions/unrelated modules',()=>{
  const p={id:id(1),financeiroRef:id(2)};
