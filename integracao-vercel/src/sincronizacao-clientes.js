@@ -12,6 +12,10 @@ export function clientesDasOperacoes(operations,processos=[]) {
  return [...clientes.values()];
 }
 
+export function clientesComEdicao(base,local){
+ return (base.processos||[]).filter(p=>!p._resumo&&p._compartilhado&&JSON.stringify(p)!==JSON.stringify((local.processos||[]).find(x=>x.id===p.id)));
+}
+
 export async function atualizarFichas(base,clientes,lerFicha) {
  for(const cliente of clientes) {
   // An empty authorized result is not a failed write. HTTP/auth/network failures still throw.

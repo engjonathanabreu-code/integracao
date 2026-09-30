@@ -1,10 +1,11 @@
 import {temConexao} from './conexao-rede.js';
 import {conciliarEdicoes,erroConcorrencia} from './concorrencia.js';
+import {atualizarComRascunho,rejeicaoDefinitiva} from './atualizacao-rascunho.js';
 import {temEdicaoEmAndamento} from './protecao-edicao.js';
 import {conectarTempoReal} from './tempo-real.js';
 import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
 import {filaRascunho} from './fila-rascunho.js';
-import {clientesDasOperacoes,atualizarFichas} from './sincronizacao-clientes.js';
+import {clientesDasOperacoes,clientesComEdicao,atualizarFichas} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
@@ -36,6 +37,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     lastRefresh.current=Date.now();return base;
   };
   const storageKey=()=>`integracao-compartilhado-${actor.current?.erpRef}`;
+  const atualizarPendentes=(base,before,local,envio=attempt.current)=>{
+    const clientes=[...clientesComEdicao(before,local),...clientesDasOperacoes((envio?.operations||[]).map(op=>({...op,remove:false})),[...local.processos,...before.processos])];
+    return atualizarFichas(base,[...new Map(clientes.map(c=>[c.id,c])).values()],lerFichaCliente);
+  };
   const publish=db=>{current.current=db;setDb(db);};
   const gravaRascunho=useRef(null);if(!gravaRascunho.current)gravaRascunho.current=filaRascunho(storage);
   const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await gravaRascunho.current(storageKey(),JSON.stringify({db:current.current,baseline:server.current?.db,base:server.current?.base,pending:pending.current,attempt:attempt.current,municipios:[...municipios.current]}),owner);}};
@@ -49,7 +54,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const processarAvisos=async()=>{
     clearTimeout(avisoTimer.current);avisoTimer.current=null;
     if(!actor.current||!avisos.current.size)return;
-    if(opening.current||busy.current||pending.current||temEdicaoEmAndamento()||document.visibilityState==='hidden'||!temConexao()){avisoTimer.current=setTimeout(processarAvisos,1500);return;}
+    if(opening.current||busy.current||temEdicaoEmAndamento()||document.visibilityState==='hidden'||!temConexao()){avisoTimer.current=setTimeout(processarAvisos,1500);return;}
     const grupos=[...avisos.current];avisos.current.clear();
     const ok=await refresh({force:true,grupos:grupos.includes('*')?null:grupos});
     if(!ok)grupos.forEach(g=>avisos.current.add(g));
@@ -60,7 +65,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const conciliar=async(escolhas={})=>{
     const gen=generation.current,anterior=server.current;
     const base=await carregarBase(current.current);
-    await atualizarFichas(base,clientesDasOperacoes((attempt.current?.operations||[]).map(op=>({...op,remove:false})),[...current.current.processos,...anterior.db.processos]),lerFichaCliente);
+    if(gen!==generation.current)return false;
+    await atualizarPendentes(base,anterior.db,current.current);
     if(gen!==generation.current)return false;
     const state=projetar(base,current.current);
     // Choices apply only to the version actually shown in the review.
@@ -82,12 +88,15 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   const resolverConflitos=async escolhas=>{
     if(busy.current||!revisao.current)return;
+    // An unknown write may already have succeeded: consult its receipt first.
+    if(attempt.current&&!attempt.current.rejeitada&&!attempt.current.confirmacao){await flush();if(attempt.current&&!attempt.current.rejeitada)return;}
     retentativas.current=0;
     busy.current=true;
     try{await conciliar(escolhas);}catch(e){setError(e.message);}finally{busy.current=false;}
   };
   const flush=async()=>{
     if(busy.current || !pending.current || !server.current || !temSessao()) return;
+    if(revisao.current&&(!attempt.current||attempt.current.rejeitada)&&!attempt.current?.confirmacao)return;
     if(!temConexao()) {setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
     busy.current=true;const gen=generation.current;
     const who=actor.current;
@@ -124,17 +133,22 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(gen!==generation.current) return;
       await confirmarArquivos(sent,base);
       const state=projetar(base,saved);
-      server.current=state;
-      attempt.current=null;
-      publish(mesclarEdicoes(saved,remap(current.current,aliases),state.db));
-      pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(state.db);
-      setStatus(pending.current?'Salvando próximas alterações…':'Dados compartilhados no Supabase');
+      const resultado=atualizarComRascunho(saved,remap(current.current,aliases),state.db);
+      attempt.current=null;publish(resultado.dados);
+      pending.current=arquivosPendentes()||JSON.stringify(resultado.dados)!==JSON.stringify(state.db);
+      server.current=pending.current?{...state,db:resultado.baseline}:state;
+      if(resultado.conflitos.length){
+        revisao.current={remoto:state.db};setConflitos(resultado.conflitos);
+        setError('Há alterações diferentes no mesmo campo. Escolha os valores para continuar.');
+        setStatus('Dados atualizados — edições locais aguardando suas escolhas.');
+      }else{revisao.current=null;setConflitos([]);setStatus(pending.current?'Salvando próximas alterações…':'Dados compartilhados no Supabase');}
       await saveDraft();
       retentativas.current=0;
 
-      if(pending.current) timer.current=setTimeout(flush,500);
+      if(pending.current&&!revisao.current) timer.current=setTimeout(flush,500);
     } catch(e) {
       if(gen!==generation.current)return;
+      if(attempt.current&&!attempt.current.confirmacao&&rejeicaoDefinitiva(e))attempt.current.rejeitada=true;
       if(erroConcorrencia(e)&&attempt.current&&!attempt.current.confirmacao){
         try {
           if(retentativas.current++<3){await conciliar();return;}
@@ -179,13 +193,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     if(!legacyOwner)await storage.set('integracao-dono-base-local',user.erpRef);
     const seed=(!legacyOwner||legacyOwner===user.erpRef?legacy:null) || baseLimpa();
     if(!legacy) {seed.setoresMeta=[];seed.agendas=[];}
+    if(draft?.pending&&draft.baseline)await atualizarPendentes(base,draft.baseline,draft.db,draft.attempt);
     const state=projetar(base,draft?.db||seed);
     // In-flight edits from an earlier session retain their original baseline for conflict checks.
     if(draft?.pending && draft.baseline) {
       municipios.current=new Set(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
-      const prior=projetar(draft.base||base,draft.baseline);
-      server.current={...prior,db:draft.baseline};publish(draft.db);pending.current=true;
-      setStatus('Há alterações locais aguardando revisão ou envio.');
+      await storage.set(`${storageKey()}-revisao-recebimento`,JSON.stringify(draft));
+      const resultado=atualizarComRascunho(draft.baseline,draft.db,state.db);
+      server.current={...state,db:resultado.baseline};publish(resultado.dados);pending.current=true;
+      if(resultado.conflitos.length){revisao.current={remoto:state.db};setConflitos(resultado.conflitos);setError('Há alterações diferentes no mesmo campo. Escolha os valores para continuar.');}
+      setStatus('Dados atualizados — alterações locais preservadas.');
     } else {
       const locais=metasLocaisParaCompartilhar(base,state.db,user);
       const ids=new Set(locais.map(m=>m.id));
@@ -251,13 +268,36 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(!temConexao())throw new Error('Conecte-se à internet para atualizar os dados.');
       if(!actor.current||!server.current||!temSessao())throw new Error('Não há conexão autenticada disponível para atualizar os dados.');
       if(opening.current||busy.current)throw new Error('Há uma sincronização em andamento. Aguarde e tente novamente.');
-      if(pending.current)await flush();
-      if(pending.current)throw new Error('Há alterações aguardando gravação. Elas foram preservadas; resolva o aviso de sincronização antes de atualizar.');
     }
-    if(!actor.current||opening.current||!server.current||busy.current||pending.current||(!manual&&temEdicaoEmAndamento())||!temSessao()||!temConexao()||(!manual&&document.visibilityState==='hidden'))return;
+    if(!actor.current||opening.current||!server.current||busy.current||(!manual&&temEdicaoEmAndamento())||!temSessao()||!temConexao()||(!manual&&document.visibilityState==='hidden'))return;
     busy.current=true;const gen=generation.current;
-    try {const base=await carregarBase(current.current,grupos);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}await abrirArquivos(actor.current,base,storage);if(gen!==generation.current||pending.current||(!manual&&temEdicaoEmAndamento())){if(manual)throw new Error('A atualização foi interrompida para preservar as alterações. Tente novamente.');return;}const state=projetar(base,current.current);server.current=state;publish(state.db);await saveDraft();setStatus('Dados compartilhados no Supabase');setError('');}
-    catch(e){setError(e.message);if(manual)throw e;return false;} finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
+    try {
+      const base=await carregarBase(current.current,grupos);
+      if(gen!==generation.current)return false;
+      if(pending.current&&(!grupos||grupos.includes('clientes')))await atualizarPendentes(base,server.current.db,current.current);
+      if(gen!==generation.current||(!manual&&temEdicaoEmAndamento()))return false;
+      await abrirArquivos(actor.current,base,storage);
+      if(gen!==generation.current||(!manual&&temEdicaoEmAndamento()))return false;
+      const state=projetar(base,current.current);
+      if(pending.current){
+        // Keep the original request, receipt and local baseline durably recoverable.
+        await storage.set(`${storageKey()}-revisao-recebimento`,JSON.stringify({dados:current.current,base:server.current.db,envio:attempt.current,remoto:state.db}));
+        if(gen!==generation.current)return false;
+        // Recompute after storage: another local action may have arrived meanwhile.
+        const resultado=atualizarComRascunho(server.current.db,current.current,state.db);
+        server.current={...state,db:resultado.baseline};publish(resultado.dados);
+        if(resultado.conflitos.length){
+          revisao.current={remoto:state.db};setConflitos(resultado.conflitos);
+          setError('Há alterações diferentes no mesmo campo. Escolha os valores para continuar.');
+          setStatus('Dados atualizados — edições locais aguardando suas escolhas.');
+        }else{
+          revisao.current=null;setConflitos([]);
+          setStatus('Dados atualizados — alterações locais preservadas.');
+        }
+      }else{server.current=state;publish(state.db);setStatus('Dados compartilhados no Supabase');setError('');}
+      await saveDraft();
+    }catch(e){setError(e.message);if(manual)throw e;return false;}
+    finally{busy.current=false;if(pending.current&&!revisao.current&&!attempt.current?.rejeitada)timer.current=setTimeout(flush,500);}
     if(manual)invalidarIndiceClientes();
     return true;
   };
