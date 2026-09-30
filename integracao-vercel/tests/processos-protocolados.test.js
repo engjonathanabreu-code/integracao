@@ -51,3 +51,11 @@ test('etapa inválida é rejeitada e clicar na mesma etapa não duplica históri
 test('registro geral de andamentos usa etapa municipal quando preenchida',()=>{
  assert.equal(etapaDoAndamento([{id:'n',etapaProcesso:'Protocolo',etapaPrefeitura:'Notificações'}],'n'),'Notificações');
 });
+
+test('recarregar o núcleo mantém os andamentos mais recentes primeiro',()=>{
+ const b=fixture();
+ b.processos_kanban_andamentos=[{id:id(510),processo_id:id(5),data_atualizacao:'2026-09-01',descricao_cliente:'Antigo'},
+ {id:id(511),processo_id:id(5),data_atualizacao:'2026-09-30',created_at:'2026-09-30T08:00:00Z',descricao_cliente:'Mais cedo'},
+ {id:id(512),processo_id:id(5),data_atualizacao:'2026-09-30',created_at:'2026-09-30T12:00:00Z',descricao_cliente:'Mais recente'}];
+ assert.deepEqual(projetar(b,blank()).db.nucleos[0].andamentos.map(a=>a.descricaoCliente),['Mais recente','Mais cedo','Antigo']);
+});
