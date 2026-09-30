@@ -69,6 +69,7 @@ import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCale
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal, assinaturaCalendario} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
+import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
@@ -12240,6 +12241,7 @@ export default function App() {
           </header>
           {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
+          {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
