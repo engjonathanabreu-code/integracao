@@ -27,6 +27,8 @@ import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './
 import DadosNUI from './DadosNUI.jsx';
 import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
+import { ETAPAS_PREFEITURA, etapaPrefeitura, processoProtocolado, moverProcessoPrefeitura } from './processos-protocolados.js';
+import ConfiguracaoIANucleo from './ConfiguracaoIANucleo.jsx';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
 import AgentesIA from './AgentesIA.jsx';
@@ -7828,14 +7830,14 @@ function AbaMemorialNucleo({ n, usuario, mutar, setToast }) {
 const ultimoAndamento = (n) => (n.andamentos && n.andamentos.length ? n.andamentos[0] : null);
 const responsavelDe = (db, n) => (db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""));
 
-function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar }) {
+function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar, protocolado = false }) {
   const ult = ultimoAndamento(n);
-  const [f, setF] = useState({ status: etapaProcesso(n), descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
+  const [f, setF] = useState({ status: protocolado ? etapaPrefeitura(n) : etapaProcesso(n), visivelIA: true, operacional: "Em andamento", descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const valido = f.descricaoCliente.trim().length >= 5;
   const salvar = () => {
-    const item = { id: uid("an"), ...f, status: etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.pendencia = f.observacao.trim(); return d; },
+    const item = { id: uid("an"), ...f, status: protocolado ? etapaPrefeitura(n) || "Protocolado" : etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || usuario.setor, texto: f.observacao.trim(), data: item.data }]; return d; },
       "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${etapaProcesso(n)}` });
     setToast("Andamento registrado."); onFechar();
   };
@@ -7843,10 +7845,11 @@ function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar }) {
     <Modal titulo={`Novo andamento, ${n.codigo}`} largura={560} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!valido} onClick={salvar}>Registrar andamento</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={etapaProcesso(n)} readOnly /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={protocolado ? etapaPrefeitura(n) || "Etapa a definir" : etapaProcesso(n)} readOnly /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anpv">Previsão</label><input id="anpv" type="date" className="inp" value={f.previsao} onChange={(e) => set("previsao", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="ands">O que contar ao morador</label><textarea id="ands" className="inp" rows={3} value={f.descricaoCliente} onChange={(e) => set("descricaoCliente", e.target.value)} placeholder="Texto em linguagem simples, que pode ser repassado." /></div>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica só para a equipe. Também vira a pendência do processo." /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica no histórico interno do núcleo, com autor e data." /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="flex items-center gap-2"><input type="checkbox" checked={f.visivelIA} onChange={e => set("visivelIA", e.target.checked)} />Disponibilizar andamento ao agente IA do Chatwoot</label><p className="ajuda">A IA consulta o texto para o morador quando o atendimento do núcleo está autorizado. Observações internas ficam no histórico da equipe.</p></div>
       </div>
     </Modal>
   );
@@ -10859,16 +10862,19 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
 /* ---------------- Processos, kanban do ERP ---------------- */
 // Portado de processos-kanban.js: etapas, agrupamento por município, dias na etapa,
 // movimentação com registro no histórico e observações internas por setor.
-const ICONE_ETAPA_PROCESSO = { Comercial: "mobilizacao", "Coleta Documental": "contrato", "Análise Documental": "documental", Topografia: "topografia", Projetos: "projeto", Protocolo: "prefeitura", Andamento: "crf", "Concluído": "matricula" };
+const ICONE_ETAPA_PROCESSO = { "Parecer Social": "documental", "Notificações": "mobilizacao", "Parecer setor Planejamento": "projeto", "Parecer setor Meio Ambiente": "prefeitura", "Parecer setor Defesa Civil": "topografia", "Despacho de Saneamento": "prefeitura", CRF: "crf", Comercial: "mobilizacao", "Coleta Documental": "contrato", "Análise Documental": "documental", Topografia: "topografia", Projetos: "projeto", Protocolo: "prefeitura", Andamento: "crf", "Concluído": "matricula" };
 const PRIORIDADES_PROCESSO = ["Baixa", "Normal", "Alta", "Urgente"];
 const TAG_PRIORIDADE = { Urgente: "bloq", Alta: "pend", Normal: "neutra", Baixa: "neutra" };
 // Etapa do kanban correspondente à etapa de REURB do núcleo, usada só quando o processo ainda não foi movido
-const diasNaEtapa = (n) => { const d = n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
+const diasNaEtapa = (n, protocolado = false) => { const d = protocolado ? etapaPrefeitura(n) && n.etapaPrefeituraIniciadaEm : n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
 
-function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
+function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar, protocolado = false }) {
   const [novaMeta, setNovaMeta] = useState(false);
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta";
+  const podeMover = protocolado ? acessoCRM(usuario).pos : pode;
+  const etapaDe = protocolado ? etapaPrefeitura : etapaProcesso;
+  const etapas = protocolado ? ETAPAS_PREFEITURA : ETAPAS_PROCESSO;
   const [f, setF] = useState({ prioridade: n.prioridade || "Normal", responsavelId: ((db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""))?.id) || "", prazoSLA: n.prazoSLA || "", pendencia: n.pendencia || "", observacaoInterna: n.observacaoInterna || "" });
   const [observacao, setObservacao] = useState("");
   const [andamento, setAndamento] = useState(false);
@@ -10883,12 +10889,12 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
   };
   const comentar = () => {
     const t = observacao.trim(); if (!t) return;
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor].nome, texto: t, data: new Date().toISOString() }]; return d; }, "Observação no processo", { ...log, detalhe: `${n.codigo}: ${t.slice(0, 60)}` });
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || usuario.setor, texto: t, data: new Date().toISOString() }]; return d; }, "Observação no processo", { ...log, detalhe: `${n.codigo}: ${t.slice(0, 60)}` });
     setObservacao("");
   };
   const mover = (destino) => {
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.etapaProcesso = destino; q.etapaIniciadaEm = new Date().toISOString(); q.historicoEtapas = [{ id: uid("he"), de: etapaProcesso(n), para: destino, por: usuario.nome, data: new Date().toISOString(), observacao: "Movimentação pelo Kanban" }, ...(q.historicoEtapas || [])]; return d; },
-      "Processo movido de etapa", { ...log, detalhe: `${n.codigo}: de ${etapaProcesso(n)} para ${destino}` });
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); if (protocolado) { moverProcessoPrefeitura(q, destino, {id: uid("he"), por: usuario.nome, data: new Date().toISOString()}); return d; } q.etapaProcesso = destino; q.etapaIniciadaEm = new Date().toISOString(); q.historicoEtapas = [{ id: uid("he"), de: etapaProcesso(n), para: destino, por: usuario.nome, data: new Date().toISOString(), observacao: "Movimentação pelo Kanban" }, ...(q.historicoEtapas || [])]; return d; },
+      "Processo movido de etapa", { ...log, detalhe: `${n.codigo}: de ${etapaDe(atual) || "Etapa a definir"} para ${destino}` });
     setToast(`Processo movido para ${destino}.`);
   };
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
@@ -10896,16 +10902,16 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
     <Modal titulo={rotuloNucleo(db, n)} largura={680} onFechar={onFechar}
       rodape={<>{gerenciaMetas(usuario) && <button className="btn" onClick={() => setNovaMeta(true)}>+ Metas</button>}<button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
-        <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaProcesso(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaProcesso(atual)}</Tag>
+        <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaDe(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaDe(atual) || "Etapa a definir"}</Tag>
         <Tag tipo={TAG_PRIORIDADE[atual.prioridade || "Normal"]}>{atual.prioridade || "Normal"}</Tag>
-        {diasNaEtapa(atual) !== null && <span className="ajuda" style={{ margin: 0 }}><Clock size={12} /> {diasNaEtapa(atual)} dia(s) nesta etapa</span>}
+        {diasNaEtapa(atual, protocolado) !== null && <span className="ajuda" style={{ margin: 0 }}><Clock size={12} /> {diasNaEtapa(atual, protocolado)} dia(s) nesta etapa</span>}
         <span className="ajuda" style={{ margin: 0 }}>{ativos.length} morador(es) ativo(s)</span>
       </div>
-      {pode && (
+      {podeMover && (
         <>
           <span className="rot">Mover para</span>
           <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }}>
-            {ETAPAS_PROCESSO.map((s) => <button key={s} className={`btn btn-sm${etapaProcesso(atual) === s ? " btn-primario" : ""}`} onClick={() => mover(s)} disabled={etapaProcesso(atual) === s}><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={15} cor="currentColor" corCheck="currentColor" />{s}</button>)}
+            {etapas.map((s) => <button key={s} className={`btn btn-sm${etapaDe(atual) === s ? " btn-primario" : ""}`} onClick={() => mover(s)} disabled={etapaDe(atual) === s}><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={15} cor="currentColor" corCheck="currentColor" />{s}</button>)}
           </div>
         </>
       )}
@@ -10923,20 +10929,26 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
       {(atual.andamentos || []).slice(0, 4).map((a) => (
         <div key={a.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line2)" }}>
           <span className="flex flex-wrap gap-1"><Tag>{a.status}</Tag><Tag tipo={a.operacional === "Concluído" ? "ok" : a.operacional === "Pausado" ? "bloq" : "pend"}>{a.operacional}</Tag>{a.previsao && <span className="ajuda" style={{ margin: 0 }}>Previsão {dataBR(a.previsao)}</span>}</span>
-          <div style={{ marginTop: 3 }}>{a.descricaoCliente}</div>
+          <div style={{ marginTop: 3 }}>{a.descricaoCliente}</div><div className="ajuda" style={{ margin: 0 }}>{a.visivelIA ? "Liberado para IA de atendimento" : "Não liberado para IA"}</div>
           <div className="ajuda" style={{ margin: 0 }}>{dataHoraBR(a.data)}, por {a.por}</div>
         </div>
       ))}
       {acessoCRM(usuario).pos && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
+      {acessoCRM(usuario).pos && <ConfiguracaoIANucleo nucleoId={atual.externo?.kanbanId || atual.id} />}
       <h3 style={{ fontSize: 15, margin: "18px 0 6px" }}>Histórico de etapas</h3>
-      {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
+      {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.fluxo === "prefeitura" ? "Prefeitura: " : "Interno: "}{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
       {novaMeta && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNovaMeta(false)} />}
-      {andamento && <ModalAndamento db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
+      {andamento && <ModalAndamento protocolado={protocolado} db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
     </Modal>
   );
 }
 
 function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
+  const [fluxo, setFluxo] = useState("interno");
+  const protocolado = fluxo === "prefeitura";
+  const etapaDe = protocolado ? etapaPrefeitura : etapaProcesso;
+  const nucleos = protocolado ? db.nucleos.filter(processoProtocolado) : db.nucleos;
+  const trocarFluxo = valor => { setFluxo(valor); setEtapa(""); setAberto(null); setListaAberta(false); };
   const [busca, setBusca] = useState("");
   const [etapa, setEtapa] = useState("");
   const [municipio, setMunicipio] = useState("");
@@ -10945,8 +10957,8 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   const [municipioBusca, setMunicipioBusca] = useState("");
   const [listaAberta, setListaAberta] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
-  const etapas = etapasDosProcessos(ETAPAS_PROCESSO, db.nucleos, etapaProcesso);
-  const filtrados = filtrarProcessos(db.nucleos, { etapa, busca }, etapaProcesso, n => rotuloNucleo(db, n));
+  const etapas = protocolado ? ETAPAS_PREFEITURA : etapasDosProcessos(ETAPAS_PROCESSO, nucleos, etapaDe);
+  const filtrados = filtrarProcessos(nucleos, { etapa, busca }, etapaDe, n => rotuloNucleo(db, n));
   const lista = filtrados.filter(n => !municipio || n.municipioId === municipio);
   const municipiosDisponiveis = municipiosDosProcessos(db.municipios, filtrados);
   const municipios = municipiosDosProcessos(db.municipios, lista);
@@ -10955,7 +10967,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   const atual = aberto ? db.nucleos.find((n) => n.id === aberto) : null;
   const cartao = (n) => {
     const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
-    const dias = diasNaEtapa(n);
+    const dias = diasNaEtapa(n, protocolado);
     const a = ultimoAndamento(n);
     const atrasado = n.prazoSLA && n.prazoSLA < hoje && etapaProcesso(n) !== "Concluído";
     return (
@@ -10978,8 +10990,9 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   return (
     <div className="contem largo">
       <div className="cabeca">
-        <div><h1>Processos</h1><p>Kanban por etapa, agrupado por município, como no ERP. Cada processo é um núcleo, com os moradores por trás.</p></div>
+        <div><h1>Processos</h1><p>{protocolado ? "Acompanhe as análises na prefeitura, registre andamentos para atendimento e observações da equipe." : "Kanban dos processos internos, agrupado por município."}</p></div>
       </div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de processo" style={{ marginBottom: 18 }}><button className={`btn${!protocolado ? " btn-primario" : ""}`} aria-pressed={!protocolado} onClick={() => trocarFluxo("interno")}>Processos Internos</button><button className={`btn${protocolado ? " btn-primario" : ""}`} aria-pressed={protocolado} onClick={() => trocarFluxo("prefeitura")}>Processos Protocolados</button></div>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 14 }}>
         <input className="inp" style={{ maxWidth: 250 }} placeholder="Buscar núcleo, responsável ou pendência" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar processo" />
         <div style={{ position: "relative", flex: "1 1 230px", maxWidth: 280 }}>
@@ -11007,7 +11020,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }} role="group" aria-label="Filtrar por etapa">
         <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} aria-pressed={etapa === ""} onClick={() => escolherEtapa("")}><Filter size={13} />Todas as etapas</button>
         {etapas.map((st) => {
-          const qtd = db.nucleos.filter((n) => etapaProcesso(n) === st && (!municipio || n.municipioId === municipio)).length;
+          const qtd = nucleos.filter((n) => etapaDe(n) === st && (!municipio || n.municipioId === municipio)).length;
           return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} aria-pressed={etapa === st} onClick={() => escolherEtapa(st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
@@ -11024,12 +11037,13 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
                 <span className="ajuda" style={{ display: "block", margin: 0 }}>{doMunicipio.length} processo(s){comPendencia ? `, ${comPendencia} com pendência` : ""}</span>
               </span>
               <span className="flex flex-wrap gap-1">
-                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
+                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaDe(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
               </span>
             </button>
+            {aberto && protocolado && !etapa && doMunicipio.some(n => !etapaPrefeitura(n)) && <details style={{ padding: "12px" }}><summary>Etapa a definir ({doMunicipio.filter(n => !etapaPrefeitura(n)).length})</summary><p className="ajuda">Abra o card para informar a etapa atual na prefeitura.</p><div className="grade">{doMunicipio.filter(n => !etapaPrefeitura(n)).map(cartao)}</div></details>}
             {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
               {etapas.filter((s) => !etapa || s === etapa).map((s) => {
-                const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
+                const itens = doMunicipio.filter((n) => etapaDe(n) === s);
 
                 return (
                   <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px", display: "flex", flexDirection: "column" }}>
@@ -11040,7 +11054,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
                     </div>
                     {itens.map(cartao)}
                     {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
-                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /></div>
+                    <div style={{ marginTop: "auto", paddingTop: 12 }}>{!protocolado && <BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} />}</div>
                   </div>
                 );
               })}
@@ -11049,7 +11063,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
         );
       })}
       {!municipios.length && <p className="ajuda">Nenhum processo com esses filtros.</p>}
-      {atual && <ModalProcesso db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
+      {atual && <ModalProcesso key={`${fluxo}:${atual.id}`} protocolado={protocolado} db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
     </div>
   );
 }
