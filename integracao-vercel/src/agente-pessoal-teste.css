@@ -82,3 +82,20 @@
 .rb .config-restrito .ap-restrito-empty{padding:40px 24px;font-size:14px}
 @media(min-width:1800px){.rb .config-restrito .ap-restrito-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:640px){.rb .config-restrito .ap-restrito-heading h2{font-size:24px}.rb .config-restrito .ap-restrito-stats{grid-template-columns:1fr}.rb .config-restrito .ap-restrito-stats .card{padding:16px}.rb .config-restrito .ap-restrito-stat-label{min-height:0}.rb .config-restrito .ap-restrito-stat-label svg{display:block}}
+
+/* Escrita e referências no agente pessoal, sem ampliar os outros chats. */
+.rb .ap-personal .ap-composer{align-items:flex-end}
+.rb .ap-personal .ap-composer textarea.inp{min-height:110px;max-height:280px;resize:vertical;font-size:14px;line-height:1.55;padding:10px 12px}
+.rb .ap-popup .ap-composer textarea.inp{min-height:76px;font-size:13px}
+.rb .ap-personal:not(.ap-small) .ap-messages{min-height:320px;max-height:560px}
+.rb .ap-quoted{margin:0 0 8px;padding:6px 10px;border-left:3px solid currentColor;font-size:12px;line-height:1.4;opacity:.85;overflow-wrap:anywhere}
+.rb .ap-quoted strong,.rb .ap-quoted span{display:block}
+.rb .ap-quoted span{max-height:84px;overflow:auto;white-space:pre-wrap}
+.rb .ap-quote-button{display:block;margin-top:8px;padding:3px 0;background:none;border:0;color:inherit;font-size:12px;text-decoration:underline;cursor:pointer}
+.rb .ap-quote-draft{display:flex;align-items:flex-start;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;min-width:0}
+.rb .ap-quote-draft .ap-quoted{flex:1;min-width:0;margin:0}
+.rb .ap-message{overflow-wrap:anywhere;min-width:0}
+@media(max-width:600px){.rb .ap-personal:not(.ap-small) .ap-messages{min-height:240px;max-height:420px}}
+.rb .ap-personal:not(.ap-small) .ap-message{font-size:15px;line-height:1.6}
+.rb .ap-personal:not(.ap-small) .ap-layout{grid-template-columns:minmax(0,2fr) minmax(240px,1fr)}
+@media(max-width:850px){.rb .ap-personal:not(.ap-small) .ap-layout{grid-template-columns:minmax(0,1fr)}}
