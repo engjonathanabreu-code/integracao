@@ -1,3 +1,4 @@
+import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
@@ -399,7 +400,8 @@ function progressoNucleo(db, n, k) {
   const prontos = fim === null || fim === undefined ? ativos.length : ativos.filter((p) => p.etapa >= fim).length;
   return { ativos: ativos.length, prontos };
 }
-function requisitosNucleo(db, n, etapaId) {
+function requisitosNucleo(db,n,etapaId){return aplicarAjustesRequisitos(requisitosPadraoNucleo(db,n,etapaId),"nucleo:"+etapaId,requisitosDoMunicipio(db,n.municipioId),n);}
+function requisitosPadraoNucleo(db, n, etapaId) {
   const R = [];
   const k = NUCLEO_ETAPAS.findIndex((e) => e.id === etapaId);
   const c = n.campos || {}; const ck = n.checks || {};
@@ -5126,7 +5128,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast, onArquivoAgente
         </div>
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={documentoCompleto ? "ok" : "pend"}>{documentoCompleto ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
-      {perm.prf&&<AjustesPRFTeste usuario={usuario} nucleo={n} dados={dados} modelo={modelo} pedidoInicial={pedidoAgente} chamarIA={chamarIA} aplicar={(html,nome)=>{setModelo(html);setNomeModelo(nome);setMapaSalvo(null);setOrigemMapa('ajuste por emissão');mutar(d=>d,'PRF personalizado preparado',log);}}/>}
+      {perm.prf&&<AjustesPRFTeste usuario={usuario} nucleo={n} dados={dados} modelo={modelo} pedidoInicial={pedidoAgente} chamarIA={chamarIA} aplicar={(html,nome)=>{setModelo(html);setNomeModelo(nome);const ajustado=prepararModeloPRF(html,dados);setMapaSalvo({modelo:ajustado.html,valores:mapearPorPalavras(ajustado.html?encontrarLacunas(ajustado.html):[])});setOrigemMapa('agente pessoal / dados oficiais');mutar(d=>d,'PRF personalizado preparado',log);}}/>}
       <Secao titulo="Dados que faltam antes de gerar">
         {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem.includes("loteQuadra") ? "Cadastro da unidade — campos Quadra e Lote" : origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
         {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
@@ -7277,7 +7279,7 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Secao titulo={`Regras de ${municipio.nome}`} nota="Cada município pode ter regras próprias de análise de documentos, checklist de campo e modelo de PRF. Sem cópia própria, valem as regras gerais do sistema.">
+      <Secao titulo={`Regras de ${municipio.nome}`} nota="Use os mesmos editores de Configurações para definir regras da IA, requisitos de todas as etapas, checklist e PRF deste município. As alterações feitas aqui valem somente para ele.">
         {!pode && <Aviso>Só a Diretoria altera regras. Você pode conferir o que está valendo aqui.</Aviso>}
         <div className="flex flex-wrap gap-2">
           <Tag tipo={regras ? "ok" : "neutra"}>{regras ? "IA específica" : "IA geral"}</Tag>
@@ -7287,59 +7289,14 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
       </Secao>
 
       <div className="abas" role="tablist" aria-label="Regras do município">
-        {[["ia", "Regras da IA"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
+        {[["ia", "Regras da IA"], ["requisitos", "Requisitos das etapas"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
           <button key={k} role="tab" aria-selected={aba === k} className={aba === k ? "ativa" : ""} onClick={() => setAba(k)}>{t}</button>
         ))}
       </div>
 
-      {aba === "ia" && (
-        <>
-          {(regras || db.regrasIA || []).map((r) => {
-            const editavel = pode && !!regras;
-            const alterar = (campo, valor) => gravar((a) => { const q = a.regrasIA.find((x) => x.id === r.id); q[campo] = valor; }, "Regra da IA do município alterada", `${r.nome}, ${campo}`);
-            return (
-              <section key={r.id} className="card" style={{ padding: 16 }}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong style={{ color: "var(--titulo)" }}>{r.nome}</strong>
-                  <span className="flex items-center gap-2">
-                    <Tag tipo={r.gravidade === "alta" ? "bloq" : r.gravidade === "media" ? "pend" : "neutra"}>{r.gravidade === "alta" ? "Grave" : r.gravidade === "media" ? "Média" : "Leve"}</Tag>
-                    <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={r.ativa !== false} disabled={!editavel} onChange={(e) => alterar("ativa", e.target.checked)} /><span /></span>Ativa</label>
-                  </span>
-                </div>
-                <textarea className="inp" rows={2} style={{ marginTop: 10 }} value={r.instrucao} disabled={!editavel} onChange={(e) => alterar("instrucao", e.target.value)} aria-label={`Instrução da regra ${r.nome}`} />
-                <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-                  <span className="ajuda" style={{ margin: 0 }}>Vale para: {(r.tipos || []).filter((t) => !(r.ocultos || []).includes(t)).map((t) => DOC_TIPOS[t] || t).join(", ") || "nenhum documento"}</span>
-                  {editavel && (
-                    <select className="inp" style={{ maxWidth: 150, marginLeft: "auto" }} value={r.gravidade} onChange={(e) => alterar("gravidade", e.target.value)} aria-label={`Gravidade da regra ${r.nome}`}>
-                      <option value="baixa">Leve</option><option value="media">Média</option><option value="alta">Grave</option>
-                    </select>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-          {rodape(!!regras, criarCopiaRegras, () => voltarGeral("regrasIA", "As regras da IA"), "Regras da IA")}
-        </>
-      )}
-
-      {aba === "checklist" && (
-        <>
-          <Secao titulo="Itens do checklist de campo" nota="O que a Topografia responde em cada unidade deste município.">
-            {(checklist || db.checklistCampo || []).map((i) => {
-              const editavel = pode && !!checklist;
-              const alterar = (campo, valor) => gravar((a) => { const q = a.checklistCampo.find((x) => x.id === i.id); q[campo] = valor; }, "Checklist de campo do município alterado", `${i.rotulo}, ${campo}`);
-              return (
-                <div key={i.id} className="flex flex-wrap items-center gap-3" style={{ padding: "9px 0", borderTop: "1px solid var(--line2)" }}>
-                  <span style={{ flex: 1, minWidth: 180 }}><strong style={{ fontWeight: 600 }}>{i.rotulo}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{i.grupo}, {i.tipo === "simnao" ? "sim ou não" : i.tipo === "numero" ? "número" : i.tipo === "texto" ? "texto" : "marcação"}</span></span>
-                  <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={i.ativo !== false} disabled={!editavel} onChange={(e) => alterar("ativo", e.target.checked)} /><span /></span>Ativo</label>
-                  <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={!!i.obrigatorio} disabled={!editavel || i.ativo === false} onChange={(e) => alterar("obrigatorio", e.target.checked)} /><span /></span>Obrigatório</label>
-                </div>
-              );
-            })}
-          </Secao>
-          {rodape(!!checklist, criarCopiaChecklist, () => voltarGeral("checklistCampo", "O checklist de campo"), "Checklist")}
-        </>
-      )}
+      {aba === "ia" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigRegras db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['regrasIA','tiposDocumento'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{regras&&rodape(true,criarCopiaRegras,()=>voltarGeral("regrasIA","As regras da IA"),"Regras da IA")}</fieldset>}
+      {aba === "checklist" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigChecklist db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['checklistCampo'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{checklist&&rodape(true,criarCopiaChecklist,()=>voltarGeral("checklistCampo","O checklist de campo"),"Checklist")}</fieldset>}
+      {aba === "requisitos" && <><ConfigRequisitos db={escopoRegrasMunicipio(db,municipio.id)} usuario={usuario} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar requisitos.");return alterarRegrasMunicipio(d,municipio.id,['ajustesRequisitos'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{ajustes?.ajustesRequisitos&&rodape(true,()=>{},()=>voltarGeral("ajustesRequisitos","Os requisitos das etapas"),"Requisitos")}</>}
 
       {aba === "prf" && (
         <>
@@ -9436,7 +9393,10 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
 function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const perm = permissoes(usuario);
   const pode = perm.diretor;
+  const [alvo,setAlvo]=useState("moradores");
+  const etapasEditor=alvo==="nucleos"?NUCLEO_ETAPAS:ETAPAS;
   const [etapa, setEtapa] = useState(ETAPAS[0].id);
+  const chaveEtapa=alvo==="nucleos"?"nucleo:"+etapa:etapa;
   const [novo, setNovo] = useState(null);
   const [restaurar, setRestaurar] = useState(false);
   // Um morador de exemplo só para listar os requisitos daquela etapa.
@@ -9445,8 +9405,9 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const completos = db.processos.filter((p) => !p._resumo);
   const exemplo = completos.find((p) => ETAPAS[p.etapa]?.id === etapa) || completos[0] || processoVazio("", "", "EXEMPLO");
   const ctx = contexto(db, exemplo);
-  const padrao = requisitosPadrao(etapa, exemplo, ctx);
-  const a = (db.ajustesRequisitos || {})[etapa] || {};
+  const exemploNucleo=db.nucleos.find(n=>!db._municipioRegras||n.municipioId===db._municipioRegras)||{id:"exemplo",campos:{},checks:{}};
+  const padrao = (alvo==="nucleos"?requisitosPadraoNucleo(db,{...exemploNucleo,campos:{...exemploNucleo.campos,estudoAmbiental:"sim",estudoRisco:"sim"}},etapa):requisitosPadrao(etapa, exemplo, ctx)).map(r=>db._municipioRegras?{...r,fixo:false}:r);
+  const a = (db.ajustesRequisitos || {})[chaveEtapa] || {};
   const desligados = new Set(a.desativados || []);
   const opcionais = new Set(a.opcionais || []);
   const obrigatorios = new Set(a.obrigatorios || []);
@@ -9454,11 +9415,11 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const mudou = desligados.size || opcionais.size || obrigatorios.size || extras.length || Object.keys(a.rotulos || {}).length;
   const gravar = (fn, acao, detalhe) => mutar((d) => {
     d.ajustesRequisitos = d.ajustesRequisitos || {};
-    const atual = { desativados: [], opcionais: [], obrigatorios: [], rotulos: {}, extras: [], ...(d.ajustesRequisitos[etapa] || {}) };
+    const atual = { desativados: [], opcionais: [], obrigatorios: [], rotulos: {}, extras: [], ...(d.ajustesRequisitos[chaveEtapa] || {}) };
     fn(atual);
-    d.ajustesRequisitos[etapa] = atual;
+    d.ajustesRequisitos[chaveEtapa] = atual;
     return d;
-  }, acao, { detalhe: `${ETAPAS.find((e) => e.id === etapa)?.nome}: ${detalhe}` });
+  }, acao, { detalhe: `${etapasEditor.find((e) => e.id === etapa)?.nome}: ${detalhe}` });
   const alternarLista = (campo, id, ligado, rotulo) => gravar((x) => {
     x[campo] = ligado ? Array.from(new Set([...(x[campo] || []), id])) : (x[campo] || []).filter((y) => y !== id);
     if (campo === "opcionais" && ligado) x.obrigatorios = (x.obrigatorios || []).filter((y) => y !== id);
@@ -9487,7 +9448,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
             <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
               <span className="chave"><input type="checkbox" checked={!desligado} disabled={!pode || r.fixo} onChange={(e) => alternarLista("desativados", r.id, !e.target.checked, r.label)} /><span /></span>Ativo
             </label>
-            {r.tipo !== "auto" && (
+            {(r.tipo !== "auto" || db._municipioRegras) && (
               <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
                 <span className="chave"><input type="checkbox" checked={opcional} disabled={!pode || desligado} onChange={(e) => alternarLista(r.opcional ? "obrigatorios" : "opcionais", r.id, r.opcional ? !e.target.checked : e.target.checked, r.label)} /><span /></span>Opcional
               </label>
@@ -9499,18 +9460,19 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <Secao titulo="Requisitos das etapas" nota="O que cada etapa exige antes de liberar a próxima. A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios. Vale para todos os moradores.">
+      <Secao titulo="Requisitos das etapas" nota={"O que cada etapa exige antes de liberar a próxima. A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios. "+(db._municipioRegras ? "Vale apenas para este município." : "Vale para todo o sistema.")}>
         {!pode && <Aviso>Só a Diretoria altera os requisitos. Você pode conferir o que está valendo.</Aviso>}
+        <label className="rot">Regras de aprovação para<select className="inp" aria-label="Regras de aprovação para" style={{maxWidth:280,marginBottom:12}} value={alvo} onChange={e=>{const destino=e.target.value;setAlvo(destino);setEtapa((destino==="nucleos"?NUCLEO_ETAPAS:ETAPAS)[0].id)}}><option value="moradores">Moradores</option><option value="nucleos">Núcleos</option></select></label>
         <div className="flex flex-wrap gap-1">
-          {ETAPAS.map((e) => {
-            const q = (db.ajustesRequisitos || {})[e.id];
+          {etapasEditor.map((e) => {
+            const q = (db.ajustesRequisitos || {})[alvo==="nucleos"?"nucleo:"+e.id:e.id];
             const alterada = q && (q.desativados?.length || q.opcionais?.length || q.obrigatorios?.length || q.extras?.length || Object.keys(q.rotulos || {}).length);
             return <button key={e.id} className={`btn btn-sm${etapa === e.id ? " btn-primario" : ""}`} onClick={() => setEtapa(e.id)}><IconeEtapa id={e.icone || e.id} tamanho={15} cor="currentColor" corCheck="currentColor" />{e.nome}{alterada ? " ✎" : ""}</button>;
           })}
         </div>
       </Secao>
 
-      <Secao titulo={`${ETAPAS.find((e) => e.id === etapa)?.nome}: ${padrao.filter((r) => !desligados.has(r.id)).length + extras.length} requisito(s)`}
+      <Secao titulo={`${etapasEditor.find((e) => e.id === etapa)?.nome}: ${padrao.filter((r) => !desligados.has(r.id)).length + extras.length} requisito(s)`}
         nota={mudou ? "Esta etapa está diferente do padrão." : "Esta etapa segue o padrão do sistema."}
         acao={pode && <span className="flex gap-2">{mudou > 0 && <button className="btn btn-sm" onClick={() => setRestaurar(true)}><Undo2 size={13} />Voltar ao padrão</button>}<button className="btn btn-sm btn-primario" onClick={() => setNovo({ id: `extra_${uid("rq")}`, label: "", tipo: "manual", opcional: false, ajuda: "" })}><Plus size={13} />Novo requisito</button></span>}>
         {padrao.map((r) => linha(r, false))}
@@ -9536,7 +9498,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
         </Modal>
       )}
       {restaurar && <ModalConfirmar titulo="Voltar ao padrão?" texto="Os ajustes desta etapa serão descartados, inclusive os requisitos criados aqui. O que já foi marcado nos moradores não muda." rotuloBotao="Voltar ao padrão" onFechar={() => setRestaurar(false)} onConfirmar={() => {
-        mutar((d) => { const novoMapa = { ...(d.ajustesRequisitos || {}) }; delete novoMapa[etapa]; d.ajustesRequisitos = novoMapa; return d; }, "Requisitos da etapa restaurados", ETAPAS.find((e) => e.id === etapa)?.nome);
+        mutar((d) => { const novoMapa = { ...(d.ajustesRequisitos || {}) }; delete novoMapa[chaveEtapa]; d.ajustesRequisitos = novoMapa; return d; }, "Requisitos da etapa restaurados", etapasEditor.find((e) => e.id === etapa)?.nome);
         setRestaurar(false); setToast("Etapa de volta ao padrão.");
       }} />}
     </div>
@@ -12188,7 +12150,7 @@ export default function App() {
     return () => clearInterval(relogio);
   }, [usuario?.id]); // eslint-disable-line
   const comercial = useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio });
-  if (db) sincronizarTiposDocumento(db.tiposDocumento);
+  if (db) sincronizarTiposDocumento([...(db.tiposDocumento||[]),...Object.values(db.ajustesMunicipio||{}).flatMap(a=>a?.tiposDocumento||[])]);
   if (!db) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}{UI_GUIDE_CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
   if (!usuario) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}><style>{CSS}{UI_GUIDE_CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
 

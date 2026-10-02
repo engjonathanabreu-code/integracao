@@ -1,3 +1,4 @@
+import {followupsPrioritarios,podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import MetasVendas from './MetasVendas.jsx';
 import FollowUpCRM,{ResumoFollowUp,ResumoChatwoot} from './FollowUpCRM.jsx';
 import ArquivoCRM from './ArquivoCRM.jsx';
@@ -82,6 +83,7 @@ export default function CRM({usuario,db,ir,abrirCliente,pedidoAgente,onRegistroA
   if(!acesso.comercial)return <div className="contem"><h1>CRM</h1><p>Acesso restrito ao Comercial e à administração.</p></div>;
   const comerciais=db.usuarios.filter(u=>u.ativo&&u.tipoERP==='Comercial');
   const cards=(m.dados?.cards||[]).filter(c=>c.origem!=='vinculado'&&(!responsavel||responsaveisLead(c).includes(responsavel))&&normalizarCRM([nomeCard(c),c.cpf_cnpj,c.telefone,c.lead_telefone,c.municipio,c.lead_cidade].join(' ')).includes(normalizarCRM(busca)));
+  const followupsDaCarteira=followupsPrioritarios(cards,m.dados?.followups||[],usuario);
   const salvar=async dados=>{if(await m.executar(()=>criarCRM(form.tipo==='tarefa'?'integracao_crm_tarefas':'integracao_crm_atendimentos',dados))){if(pedidoAgente?.id===form.card.id)onRegistroAgente?.('Registrou '+form.tipo,null,dados);setForm(null);setVersaoHistorico(v=>v+1);}};
   const nucleoCard=c=>{if(!c.nucleo_id)return '';const n=db.nucleos.find(n=>n.id===c.nucleo_id||n.externo?.kanbanId===c.nucleo_id);return n?[n.codigo,n.nome!==n.codigo?n.nome:''].filter(Boolean).join(' · '):'Núcleo vinculado';};
   const abrirFicha=(c,tipo=null)=>{setSelecionado(c);setForm(tipo?{tipo,card:c}:null);setHistorico(null);setTransferencia(null);setVinculo(null);};
@@ -114,7 +116,7 @@ export default function CRM({usuario,db,ir,abrirCliente,pedidoAgente,onRegistroA
     {aba==='institucionais'&&<InstitucionaisCRM usuario={usuario} usuarios={db.usuarios}/>}
     {aba==='metas'&&<MetasVendas usuario={usuario} db={db}/>}
     {aba==='dashboard'&&acesso.admin&&<><RelatorioAtivacoes usuarios={db.usuarios}/><DashboardCRM usuarios={db.usuarios}/></>}
-    {m.dados&&aba==='funil'&&<div className={`crm-quadro crm-visao-${visao}`}>{ETAPAS_FUNIL.map(s=><section key={s} className="crm-coluna"><h2>{s} · {cards.filter(c=>c.status===s).length}</h2>{cards.filter(c=>c.status===s).map(card)}</section>)}</div>}
+    {m.dados&&aba==='funil'&&<div className={`crm-quadro crm-visao-${visao}`}>{ETAPAS_FUNIL.map(s=><section key={s} className="crm-coluna"><h2>{s} · {cards.filter(c=>c.status===s).length}</h2>{cards.filter(c=>c.status===s).map(card)}</section>)}{podeUsarAgenteComercial(usuario)&&<section className="crm-coluna crm-followup-coluna" aria-label="Follow Up prioritário"><h2>Follow Up · {followupsDaCarteira.length}</h2><p className="ajuda">Vencidos ou com vencimento nas próximas 24 horas. Apenas sua carteira.</p>{followupsDaCarteira.map(f=>card(f.card))}{!followupsDaCarteira.length&&<p className="ajuda">Nenhum follow-up nesse período.</p>}</section>}</div>}
     {m.dados&&aba==='perdidos'&&<div className="crm-grade">{cards.filter(c=>c.status==='Perdido').map(card)}{!cards.some(c=>c.status==='Perdido')&&<p>Nenhum cliente perdido.</p>}</div>}
     {m.dados&&aba==='leads'&&<div className="crm-grade">{cards.filter(c=>!c.cliente_id&&c.status!=='Perdido').map(card)}{!cards.some(c=>!c.cliente_id)&&<p>Nenhum potencial lead.</p>}</div>}
     {m.dados&&aba==='tarefas'&&<section>{!m.dados.tarefas.length&&<p>Nenhuma tarefa aberta.</p>}{m.dados.tarefas.filter(t=>!responsavel||t.responsavel_id===responsavel).sort((a,b)=>a.prazo.localeCompare(b.prazo)).map(t=><article className="crm-card" key={t.id}><h3>{t.titulo}</h3><p>Prazo: {t.prazo.split('-').reverse().join('/')}</p><p>{m.dados.cards.find(c=>c.id===t.card_id)?nomeCard(m.dados.cards.find(c=>c.id===t.card_id)):'Cliente transferido'} · {db.usuarios.find(u=>u.erpRef===t.responsavel_id)?.nome||'Responsável'}</p>{t.checklist.map((item,i)=><label className="crm-tarefa" key={i}><input type="checkbox" checked={!!item.concluido} disabled={m.ocupado} onChange={e=>m.executar(()=>editarCRM('integracao_crm_tarefas',t.id,{checklist:t.checklist.map((x,j)=>j===i?{...x,concluido:e.target.checked}:x)}))}/>{item.texto}</label>)}<button className="btn" disabled={m.ocupado||t.checklist.some(i=>!i.concluido)} onClick={()=>m.executar(()=>editarCRM('integracao_crm_tarefas',t.id,{concluida:true}))}>Concluir tarefa</button></article>)}</section>}
