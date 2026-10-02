@@ -81,6 +81,7 @@ if(new URLSearchParams(location.search).has('protocolados')) {
  base.processos_kanban.push({...base.processos_kanban[0],id:id(400),nucleo:'NUI02',etapa_prefeitura:null});
  base.integracao_nucleo_ia=[{id:id(5),habilitado:false,instrucao:'Autorização anterior desativada'}];
 }
+if(new URLSearchParams(location.search).has('restrito')){for(const k of Object.keys(base))base[k]=JSON.parse(JSON.stringify(base[k]).replaceAll(id(1),'0f5e3976-ab5f-427b-923b-781fa5eaf3f0'));base.profiles[0].nome='Jonathan Abreu';base.profiles.push({id:id(71),nome:'Jeizer André Poffo',tipo:'Administrador',ativo:true},{id:id(72),nome:'Maria Eugênia',tipo:'Topografia',ativo:true},{id:id(73),nome:'Marcelo Magalhães',tipo:'Projetos',ativo:true});}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});

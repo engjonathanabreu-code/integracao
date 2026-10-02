@@ -26,3 +26,43 @@
 .rb .ap-personal .ap-messages,.rb .layout-chat .mensagens,.rb .janela-chat .mensagens{background:var(--chat-fundo,transparent)}
 .rb .ap-personal .ap-message,.rb .layout-chat .mensagem,.rb .janela-chat .mensagem{background:var(--chat-outro,var(--soft));color:var(--chat-texto-outro,var(--text))}
 .rb .ap-personal .ap-message.ap-mine,.rb .layout-chat .mensagem.minha,.rb .janela-chat .mensagem.minha{background:var(--chat-meu,var(--primary));color:var(--chat-texto-meu,var(--on-primary,#fff))}
+/* Supervisão: alinhamento com as Configurações e cartões independentes. */
+.rb .ap-restrito{padding:0;min-width:0}
+.rb .ap-restrito-heading{margin:0 0 20px;align-items:center;flex-wrap:wrap}
+.rb .ap-restrito-heading h2{font-size:22px;line-height:1.35;margin:6px 0;color:var(--text)}
+.rb .ap-restrito-heading p{margin:0;line-height:1.5}
+.rb .ap-restrito-eyebrow{display:inline-flex;align-items:center;gap:6px;color:var(--primary);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.rb .ap-restrito-acesso{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;background:var(--soft);border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted)}
+.rb .ap-restrito-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:0 0 24px}
+.rb .ap-restrito-stats .card{padding:16px 18px;box-shadow:none}
+.rb .ap-restrito-stat-label{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted);font-size:12px;line-height:1.4}
+.rb .ap-restrito-stat-label svg{flex-shrink:0;color:var(--primary)}
+.rb .ap-restrito-stats strong{font-size:28px;line-height:1.2;margin-top:10px;font-weight:700;color:var(--text)}
+.rb .ap-restrito-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
+.rb .ap-restrito-toolbar h3{margin:0 0 4px;font-size:16px}
+.rb .ap-restrito-toolbar .inp{width:280px;max-width:100%;margin:0;font-size:13px}
+.rb .ap-restrito-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rb .ap-restrito-agent{min-width:0;padding:18px;box-shadow:none;display:flex;flex-direction:column;gap:16px;transition:border-color .15s}
+.rb .ap-restrito-agent:hover{border-color:var(--primary)}
+.rb .ap-restrito-identity{display:flex;align-items:center;gap:12px;min-width:0}
+.rb .ap-restrito-identity>div:last-child{min-width:0}
+.rb .ap-restrito-avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:54px;height:54px;background:var(--soft);border:1px solid var(--line);border-radius:14px}
+.rb .ap-restrito-identity h4{font-size:14px;line-height:1.4;margin:0 0 3px;overflow-wrap:anywhere;color:var(--text)}
+.rb .ap-restrito-identity p{font-size:12px;line-height:1.4;margin:0;overflow-wrap:anywhere}
+.rb .ap-restrito-agent-stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.rb .ap-restrito-agent-stats span{display:inline-flex;align-items:center;gap:6px}
+.rb .ap-restrito-agent-footer{border-top:1px solid var(--line);padding-top:12px;margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rb .ap-restrito-state{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.rb .ap-restrito-state i{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.rb .ap-restrito-agent-footer .btn{font-size:12px;padding:6px 10px;white-space:nowrap}
+.rb .ap-restrito-detail{margin-top:16px;min-width:0}
+.rb .ap-restrito-history{padding:18px;box-shadow:none}
+.rb .ap-restrito-history .ap-log{justify-content:flex-start;align-items:flex-start}
+.rb .ap-restrito-history .ap-log>svg{flex-shrink:0;margin-top:2px;color:var(--muted)}
+.rb .ap-restrito-history .ap-log>div{min-width:0;overflow-wrap:anywhere}
+.rb .ap-restrito-empty{text-align:center;padding:36px 18px;color:var(--muted);box-shadow:none}
+.rb .ap-restrito-empty>svg{color:var(--primary)}
+.rb .ap-restrito-empty h3{font-size:15px;color:var(--text);margin:10px 0 6px}
+.rb .ap-restrito-empty p{margin:0}
+@media(max-width:1200px){.rb .ap-restrito-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.rb .ap-restrito-heading h2{font-size:20px}.rb .ap-restrito-grid{grid-template-columns:1fr}.rb .ap-restrito-toolbar{align-items:stretch;flex-direction:column;gap:12px}.rb .ap-restrito-toolbar .inp{width:100%}.rb .ap-restrito-stats{gap:8px;margin-bottom:20px}.rb .ap-restrito-stats .card{padding:12px 10px}.rb .ap-restrito-stat-label{font-size:10px;min-height:30px}.rb .ap-restrito-stat-label svg{display:none}.rb .ap-restrito-stats strong{font-size:24px}.rb .ap-restrito-agent{padding:16px}}
