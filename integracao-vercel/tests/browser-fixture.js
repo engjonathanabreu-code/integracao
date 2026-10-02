@@ -82,6 +82,7 @@ if(new URLSearchParams(location.search).has('protocolados')) {
  base.integracao_nucleo_ia=[{id:id(5),habilitado:false,instrucao:'Autorização anterior desativada'}];
 }
 if(new URLSearchParams(location.search).has('restrito')){for(const k of Object.keys(base))base[k]=JSON.parse(JSON.stringify(base[k]).replaceAll(id(1),'0f5e3976-ab5f-427b-923b-781fa5eaf3f0'));base.profiles[0].nome='Jonathan Abreu';base.profiles.push({id:id(71),nome:'Jeizer André Poffo',tipo:'Administrador',ativo:true},{id:id(72),nome:'Maria Eugênia',tipo:'Topografia',ativo:true},{id:id(73),nome:'Marcelo Magalhães',tipo:'Projetos',ativo:true});}
+if(new URLSearchParams(location.search).has('agentecomercial')){base.profiles[0].tipo='Comercial';base.integracao_crm_cards[0].responsavel_id=base.profiles[0].id;base.integracao_crm_cards[0].responsaveis_ids=[base.profiles[0].id];base.integracao_crm_followups=[{id:id(980),card_id:base.integracao_crm_cards[0].id,status:'pendente',previsto_em:'2026-09-01T15:00:00Z',prazo_dias:2},{id:id(981),card_id:base.integracao_crm_cards[1].id,status:'pendente',previsto_em:'2026-09-01T15:00:00Z',prazo_dias:2}];}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});

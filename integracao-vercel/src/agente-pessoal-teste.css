@@ -66,3 +66,19 @@
 .rb .ap-restrito-empty p{margin:0}
 @media(max-width:1200px){.rb .ap-restrito-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.rb .ap-restrito-heading h2{font-size:20px}.rb .ap-restrito-grid{grid-template-columns:1fr}.rb .ap-restrito-toolbar{align-items:stretch;flex-direction:column;gap:12px}.rb .ap-restrito-toolbar .inp{width:100%}.rb .ap-restrito-stats{gap:8px;margin-bottom:20px}.rb .ap-restrito-stats .card{padding:12px 10px}.rb .ap-restrito-stat-label{font-size:10px;min-height:30px}.rb .ap-restrito-stat-label svg{display:none}.rb .ap-restrito-stats strong{font-size:24px}.rb .ap-restrito-agent{padding:16px}}
+.rb .ap-commercial{padding:14px;box-shadow:none;margin:12px 0}.rb .ap-commercial h3{font-size:14px;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}.rb .ap-commercial p{font-size:12px;line-height:1.5}.rb .ap-commercial-list{max-height:220px;overflow:auto;margin:8px 0}.rb .ap-commercial-item{display:flex;flex-direction:column;gap:4px;width:100%;padding:10px 0;color:var(--text);background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-size:12px}.rb .ap-commercial-item:hover{background:var(--soft)}
+/* Supervisão follows the workspace guide, with consistent gutters and spacing. */
+.rb .config-restrito .ap-restrito{width:100%;padding-bottom:28px}
+.rb .config-restrito .ap-restrito-heading{margin-bottom:24px;gap:16px}
+.rb .config-restrito .ap-restrito-heading h2{font-size:28px;margin:8px 0}
+.rb .config-restrito .ap-restrito-heading p{font-size:14px}
+.rb .config-restrito .ap-restrito-stats,.rb .config-restrito .ap-restrito-grid{gap:16px}
+.rb .config-restrito .ap-restrito-stats .card,.rb .config-restrito .ap-restrito-agent,.rb .config-restrito .ap-restrito-history{padding:20px}
+.rb .config-restrito .ap-restrito-toolbar{margin-bottom:16px}
+.rb .config-restrito .ap-restrito-toolbar h3{font-size:18px}
+.rb .config-restrito :is(.ap-restrito-stat-label,.ap-restrito-identity p,.ap-restrito-agent-stats,.ap-restrito-state,.ap-restrito-agent-footer .btn){font-size:13px}
+.rb .config-restrito .ap-restrito-identity h4{font-size:16px}
+.rb .config-restrito .ap-restrito-detail{margin-top:24px}
+.rb .config-restrito .ap-restrito-empty{padding:40px 24px;font-size:14px}
+@media(min-width:1800px){.rb .config-restrito .ap-restrito-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:640px){.rb .config-restrito .ap-restrito-heading h2{font-size:24px}.rb .config-restrito .ap-restrito-stats{grid-template-columns:1fr}.rb .config-restrito .ap-restrito-stats .card{padding:16px}.rb .config-restrito .ap-restrito-stat-label{min-height:0}.rb .config-restrito .ap-restrito-stat-label svg{display:block}}

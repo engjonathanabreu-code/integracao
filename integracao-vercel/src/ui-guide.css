@@ -124,3 +124,6 @@ body:has(.rb.escuro[data-ui-guide]){background:#101B1B}
 /* Keep absolute accessible labels inside horizontally scrollable tables. */
 .rb[data-ui-guide] .rolagem{position:relative}
 
+.rb .metas-busca-titulo{display:flex;align-items:center;position:relative;width:190px;max-width:100%;color:var(--muted)}
+.rb .metas-busca-titulo>svg{position:absolute;left:12px;pointer-events:none}
+.rb .metas-busca-titulo .inp{width:100%;padding-left:34px;margin:0;font-size:13px}

@@ -6350,7 +6350,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const atual = ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
   const setAba = (a2) => ir({ pag: "config", aba: a2 });
   return (
-    <div className="contem">
+    <div className={`contem${atual === "restrito" ? " largo config-restrito" : ""}`}>
       <div className="abas" role="tablist" aria-label="Configurações">
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
@@ -10628,6 +10628,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const arrasteMeta = useRef(null);
   const [tela, setTela] = useState("home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
+  const [buscaTitulo, setBuscaTitulo] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [detalhe, setDetalhe] = useState(null);
   const [editando, setEditando] = useState(null);
@@ -10643,7 +10644,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const gerencia = gerenciaMetas(usuario);
   const todasVisiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario));
-  const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor));
+  const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
   const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
@@ -10686,6 +10687,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <span className="pilula-semana"><span>Semana</span><strong>{rotuloSemana(inicioSemana)}</strong></span>
       <button className="btn btn-sm" onClick={() => setSemanaOffset((x) => x + 1)} aria-label="Próxima semana"><ChevronRight size={16} /></button>
       {semanaOffset !== 0 && <button className="btn btn-sm" onClick={() => setSemanaOffset(0)}>Semana atual</button>}
+      <label className="metas-busca-titulo"><Search size={14} aria-hidden="true"/><input className="inp" type="search" aria-label="Buscar metas pelo título" placeholder="Buscar título" value={buscaTitulo} onChange={e => setBuscaTitulo(e.target.value)} /></label>
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
         <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
@@ -10719,7 +10721,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
             <Indicador titulo="Em atraso" valor={atrasadas.length} alerta={atrasadas.length > 0} />
           </div>
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
-            {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta programada para esta semana.</p>}
+            {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>{buscaTitulo.trim() ? "Nenhuma meta com esse título nesta semana." : "Nenhuma meta programada para esta semana."}</p>}
           </Secao>
           <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
             {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
@@ -12203,6 +12205,7 @@ export default function App() {
   };
   const executarAgente=async(task)=>{
     if(!usuario||usuario.ativo===false)throw Error('Usuário inativo');
+    if(['CRM','Lead'].includes(task.tipo)){if(!acessoCRM(usuario).comercial){setToast('Seu usuário não tem acesso comercial ao CRM.');return;}await ir({pag:'crm',agente:true,pedido:task.pedido,tipo:task.tipo,id:task.id,modo:task.modo,conteudo:task.conteudo,ajustes:task.ajustes,preenchimento:task.preenchimento,nonce:task.nonce||crypto.randomUUID()});return;}
     const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeEditarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
     if(denied){setToast('Seu usuário não tem permissão para esta ação.');registrarAcaoNativa(usuario,'Ação bloqueada: '+task.tipo,task.tipo,null,null,{status:'bloqueada'});return;}
     if(task.tipo==='Cliente'||task.tipo==='Observação'){await abrirCliente(task.cliente||db.processos.find(p=>p.id===task.id));await ir({pag:'processo',id:task.id,aba:task.tipo==='Observação'?'observacoes':'cadastro',agente:true,pedido:task.pedido,conteudo:task.conteudo,ajustes:task.ajustes});return;}
@@ -12277,7 +12280,7 @@ export default function App() {
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
-          {rota.pag === "crm" && <CRM {...props} />}
+          {rota.pag === "crm" && <CRM key={rota.agente?rota.nonce:undefined} pedidoAgente={rota.agente?rota:null} onRegistroAgente={(action,before,after)=>registrarAcaoNativa(usuario,action,'CRM',before,after,{status:'confirmada pelo CRM'})} {...props} />}
           {rota.pag === "marketing" && <Marketing {...props} />}
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}

@@ -9,10 +9,10 @@ const valorNucleo=n=>n.externo?.kanbanId||n.id;
 const nomeNucleo=n=>[n.codigo,n.nome!==n.codigo?n.nome:''].filter(Boolean).join(' · ');
 
 // Edição rápida dos dados do card. Antes da etapa Contrato somente o nome é exigido.
-export default function EditarCardCRM({card,nucleos=[],ocupado,erro,salvar,cancelar}){
+export default function EditarCardCRM({card,nucleos=[],ocupado,erro,salvar,cancelar,ajustesAgente}){
  const cliente=!!card.cliente_id;
  const m=useModulo(()=>listarCRM('fin_receb_municipios','&order=nome.asc'),[],['clientes']);
- const [form,setForm]=useState(()=>valoresCard(card)),[buscaMunicipio,setBuscaMunicipio]=useState(''),[erroLocal,setErroLocal]=useState('');
+ const [form,setForm]=useState(()=>({...valoresCard(card),...Object.fromEntries(['nome','telefone','cpf'].filter(k=>ajustesAgente?.[k]).map(k=>[k,ajustesAgente[k]]))})),[buscaMunicipio,setBuscaMunicipio]=useState(''),[erroLocal,setErroLocal]=useState('');
  const editar=(k,v)=>{setForm(f=>({...f,[k]:v,...(k==='municipio_id'?{nucleo_id:''}:{})}));setErroLocal('');};
  const doMunicipio=nucleos.filter(n=>n.ativo!==false&&n.municipioId===form.municipio_id).sort((a,b)=>nomeNucleo(a).localeCompare(nomeNucleo(b),'pt-BR'));
  const atualNucleo=form.nucleo_id&&!doMunicipio.some(n=>valorNucleo(n)===form.nucleo_id)?nucleos.find(n=>n.id===form.nucleo_id||valorNucleo(n)===form.nucleo_id):null;

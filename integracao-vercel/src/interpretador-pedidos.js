@@ -18,16 +18,16 @@ export function interpretarPedido(texto,db){
  else if(/oficio|oficiar/.test(t))tipo='Ofício';
  else if(/agend|reuniao|calendario|marque|evento/.test(t))tipo='Evento';
  else if(/(?:registre|registrar|anote|anotar|adicione|incluir|salve|salvar).*(?:informacao|observacao|conversa|contato|troca)|(?:observacao|informacao).*cliente/.test(t))tipo='Observação';
- else if(/(?:mude|alter|atualiz|corrij|edit|troqu).*(?:nucleo|processo)|(?:nucleo|processo).*(?:mude|alter|atualiz|corrij|edit)/.test(t))tipo='Processo';
- else if(/(?:mude|alter|atualiz|corrij|edit|troqu).*(?:cliente|telefone|cpf|email|endereco)|(?:cliente|telefone|cpf|email|endereco).*(?:mude|alter|atualiz|corrij|edit)/.test(t))tipo='Cliente';
+ else if(/(?:mude|alter|atualiz|corrij|edit|troqu|preench|complet).*(?:nucleo|processo)|(?:nucleo|processo).*(?:mude|alter|atualiz|corrij|edit)/.test(t))tipo='Processo';
+ else if(/(?:mude|alter|atualiz|corrij|edit|troqu|preench|complet).*(?:cliente|morador|telefone|cpf|email|endereco)|(?:cliente|telefone|cpf|email|endereco).*(?:mude|alter|atualiz|corrij|edit)/.test(t))tipo='Cliente';
  else if(/pesquis|busqu|buscar|encontr|localiz|abra|abrir|mostr|card|ficha/.test(t))tipo='Busca';
  if(!tipo)return null;
  const colecao=tipo==='Cliente'||tipo==='Observação'||tipo==='Busca'?'processos':tipo==='Processo'||tipo==='PRF'?'nucleos':tipo==='Devolutiva'?'metas':null;
  const registros=colecao?(db[colecao]||[]).filter(r=>!r._resumo&&r.situacao!=='Cancelado'):[];
  const candidatos=registros.filter(r=>{const nomes=colecao==='processos'?[r.requerente?.nome,r.codigo]:colecao==='nucleos'?[r.nome,r.codigo]:[r.titulo];return nomes.filter(Boolean).some(nome=>{const n=normalizarPedido(nome);return n.length>=3&&t.includes(n)})});
  // Um nome parcial só é utilizado quando identifica um único registro.
- if(!candidatos.length&&colecao==='processos'){const chave=normalizarPedido(texto.match(/(?:cliente|card(?:\s+de)?|ficha(?:\s+de)?)\s+(?:do\s+|da\s+|de\s+)?(.+?)(?=\s+(?:para|sobre|que|com|telefone|cpf|email|e-mail)\b|[:,]|$)/i)?.[1]||'').trim();if(chave.length>=3)candidatos.push(...registros.filter(r=>normalizarPedido(r.requerente?.nome).includes(chave)))}
+ if(!candidatos.length&&colecao==='processos'){const chave=normalizarPedido(texto.match(/(?:cliente|morador|card(?:\s+de)?|ficha(?:\s+de)?)\s+(?:do\s+|da\s+|de\s+)?(.+?)(?=\s+(?:para|sobre|que|com|telefone|cpf|email|e-mail)\b|[:,]|$)/i)?.[1]||'').trim();if(chave.length>=3)candidatos.push(...registros.filter(r=>normalizarPedido(r.requerente?.nome).includes(chave)))}
  const conteudo=tipo==='Observação'?texto.match(/(?:que|:|seguinte)\s*(.+)$/i)?.[1]?.trim():null;
- const ajustes={};if(tipo==='Cliente'){const email=texto.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];const telefone=texto.match(/(?:telefone|celular|whatsapp)\s*(?:d[oa]\s+cliente\s+.+?\s+)?(?:para|por|:|=)\s*([+\d(][\d\s().-]{7,22})/i)?.[1]?.trim();if(email&&/email|e-mail/i.test(texto))ajustes.email=email;if(telefone)ajustes.telefone=telefone;}
+ const ajustes={};if(tipo==='Cliente'){const email=texto.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];const telefone=texto.match(/(?:telefone|celular|whatsapp)\s*(?:d[oa]\s+cliente\s+.+?\s+)?(?:para|por|:|=)\s*([+\d(][\d\s().-]{7,22})/i)?.[1]?.trim();if(email&&/email|e-mail/i.test(texto))ajustes.email=email;if(telefone)ajustes.telefone=telefone;const cpf=texto.match(/\bcpf\s*(?:para|:|=)?\s*([\d.-]{11,14})(?![\d.-])/i)?.[1];if(cpf)ajustes.cpf=cpf;const rg=texto.match(/\brg\s*(?:para|:|=)?\s*([\d.-]{4,20})/i)?.[1];if(rg)ajustes.rg=rg;}
  return {tipo,id:candidatos.length===1?candidatos[0].id:null,candidatos:candidatos.map(r=>r.id),pedido:texto,conteudo,ajustes,precisaEscolher:!!colecao&&candidatos.length!==1};
 }
