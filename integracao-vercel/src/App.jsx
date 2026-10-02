@@ -1,3 +1,4 @@
+import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -12205,7 +12206,7 @@ export default function App() {
   };
   const executarAgente=async(task)=>{
     if(!usuario||usuario.ativo===false)throw Error('Usuário inativo');
-    if(['CRM','Lead'].includes(task.tipo)){if(!acessoCRM(usuario).comercial){setToast('Seu usuário não tem acesso comercial ao CRM.');return;}await ir({pag:'crm',agente:true,pedido:task.pedido,tipo:task.tipo,id:task.id,modo:task.modo,conteudo:task.conteudo,ajustes:task.ajustes,preenchimento:task.preenchimento,nonce:task.nonce||crypto.randomUUID()});return;}
+    if(['CRM','Lead'].includes(task.tipo)){if(!podeUsarAgenteComercial(usuario)){setToast('Seu usuário não tem acesso comercial ao CRM.');return;}await ir({pag:'crm',agente:true,pedido:task.pedido,tipo:task.tipo,id:task.id,modo:task.modo,conteudo:task.conteudo,ajustes:task.ajustes,preenchimento:task.preenchimento,nonce:task.nonce||crypto.randomUUID()});return;}
     const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeEditarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
     if(denied){setToast('Seu usuário não tem permissão para esta ação.');registrarAcaoNativa(usuario,'Ação bloqueada: '+task.tipo,task.tipo,null,null,{status:'bloqueada'});return;}
     if(task.tipo==='Cliente'||task.tipo==='Observação'){await abrirCliente(task.cliente||db.processos.find(p=>p.id===task.id));await ir({pag:'processo',id:task.id,aba:task.tipo==='Observação'?'observacoes':'cadastro',agente:true,pedido:task.pedido,conteudo:task.conteudo,ajustes:task.ajustes});return;}

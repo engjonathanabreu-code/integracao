@@ -2,13 +2,13 @@ import {useState} from 'react';
 import {listarCRM} from './crm-api.js';
 import {acessoCRM,normalizarCRM} from './crm-regras.js';
 import {useModulo,EstadoModulo} from './modulo-ui.jsx';
-import {followupsVencidos,dadosPedidoComercial,cardsDaCarteira} from './agente-comercial-regras.js';
+import {followupsVencidos,dadosPedidoComercial,cardsDaCarteira,podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import {dataFollowup} from './crm-followup.js';
 export default function AgenteComercial({usuario,db,onAcao,pedido='',selecionar=false}) {
  const [busca,setBusca]=useState('');
  const acesso=acessoCRM(usuario);
- const m=useModulo(async()=>{if(!acesso.comercial)return {cards:[],followups:[]};const [cards,followups]=await Promise.all([listarCRM('integracao_crm_funil'),listarCRM('integracao_crm_followups','&status=eq.pendente')]);return {cards,followups}},[usuario.id,selecionar,pedido],['crm','clientes']);
- if(!acesso.comercial)return null;
+ const m=useModulo(async()=>{if(!podeUsarAgenteComercial(usuario))return {cards:[],followups:[]};const [cards,followups]=await Promise.all([listarCRM('integracao_crm_funil'),podeUsarAgenteComercial(usuario)?listarCRM('integracao_crm_followups','&status=eq.pendente'):Promise.resolve([])]);return {cards,followups}},[usuario.id,selecionar,pedido],['crm','clientes']);
+ if(!podeUsarAgenteComercial(usuario))return null;
  const vencidos=followupsVencidos(m.dados?.cards||[],m.dados?.followups||[],usuario);
  const cards=cardsDaCarteira(m.dados?.cards||[],usuario).filter(c=>normalizarCRM(c.nome||c.lead_nome).includes(normalizarCRM(busca)));
  const abrir=(c,modo)=>onAcao({tipo:'CRM',id:c.id,modo,pedido,conteudo:dadosPedidoComercial(pedido).conteudo,ajustes:{telefone:dadosPedidoComercial(pedido).telefone,cpf:dadosPedidoComercial(pedido).cpf,nome:dadosPedidoComercial(pedido).nomeAlterado},nonce:crypto.randomUUID()});

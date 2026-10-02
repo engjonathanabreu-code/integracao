@@ -1,8 +1,9 @@
 import {normalizarCRM,acessoCRM} from './crm-regras.js';
+export const podeUsarAgenteComercial=usuario=>!!usuario&&usuario.ativo!==false&&normalizarCRM(usuario.tipoERP||usuario.tipo)==='comercial';
 const responsaveisLead=c=>c.responsaveis_ids||[c.responsavel_id].filter(Boolean);
 export const cardsDaCarteira=(cards,usuario)=>acessoCRM(usuario).comercial?cards.filter(c=>!c.arquivado_em&&c.origem!=='vinculado'&&(acessoCRM(usuario).admin||responsaveisLead(c).includes(usuario.erpRef))):[];
 export function followupsVencidos(cards,followups,usuario,agora=Date.now()) {
- if(!acessoCRM(usuario).comercial)return [];
+ if(!podeUsarAgenteComercial(usuario))return [];
  const permitidos=new Map(cardsDaCarteira(cards,usuario).filter(c=>!['Perdido','Cliente ativo'].includes(c.status)).map(c=>[c.id,c]));
  return followups.filter(f=>f.status==='pendente'&&Number.isFinite(Date.parse(f.previsto_em))&&Date.parse(f.previsto_em)<agora&&permitidos.has(f.card_id)).sort((a,b)=>Date.parse(a.previsto_em)-Date.parse(b.previsto_em)).map(f=>({...f,card:permitidos.get(f.card_id)}));
 }
