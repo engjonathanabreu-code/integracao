@@ -4,6 +4,9 @@ export const idPonto=u=>u.erpRef||String(u.id).replace(/^erp_/,'');
 export const diaPonto=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export const horaPonto=t=>new Date(t).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 export const duracaoPonto=(m,sinal=false)=>`${m<0?'−':sinal&&m>0?'+':''}${Math.floor(Math.abs(m)/60)}h ${String(Math.abs(m)%60).padStart(2,'0')}min`;
+export const amanhaPonto=()=>{const [a,m,d]=diaPonto().split('-').map(Number);return new Date(Date.UTC(a,m-1,d+1)).toISOString().slice(0,10);};
+/** Indica se o usuário já bateu ponto hoje (horário de Brasília): a jornada nova só pode valer a partir de amanhã. */
+export const temBatidaHoje=async id=>(await requisicao(`integracao_ponto_batidas?usuario_id=eq.${encodeURIComponent(id)}&ocorrido_em=gte.${encodeURIComponent(diaPonto()+'T00:00:00-03:00')}&select=id&limit=1`)).length>0;
 export const jornadaAtual=id=>requisicao(`integracao_ponto_jornadas?usuario_id=eq.${encodeURIComponent(id)}&order=vigencia.desc,criado_em.desc&limit=1`);
 export async function relatorioPonto(id,mes){
  const [relatorio,decisoes,ajustes,revisoes]=await Promise.all([ponto('relatorio',{usuario_id:id,mes:mes+'-01'}),...['decisoes','ajustes','revisoes'].map(t=>requisicao(`integracao_ponto_${t}?usuario_id=eq.${encodeURIComponent(id)}&dia=gte.${mes}-01&dia=lt.${mes==='9999-12'?'9999-12-31':new Date(Date.UTC(Number(mes.slice(0,4)),Number(mes.slice(5,7)),1)).toISOString().slice(0,10)}&order=criado_em.desc&limit=1000`))]);

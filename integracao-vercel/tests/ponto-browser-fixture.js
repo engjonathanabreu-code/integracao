@@ -16,5 +16,5 @@ export function instalarPontoFixture(){
  if(a==='relatorio')return json({dias:[dia()],saldo_anterior:-30});
  if(a==='decidir'){aprovado=d.aprovada?60:0;decisoes.push({id:crypto.randomUUID(),dia:ontem,minutos:60,aprovada:d.aprovada,motivo:d.motivo,autor:id(1),criado_em:new Date().toISOString()});return json({ok:true});}
  return json({ok:true});
- }if(table==='integracao_ponto_solicitacoes'){let lista=solicitacoes;for(const k of ['usuario_id','status'])if(url.searchParams.get(k))lista=lista.filter(x=>x[k]===url.searchParams.get(k).replace('eq.',''));return json(lista);}if(table==='integracao_ponto_jornadas')return json([jornada]);if(table==='integracao_ponto_decisoes')return json(decisoes);if(/^integracao_ponto_(ajustes|revisoes)$/.test(table))return json([]);};
+ }if(table==='integracao_ponto_solicitacoes'){let lista=solicitacoes;for(const k of ['usuario_id','status'])if(url.searchParams.get(k))lista=lista.filter(x=>x[k]===url.searchParams.get(k).replace('eq.',''));return json(lista);}if(table==='integracao_ponto_batidas')return json(batidas.slice(0,1).map(b=>({id:b.id})));if(table==='integracao_ponto_jornadas')return json([jornada]);if(table==='integracao_ponto_decisoes')return json(decisoes);if(/^integracao_ponto_(ajustes|revisoes)$/.test(table))return json([]);};
 }

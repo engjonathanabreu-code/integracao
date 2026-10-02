@@ -2,7 +2,7 @@ import {createPortal} from 'react-dom';
 import {useEffect,useRef,useState} from 'react';
 import {Clock,Check,Download,X} from 'lucide-react';
 import {useModulo,EstadoModulo,CampoCRM} from './modulo-ui.jsx';
-import {ponto,idPonto,diaPonto,horaPonto,duracaoPonto,jornadaAtual,relatorioPonto} from './ponto-api.js';
+import {ponto,idPonto,diaPonto,amanhaPonto,temBatidaHoje,horaPonto,duracaoPonto,jornadaAtual,relatorioPonto} from './ponto-api.js';
 import {acessoCRM} from './crm-regras.js';
 import './folha-ponto.css';
 import SolicitacoesPonto,{PedirCorrecaoPonto} from './SolicitacoesPonto.jsx';
@@ -11,20 +11,20 @@ import {cargaEmHoras,dadosJornada,resumoJornada} from './jornada-ponto.js';
 const diasSemana=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 export function JornadaPonto({alvo}){
  const id=idPonto(alvo),m=useModulo(()=>jornadaAtual(id),[id],['ponto']);
- const [editar,setEditar]=useState(false),[form,setForm]=useState(null),[erro,setErro]=useState('');
+ const [editar,setEditar]=useState(false),[form,setForm]=useState(null),[erro,setErro]=useState(''),[minimo,setMinimo]=useState(diaPonto()),[batidaHoje,setBatidaHoje]=useState(false);
  if(!/^[0-9a-f-]{36}$/i.test(id))return <p className="ajuda">Vincule o usuário ao ERP para configurar o ponto.</p>;
  const atual=m.dados?.[0];
- const abrir=()=>{setForm({vinculo:atual?.vinculo||'Contrato',vigencia:diaPonto(),dias:atual?.dias||[1,2,3,4,5],entrada:atual?.entrada?.slice(0,5)||'08:00',saida:atual?.saida?.slice(0,5)||'17:00',intervalo:atual?.intervalo??60,flexivel:atual?.flexivel||false,cargas:diasSemana.map((_,i)=>cargaEmHoras(atual?.cargas?.[i]??480))});setErro('');setEditar(true);};
+ const abrir=async()=>{let hoje=false;try{hoje=await temBatidaHoje(id);}catch{}const inicio=hoje?amanhaPonto():diaPonto();setMinimo(inicio);setBatidaHoje(hoje);setForm({vinculo:atual?.vinculo||'Contrato',vigencia:inicio,dias:atual?.dias||[1,2,3,4,5],entrada:atual?.entrada?.slice(0,5)||'08:00',saida:atual?.saida?.slice(0,5)||'17:00',intervalo:atual?.intervalo??60,flexivel:atual?.flexivel||false,cargas:diasSemana.map((_,i)=>cargaEmHoras(atual?.cargas?.[i]??480))});setErro('');setEditar(true);};
  const campo=(k,v)=>setForm(f=>({...f,[k]:v}));
  return <section className="ponto-jornada"><EstadoModulo modulo={m}/>{m.dados&&<><div className="flex flex-wrap gap-2 items-center"><strong>Vínculo: {atual?.vinculo||'Não configurado'}</strong><button className="btn btn-sm" onClick={abrir}>Configurar CLT / Contrato</button></div>{atual&&<p className="ajuda">Desde {atual.vigencia.split('-').reverse().join('/')} · {atual.dias.map(d=>diasSemana[d]).join(', ')} · {resumoJornada(atual)}</p>}</>}
- {editar&&<form className="ponto-form" aria-label={`Jornada de ${alvo.nome}`} onSubmit={async e=>{e.preventDefault();setErro('');try{const dados=dadosJornada(form);if(await m.executar(()=>ponto('jornada',{usuario_id:id,...dados})))setEditar(false);}catch(e){setErro(e.message);}}}>
+ {editar&&<form className="ponto-form" aria-label={`Jornada de ${alvo.nome}`} onSubmit={async e=>{e.preventDefault();setErro('');try{const dados=dadosJornada(form);let falha='';const ok=await m.executar(()=>ponto('jornada',{usuario_id:id,...dados}).catch(e=>{falha=e.message;throw e;}));if(ok)setEditar(false);else setErro(falha||'Não foi possível salvar a jornada. Tente novamente.');}catch(e){setErro(e.message);}}}>
  <CampoCRM nome="Vínculo"><select className="inp" aria-label="Vínculo" value={form.vinculo} onChange={e=>setForm(f=>({...f,vinculo:e.target.value,flexivel:e.target.value==='CLT'&&f.flexivel}))}><option>CLT</option><option>Contrato</option></select></CampoCRM>
- <CampoCRM nome="Válido a partir de"><input className="inp" required type="date" min={diaPonto()} value={form.vigencia} onChange={e=>campo('vigencia',e.target.value)}/></CampoCRM>
+ <CampoCRM nome="Válido a partir de"><input className="inp" required type="date" min={minimo} value={form.vigencia} onChange={e=>campo('vigencia',e.target.value)}/></CampoCRM>{batidaHoje&&<p className="ajuda">Já há batida de ponto hoje, então a nova jornada começa amanhã ({minimo.split('-').reverse().join('/')}). Hoje continua na jornada anterior.</p>}
  <fieldset><legend>Dias da semana</legend><div className="ponto-dias">{diasSemana.map((d,i)=><label key={d}><input type="checkbox" checked={form.dias.includes(i)} onChange={e=>campo('dias',e.target.checked?[...form.dias,i].sort():form.dias.filter(x=>x!==i))}/>{d}</label>)}</div></fieldset>
  {form.vinculo==='CLT'&&<CampoCRM nome="Horário flexível"><input type="checkbox" checked={form.flexivel} onChange={e=>campo('flexivel',e.target.checked)}/> Cumprir a carga diária sem horário fixo de entrada e saída</CampoCRM>}
  {form.flexivel?<div className="ponto-campos">{form.dias.map(i=><CampoCRM key={i} nome={`Carga de ${diasSemana[i]} (horas e minutos)`}><input className="inp" type="text" inputMode="numeric" placeholder="08:00" required value={form.cargas[i]} onChange={e=>campo('cargas',form.cargas.map((v,d)=>d===i?e.target.value:v))}/></CampoCRM>)}</div>:<div className="ponto-campos"><CampoCRM nome="Entrada prevista"><input className="inp" type="time" required value={form.entrada} onChange={e=>campo('entrada',e.target.value)}/></CampoCRM><CampoCRM nome="Saída prevista"><input className="inp" type="time" required value={form.saida} onChange={e=>campo('saida',e.target.value)}/></CampoCRM><CampoCRM nome="Intervalo total (minutos)"><input className="inp" type="number" min="0" max="1439" required value={form.intervalo} onChange={e=>campo('intervalo',e.target.value)}/></CampoCRM></div>}
  <p className="ajuda">{form.flexivel?'Informe a carga de cada dia no formato HH:MM, por exemplo 08:00. Todas as horas entre entradas e saídas contam para a carga do dia; pausas ficam fora da contagem. Não há cobrança de horário fixo.':'A jornada prevista desconta o intervalo. O tempo trabalhado usa apenas os pares de batidas.'} Mudanças preservam as jornadas anteriores; se já houve batida hoje, escolha uma vigência futura.</p>
- {erro&&<p role="alert">{erro}</p>}<div className="flex gap-2"><button className="btn btn-primario" disabled={m.ocupado}>Salvar vínculo e jornada</button><button className="btn" type="button" onClick={()=>setEditar(false)}>Cancelar</button></div></form>}
+ {erro&&<p role="alert" className="msg-erro">{erro}</p>}<div className="flex gap-2"><button className="btn btn-primario" disabled={m.ocupado}>Salvar vínculo e jornada</button><button className="btn" type="button" onClick={()=>setEditar(false)}>Cancelar</button></div></form>}
  </section>;
 }
 function DialogoPonto({fechar,children}){
