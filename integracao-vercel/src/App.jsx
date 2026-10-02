@@ -1822,7 +1822,11 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .bolha-respirar.enchendo{transform:scale(1.35);background:var(--primary);color:#fff}
 .rb .bolha-respirar.segurando{transform:scale(1.35);background:var(--primary);color:#fff}
 .rb .bolha-respirar.esvaziando{transform:scale(.85);background:var(--soft);color:var(--primary)}
-@media (prefers-reduced-motion:reduce){.rb .bolha-respirar{transition:none}}
+.rb .bolha-respirar.enchendo{animation:pausa-inspirar 3s ease-in-out both}
+.rb .bolha-respirar.esvaziando{animation:pausa-soltar 3s ease-in-out both}
+@keyframes pausa-inspirar{from{transform:scale(.85)}to{transform:scale(1.35)}}
+@keyframes pausa-soltar{from{transform:scale(1.35)}to{transform:scale(.85)}}
+@media (prefers-reduced-motion:reduce){.rb .bolha-respirar{transition:none;animation:none}}
 .rb .previa-timbre{margin-top:10px;border:1px solid var(--line2);border-radius:10px;background:var(--card);padding:6px;overflow:hidden}
 .rb .previa-timbre img{width:100%;display:block}
 .rb .lista-orientacoes{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:14.5px;color:var(--text)}
@@ -11921,16 +11925,19 @@ function PausaRespirar({ onFechar }) {
   const [fase, setFase] = useState("Inspire");
   useEffect(() => {
     if (passo !== "respirando") return undefined;
+    let etapas = 0;
     const relogio = setInterval(() => {
-      setFase((f) => {
-        if (f === "Inspire") return "Solte";
-        setCiclo((c) => c + 1);
-        return "Inspire";
-      });
+      etapas += 1;
+      if (etapas >= 6) {
+        clearInterval(relogio);
+        setPasso("fim");
+        return;
+      }
+      setFase(etapas % 2 === 0 ? "Inspire" : "Solte");
+      setCiclo(Math.floor(etapas / 2) + 1);
     }, 3000);
     return () => clearInterval(relogio);
   }, [passo]);
-  useEffect(() => { if (ciclo > 3) setPasso("fim"); }, [ciclo]);
   return (
     <Modal titulo="Uma pausa" largura={440} onFechar={onFechar}
       rodape={passo === "pergunta"
@@ -11940,12 +11947,12 @@ function PausaRespirar({ onFechar }) {
         <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
           <span className="bolha-respirar parada"><MarcaIntegracao tamanho={44} /></span>
           <h3 style={{ fontSize: 20, margin: "16px 0 6px", color: "var(--titulo)" }}>Está nervoso?</h3>
-          <p style={{ margin: 0, color: "var(--muted)" }}>Leva dez segundos. A gente respira junto.</p>
+          <p style={{ margin: 0, color: "var(--muted)" }}>São três ciclos de seis segundos. A gente respira junto.</p>
         </div>
       )}
       {passo === "respirando" && (
         <div style={{ textAlign: "center", padding: "6px 0" }}>
-          <span className={`bolha-respirar ${fase === "Inspire" ? "enchendo" : "esvaziando"}`}><MarcaIntegracao tamanho={44} clara /></span>
+          <span key={`${ciclo}-${fase}`} className={`bolha-respirar ${fase === "Inspire" ? "enchendo" : "esvaziando"}`}><MarcaIntegracao tamanho={44} clara /></span>
           <h3 style={{ fontSize: 22, margin: "18px 0 4px", color: "var(--primary)" }}>{fase}</h3>
           <p style={{ margin: 0, color: "var(--muted)" }}>{fase === "Inspire" ? "Puxe o ar devagar, em três segundos, enquanto a bolinha enche." : "Solte devagar, em três segundos, enquanto ela esvazia."}</p>
           <p className="ajuda" style={{ marginTop: 14 }}>Ciclo {Math.min(ciclo, 3)} de 3</p>
