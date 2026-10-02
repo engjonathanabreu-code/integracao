@@ -1,6 +1,13 @@
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
+import {useMemoriaAgente,podeSupervisionarAgentes} from './agente-memoria-teste.js';
+import AjustesPRFTeste from './AjustesPRFTeste.jsx';
+import {registrarAcaoNativa,registrarArquivoNativo} from './agente-memoria-teste.js';
+import GeradorOficio from './GeradorOficio.jsx';
+import {podeEditarOficios} from './oficios-permissoes.js';
+import {listarOficios} from './oficios-api.js';
+import AgentePessoalTeste,{RestritoTeste,AgenteFlutuanteTeste,BibliotecaTeste,AvatarLateralTeste} from './AgentePessoalTeste.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
 import EstrategiasAgentes from './EstrategiasAgentes.jsx';
@@ -991,6 +998,7 @@ Orientações:
 - "analise.encontrado": no máximo seis itens, do mais importante para o menos. "analise.melhorar": no máximo seis itens; se estiver tudo certo, devolva lista vazia.
 - Escreva em português do Brasil, direto, sem jargão e sem repetir o que já está nos campos.`;
   const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
     method: "POST",
     headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: 2000, messages: [{ role: "user", content: [bloco, { type: "text", text: instrucao }] }] }),
@@ -1017,6 +1025,7 @@ async function blocosDeArquivosIA(arquivos) {
 }
 async function chamarIA(content, maxTokens = 4000) {
   const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
     method: "POST",
     headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: maxTokens, messages: [{ role: "user", content }] }),
@@ -1323,6 +1332,7 @@ Lacunas (id | texto antes | texto depois):
 ${lote.map((l) => `${l.id} | ${l.antes.replace(/\|/g, "/").slice(-90)} | ${l.depois.slice(0, 40)}`).join("\n")}
 Responda só com JSON no formato {"L1":"chave ou null"}, sem texto fora do JSON.`;
     const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
       method: "POST", headers: await cabecalhosIA(),
       body: JSON.stringify({ max_tokens: 1000, messages: [{ role: "user", content: instrucao }] }),
     });
@@ -4385,8 +4395,8 @@ function AbaQualificacao({ p, usuario, perm, mutar, setToast }) {
 }
 
 // Observações por morador (como os comentários do Integrado). Mesmo formato das observações do núcleo.
-function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
-  const [texto, setTexto] = useState("");
+function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado, pedidoAgente }) {
+  const [texto, setTexto] = useState(pedidoAgente?.conteudo||"");
   const [filtro, setFiltro] = useState("todas");
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta" && !cancelado;
@@ -4399,6 +4409,8 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || "", texto: t, data: new Date().toISOString(), controle: "editavel" }]; return d; }, "Observação no morador", { ...log, detalhe: `${p.codigo}: ${t.slice(0, 60)}` });
     setTexto(""); setToast("Observação registrada.");
   };
+  const registrouAgente=useRef(false);
+  useEffect(()=>{if(pedidoAgente?.conteudo&&pode&&!registrouAgente.current){registrouAgente.current=true;registrar();}},[]);
   const remover = (o) => {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = (q.observacoes || []).filter((y) => y.id !== o.id); return d; }, "Observação removida", { ...log, detalhe: `${p.codigo}: ${o.texto.slice(0, 60)}` });
   };
@@ -4429,11 +4441,11 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
   );
 }
 
-function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial }) {
+function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial, pedidoAgente }) {
   const p = db.processos.find((x) => x.id === processoId);
   const perm = permissoes(usuario);
   const [aba, setAba] = useState(abaInicial || "cadastro");
-  const [rascunho, setRascunho] = useState(() => (p ? extrair(p) : null));
+  const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=extrair(p);if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
   const baseFormulario=useRef(p?extrair(p):null);
   useEffect(()=>{const anterior=baseFormulario.current,proximo=p?extrair(p):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
   const [iaPaths, setIaPaths] = useState([]);
@@ -4568,7 +4580,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
           {aba === "campo" && <AbaCampo db={db} p={p} usuario={usuario} ir={irComCuidado} />}
           {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} />}
-          {aba === "observacoes" && <AbaObservacoesProcesso p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
+          {aba === "observacoes" && <AbaObservacoesProcesso pedidoAgente={pedidoAgente} p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
           {aba === "historico" && <Secao titulo="Histórico do processo" nota="Registro de quem fez o quê. Valores de CPF não são gravados no histórico."><ListaHistorico itens={db.auditoria.filter((a) => a.processoId === p.id)} vazio="Nenhuma ação registrada ainda." /></Secao>}
         </div>
         <aside className="lateral">
@@ -5044,7 +5056,7 @@ function AbaCampo({ db, p, usuario, ir }) {
 }
 
 /* ---------------- PRF ---------------- */
-function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
+function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast, onArquivoAgente, pedidoAgente }) {
   const n = nucleoDe(db, nucleoId);
   const perm = permissoes(usuario);
   const [modelo, setModelo] = useState(null);
@@ -5097,6 +5109,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
     const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
     if(tipo==="doc"){const {baixarDocx}=await Promise.resolve(documentoDocx);await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
+    if(onArquivoAgente){const blob=tipo==='doc'?await documentoDocx.gerarDocx(aviso+resultado.html,titulo,timbrado):new Blob([documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo)],{type:'text/html'});await onArquivoAgente({title:titulo,type:'PRF',blob,filename:nomeArq+(tipo==='doc'?'.docx':'.html'),mime:blob.type,nucleoId:n.id,destination:'Núcleo / Histórico',completo:documentoCompleto});}
     mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, com CPF completo` });
     }catch(e){setErro(e.message);}finally{setEstado("ocioso");}
   };
@@ -5112,6 +5125,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
         </div>
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={documentoCompleto ? "ok" : "pend"}>{documentoCompleto ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
+      {perm.prf&&<AjustesPRFTeste usuario={usuario} nucleo={n} dados={dados} modelo={modelo} pedidoInicial={pedidoAgente} chamarIA={chamarIA} aplicar={(html,nome)=>{setModelo(html);setNomeModelo(nome);setMapaSalvo(null);setOrigemMapa('ajuste por emissão');mutar(d=>d,'PRF personalizado preparado',log);}}/>}
       <Secao titulo="Dados que faltam antes de gerar">
         {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem.includes("loteQuadra") ? "Cadastro da unidade — campos Quadra e Lote" : origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
         {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
@@ -6318,6 +6332,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
     ["ponto", "Folha Ponto", Clock],
+    podeSupervisionarAgentes(usuario) && ["restrito", "Restrito", Lock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
     podeUsarAgentes(usuario) && ["agentes", "Agentes IA", Sparkles],
@@ -6340,6 +6355,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
+        {atual === "restrito" && podeSupervisionarAgentes(usuario) && <RestritoTeste db={db} usuario={usuario} />}
         {atual === "ponto" && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -9021,7 +9037,8 @@ function Presenca({ online, texto }) {
 
 function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar, onAbrirChat, mutar }) {
   const [texto, setTexto] = useState("");
-  const [pos, setPos] = useState(() => ({ x: Math.max(12, (typeof window !== "undefined" ? window.innerWidth : 1200) - 380), y: Math.max(12, (typeof window !== "undefined" ? window.innerHeight : 800) - 470) }));
+  const chavePosChat="integracao-balao-chat-"+usuario.id+"-"+conversaId;
+  const [pos, setPos] = useState(() => {try{const saved=JSON.parse(localStorage.getItem(chavePosChat));if(saved)return {x:Math.max(8,Math.min(saved.x,innerWidth-Math.min(330,innerWidth-16)-8)),y:Math.max(8,Math.min(saved.y,innerHeight-60))};}catch{}return {x:Math.max(8,innerWidth-380),y:Math.max(8,innerHeight-470)};});
   const arrasto = useRef(null);
   const fim = useRef(null);
   const area = useRef(null);
@@ -9053,19 +9070,20 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
   };
   const inicioArrasto = (e) => {
     if (e.target.closest("button")) return;
-    arrasto.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+    const rect=e.currentTarget.parentElement.getBoundingClientRect();
+    arrasto.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top, largura:rect.width,altura:rect.height };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const moverJanela = (e) => {
     if (!arrasto.current) return;
     const larguraTela = typeof window !== "undefined" ? window.innerWidth : 1200;
     const alturaTela = typeof window !== "undefined" ? window.innerHeight : 800;
-    setPos({ x: Math.min(Math.max(4, e.clientX - arrasto.current.dx), larguraTela - 80), y: Math.min(Math.max(4, e.clientY - arrasto.current.dy), alturaTela - 50) });
+    setPos({ x: Math.min(Math.max(4, e.clientX - arrasto.current.dx), Math.max(8,larguraTela - arrasto.current.largura - 8)), y: Math.min(Math.max(4, e.clientY - arrasto.current.dy), Math.max(8,alturaTela - arrasto.current.altura - 8)) });
   };
-  const soltarJanela = () => { arrasto.current = null; };
+  const soltarJanela = (e) => { if(arrasto.current){const r=e.currentTarget.parentElement.getBoundingClientRect();localStorage.setItem(chavePosChat,JSON.stringify({x:r.left,y:r.top}));}arrasto.current = null; };
   return (
-    <div className={`janela-chat${minimizada ? " minimizada" : ""}`} style={{ left: pos.x, top: pos.y }} role="dialog" aria-label={`Conversa com ${titulo}`}>
-      <div className="topo-janela" onPointerDown={inicioArrasto} onPointerMove={moverJanela} onPointerUp={soltarJanela} onPointerLeave={soltarJanela}>
+    <div className={`janela-chat${minimizada ? " minimizada" : ""}`} style={{ left: pos.x, top: pos.y, "--chat-x":pos.x+"px", "--chat-y":pos.y+"px" }} role="dialog" aria-label={`Conversa com ${titulo}`}>
+      <div className="topo-janela" onPointerDown={inicioArrasto} onPointerMove={moverJanela} onPointerUp={soltarJanela} onPointerCancel={soltarJanela}>
         <Presenca online={online} />
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{titulo}</span>
         {minimizada && naoLidasAqui > 0 && <span className="conta-aba">{naoLidasAqui}</span>}
@@ -10692,7 +10710,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
         <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
         {catalogoDevolutivas(todasVisiveis).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => <div key={m.id} className="card" style={{padding:14,marginTop:10}}><strong>{m.titulo}</strong><p className="ajuda">{rotuloAssociacao(db,m)}</p><p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p><p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>{vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}<div className="flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>{podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}{gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}</div></div>)}
       </Secao>}
-      {tela === "oficios" && <Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/>}
+      {tela === "oficios" && <><BibliotecaTeste tipo="Ofício"/><Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/></>}
       {tela === "home" && !colaborador && (
         <>
           <div className="grade-indicadores" style={{ marginBottom: 14 }}>
@@ -11118,15 +11136,16 @@ function itensDoCalendario(db, usuario, filtros = {}) {
   return itens;
 }
 
-function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setToast, onFechar }) {
+function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setToast, onFechar, pedidoAgente }) {
   const novo = !inicial;
   const perm = permissoes(usuario);
   const podeEditar = novo || perm.diretor || inicial.criadoPor === usuario.id;
   const [f, setF] = useState(() => novo
-    ? { titulo: "", descricao: "", dia: diaPadrao || new Date().toISOString().slice(0, 10), inicio: horaPadrao || "09:00", fim: horaPadrao ? `${String(Math.min(23, Number(horaPadrao.slice(0, 2)) + 1)).padStart(2, "0")}:${horaPadrao.slice(3)}` : "10:00", agendaId: (db.agendas || [])[0]?.id || "", participantes: [usuario.id], publico: true, cor: "#0F5F5B", entidade: null, recorrencia: "nenhuma", recorrenciaAte: "" }
+    ? { titulo: "", descricao: "", dia: diaPadrao || new Date().toISOString().slice(0, 10), inicio: horaPadrao || "09:00", fim: horaPadrao ? `${String(Math.min(23, Number(horaPadrao.slice(0, 2)) + 1)).padStart(2, "0")}:${horaPadrao.slice(3)}` : "10:00", agendaId: (db.agendas || [])[0]?.id || "", participantes: [usuario.id], publico: true, cor: "#0F5F5B", entidade: null, recorrencia: "nenhuma", recorrenciaAte: "", ...pedidoAgente }
     : { titulo: inicial.titulo, descricao: inicial.descricao || "", dia: soData(inicial.inicio), inicio: hhmm(inicial.inicio), fim: hhmm(inicial.fim), agendaId: inicial.agendaId || "", participantes: [...inicial.participantes], publico: inicial.publico, cor: inicial.cor, entidade: inicial.entidade, recorrencia: inicial.recorrencia || "nenhuma", recorrenciaAte: inicial.recorrenciaAte || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const erros = [];
+  if(pedidoAgente?.pendencias?.length && !f.participantes.some(id=>id!==usuario.id))erros.push('Escolha o participante solicitado antes de criar a reunião');
   if (f.titulo.trim().length < 3) erros.push("Dê um título ao evento");
   if (f.fim <= f.inicio) erros.push("O fim precisa ser depois do início");
   if (f.recorrencia !== "nenhuma" && !f.recorrenciaAte) erros.push("Informe a data final da recorrência");
@@ -11149,6 +11168,8 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
     }
     onFechar();
   };
+  const executadoAgente=useRef(false);
+  useEffect(()=>{if(pedidoAgente?.automatico&&!executadoAgente.current&&!erros.length&&!conflito){executadoAgente.current=true;salvar();}},[]); // Pedido completo usa o salvamento oficial uma única vez.
   const responder = (resposta) => {
     mutar((d) => { const e = d.eventos.find((x) => x.id === inicial.id); e.respostas = { ...(e.respostas || []), [usuario.id]: resposta }; return d; }, `Convite ${resposta}`, { detalhe: inicial.titulo });
     setToast(resposta === "aceito" ? "Presença confirmada." : "Convite recusado."); onFechar();
@@ -11161,6 +11182,7 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
   return (
     <Modal titulo={novo ? "Novo evento" : inicial.titulo} largura={580} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Fechar</button>{podeEditar && <button className="btn btn-primario" disabled={erros.length > 0} onClick={salvar}>{novo ? "Criar evento" : "Salvar"}</button>}</>}>
+      {pedidoAgente&&<Aviso tipo="info">{pedidoAgente.pendencias?.join(" ")} {pedidoAgente.nota} Revise os campos preenchidos para criar o evento.</Aviso>}
       {!novo && (
         <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
           {inicial.status === "cancelado" && <Tag tipo="bloq">Cancelado</Tag>}
@@ -12143,6 +12165,10 @@ export default function App() {
   };
 
   const [janela, setJanela] = useState(null);
+  useMemoriaAgente(usuario);
+  const [tarefaAgente,setTarefaAgente]=useState(null);
+  const timbradoAgente=useTimbrado(db);
+  useEffect(()=>{setTarefaAgente(null)},[usuarioId]);
   const [respirar, setRespirar] = useState(false);
   const conexao = useConexao();
   const offline = useCampoOffline({ db, usuario, mutar, setToast, online: conexao.online, carregarMunicipio });
@@ -12166,7 +12192,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
+  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", pessoalIA: usuario.nome+"_IA", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -12175,7 +12201,23 @@ export default function App() {
     if (!ficha || ficha._resumo) throw new Error('Não foi possível carregar a ficha deste cliente. Tente novamente.');
     await ir({ pag: "processo", id: ficha.id, aba: "cadastro" });
   };
-  const props = { carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const executarAgente=async(task)=>{
+    if(!usuario||usuario.ativo===false)throw Error('Usuário inativo');
+    const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeEditarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
+    if(denied){setToast('Seu usuário não tem permissão para esta ação.');registrarAcaoNativa(usuario,'Ação bloqueada: '+task.tipo,task.tipo,null,null,{status:'bloqueada'});return;}
+    if(task.tipo==='Cliente'||task.tipo==='Observação'){await abrirCliente(task.cliente||db.processos.find(p=>p.id===task.id));await ir({pag:'processo',id:task.id,aba:task.tipo==='Observação'?'observacoes':'cadastro',agente:true,pedido:task.pedido,conteudo:task.conteudo,ajustes:task.ajustes});return;}
+    if(task.tipo==='PRF'){await ir({pag:'prf',nucleoId:task.id,agente:true,pedido:task.pedido});return;}
+    if(task.tipo==='Ofício'){try{const seq=await listarOficios(Number(new Date().toISOString().slice(0,4)));task={...task,proximo:seq.ultimo?seq.ultimo+1:null}}catch(e){setToast(e.message);return}}
+    setTarefaAgente({...task,userId:usuario.id});
+  };
+  const mutarAgente=(fn,action,extra={})=>{
+    let before,after;mutar(d=>{before=clone(d);after=fn(d);return after;},action+' · '+usuario.nome+'_IA',{...extra,agente:usuario.nome+'_IA',solicitante:usuario.id});
+    if(!before||!after)return;
+    const changes=[];for(const collection of ['processos','nucleos','eventos','metas'])for(const row of after[collection]||[]){const old=before[collection]?.find(x=>x.id===row.id);if(JSON.stringify(old)!==JSON.stringify(row))changes.push({collection,id:row.id,before:old||null,after:row})}
+    registrarAcaoNativa(usuario,action,extra.processoId?'Clientes':extra.nucleoId?'Processos / Núcleo':tarefaAgente?.tipo==='Evento'?'Calendário':tarefaAgente?.tipo==='Devolutiva'?'Metas / Devolutivas':'Integração',changes.map(c=>({collection:c.collection,id:c.id,values:c.before})),changes.map(c=>({collection:c.collection,id:c.id,values:c.after})),{status:'solicitada · acompanhe a sincronização oficial'});
+    if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
+  };
+  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
@@ -12197,6 +12239,7 @@ export default function App() {
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
           {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
+          {navItem(rota.pag === "pessoalIA", <AvatarLateralTeste usuario={usuario} />, usuario.nome+"_IA", { pag: "pessoalIA" })}
           {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
@@ -12230,6 +12273,7 @@ export default function App() {
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
+          {rota.pag === "pessoalIA" && <AgentePessoalTeste key={usuario.id} {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
@@ -12248,16 +12292,22 @@ export default function App() {
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
           {rota.pag === "municipio" && <PaginaMunicipio key={rota.id} {...props} municipioId={rota.id} />}
           {rota.pag === "remessa" && <PaginaRemessa key={rota.id} {...props} remessaId={rota.id} aba={rota.aba || "nucleos"} />}
-          {rota.pag === "nucleo" && <PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba} />}
-          {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} />}
+          {rota.pag === "nucleo" && <><PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba} />{rota.aba === "historico" && <div className="contem"><BibliotecaTeste tipo="PRF" nucleoId={rota.id}/></div>}</>}
+          {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} pedidoAgente={rota.agente?{pedido:rota.pedido,conteudo:rota.conteudo,ajustes:rota.ajustes}:null} {...(rota.agente?{mutar:mutarAgente}:{})} />}
           {rota.pag === "campo" && <PaginaCampo key={`${rota.nucleoId}_${rota.processoId || ""}`} {...props} nucleoId={rota.nucleoId} processoId={rota.processoId} />}
-          {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} />}
+          {rota.agente&&rota.pedido&&rota.pag!=="prf"&&<div className="contem"><Aviso tipo="info">Pedido ao agente: {rota.pedido}. Confira as informações no formulário oficial antes de salvar.</Aviso></div>}
+          {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} pedidoAgente={rota.pedido} {...(rota.agente?{mutar:mutarAgente,onArquivoAgente:f=>registrarArquivoNativo(usuario,f)}: {})} />}
           {rota.pag === "importar" && perm.importar && <PaginaConfig {...props} db={db} aba="importar" restaurar={restaurar} />}
           {rota.pag === "config" && usuario.ativo !== false && <PaginaConfig {...props} db={db} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
           </Protecao>
           </ArquivoCadastros>
         </div>
       </div>
+      <AgenteFlutuanteTeste key={usuario.id} {...props} />
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Evento'&&<ModalEvento {...props} pedidoAgente={tarefaAgente.preenchimento} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Processo'&&db.nucleos.some(n=>n.id===tarefaAgente.id)&&<ModalProcesso {...props} n={db.nucleos.find(n=>n.id===tarefaAgente.id)} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Devolutiva'&&<ModalAnaliseDevolutiva {...props} meta={db.metas.find(m=>m.id===tarefaAgente.id)||null} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Rascunho, sem reserva de número'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
         onMinimizar={() => setJanela((j) => ({ ...j, minimizada: !j.minimizada }))} onFechar={() => setJanela(null)} onAbrirChat={(id) => { setJanela(null); ir({ pag: "chat", id }); }} />}
       {respirar && <PausaRespirar onFechar={() => setRespirar(false)} />}

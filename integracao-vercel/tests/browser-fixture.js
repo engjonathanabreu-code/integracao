@@ -64,7 +64,7 @@ let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiroTeste');
 if(perfilFinanceiroTeste)base.profiles[0].tipo=perfilFinanceiroTeste;
-base.integracao_acessos=[];
+base.integracao_acessos=[];base.integracao_agentes_pessoais_registros=[];
 if(new URLSearchParams(location.search).has('ajustes')) {
   base.meta_setores.push({...base.meta_setores[0],id:id(95)});
   base.metas[0].setor_id=id(95);
@@ -86,7 +86,7 @@ const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.finRequests=[];
 window.fetch=async(input,options={})=>{
-  const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);
+  const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);if(url.pathname==='/api/agente-pessoal')return json({mode:'indisponivel',autonomous:false});if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='POST'){const x=JSON.parse(options.body);base.integracao_agentes_pessoais_registros.push(...(Array.isArray(x)?x:[x]));return new Response(null,{status:201});}if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='PATCH'){const x=base.integracao_agentes_pessoais_registros.find(r=>r.kind==='avatar'&&r.record_id==='current');if(x)Object.assign(x,JSON.parse(options.body));return new Response(null,{status:204});}
   if(oficiosFixture){const r=oficiosFixture(url,options,json);if(r!==undefined)return r;}
   if(url.pathname==='/api/agentes' && new URLSearchParams(location.search).has('ajustes')) { const body=JSON.parse(options.body); return json(body.modo==='acoes' ? {setor:body.setor,acoes:'1. Revisar o memorial do NUI03 hoje. O andamento de 26/09 registra material corrigido recebido; Ana pode conferir antes de encerrar a pendência.'} : {setor:body.setor,painel:{setor:body.setor,metas:{abertas:3,vencidas:1},andamentos:{recentes:[]}},comercial:null}); }
   if(url.pathname==='/api/ia' && new URLSearchParams(location.search).has('ajustes'))return json({content:[{type:'text',text:JSON.stringify({resumo:'Corrigir a área e revisar o memorial.',itens:[{descricao:'Área divergente',oQueFazer:'Revisar memorial',categoria:'Topografia'}]})}]});
@@ -115,6 +115,7 @@ window.fetch=async(input,options={})=>{
     const {operacoes}=JSON.parse(options.body);
     if(new URLSearchParams(location.search).has('sincronizacao')&&!window.permissaoCorrigida&&operacoes.some(o=>o.table==='fin_receb_municipios'))return json({message:'new row violates row-level security policy for table fin_receb_municipios'},403);
     for(const op of operacoes) {
+      if(op.action==='evento'){base.erp_eventos.push({...op.payload,id:op.tempId,created_by:base.profiles[0].id,status:'ativo'});continue;}
       if(chatFixture&&op.action==='mensagem'){base.erp_mensagens.push({...op.payload,id:op.tempId,autor_id:id(1),created_at:new Date().toISOString()});continue;}
       if(!op.table)return json({message:'Ação não implementada no simulador'},400);
       const rows=base[op.table] ||= [];
