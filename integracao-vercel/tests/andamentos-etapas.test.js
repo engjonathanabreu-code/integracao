@@ -19,3 +19,12 @@ test('núcleo legado mantém a regra de etapa já usada pelo Kanban',()=>{
  const n={id:'legado',etapa:1};
  assert.equal(etapaDoAndamento([n],n.id),'Topografia');
 });
+test('status do andamento começa na etapa atual e permite escolher outra etapa',async()=>{
+ const {opcoesStatusAndamento,ETAPAS_PREFEITURA}=await import('../src/processos-protocolados.js');
+ const opcoes=opcoesStatusAndamento('Protocolo');
+ assert.equal(opcoes[0],'Protocolo');
+ for(const etapa of [...ETAPAS_PROCESSO,...ETAPAS_PREFEITURA])assert.ok(opcoes.includes(etapa),etapa);
+ assert.equal(new Set(opcoes).size,opcoes.length);
+ assert.equal(opcoesStatusAndamento('Etapa importada')[0],'Etapa importada');
+ assert.deepEqual(opcoesStatusAndamento(''),opcoesStatusAndamento(undefined));
+});

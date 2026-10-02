@@ -1,6 +1,8 @@
-import {etapaProcesso} from './processo-etapas.js';
+import {ETAPAS_PROCESSO,etapaProcesso} from './processo-etapas.js';
 
 export const ETAPAS_PREFEITURA = ['Parecer Social', 'Notificações', 'Parecer setor Planejamento', 'Parecer setor Meio Ambiente', 'Parecer setor Defesa Civil', 'Despacho de Saneamento', 'CRF'];
+// O andamento parte da etapa atual, mas quem registra pode escolher outra etapa interna ou da Prefeitura.
+export const opcoesStatusAndamento = atual => [...new Set([atual, ...ETAPAS_PROCESSO, ...ETAPAS_PREFEITURA].filter(Boolean))];
 export const etapaPrefeitura = n => ETAPAS_PREFEITURA.includes(n.etapaPrefeitura) ? n.etapaPrefeitura : '';
 export function processoProtocolado(n) {
   if (n.ativo === false || n.extras?.arquivamento?.ativo) return false;

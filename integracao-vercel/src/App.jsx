@@ -36,7 +36,7 @@ import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './
 import DadosNUI from './DadosNUI.jsx';
 import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
-import { ETAPAS_PREFEITURA, etapaPrefeitura, processoProtocolado, moverProcessoPrefeitura } from './processos-protocolados.js';
+import { ETAPAS_PREFEITURA, etapaPrefeitura, processoProtocolado, moverProcessoPrefeitura, opcoesStatusAndamento } from './processos-protocolados.js';
 import ConfiguracaoIANucleo from './ConfiguracaoIANucleo.jsx';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
@@ -7814,16 +7814,16 @@ function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar, protocolado
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const valido = f.descricaoCliente.trim().length >= 5;
   const salvar = () => {
-    const item = { id: uid("an"), ...f, status: protocolado ? etapaPrefeitura(n) || "Protocolado" : etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
+    const item = { id: uid("an"), ...f, status: f.status || (protocolado ? etapaPrefeitura(n) || "Protocolado" : etapaProcesso(n)), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
     mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || usuario.setor, texto: f.observacao.trim(), data: item.data }]; return d; },
-      "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${etapaProcesso(n)}` });
+      "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${item.status}` });
     setToast("Andamento registrado."); onFechar();
   };
   return (
     <Modal titulo={`Novo andamento, ${n.codigo}`} largura={560} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!valido} onClick={salvar}>Registrar andamento</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={protocolado ? etapaPrefeitura(n) || "Etapa a definir" : etapaProcesso(n)} readOnly /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Status do andamento</label><select id="anst" className="inp" value={f.status || ""} onChange={(e) => set("status", e.target.value)}><option value="">Etapa a definir</option>{opcoesStatusAndamento(protocolado ? etapaPrefeitura(n) : etapaProcesso(n)).map((s) => <option key={s} value={s}>{s}{s === (protocolado ? etapaPrefeitura(n) : etapaProcesso(n)) ? " (etapa atual)" : ""}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anpv">Previsão</label><input id="anpv" type="date" className="inp" value={f.previsao} onChange={(e) => set("previsao", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="ands">O que contar ao morador</label><textarea id="ands" className="inp" rows={3} value={f.descricaoCliente} onChange={(e) => set("descricaoCliente", e.target.value)} placeholder="Texto em linguagem simples, que pode ser repassado." /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica no histórico interno do núcleo, com autor e data." /></div>
