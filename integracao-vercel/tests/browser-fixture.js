@@ -20,6 +20,7 @@ const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_excl
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 const chatFixture=new URLSearchParams(location.search).has('chat');
 if(chatFixture){
+ base.profiles[0].tipo=new URLSearchParams(location.search).get('chatPerfil')||base.profiles[0].tipo;
  base.profiles.push({id:id(70),nome:'Ana Teste',tipo:'Topografia',ativo:true});
  base.erp_conversas=[{id:id(80),tipo:'direto',titulo:'Conversa teste',participantes:[id(1),id(70)],created_by:id(1)},{id:id(81),tipo:'grupo',titulo:'Grupo teste',participantes:[id(1),id(70)],created_by:id(1)}];
  base.erp_mensagens=[{id:id(82),conversa_id:id(80),autor_id:id(70),texto:'Você pode revisar os documentos do núcleo?',created_at:'2026-09-28T12:00:00Z'}];
@@ -43,8 +44,11 @@ if(new URLSearchParams(location.search).has('calendario')) {
  base.erp_eventos=[{...evento,id:id(83),titulo:'Reserva compartilhada',agenda_id:id(81)},{...evento,id:id(84),titulo:'Compromisso pessoal da Bia'},{...evento,id:id(85),titulo:'Compromisso pessoal da Ana',participantes:[id(70)]}];
 }
 base.fin_receb_municipios.push({id:id(102),nome:'Segundo município',uf:'SC',prefixo:'SEG'});
+if(new URLSearchParams(location.search).has('incompletos')){delete base.fin_receb_municipios[1].nome;base.fin_receb_municipios.push({id:id(105),nome:null,uf:'SC'});base.profiles[0].tipo=new URLSearchParams(location.search).get('tipo')||'Comercial';}
 base.fin_receb_remessas.push({id:id(103),municipio_id:id(102),codigo:'SEG01',nome:'Segunda remessa'});
 base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(104),municipio_id:id(102),remessa_id:id(103),nome:'Morador do segundo',codigo:'SEG01_001'});
+if(new URLSearchParams(location.search).has('incompletos')){base.fin_receb_clientes.push({...base.fin_receb_clientes[0],id:id(106),codigo:undefined,nome:'Morador sem código'});}
+
 if(new URLSearchParams(location.search).has('confrontantes') || new URLSearchParams(location.search).has('prf')) {
   base.fin_receb_clientes[0].cpf_cnpj='52998224725';
   base.integracao_moradores.push({colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),dados:{id:id(4),etapa:3,nucleoId:id(5),extras:{'2be328c2-7ccd-4448-a942-cfc6f62631fc':'Rua já cadastrada'},checks:{medicao:true,lepac:true,conferencia:true},unidades:[{id:'un1',area:'200',memorial:'Memorial fictício suficientemente longo para validar a etapa.'}],campo:{respostas:{},fotos:[],data:''}}});
@@ -60,7 +64,7 @@ let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiroTeste');
 if(perfilFinanceiroTeste)base.profiles[0].tipo=perfilFinanceiroTeste;
-base.integracao_acessos=[];
+base.integracao_acessos=[];base.integracao_agentes_pessoais_registros=[];
 if(new URLSearchParams(location.search).has('ajustes')) {
   base.meta_setores.push({...base.meta_setores[0],id:id(95)});
   base.metas[0].setor_id=id(95);
@@ -71,13 +75,22 @@ if(new URLSearchParams(location.search).has('ajustes')) {
  base.integracao_metas.push({colecao:'metas',registro_id:id(91),referencia_tabela:'metas',referencia_id:id(91),dados:{devolutiva:{origem:'Prefeitura',chegada:'2026-09-01',prazo:'2026-09-30',textoOriginal:'Corrigir a área do memorial.',analiseIA:{etapa1:{resumo:'Corrigir a área do memorial.',itens:[{id:'i1',descricao:'Área divergente',oQueFazer:'Corrigir memorial',categoria:'Topografia'}]}}}}});
  base.ordens_servico=[{id:id(92),nome:'OS 10',municipio:'Zortéa',estado:'SC'},{id:id(93),nome:'OS 2',municipio:'Água Doce',estado:'SC'}];
 }
+if(new URLSearchParams(location.search).has('protocolados')) {
+ base.profiles[0].tipo=new URLSearchParams(location.search).get('tipo')||'Administrador';
+ Object.assign(base.processos_kanban[0],{etapa_atual:'Protocolo',etapa_prefeitura:'Parecer Social',etapa_prefeitura_iniciada_em:'2026-09-25T12:00:00Z'});
+ base.processos_kanban.push({...base.processos_kanban[0],id:id(400),nucleo:'NUI02',etapa_prefeitura:null});
+ base.integracao_nucleo_ia=[{id:id(5),habilitado:false,instrucao:'Autorização anterior desativada'}];
+}
+if(new URLSearchParams(location.search).has('restrito')){for(const k of Object.keys(base))base[k]=JSON.parse(JSON.stringify(base[k]).replaceAll(id(1),'0f5e3976-ab5f-427b-923b-781fa5eaf3f0'));base.profiles[0].nome='Jonathan Abreu';base.profiles.push({id:id(71),nome:'Jeizer André Poffo',tipo:'Administrador',ativo:true},{id:id(72),nome:'Maria Eugênia',tipo:'Topografia',ativo:true},{id:id(73),nome:'Marcelo Magalhães',tipo:'Projetos',ativo:true});}
+if(new URLSearchParams(location.search).has('agentecomercial')){base.profiles[0].tipo='Comercial';base.integracao_crm_cards[0].responsavel_id=base.profiles[0].id;base.integracao_crm_cards[0].responsaveis_ids=[base.profiles[0].id];base.integracao_crm_followups=[{id:id(980),card_id:base.integracao_crm_cards[0].id,status:'pendente',previsto_em:'2026-09-01T15:00:00Z',prazo_dias:2},{id:id(981),card_id:base.integracao_crm_cards[1].id,status:'pendente',previsto_em:'2026-09-01T15:00:00Z',prazo_dias:2}];}
 const original=window.fetch.bind(window);let writes=0;
 const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.finRequests=[];
 window.fetch=async(input,options={})=>{
-  const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);
+  const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);if(url.pathname==='/api/agente-pessoal')return json({mode:'indisponivel',autonomous:false});if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='POST'){const x=JSON.parse(options.body);base.integracao_agentes_pessoais_registros.push(...(Array.isArray(x)?x:[x]));return new Response(null,{status:201});}if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='PATCH'){const x=base.integracao_agentes_pessoais_registros.find(r=>r.kind==='avatar'&&r.record_id==='current');if(x)Object.assign(x,JSON.parse(options.body));return new Response(null,{status:204});}
   if(oficiosFixture){const r=oficiosFixture(url,options,json);if(r!==undefined)return r;}
+  if(url.pathname==='/api/ia'&&new URLSearchParams(location.search).has('prfpessoal')){window.pedidoPRF=JSON.parse(options.body);return json({content:[{type:'text',text:JSON.stringify({html:'<h1>PRF pessoal {{nucleo.nome}}</h1><p>Infraestrutura do núcleo conforme cadastro oficial.</p><script>alert("unsafe")</script>'})}]});}
   if(url.pathname==='/api/agentes' && new URLSearchParams(location.search).has('ajustes')) { const body=JSON.parse(options.body); return json(body.modo==='acoes' ? {setor:body.setor,acoes:'1. Revisar o memorial do NUI03 hoje. O andamento de 26/09 registra material corrigido recebido; Ana pode conferir antes de encerrar a pendência.'} : {setor:body.setor,painel:{setor:body.setor,metas:{abertas:3,vencidas:1},andamentos:{recentes:[]}},comercial:null}); }
   if(url.pathname==='/api/ia' && new URLSearchParams(location.search).has('ajustes'))return json({content:[{type:'text',text:JSON.stringify({resumo:'Corrigir a área e revisar o memorial.',itens:[{descricao:'Área divergente',oQueFazer:'Revisar memorial',categoria:'Topografia'}]})}]});
   if(url.pathname==='/api/resumo-moradores'){const {contexto}=JSON.parse(options.body);return json({resumo:compactarResumo(resumirMoradores({clientes:base.fin_receb_clientes,complementos:base.integracao_moradores},contexto))});}
@@ -98,12 +111,14 @@ window.fetch=async(input,options={})=>{
   if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:inicio?[]:base.integracao_moradores.filter(e=>base.fin_receb_clientes.some(c=>c.id===e.referencia_id&&c.municipio_id===municipio)),total:0});}
   if(url.pathname.endsWith('/rpc/integracao_contagens_clientes'))return json(base.fin_receb_clientes.map(c=>({municipio_id:c.municipio_id,remessa_id:c.remessa_id,total:1,ativos:c.ativo===false?0:1})));
   if(url.pathname.endsWith('/rpc/integracao_financeiro_resumo'))return json([{municipio_id:id(2),remessa_id:id(3),nucleo_id:id(5),clientes:1,parcelas:1,pagas:base.fin_receb_parcelas[0].status==='Pago'?1:0,previsto:105,recebido:base.fin_receb_parcelas[0].valor_liquidado}]);
+  if(url.pathname.endsWith('/rpc/integracao_financeiro_editar_conciliado')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);for(const k of Object.keys(b.p_dados))if(JSON.stringify(p[k]??null)!==JSON.stringify(b.p_anterior[k])&&JSON.stringify(p[k]??null)!==JSON.stringify(b.p_dados[k]))return json({message:'Valores diferentes na parcela',code:'PT409'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/integracao_financeiro_editar')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);if(p.versao!==b.p_versao)return json({message:'Esta parcela mudou. Atualize antes de salvar.'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);
     if(new URLSearchParams(location.search).has('sincronizacao')&&!window.permissaoCorrigida&&operacoes.some(o=>o.table==='fin_receb_municipios'))return json({message:'new row violates row-level security policy for table fin_receb_municipios'},403);
     for(const op of operacoes) {
+      if(op.action==='evento'){base.erp_eventos.push({...op.payload,id:op.tempId,created_by:base.profiles[0].id,status:'ativo'});continue;}
       if(chatFixture&&op.action==='mensagem'){base.erp_mensagens.push({...op.payload,id:op.tempId,autor_id:id(1),created_at:new Date().toISOString()});continue;}
       if(!op.table)return json({message:'Ação não implementada no simulador'},400);
       const rows=base[op.table] ||= [];

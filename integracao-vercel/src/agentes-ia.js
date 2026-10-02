@@ -322,10 +322,27 @@ Exatamente três sugestões; prazo_dias entre 3 e 60; de dois a quatro itens de 
 
 export function montarSugestoes({ tecnico, comercial, setor }) {
   return [
-    `Panorama do setor em que a meta será criada:\n\n${resumirSetor(setor)}`,
-    setor?.setor === 'comercial' ? resumirComercial(comercial) : resumirTecnico(tecnico),
+    'Os panoramas abaixo são resumos para sugestões: detalhes extensos podem estar abreviados, e não representam toda a base. Não conclua ausência de registros por ausência de detalhes. Use as contagens apuradas e apenas as evidências visíveis.',
+    `Panorama do setor em que a meta será criada:\n\n${resumoParaSugestoes(resumirSetor(setor))}`,
+    resumoParaSugestoes(setor?.setor === 'comercial' ? resumirComercial(comercial) : resumirTecnico(tecnico)),
     'Sugira as três metas.',
   ].join('\n\n---\n\n');
+}
+
+// Reserve space for every section, including coverage and totals. This only
+// bounds the model's reading material; source records and dashboards stay intact.
+export function resumoParaSugestoes(texto, limite = 24000) {
+  if (texto.length <= limite) return texto;
+  const partes = texto.split('\n\n');
+  const aviso = '\n[Detalhes abreviados para esta leitura.]';
+  const porParte = Math.floor((limite - partes.length * 2) / partes.length);
+  const resumo = partes.map(parte => {
+    if (parte.length <= porParte) return parte;
+    const trecho = parte.slice(0, Math.max(0, porParte - aviso.length));
+    const quebra = trecho.lastIndexOf('\n');
+    return (quebra > trecho.length / 2 ? trecho.slice(0, quebra) : trecho + '…') + aviso;
+  }).join('\n\n');
+  return resumo.length <= limite ? resumo : resumo.slice(0, limite - aviso.length) + aviso;
 }
 
 // O modelo devolve texto; só o que passa aqui chega à tela, e sempre como texto.

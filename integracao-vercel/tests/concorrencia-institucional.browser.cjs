@@ -1,0 +1,17 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const errors=[];let cases=0,lastPage;try{
+ for(const width of [1440,390])for(const scenario of ['compatível','local','remoto']){
+  const p=await b.newPage({viewport:{width,height:950}});lastPage=p;p.on('pageerror',e=>errors.push(e.message));p.setDefaultTimeout(15000);
+  await p.goto('http://127.0.0.1:5182/tests/browser.html?crm&mobile');await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();if(width<600)await p.getByRole('button',{name:'Abrir menu'}).click();await p.getByRole('navigation').getByRole('button',{name:'CRM',exact:true}).click();await p.getByRole('button',{name:'Clientes institucionais',exact:true}).click();await p.getByRole('button',{name:'Cadastrar institucional',exact:true}).click();let d=p.getByRole('dialog');
+  await d.getByLabel('Nome do cliente',{exact:true}).fill('Prefeitura Concorrente');await d.getByRole('textbox',{name:/^Contato/}).fill('Contato inicial');await d.getByLabel('Produto ou serviço',{exact:true}).fill('Levantamento');await d.getByLabel('Valor (R$)',{exact:true}).fill('100');await d.getByLabel('Comercial responsável',{exact:true}).selectOption({label:'Ana Comercial'});await d.getByLabel('Prazo inicial de FollowUp',{exact:true}).selectOption('1');await d.getByRole('button',{name:'Cadastrar cliente institucional',exact:true}).click();await p.getByText('Negócio institucional salvo.',{exact:true}).waitFor();
+  await p.getByRole('button',{name:'Abrir negócio',exact:true}).click();d=p.getByRole('dialog');
+  if(scenario==='compatível')await d.getByLabel('Valor (R$)',{exact:true}).fill('150');else await d.getByRole('textbox',{name:/^Contato/}).fill('Contato local');
+  await p.evaluate(()=>{const c=window.baseFixture.integracao_crm_institucionais[0];c.contato='Contato remoto';c.versao++;});await d.getByRole('button',{name:'Salvar negócio',exact:true}).click();
+  if(scenario!=='compatível'){
+   const review=d.getByRole('region',{name:'Revisar alterações simultâneas'});await review.waitFor();assert.equal(await p.evaluate(()=>baseFixture.integracao_crm_institucionais[0].contato),'Contato remoto');
+   await p.screenshot({path:`/private/tmp/revisao-institucional-${width}.png`,fullPage:true});await review.getByRole('radio',{name:scenario==='local'?/Sua alteração/:/Valor atual compartilhado/}).check();await review.getByRole('button',{name:'Salvar escolhas e continuar'}).click();
+  }
+  await p.waitForFunction(()=>!document.querySelector('dialog[open]'));const c=await p.evaluate(()=>window.baseFixture.integracao_crm_institucionais[0]);assert.equal(c.contato,scenario==='local'?'Contato local':'Contato remoto');assert.equal(c.valor,scenario==='compatível'?150:100);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await p.close();cases++;
+ }
+ assert.deepEqual(errors,[]);console.log(`${cases} fluxos institucionais desktop/mobile: campos independentes, revisão local/remota e conclusão do formulário aprovados.`);
+}catch(e){if(lastPage){console.error(await lastPage.locator('body').innerText());await lastPage.screenshot({path:'/private/tmp/concorrencia-institucional-falha.png'});}throw e;}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1});

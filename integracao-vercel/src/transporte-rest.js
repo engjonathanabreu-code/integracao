@@ -12,6 +12,8 @@ export async function buscarREST(url, options = {}) {
       if (!response.ok) {
         const erro = new Error(body?.message || `Não foi possível acessar os dados (${response.status}).`);
         erro.status = response.status;
+        erro.code = body?.code;
+        erro.details = body?.details;
         throw erro;
       }
       return body;

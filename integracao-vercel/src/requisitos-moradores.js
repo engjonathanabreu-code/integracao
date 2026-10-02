@@ -1,3 +1,4 @@
+import {requisitosDoMunicipio,configuracaoMunicipio} from './regras-municipio.js';
 import { confrontantesFaltando, campoConfrontante } from './confrontantes.js';
 // Shared rules: the dashboard summary and the resident detail use the same checks.
 const ETAPAS = [
@@ -139,17 +140,17 @@ function acharDuplicado(db, p) {
   return o?{codigo:o.codigo,motivo:o===c?'CPF':'nome',id:o.id}:null;
 }
 
-const contexto = (db, p) => ({ nucleo: db.nucleos.find((n) => n.id === p.nucleoId) || null, duplicado: acharDuplicado(db, p), campos: db.campos?.lista || [], checklist: db.checklistCampo || [], ajustesReq: db.ajustesRequisitos || {} });
+const contexto = (db, p) => ({ nucleo: db.nucleos.find((n) => n.id === p.nucleoId) || null, duplicado: acharDuplicado(db, p), campos: configuracaoMunicipio(db,p.municipioId,"campos")?.lista || [], checklist: checklistDoMunicipio(db,p.municipioId), ajustesReq: requisitosDoMunicipio(db,p.municipioId) });
 
 function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
   const a = (ajustes || {})[etapaId] || {};
   const desligados = new Set(a.desativados || []);
   const opcionais = new Set(a.opcionais || []);
   const obrigatorios = new Set(a.obrigatorios || []);
-  const base = lista.filter((r) => r.fixo || !desligados.has(r.id)).map((r) => {
+  const base = lista.filter((r) => (r.fixo && !ajustes?._municipal) || !desligados.has(r.id)).map((r) => {
     const rotulo = (a.rotulos || {})[r.id];
     const item = { ...r, label: rotulo || r.label };
-    if (!r.fixo && opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!(p.checks || {})[r.id]; item.ok = true; }
+    if ((!r.fixo || ajustes?._municipal) && opcionais.has(r.id)) { item.opcional = true; item.tipo = item.tipo === "auto" ? "auto" : "marcador"; item.marcado = !!(p.checks || {})[r.id]; item.ok = true; }
     if (obrigatorios.has(r.id) && item.tipo === "marcador") { item.opcional = false; item.tipo = "manual"; item.ok = !!(p.checks || {})[r.id]; }
     return item;
   });

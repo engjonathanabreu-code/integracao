@@ -2,13 +2,13 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import {prepararBanco} from './crm-schema.test.js';
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const read=p=>readFileSync(new URL('../supabase/'+p,import.meta.url),'utf8');
-async function preparar(){const db=await prepararBanco();await db.exec(`alter table fin_receb_remessas add column codigo text,add column ativo boolean default true,add column created_at timestamptz default now();alter table integracao_moradores add column referencia_tabela text,add column criado_por uuid;alter table integracao_moradores add primary key(colecao,registro_id);insert into profiles values('${id(7)}','Inativo','Comercial',false);`);for(const f of ['crm-leads.sql','crm-lead-responsavel.sql','crm-carregamento.sql'])await db.exec(read('operacoes/'+f));await db.exec(read('migrations/20260922162925_crm_multiplos_comerciais.sql'));await db.exec(read('migrations/20260919182005_chatwoot_ia_conexao.sql'));await db.exec(read('migrations/20260923122108_crm_followup_dashboard.sql'));await db.exec(`insert into integracao_crm_cards(id,lead_nome,responsavel_id,comerciais_adicionais) values('${id(80)}','Lead Ana','${id(2)}',array['${id(3)}']::uuid[]),('${id(81)}','Lead Bia','${id(3)}','{}');`);return db;}
+async function preparar(){const db=await prepararBanco();await db.exec(`alter table fin_receb_remessas add column codigo text,add column ativo boolean default true,add column created_at timestamptz default now();alter table integracao_moradores add column referencia_tabela text,add column criado_por uuid;alter table integracao_moradores add primary key(colecao,registro_id);insert into profiles values('${id(7)}','Inativo','Comercial',false);`);for(const f of ['crm-leads.sql','crm-lead-responsavel.sql','crm-carregamento.sql'])await db.exec(read('operacoes/'+f));await db.exec(read('migrations/20260922162925_crm_multiplos_comerciais.sql'));await db.exec(read('migrations/20260919182005_chatwoot_ia_conexao.sql'));await db.exec(read('migrations/20260923122108_crm_followup_dashboard.sql'));await db.exec(read('migrations/20260923140000_crm_institucionais.sql'));await db.exec(read('migrations/20260929202124_ponto_tolerancia_followup_personalizado.sql'));await db.exec(`insert into integracao_crm_cards(id,lead_nome,responsavel_id,comerciais_adicionais) values('${id(80)}','Lead Ana','${id(2)}',array['${id(3)}']::uuid[]),('${id(81)}','Lead Bia','${id(3)}','{}');`);return db;}
 async function como(db,n,sql,args=[]){await db.exec(`set role authenticated;set request.jwt.claim.sub='${id(n)}'`);try{return(await db.query(sql,args)).rows;}finally{await db.exec('reset role;reset request.jwt.claim.sub');}}
 const operar=(db,n,card,pedido,anterior,dias,resumo='')=>como(db,n,'select integracao_crm_followup($1,$2,$3,$4,$5) id',[id(card),id(pedido),anterior,dias,resumo]);
 test('followup atômico: resumo, prazo, autoria, repetição e conflito entre comerciais',async()=>{const db=await preparar();try{
  for(const n of [4,7])await assert.rejects(()=>operar(db,n,80,90,null,1),/Sem permissão/);
  await assert.rejects(()=>operar(db,2,81,90,null,1),/Sem permissão/);
- for(const d of [0,3,5,null])await assert.rejects(()=>operar(db,2,80,90,null,d),/Selecione um prazo/);
+ for(const d of [0,-1,3651,null])await assert.rejects(()=>operar(db,2,80,90,null,d),/Selecione um prazo/);
  const first=(await operar(db,2,80,90,null,1))[0].id;
  assert.equal((await operar(db,2,80,90,null,1))[0].id,first);
  await assert.rejects(()=>operar(db,3,80,91,null,2),/FollowUp mudou/);
@@ -47,4 +47,17 @@ test('vincular cliente preserva FollowUps e o prazo pendente mais próximo',asyn
  await como(db,3,'select integracao_crm_vincular($1,$2)',[id(80),id(20)]);
  const rows=(await como(db,3,'select * from integracao_crm_followups')).sort((a,b)=>a.prazo_dias-b.prazo_dias);
  assert.equal(rows.length,2);assert.ok(rows.every(f=>f.card_id===id(81)));assert.equal(rows[0].status,'pendente');assert.equal(rows[1].status,'unificado');
+ }finally{await db.close();}});
+
+test('prazos personalizados persistem no CRM e no institucional, com limites e repetição',async()=>{const db=await preparar();try{
+ const first=(await operar(db,2,80,95,null,37))[0].id;
+ assert.equal((await operar(db,2,80,95,null,37))[0].id,first);
+ let row=(await db.query('select * from integracao_crm_followups where id=$1',[first])).rows[0];
+ assert.equal(row.prazo_dias,37);assert.equal(Date.parse(row.previsto_em)-Date.parse(row.criado_em),37*86400000);
+ await operar(db,3,80,96,first,3650,'Retomar contato com o cliente.');
+ await como(db,2,'select integracao_crm_salvar_institucional($1,0,$2,$3,$4,1000,$5,$6,$7,15)',[id(100),'Prefeitura Teste','Contato teste','Serviço teste',id(2),'Em negociação','']);
+ row=(await db.query('select * from integracao_crm_institucionais_followups where card_id=$1',[id(100)])).rows[0];assert.equal(row.prazo_dias,15);
+ await como(db,2,'select integracao_crm_institucional_followup($1,$2,$3,45,$4)',[id(100),id(101),row.id,'Proposta em análise.']);
+ row=(await db.query("select * from integracao_crm_institucionais_followups where card_id=$1 and status='pendente'",[id(100)])).rows[0];assert.equal(row.prazo_dias,45);
+ await assert.rejects(()=>como(db,2,'select integracao_crm_institucional_followup($1,$2,$3,0,$4)',[id(100),id(102),row.id,'Prazo inválido.']),/Selecione um prazo/);
  }finally{await db.close();}});

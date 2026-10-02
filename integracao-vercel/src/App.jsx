@@ -1,5 +1,15 @@
+import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
+import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
+import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
+import {useMemoriaAgente,podeSupervisionarAgentes} from './agente-memoria-teste.js';
+import AjustesPRFTeste from './AjustesPRFTeste.jsx';
+import {registrarAcaoNativa,registrarArquivoNativo} from './agente-memoria-teste.js';
+import GeradorOficio from './GeradorOficio.jsx';
+import {podeEditarOficios} from './oficios-permissoes.js';
+import {listarOficios} from './oficios-api.js';
+import AgentePessoalTeste,{RestritoTeste,AgenteFlutuanteTeste,BibliotecaTeste,AvatarLateralTeste} from './AgentePessoalTeste.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
 import MetasVendas from './MetasVendas.jsx';
 import EstrategiasAgentes from './EstrategiasAgentes.jsx';
@@ -26,6 +36,8 @@ import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './
 import DadosNUI from './DadosNUI.jsx';
 import ControleAcessos from './ControleAcessos.jsx';
 import {registrarAcesso} from './acessos-api.js';
+import { ETAPAS_PREFEITURA, etapaPrefeitura, processoProtocolado, moverProcessoPrefeitura } from './processos-protocolados.js';
+import ConfiguracaoIANucleo from './ConfiguracaoIANucleo.jsx';
 import { ETAPAS_PROCESSO, etapaProcesso, etapaProcessoPadrao } from './processo-etapas.js';
 import CRM, {HistoricoAtendimento} from './CRM.jsx';
 import AgentesIA from './AgentesIA.jsx';
@@ -68,6 +80,8 @@ import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCale
 import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal, assinaturaCalendario} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
+import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
+import {useAvisoChat} from './use-aviso-chat.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
@@ -386,7 +400,8 @@ function progressoNucleo(db, n, k) {
   const prontos = fim === null || fim === undefined ? ativos.length : ativos.filter((p) => p.etapa >= fim).length;
   return { ativos: ativos.length, prontos };
 }
-function requisitosNucleo(db, n, etapaId) {
+function requisitosNucleo(db,n,etapaId){return aplicarAjustesRequisitos(requisitosPadraoNucleo(db,n,etapaId),"nucleo:"+etapaId,requisitosDoMunicipio(db,n.municipioId),n);}
+function requisitosPadraoNucleo(db, n, etapaId) {
   const R = [];
   const k = NUCLEO_ETAPAS.findIndex((e) => e.id === etapaId);
   const c = n.campos || {}; const ck = n.checks || {};
@@ -986,6 +1001,7 @@ Orientações:
 - "analise.encontrado": no máximo seis itens, do mais importante para o menos. "analise.melhorar": no máximo seis itens; se estiver tudo certo, devolva lista vazia.
 - Escreva em português do Brasil, direto, sem jargão e sem repetir o que já está nos campos.`;
   const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
     method: "POST",
     headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: 2000, messages: [{ role: "user", content: [bloco, { type: "text", text: instrucao }] }] }),
@@ -1012,6 +1028,7 @@ async function blocosDeArquivosIA(arquivos) {
 }
 async function chamarIA(content, maxTokens = 4000) {
   const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
     method: "POST",
     headers: await cabecalhosIA(),
     body: JSON.stringify({ max_tokens: maxTokens, messages: [{ role: "user", content }] }),
@@ -1195,7 +1212,7 @@ function prontidaoPRF(db, n) {
 }
 function dadosPRF(db, n, opcoes, fotos) {
   const r = remessaDe(db, n.remessaId); const m = municipioDe(db, n.municipioId);
-  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const e = escaparHtml;
   const linhasUn = ps.flatMap((p) => unidadesDe(p).map((u, i) => ({ p, u, codigo: codigoUnidade(p, i) })));
   const areaTotal = linhasUn.reduce((s, x) => s + (parseNum(x.u.area) || 0), 0);
@@ -1318,6 +1335,7 @@ Lacunas (id | texto antes | texto depois):
 ${lote.map((l) => `${l.id} | ${l.antes.replace(/\|/g, "/").slice(-90)} | ${l.depois.slice(0, 40)}`).join("\n")}
 Responda só com JSON no formato {"L1":"chave ou null"}, sem texto fora do JSON.`;
     const resp = await fetch(URL_IA, {
+    signal: AbortSignal.timeout(130000),
       method: "POST", headers: await cabecalhosIA(),
       body: JSON.stringify({ max_tokens: 1000, messages: [{ role: "user", content: instrucao }] }),
     });
@@ -1493,7 +1511,7 @@ function migrarParaV5(n) {
   n.municipios.forEach((m) => { if (!m.prefixo) { m.prefixo = gerarPrefixo(m.nome, usados); usados.add(m.prefixo); } });
   const porRemessa = {};
   n.processos.forEach((p) => { (porRemessa[p.remessaId] = porRemessa[p.remessaId] || []).push(p); });
-  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => a.codigo.localeCompare(b.codigo)).forEach((p, i) => { p.numeroCliente = i + 1; }));
+  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => compararTextos(a.codigo, b.codigo)).forEach((p, i) => { p.numeroCliente = i + 1; }));
   n.processos.forEach((p) => {
     p.codigo = codigoCliente(n, p.remessaId, p.numeroCliente);
     if (!Array.isArray(p.unidades) || !p.unidades.length) p.unidades = [{ id: `${p.id}_u1`, area: p.imovel?.area || "", memorial: "", loteQuadra: p.campos?.loteQuadra || "" }];
@@ -1804,7 +1822,11 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .bolha-respirar.enchendo{transform:scale(1.35);background:var(--primary);color:#fff}
 .rb .bolha-respirar.segurando{transform:scale(1.35);background:var(--primary);color:#fff}
 .rb .bolha-respirar.esvaziando{transform:scale(.85);background:var(--soft);color:var(--primary)}
-@media (prefers-reduced-motion:reduce){.rb .bolha-respirar{transition:none}}
+.rb .bolha-respirar.enchendo{animation:pausa-inspirar 3s ease-in-out both}
+.rb .bolha-respirar.esvaziando{animation:pausa-soltar 3s ease-in-out both}
+@keyframes pausa-inspirar{from{transform:scale(.85)}to{transform:scale(1.35)}}
+@keyframes pausa-soltar{from{transform:scale(1.35)}to{transform:scale(.85)}}
+@media (prefers-reduced-motion:reduce){.rb .bolha-respirar{transition:none;animation:none}}
 .rb .previa-timbre{margin-top:10px;border:1px solid var(--line2);border-radius:10px;background:var(--card);padding:6px;overflow:hidden}
 .rb .previa-timbre img{width:100%;display:block}
 .rb .lista-orientacoes{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:14.5px;color:var(--text)}
@@ -2799,7 +2821,7 @@ function ModalVincular({ db, nucleo, onSalvar, onFechar }) {
 }
 
 function ModalTrazer({ db, remessa, onSalvar, onFechar }) {
-  const livres = db.nucleos.filter((n) => n.municipioId === remessa.municipioId && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const livres = db.nucleos.filter((n) => n.municipioId === remessa.municipioId && !n.remessaId).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const [nucleoId, setNucleoId] = useState(livres[0]?.id || "");
   const nuc = nucleoDe(db, nucleoId);
   const dup = nuc && db.nucleos.find((n) => n.id !== nuc.id && n.remessaId === remessa.id && codigoNorm(n.codigo) === codigoNorm(nuc.codigo));
@@ -2897,7 +2919,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
   const linhas = db.municipios
     .filter((m) => (uf === "Todas" || m.uf === uf) && normalizar(`${m.nome} ${m.prefixo}`).includes(normalizar(busca)))
     .map((m) => ({ m, remessas: db.remessas.filter((r) => r.municipioId === m.id).length, nucleos: db.nucleos.filter((n) => n.municipioId === m.id).length, ultima: db.auditoria.find((a) => a.municipioId === m.id && a.usuarioId), ...contagemClientes(db, m.id) }))
-    .sort((a, b) => a.m.nome.localeCompare(b.m.nome));
+    .sort((a, b) => compararTextos(a.m.nome, b.m.nome));
   const sugestoes = busca ? linhas.slice(0, 8) : [];
   const tot = { nucleos: db.nucleos.length, moradores: contagemClientes(db).ativos };
   return (
@@ -2951,7 +2973,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
           <tbody>
             {ordem.ordenar(linhas, { nome:x=>x.m.nome, remessas:x=>x.remessas, nucleos:x=>x.nucleos, moradores:x=>x.ativos, pendencias:x=>x.ativos ? x.comPend : null, andamento:x=>x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null, ultima:x=>x.ultima?.data }).map(({ m, remessas, nucleos, ativos, comPend, cont, ultima }) => (
               <tr key={m.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "municipio", id: m.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "municipio", id: m.id }); }}>
-                <td><strong style={{ color: "var(--titulo)" }}>{m.nome}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
+                <td><strong style={{ color: "var(--titulo)" }}>{m.nome || "Município sem nome"}</strong><div className="ajuda" style={{ margin: 0 }}>{m.uf}{m.prefixo ? `, ${m.prefixo}` : ""}</div></td>
                 <td>{remessas || <span style={{ color: "var(--muted)" }}>nenhuma</span>}</td>
                 <td>{nucleos}</td>
                 <td><strong style={{ fontWeight: 650 }}>{ativos}</strong></td>
@@ -2985,7 +3007,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
   const perm = cad.perm;
   const remessas = db.remessas.filter((r) => r.municipioId === m.id).sort((a, b) => a.numero - b.numero);
   const resumoRemessas = new Map(remessas.map(r => [r.id, contagemClientes(db, m.id, r.id)]));
-  const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const semRemessa = db.nucleos.filter((n) => n.municipioId === m.id && !n.remessaId).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const qtdNucleos = db.nucleos.filter((n) => n.municipioId === m.id).length;
   const rs = contagemClientes(db, m.id);
   const ajustes = ajustesDoMunicipio(db, m.id);
@@ -3061,8 +3083,8 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
   if (!r) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Remessa não encontrada.</p></div>;
   const m = municipioDe(db, r.municipioId);
   const perm = cad.perm;
-  const nucleos = db.nucleos.filter((n) => n.remessaId === r.id).sort((a, b) => a.codigo.localeCompare(b.codigo));
-  const ps = db.processos.filter((p) => p.remessaId === r.id).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const nucleos = db.nucleos.filter((n) => n.remessaId === r.id).sort((a, b) => compararTextos(a.codigo, b.codigo));
+  const ps = db.processos.filter((p) => p.remessaId === r.id).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const at = soAtivos(ps);
   const semNuc = at.filter((p) => !p.nucleoId).length;
   const x = resumoMoradores(db, ps);
@@ -4380,8 +4402,8 @@ function AbaQualificacao({ p, usuario, perm, mutar, setToast }) {
 }
 
 // Observações por morador (como os comentários do Integrado). Mesmo formato das observações do núcleo.
-function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
-  const [texto, setTexto] = useState("");
+function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado, pedidoAgente }) {
+  const [texto, setTexto] = useState(pedidoAgente?.conteudo||"");
   const [filtro, setFiltro] = useState("todas");
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta" && !cancelado;
@@ -4394,6 +4416,8 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || "", texto: t, data: new Date().toISOString(), controle: "editavel" }]; return d; }, "Observação no morador", { ...log, detalhe: `${p.codigo}: ${t.slice(0, 60)}` });
     setTexto(""); setToast("Observação registrada.");
   };
+  const registrouAgente=useRef(false);
+  useEffect(()=>{if(pedidoAgente?.conteudo&&pode&&!registrouAgente.current){registrouAgente.current=true;registrar();}},[]);
   const remover = (o) => {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = (q.observacoes || []).filter((y) => y.id !== o.id); return d; }, "Observação removida", { ...log, detalhe: `${p.codigo}: ${o.texto.slice(0, 60)}` });
   };
@@ -4424,11 +4448,11 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado }) {
   );
 }
 
-function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial }) {
+function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial, pedidoAgente }) {
   const p = db.processos.find((x) => x.id === processoId);
   const perm = permissoes(usuario);
   const [aba, setAba] = useState(abaInicial || "cadastro");
-  const [rascunho, setRascunho] = useState(() => (p ? extrair(p) : null));
+  const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=extrair(p);if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
   const baseFormulario=useRef(p?extrair(p):null);
   useEffect(()=>{const anterior=baseFormulario.current,proximo=p?extrair(p):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
   const [iaPaths, setIaPaths] = useState([]);
@@ -4563,7 +4587,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {aba === "unidades" && <AbaUnidades db={db} p={p} usuario={usuario} mutar={mutar} setToast={setToast} />}
           {aba === "campo" && <AbaCampo db={db} p={p} usuario={usuario} ir={irComCuidado} />}
           {aba === "qualificacao" && <AbaQualificacao p={p} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} />}
-          {aba === "observacoes" && <AbaObservacoesProcesso p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
+          {aba === "observacoes" && <AbaObservacoesProcesso pedidoAgente={pedidoAgente} p={p} usuario={usuario} mutar={mutar} setToast={setToast} cancelado={cancelado} />}
           {aba === "historico" && <Secao titulo="Histórico do processo" nota="Registro de quem fez o quê. Valores de CPF não são gravados no histórico."><ListaHistorico itens={db.auditoria.filter((a) => a.processoId === p.id)} vazio="Nenhuma ação registrada ainda." /></Secao>}
         </div>
         <aside className="lateral">
@@ -4602,7 +4626,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   const m = n ? municipioDe(db, n.municipioId) : r ? municipioDe(db, r.municipioId) : null;
   if ((!n && !r) || !m) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const perm = cad.perm;
-  const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const at = ps.filter(ativo);
   const x = resumoMoradores(db, ps);
   const { teto, sm } = criterioNucleo(n);
@@ -4969,14 +4993,14 @@ function FormCampo({ db, p, n, usuario, pode, mutar, setToast, onSujo, onSalvo, 
 function PaginaCampo({ db, usuario, nucleoId, processoId, ir, mutar, setToast, offline, conexao }) {
   const n = nucleoDe(db, nucleoId);
   const [selId, setSelId] = useState(() => {
-    const ps0 = n ? db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)) : [];
+    const ps0 = n ? db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)) : [];
     return processoId || ps0.find((p) => !campoCompleto(db, p))?.id || ps0[0]?.id || "";
   });
   const [sujo, setSujo] = useState(false);
   const [trocar, setTrocar] = useState(null);
   if (!n) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const perm = permissoes(usuario);
-  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const ps = db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const p = ps.find((x) => x.id === selId);
   const escolher = (id) => { if (id === selId) return; if (sujo) setTrocar(id); else setSelId(id); };
   const irCuidado = (rota) => { if (sujo) setTrocar(rota); else ir(rota); };
@@ -5039,7 +5063,7 @@ function AbaCampo({ db, p, usuario, ir }) {
 }
 
 /* ---------------- PRF ---------------- */
-function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
+function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast, onArquivoAgente, pedidoAgente }) {
   const n = nucleoDe(db, nucleoId);
   const perm = permissoes(usuario);
   const [modelo, setModelo] = useState(null);
@@ -5092,6 +5116,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
     const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
     if(tipo==="doc"){const {baixarDocx}=await Promise.resolve(documentoDocx);await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
+    if(onArquivoAgente){const blob=tipo==='doc'?await documentoDocx.gerarDocx(aviso+resultado.html,titulo,timbrado):new Blob([documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo)],{type:'text/html'});await onArquivoAgente({title:titulo,type:'PRF',blob,filename:nomeArq+(tipo==='doc'?'.docx':'.html'),mime:blob.type,nucleoId:n.id,destination:'Núcleo / Histórico',completo:documentoCompleto});}
     mutar((d) => d, documentoCompleto ? "PRF completo baixado" : "Prévia do PRF baixada", { ...log, detalhe: `${tipo === "doc" ? "Word" : "HTML"}, ${pronto.prontos} de ${pronto.ativos} moradores na etapa Projeto, com CPF completo` });
     }catch(e){setErro(e.message);}finally{setEstado("ocioso");}
   };
@@ -5107,6 +5132,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast }) {
         </div>
         <span className="flex flex-wrap gap-2">{modeloProprio && <Tag tipo="ok"><Building2 size={12} />Modelo deste município</Tag>}<Tag tipo={documentoCompleto ? "ok" : "pend"}>{documentoCompleto ? <Check size={12} /> : null}{pronto.prontos} de {pronto.ativos} moradores na etapa Projeto</Tag></span>
       </div>
+      {perm.prf&&<AjustesPRFTeste usuario={usuario} nucleo={n} dados={dados} modelo={modelo} pedidoInicial={pedidoAgente} chamarIA={chamarIA} aplicar={(html,nome)=>{setModelo(html);setNomeModelo(nome);const ajustado=prepararModeloPRF(html,dados);setMapaSalvo({modelo:ajustado.html,valores:mapearPorPalavras(ajustado.html?encontrarLacunas(ajustado.html):[])});setOrigemMapa('agente pessoal / dados oficiais');mutar(d=>d,'PRF personalizado preparado',log);}}/>}
       <Secao titulo="Dados que faltam antes de gerar">
         {Object.entries(faltandoPorOrigem).map(([origem, campos]) => <div key={origem} style={{ marginBottom: 10 }}><strong>{origem.includes("loteQuadra") ? "Cadastro da unidade — campos Quadra e Lote" : origem}</strong><p className="ajuda">{campos.join(" · ")}</p></div>)}
         {!Object.keys(faltandoPorOrigem).length && <p>Dados do cadastro preenchidos. Confira também as lacunas do modelo abaixo.</p>}
@@ -5854,7 +5880,7 @@ function ConfigUsuarios({ db, usuario, mutar, setToast }) {
   const [sincronizar, setSincronizar] = useState(false);
   const [senhaDe, setSenhaDe] = useState(null);
   const [filtro, setFiltro] = useState("todos");
-  const lista = (db.usuarios || []).filter((u) => filtro === "todos" || u.setor === filtro).sort((a, b) => Number(b.ativo) - Number(a.ativo) || a.nome.localeCompare(b.nome));
+  const lista = (db.usuarios || []).filter((u) => filtro === "todos" || u.setor === filtro).sort((a, b) => Number(b.ativo) - Number(a.ativo) || compararTextos(a.nome, b.nome));
   const acoesDe = (u) => db.auditoria.filter((a) => a.usuarioId === u.id).length;
   const salvar = (u) => {
     const existe = db.usuarios.some((x) => x.id === u.id);
@@ -6313,6 +6339,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
     ["ponto", "Folha Ponto", Clock],
+    podeSupervisionarAgentes(usuario) && ["restrito", "Restrito", Lock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
     perm.config && ["regras", "Regras da IA", Sparkles],
     podeUsarAgentes(usuario) && ["agentes", "Agentes IA", Sparkles],
@@ -6330,11 +6357,12 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const atual = ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
   const setAba = (a2) => ir({ pag: "config", aba: a2 });
   return (
-    <div className="contem">
+    <div className={`contem${atual === "restrito" ? " largo config-restrito" : ""}`}>
       <div className="abas" role="tablist" aria-label="Configurações">
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
+        {atual === "restrito" && podeSupervisionarAgentes(usuario) && <RestritoTeste db={db} usuario={usuario} />}
         {atual === "ponto" && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -6387,7 +6415,7 @@ function montarPacote(db, n, usuario) {
     nucleoId: n.id, baixadoEm: new Date().toISOString(), baixadoPor: usuario.nome, usuarioId: usuario.id, ultimaSincronizacao: "",
     nucleo: { id: n.id, codigo: n.codigo, nome: n.nome, remessa: r ? nomeRemessa(db, r) : "", municipio: m?.nome || "", uf: m?.uf || "" },
     checklist: clone(checklistDoMunicipio(db, n.municipioId).filter((i) => i.ativo)),
-    unidades: db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)).map((p) => ({
+    unidades: db.processos.filter((p) => p.nucleoId === n.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)).map((p) => ({
       id: p.id, codigo: p.codigo, remessaId: p.remessaId, municipioId: p.municipioId, etapa: p.etapa,
       requerente: { nome: p.requerente.nome, telefone: p.requerente.telefone }, conjuge: { nome: p.conjuge.nome }, endereco: clone(p.endereco),
       campo: campoComConfrontantes(p), versaoConfrontantesBase: versaoConfrontantes(p), versaoBase: p.campo?.data || "", alterado: false, alteradoEm: "", conflito: null, sincronizadoEm: "",
@@ -6539,7 +6567,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   const [removerPk, setRemoverPk] = useState(null);
   const { pacotes, carregado } = offline;
   const pk = nucleoId ? pacotes[nucleoId] : null;
-  const lista = Object.values(pacotes).sort((a, b) => a.nucleo.codigo.localeCompare(b.nucleo.codigo));
+  const lista = Object.values(pacotes).sort((a, b) => compararTextos(a.nucleo.codigo, b.nucleo.codigo));
   const irCuidado = (destino) => { if (sujo) setSair(destino); else destino(); };
 
   if (!carregado || !comercial.carregado) return <div className="offline"><p><Loader2 size={16} className="girando" /> Lendo o aparelho</p></div>;
@@ -6611,7 +6639,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
         <div className="grade-unidades">
           {[...pk.unidades]
             .filter((u) => !buscaUnidade || normalizar(`${u.codigo} ${u.requerente.nome || ""} ${u.endereco.logradouro || ""}`).includes(normalizar(buscaUnidade)))
-            .sort((a, b) => (unidadeCompleta(pk, a) ? 1 : 0) - (unidadeCompleta(pk, b) ? 1 : 0) || a.codigo.localeCompare(b.codigo))
+            .sort((a, b) => (unidadeCompleta(pk, a) ? 1 : 0) - (unidadeCompleta(pk, b) ? 1 : 0) || compararTextos(a.codigo, b.codigo))
             .map((u) => {
             const completa = unidadeCompleta(pk, u);
             return (
@@ -6730,7 +6758,7 @@ function montarPacoteComercial(db, r, usuario) {
     remessaId: r.id, baixadoEm: new Date().toISOString(), baixadoPor: usuario.nome, usuarioId: usuario.id,
     remessa: { id: r.id, nome: nomeRemessa(db, r), titulo: r.titulo || "", municipio: m?.nome || "", uf: m?.uf || "", municipioId: r.municipioId },
     campos: clone(camposComercialAtivos(db)),
-    clientes: db.processos.filter((p) => p.remessaId === r.id && ativo(p)).sort((a, b) => a.codigo.localeCompare(b.codigo)).map((p) => ({
+    clientes: db.processos.filter((p) => p.remessaId === r.id && ativo(p)).sort((a, b) => compararTextos(a.codigo, b.codigo)).map((p) => ({
       id: p.id, codigo: p.codigo, municipioId: p.municipioId, remessaId: p.remessaId,
       nome: p.requerente.nome, telefone: p.requerente.telefone, cpf: p.requerente.cpf, conjuge: p.conjuge.nome,
       endereco: `${p.endereco.logradouro || ""}${p.endereco.numero ? `, ${p.endereco.numero}` : ""}`,
@@ -7255,7 +7283,7 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Secao titulo={`Regras de ${municipio.nome}`} nota="Cada município pode ter regras próprias de análise de documentos, checklist de campo e modelo de PRF. Sem cópia própria, valem as regras gerais do sistema.">
+      <Secao titulo={`Regras de ${municipio.nome}`} nota="Use os mesmos editores de Configurações para definir regras da IA, requisitos de todas as etapas, checklist e PRF deste município. As alterações feitas aqui valem somente para ele.">
         {!pode && <Aviso>Só a Diretoria altera regras. Você pode conferir o que está valendo aqui.</Aviso>}
         <div className="flex flex-wrap gap-2">
           <Tag tipo={regras ? "ok" : "neutra"}>{regras ? "IA específica" : "IA geral"}</Tag>
@@ -7265,59 +7293,14 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
       </Secao>
 
       <div className="abas" role="tablist" aria-label="Regras do município">
-        {[["ia", "Regras da IA"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
+        {[["ia", "Regras da IA"], ["requisitos", "Requisitos das etapas"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
           <button key={k} role="tab" aria-selected={aba === k} className={aba === k ? "ativa" : ""} onClick={() => setAba(k)}>{t}</button>
         ))}
       </div>
 
-      {aba === "ia" && (
-        <>
-          {(regras || db.regrasIA || []).map((r) => {
-            const editavel = pode && !!regras;
-            const alterar = (campo, valor) => gravar((a) => { const q = a.regrasIA.find((x) => x.id === r.id); q[campo] = valor; }, "Regra da IA do município alterada", `${r.nome}, ${campo}`);
-            return (
-              <section key={r.id} className="card" style={{ padding: 16 }}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong style={{ color: "var(--titulo)" }}>{r.nome}</strong>
-                  <span className="flex items-center gap-2">
-                    <Tag tipo={r.gravidade === "alta" ? "bloq" : r.gravidade === "media" ? "pend" : "neutra"}>{r.gravidade === "alta" ? "Grave" : r.gravidade === "media" ? "Média" : "Leve"}</Tag>
-                    <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={r.ativa !== false} disabled={!editavel} onChange={(e) => alterar("ativa", e.target.checked)} /><span /></span>Ativa</label>
-                  </span>
-                </div>
-                <textarea className="inp" rows={2} style={{ marginTop: 10 }} value={r.instrucao} disabled={!editavel} onChange={(e) => alterar("instrucao", e.target.value)} aria-label={`Instrução da regra ${r.nome}`} />
-                <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-                  <span className="ajuda" style={{ margin: 0 }}>Vale para: {(r.tipos || []).filter((t) => !(r.ocultos || []).includes(t)).map((t) => DOC_TIPOS[t] || t).join(", ") || "nenhum documento"}</span>
-                  {editavel && (
-                    <select className="inp" style={{ maxWidth: 150, marginLeft: "auto" }} value={r.gravidade} onChange={(e) => alterar("gravidade", e.target.value)} aria-label={`Gravidade da regra ${r.nome}`}>
-                      <option value="baixa">Leve</option><option value="media">Média</option><option value="alta">Grave</option>
-                    </select>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-          {rodape(!!regras, criarCopiaRegras, () => voltarGeral("regrasIA", "As regras da IA"), "Regras da IA")}
-        </>
-      )}
-
-      {aba === "checklist" && (
-        <>
-          <Secao titulo="Itens do checklist de campo" nota="O que a Topografia responde em cada unidade deste município.">
-            {(checklist || db.checklistCampo || []).map((i) => {
-              const editavel = pode && !!checklist;
-              const alterar = (campo, valor) => gravar((a) => { const q = a.checklistCampo.find((x) => x.id === i.id); q[campo] = valor; }, "Checklist de campo do município alterado", `${i.rotulo}, ${campo}`);
-              return (
-                <div key={i.id} className="flex flex-wrap items-center gap-3" style={{ padding: "9px 0", borderTop: "1px solid var(--line2)" }}>
-                  <span style={{ flex: 1, minWidth: 180 }}><strong style={{ fontWeight: 600 }}>{i.rotulo}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{i.grupo}, {i.tipo === "simnao" ? "sim ou não" : i.tipo === "numero" ? "número" : i.tipo === "texto" ? "texto" : "marcação"}</span></span>
-                  <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={i.ativo !== false} disabled={!editavel} onChange={(e) => alterar("ativo", e.target.checked)} /><span /></span>Ativo</label>
-                  <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}><span className="chave"><input type="checkbox" checked={!!i.obrigatorio} disabled={!editavel || i.ativo === false} onChange={(e) => alterar("obrigatorio", e.target.checked)} /><span /></span>Obrigatório</label>
-                </div>
-              );
-            })}
-          </Secao>
-          {rodape(!!checklist, criarCopiaChecklist, () => voltarGeral("checklistCampo", "O checklist de campo"), "Checklist")}
-        </>
-      )}
+      {aba === "ia" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigRegras db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['regrasIA','tiposDocumento'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{regras&&rodape(true,criarCopiaRegras,()=>voltarGeral("regrasIA","As regras da IA"),"Regras da IA")}</fieldset>}
+      {aba === "checklist" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigChecklist db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['checklistCampo'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{checklist&&rodape(true,criarCopiaChecklist,()=>voltarGeral("checklistCampo","O checklist de campo"),"Checklist")}</fieldset>}
+      {aba === "requisitos" && <><ConfigRequisitos db={escopoRegrasMunicipio(db,municipio.id)} usuario={usuario} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar requisitos.");return alterarRegrasMunicipio(d,municipio.id,['ajustesRequisitos'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{ajustes?.ajustesRequisitos&&rodape(true,()=>{},()=>voltarGeral("ajustesRequisitos","Os requisitos das etapas"),"Requisitos")}</>}
 
       {aba === "prf" && (
         <>
@@ -7825,14 +7808,14 @@ function AbaMemorialNucleo({ n, usuario, mutar, setToast }) {
 const ultimoAndamento = (n) => (n.andamentos && n.andamentos.length ? n.andamentos[0] : null);
 const responsavelDe = (db, n) => (db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""));
 
-function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar }) {
+function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar, protocolado = false }) {
   const ult = ultimoAndamento(n);
-  const [f, setF] = useState({ status: etapaProcesso(n), descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
+  const [f, setF] = useState({ status: protocolado ? etapaPrefeitura(n) : etapaProcesso(n), visivelIA: true, operacional: "Em andamento", descricaoCliente: "", observacao: "", previsao: ult?.previsao || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const valido = f.descricaoCliente.trim().length >= 5;
   const salvar = () => {
-    const item = { id: uid("an"), ...f, status: etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.pendencia = f.observacao.trim(); return d; },
+    const item = { id: uid("an"), ...f, status: protocolado ? etapaPrefeitura(n) || "Protocolado" : etapaProcesso(n), descricaoCliente: f.descricaoCliente.trim(), observacao: f.observacao.trim(), data: new Date().toISOString(), por: usuario.nome };
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.andamentos = [item, ...(q.andamentos || [])]; if (f.observacao.trim()) q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || usuario.setor, texto: f.observacao.trim(), data: item.data }]; return d; },
       "Andamento registrado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${etapaProcesso(n)}` });
     setToast("Andamento registrado."); onFechar();
   };
@@ -7840,10 +7823,11 @@ function ModalAndamento({ db, n, usuario, mutar, setToast, onFechar }) {
     <Modal titulo={`Novo andamento, ${n.codigo}`} largura={560} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!valido} onClick={salvar}>Registrar andamento</button></>}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={etapaProcesso(n)} readOnly /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anst">Etapa atual do núcleo</label><input id="anst" className="inp" value={protocolado ? etapaPrefeitura(n) || "Etapa a definir" : etapaProcesso(n)} readOnly /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anpv">Previsão</label><input id="anpv" type="date" className="inp" value={f.previsao} onChange={(e) => set("previsao", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="ands">O que contar ao morador</label><textarea id="ands" className="inp" rows={3} value={f.descricaoCliente} onChange={(e) => set("descricaoCliente", e.target.value)} placeholder="Texto em linguagem simples, que pode ser repassado." /></div>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica só para a equipe. Também vira a pendência do processo." /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="anob">Observação interna</label><textarea id="anob" className="inp" rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Fica no histórico interno do núcleo, com autor e data." /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="flex items-center gap-2"><input type="checkbox" checked={f.visivelIA} onChange={e => set("visivelIA", e.target.checked)} />Disponibilizar andamento ao agente IA do Chatwoot</label><p className="ajuda">A IA consulta o texto para o morador quando o atendimento do núcleo está autorizado. Observações internas ficam no histórico da equipe.</p></div>
       </div>
     </Modal>
   );
@@ -9013,39 +8997,10 @@ function Presenca({ online, texto }) {
   return <span className={`presenca${online ? " ligado" : ""}`} title={texto || (online ? "No sistema agora" : "Fora do sistema")} aria-label={texto || (online ? "no sistema agora" : "fora do sistema")} />;
 }
 
-// Avisa quando chega mensagem de alguém que também está no sistema
-function useAvisoChat({ db, usuario, entrouEm }) {
-  const [aviso, setAviso] = useState(null);
-  const vistas = useRef(null);
-  const de = useRef(null);
-  useEffect(() => {
-    if (!db || !usuario) return;
-    // Troca de pessoa recomeça a contagem do que já foi visto
-    if (de.current !== usuario.id) { de.current = usuario.id; vistas.current = null; }
-    const minhas = (db.conversas || []).filter((c) => (c.participantes || []).includes(usuario.id));
-    const ids = new Set(minhas.flatMap((c) => (c.mensagens || []).map((m) => m.id)));
-    const primeiraVez = vistas.current === null;
-    const novas = [];
-    minhas.forEach((c) => {
-      const lidaAte = (c.lidaPor || {})[usuario.id] || "";
-      (c.mensagens || []).forEach((m) => {
-        if (m.autorId === usuario.id) return;
-        // Na entrada, avisa o que chegou e ainda não foi lido; depois, só o que chegar durante a sessão
-        const nova = primeiraVez ? m.data > lidaAte : !vistas.current.has(m.id) && m.data >= entrouEm;
-        if (!nova) return;
-        const autor = (db.usuarios || []).find((u) => u.id === m.autorId);
-        if (estaOnline(autor)) novas.push({ conversa: c, mensagem: m, autor });
-      });
-    });
-    vistas.current = ids;
-    if (novas.length) setAviso(novas.sort((x, y) => x.mensagem.data.localeCompare(y.mensagem.data))[novas.length - 1]);
-  }, [db, usuario?.id]); // eslint-disable-line
-  return [aviso, setAviso];
-}
-
 function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar, onAbrirChat, mutar }) {
   const [texto, setTexto] = useState("");
-  const [pos, setPos] = useState(() => ({ x: Math.max(12, (typeof window !== "undefined" ? window.innerWidth : 1200) - 380), y: Math.max(12, (typeof window !== "undefined" ? window.innerHeight : 800) - 470) }));
+  const chavePosChat="integracao-balao-chat-"+usuario.id+"-"+conversaId;
+  const [pos, setPos] = useState(() => {try{const saved=JSON.parse(localStorage.getItem(chavePosChat));if(saved)return {x:Math.max(8,Math.min(saved.x,innerWidth-Math.min(330,innerWidth-16)-8)),y:Math.max(8,Math.min(saved.y,innerHeight-60))};}catch{}return {x:Math.max(8,innerWidth-380),y:Math.max(8,innerHeight-470)};});
   const arrasto = useRef(null);
   const fim = useRef(null);
   const area = useRef(null);
@@ -9077,19 +9032,20 @@ function JanelaChat({ db, usuario, conversaId, minimizada, onMinimizar, onFechar
   };
   const inicioArrasto = (e) => {
     if (e.target.closest("button")) return;
-    arrasto.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+    const rect=e.currentTarget.parentElement.getBoundingClientRect();
+    arrasto.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top, largura:rect.width,altura:rect.height };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const moverJanela = (e) => {
     if (!arrasto.current) return;
     const larguraTela = typeof window !== "undefined" ? window.innerWidth : 1200;
     const alturaTela = typeof window !== "undefined" ? window.innerHeight : 800;
-    setPos({ x: Math.min(Math.max(4, e.clientX - arrasto.current.dx), larguraTela - 80), y: Math.min(Math.max(4, e.clientY - arrasto.current.dy), alturaTela - 50) });
+    setPos({ x: Math.min(Math.max(4, e.clientX - arrasto.current.dx), Math.max(8,larguraTela - arrasto.current.largura - 8)), y: Math.min(Math.max(4, e.clientY - arrasto.current.dy), Math.max(8,alturaTela - arrasto.current.altura - 8)) });
   };
-  const soltarJanela = () => { arrasto.current = null; };
+  const soltarJanela = (e) => { if(arrasto.current){const r=e.currentTarget.parentElement.getBoundingClientRect();localStorage.setItem(chavePosChat,JSON.stringify({x:r.left,y:r.top}));}arrasto.current = null; };
   return (
-    <div className={`janela-chat${minimizada ? " minimizada" : ""}`} style={{ left: pos.x, top: pos.y }} role="dialog" aria-label={`Conversa com ${titulo}`}>
-      <div className="topo-janela" onPointerDown={inicioArrasto} onPointerMove={moverJanela} onPointerUp={soltarJanela} onPointerLeave={soltarJanela}>
+    <div className={`janela-chat${minimizada ? " minimizada" : ""}`} style={{ left: pos.x, top: pos.y, "--chat-x":pos.x+"px", "--chat-y":pos.y+"px" }} role="dialog" aria-label={`Conversa com ${titulo}`}>
+      <div className="topo-janela" onPointerDown={inicioArrasto} onPointerMove={moverJanela} onPointerUp={soltarJanela} onPointerCancel={soltarJanela}>
         <Presenca online={online} />
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{titulo}</span>
         {minimizada && naoLidasAqui > 0 && <span className="conta-aba">{naoLidasAqui}</span>}
@@ -9342,7 +9298,7 @@ async function montarPreviaERP(db, usuario) {
       comercial: null, geo: null, memorial: null,
     });
   });
-  novo.municipios = municipios.sort((a, b) => a.nome.localeCompare(b.nome));
+  novo.municipios = municipios.sort((a, b) => compararTextos(a.nome, b.nome));
   novo.remessas = [];
   novo.nucleos = nucleos;
   novo.processos = [];
@@ -9441,7 +9397,10 @@ function ConfigPreviaERP({ db, usuario, mutar, setToast, trocarUsuario }) {
 function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const perm = permissoes(usuario);
   const pode = perm.diretor;
+  const [alvo,setAlvo]=useState("moradores");
+  const etapasEditor=alvo==="nucleos"?NUCLEO_ETAPAS:ETAPAS;
   const [etapa, setEtapa] = useState(ETAPAS[0].id);
+  const chaveEtapa=alvo==="nucleos"?"nucleo:"+etapa:etapa;
   const [novo, setNovo] = useState(null);
   const [restaurar, setRestaurar] = useState(false);
   // Um morador de exemplo só para listar os requisitos daquela etapa.
@@ -9450,8 +9409,9 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const completos = db.processos.filter((p) => !p._resumo);
   const exemplo = completos.find((p) => ETAPAS[p.etapa]?.id === etapa) || completos[0] || processoVazio("", "", "EXEMPLO");
   const ctx = contexto(db, exemplo);
-  const padrao = requisitosPadrao(etapa, exemplo, ctx);
-  const a = (db.ajustesRequisitos || {})[etapa] || {};
+  const exemploNucleo=db.nucleos.find(n=>!db._municipioRegras||n.municipioId===db._municipioRegras)||{id:"exemplo",campos:{},checks:{}};
+  const padrao = (alvo==="nucleos"?requisitosPadraoNucleo(db,{...exemploNucleo,campos:{...exemploNucleo.campos,estudoAmbiental:"sim",estudoRisco:"sim"}},etapa):requisitosPadrao(etapa, exemplo, ctx)).map(r=>db._municipioRegras?{...r,fixo:false}:r);
+  const a = (db.ajustesRequisitos || {})[chaveEtapa] || {};
   const desligados = new Set(a.desativados || []);
   const opcionais = new Set(a.opcionais || []);
   const obrigatorios = new Set(a.obrigatorios || []);
@@ -9459,11 +9419,11 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   const mudou = desligados.size || opcionais.size || obrigatorios.size || extras.length || Object.keys(a.rotulos || {}).length;
   const gravar = (fn, acao, detalhe) => mutar((d) => {
     d.ajustesRequisitos = d.ajustesRequisitos || {};
-    const atual = { desativados: [], opcionais: [], obrigatorios: [], rotulos: {}, extras: [], ...(d.ajustesRequisitos[etapa] || {}) };
+    const atual = { desativados: [], opcionais: [], obrigatorios: [], rotulos: {}, extras: [], ...(d.ajustesRequisitos[chaveEtapa] || {}) };
     fn(atual);
-    d.ajustesRequisitos[etapa] = atual;
+    d.ajustesRequisitos[chaveEtapa] = atual;
     return d;
-  }, acao, { detalhe: `${ETAPAS.find((e) => e.id === etapa)?.nome}: ${detalhe}` });
+  }, acao, { detalhe: `${etapasEditor.find((e) => e.id === etapa)?.nome}: ${detalhe}` });
   const alternarLista = (campo, id, ligado, rotulo) => gravar((x) => {
     x[campo] = ligado ? Array.from(new Set([...(x[campo] || []), id])) : (x[campo] || []).filter((y) => y !== id);
     if (campo === "opcionais" && ligado) x.obrigatorios = (x.obrigatorios || []).filter((y) => y !== id);
@@ -9492,7 +9452,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
             <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
               <span className="chave"><input type="checkbox" checked={!desligado} disabled={!pode || r.fixo} onChange={(e) => alternarLista("desativados", r.id, !e.target.checked, r.label)} /><span /></span>Ativo
             </label>
-            {r.tipo !== "auto" && (
+            {(r.tipo !== "auto" || db._municipioRegras) && (
               <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
                 <span className="chave"><input type="checkbox" checked={opcional} disabled={!pode || desligado} onChange={(e) => alternarLista(r.opcional ? "obrigatorios" : "opcionais", r.id, r.opcional ? !e.target.checked : e.target.checked, r.label)} /><span /></span>Opcional
               </label>
@@ -9504,18 +9464,19 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <Secao titulo="Requisitos das etapas" nota="O que cada etapa exige antes de liberar a próxima. A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios. Vale para todos os moradores.">
+      <Secao titulo="Requisitos das etapas" nota={"O que cada etapa exige antes de liberar a próxima. A Diretoria pode desligar, renomear, tornar opcional ou criar requisitos próprios. "+(db._municipioRegras ? "Vale apenas para este município." : "Vale para todo o sistema.")}>
         {!pode && <Aviso>Só a Diretoria altera os requisitos. Você pode conferir o que está valendo.</Aviso>}
+        <label className="rot">Regras de aprovação para<select className="inp" aria-label="Regras de aprovação para" style={{maxWidth:280,marginBottom:12}} value={alvo} onChange={e=>{const destino=e.target.value;setAlvo(destino);setEtapa((destino==="nucleos"?NUCLEO_ETAPAS:ETAPAS)[0].id)}}><option value="moradores">Moradores</option><option value="nucleos">Núcleos</option></select></label>
         <div className="flex flex-wrap gap-1">
-          {ETAPAS.map((e) => {
-            const q = (db.ajustesRequisitos || {})[e.id];
+          {etapasEditor.map((e) => {
+            const q = (db.ajustesRequisitos || {})[alvo==="nucleos"?"nucleo:"+e.id:e.id];
             const alterada = q && (q.desativados?.length || q.opcionais?.length || q.obrigatorios?.length || q.extras?.length || Object.keys(q.rotulos || {}).length);
             return <button key={e.id} className={`btn btn-sm${etapa === e.id ? " btn-primario" : ""}`} onClick={() => setEtapa(e.id)}><IconeEtapa id={e.icone || e.id} tamanho={15} cor="currentColor" corCheck="currentColor" />{e.nome}{alterada ? " ✎" : ""}</button>;
           })}
         </div>
       </Secao>
 
-      <Secao titulo={`${ETAPAS.find((e) => e.id === etapa)?.nome}: ${padrao.filter((r) => !desligados.has(r.id)).length + extras.length} requisito(s)`}
+      <Secao titulo={`${etapasEditor.find((e) => e.id === etapa)?.nome}: ${padrao.filter((r) => !desligados.has(r.id)).length + extras.length} requisito(s)`}
         nota={mudou ? "Esta etapa está diferente do padrão." : "Esta etapa segue o padrão do sistema."}
         acao={pode && <span className="flex gap-2">{mudou > 0 && <button className="btn btn-sm" onClick={() => setRestaurar(true)}><Undo2 size={13} />Voltar ao padrão</button>}<button className="btn btn-sm btn-primario" onClick={() => setNovo({ id: `extra_${uid("rq")}`, label: "", tipo: "manual", opcional: false, ajuda: "" })}><Plus size={13} />Novo requisito</button></span>}>
         {padrao.map((r) => linha(r, false))}
@@ -9541,7 +9502,7 @@ function ConfigRequisitos({ db, usuario, mutar, setToast }) {
         </Modal>
       )}
       {restaurar && <ModalConfirmar titulo="Voltar ao padrão?" texto="Os ajustes desta etapa serão descartados, inclusive os requisitos criados aqui. O que já foi marcado nos moradores não muda." rotuloBotao="Voltar ao padrão" onFechar={() => setRestaurar(false)} onConfirmar={() => {
-        mutar((d) => { const novoMapa = { ...(d.ajustesRequisitos || {}) }; delete novoMapa[etapa]; d.ajustesRequisitos = novoMapa; return d; }, "Requisitos da etapa restaurados", ETAPAS.find((e) => e.id === etapa)?.nome);
+        mutar((d) => { const novoMapa = { ...(d.ajustesRequisitos || {}) }; delete novoMapa[chaveEtapa]; d.ajustesRequisitos = novoMapa; return d; }, "Requisitos da etapa restaurados", etapasEditor.find((e) => e.id === etapa)?.nome);
         setRestaurar(false); setToast("Etapa de volta ao padrão.");
       }} />}
     </div>
@@ -10634,6 +10595,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const arrasteMeta = useRef(null);
   const [tela, setTela] = useState("home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
+  const [buscaTitulo, setBuscaTitulo] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [detalhe, setDetalhe] = useState(null);
   const [editando, setEditando] = useState(null);
@@ -10649,7 +10611,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const gerencia = gerenciaMetas(usuario);
   const todasVisiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario));
-  const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor));
+  const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
   const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
@@ -10692,6 +10654,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
       <span className="pilula-semana"><span>Semana</span><strong>{rotuloSemana(inicioSemana)}</strong></span>
       <button className="btn btn-sm" onClick={() => setSemanaOffset((x) => x + 1)} aria-label="Próxima semana"><ChevronRight size={16} /></button>
       {semanaOffset !== 0 && <button className="btn btn-sm" onClick={() => setSemanaOffset(0)}>Semana atual</button>}
+      <label className="metas-busca-titulo"><Search size={14} aria-hidden="true"/><input className="inp" type="search" aria-label="Buscar metas pelo título" placeholder="Buscar título" value={buscaTitulo} onChange={e => setBuscaTitulo(e.target.value)} /></label>
       <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
         <select className="inp" style={{ maxWidth: 190 }} value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} aria-label="Filtrar por setor"><option value="">Todos os setores</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id} value={s.nome}>{s.nome}</option>)}{todasVisiveis.some((m) => !m.setor) && <option value={SEM_SETOR_META}>Sem setor</option>}</select>
         <button className={`btn btn-sm${tela === "os" ? " btn-primario" : ""}`} onClick={() => setTela(tela === "os" ? "home" : "os")}><ClipboardList size={16} aria-hidden="true"/>Ordens de Serviço</button>
@@ -10716,7 +10679,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
         <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
         {catalogoDevolutivas(todasVisiveis).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => <div key={m.id} className="card" style={{padding:14,marginTop:10}}><strong>{m.titulo}</strong><p className="ajuda">{rotuloAssociacao(db,m)}</p><p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p><p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>{vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}<div className="flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>{podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}{gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}</div></div>)}
       </Secao>}
-      {tela === "oficios" && <Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/>}
+      {tela === "oficios" && <><BibliotecaTeste tipo="Ofício"/><Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/></>}
       {tela === "home" && !colaborador && (
         <>
           <div className="grade-indicadores" style={{ marginBottom: 14 }}>
@@ -10725,7 +10688,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
             <Indicador titulo="Em atraso" valor={atrasadas.length} alerta={atrasadas.length > 0} />
           </div>
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
-            {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta programada para esta semana.</p>}
+            {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>{buscaTitulo.trim() ? "Nenhuma meta com esse título nesta semana." : "Nenhuma meta programada para esta semana."}</p>}
           </Secao>
           <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
             {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
@@ -10886,16 +10849,19 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
 /* ---------------- Processos, kanban do ERP ---------------- */
 // Portado de processos-kanban.js: etapas, agrupamento por município, dias na etapa,
 // movimentação com registro no histórico e observações internas por setor.
-const ICONE_ETAPA_PROCESSO = { Comercial: "mobilizacao", "Coleta Documental": "contrato", "Análise Documental": "documental", Topografia: "topografia", Projetos: "projeto", Protocolo: "prefeitura", Andamento: "crf", "Concluído": "matricula" };
+const ICONE_ETAPA_PROCESSO = { "Parecer Social": "documental", "Notificações": "mobilizacao", "Parecer setor Planejamento": "projeto", "Parecer setor Meio Ambiente": "prefeitura", "Parecer setor Defesa Civil": "topografia", "Despacho de Saneamento": "prefeitura", CRF: "crf", Comercial: "mobilizacao", "Coleta Documental": "contrato", "Análise Documental": "documental", Topografia: "topografia", Projetos: "projeto", Protocolo: "prefeitura", Andamento: "crf", "Concluído": "matricula" };
 const PRIORIDADES_PROCESSO = ["Baixa", "Normal", "Alta", "Urgente"];
 const TAG_PRIORIDADE = { Urgente: "bloq", Alta: "pend", Normal: "neutra", Baixa: "neutra" };
 // Etapa do kanban correspondente à etapa de REURB do núcleo, usada só quando o processo ainda não foi movido
-const diasNaEtapa = (n) => { const d = n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
+const diasNaEtapa = (n, protocolado = false) => { const d = protocolado ? etapaPrefeitura(n) && n.etapaPrefeituraIniciadaEm : n.etapaIniciadaEm || n.criadoEm; return d ? Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / DIA_MS)) : null; };
 
-function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
+function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar, protocolado = false }) {
   const [novaMeta, setNovaMeta] = useState(false);
   const perm = permissoes(usuario);
   const pode = perm.setor !== "consulta";
+  const podeMover = protocolado ? acessoCRM(usuario).pos : pode;
+  const etapaDe = protocolado ? etapaPrefeitura : etapaProcesso;
+  const etapas = protocolado ? ETAPAS_PREFEITURA : ETAPAS_PROCESSO;
   const [f, setF] = useState({ prioridade: n.prioridade || "Normal", responsavelId: ((db.usuarios || []).find((u) => normalizar(u.nome) === normalizar(n.responsavel || ""))?.id) || "", prazoSLA: n.prazoSLA || "", pendencia: n.pendencia || "", observacaoInterna: n.observacaoInterna || "" });
   const [observacao, setObservacao] = useState("");
   const [andamento, setAndamento] = useState(false);
@@ -10910,12 +10876,12 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
   };
   const comentar = () => {
     const t = observacao.trim(); if (!t) return;
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor].nome, texto: t, data: new Date().toISOString() }]; return d; }, "Observação no processo", { ...log, detalhe: `${n.codigo}: ${t.slice(0, 60)}` });
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || usuario.setor, texto: t, data: new Date().toISOString() }]; return d; }, "Observação no processo", { ...log, detalhe: `${n.codigo}: ${t.slice(0, 60)}` });
     setObservacao("");
   };
   const mover = (destino) => {
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.etapaProcesso = destino; q.etapaIniciadaEm = new Date().toISOString(); q.historicoEtapas = [{ id: uid("he"), de: etapaProcesso(n), para: destino, por: usuario.nome, data: new Date().toISOString(), observacao: "Movimentação pelo Kanban" }, ...(q.historicoEtapas || [])]; return d; },
-      "Processo movido de etapa", { ...log, detalhe: `${n.codigo}: de ${etapaProcesso(n)} para ${destino}` });
+    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); if (protocolado) { moverProcessoPrefeitura(q, destino, {id: uid("he"), por: usuario.nome, data: new Date().toISOString()}); return d; } q.etapaProcesso = destino; q.etapaIniciadaEm = new Date().toISOString(); q.historicoEtapas = [{ id: uid("he"), de: etapaProcesso(n), para: destino, por: usuario.nome, data: new Date().toISOString(), observacao: "Movimentação pelo Kanban" }, ...(q.historicoEtapas || [])]; return d; },
+      "Processo movido de etapa", { ...log, detalhe: `${n.codigo}: de ${etapaDe(atual) || "Etapa a definir"} para ${destino}` });
     setToast(`Processo movido para ${destino}.`);
   };
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
@@ -10923,16 +10889,16 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
     <Modal titulo={rotuloNucleo(db, n)} largura={680} onFechar={onFechar}
       rodape={<>{gerenciaMetas(usuario) && <button className="btn" onClick={() => setNovaMeta(true)}>+ Metas</button>}<button className="btn" onClick={onFechar}>Fechar</button><button className="btn" onClick={() => { onFechar(); ir({ pag: "nucleo", id: n.id }); }}>Abrir núcleo</button>{pode && <button className="btn btn-primario" onClick={salvar}>Salvar</button>}</>}>
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
-        <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaProcesso(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaProcesso(atual)}</Tag>
+        <Tag tipo="neutra"><IconeEtapa id={ICONE_ETAPA_PROCESSO[etapaDe(atual)]} tamanho={13} cor="currentColor" corCheck="currentColor" />{etapaDe(atual) || "Etapa a definir"}</Tag>
         <Tag tipo={TAG_PRIORIDADE[atual.prioridade || "Normal"]}>{atual.prioridade || "Normal"}</Tag>
-        {diasNaEtapa(atual) !== null && <span className="ajuda" style={{ margin: 0 }}><Clock size={12} /> {diasNaEtapa(atual)} dia(s) nesta etapa</span>}
+        {diasNaEtapa(atual, protocolado) !== null && <span className="ajuda" style={{ margin: 0 }}><Clock size={12} /> {diasNaEtapa(atual, protocolado)} dia(s) nesta etapa</span>}
         <span className="ajuda" style={{ margin: 0 }}>{ativos.length} morador(es) ativo(s)</span>
       </div>
-      {pode && (
+      {podeMover && (
         <>
           <span className="rot">Mover para</span>
           <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }}>
-            {ETAPAS_PROCESSO.map((s) => <button key={s} className={`btn btn-sm${etapaProcesso(atual) === s ? " btn-primario" : ""}`} onClick={() => mover(s)} disabled={etapaProcesso(atual) === s}><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={15} cor="currentColor" corCheck="currentColor" />{s}</button>)}
+            {etapas.map((s) => <button key={s} className={`btn btn-sm${etapaDe(atual) === s ? " btn-primario" : ""}`} onClick={() => mover(s)} disabled={etapaDe(atual) === s}><IconeEtapa id={ICONE_ETAPA_PROCESSO[s]} tamanho={15} cor="currentColor" corCheck="currentColor" />{s}</button>)}
           </div>
         </>
       )}
@@ -10950,20 +10916,26 @@ function ModalProcesso({ db, n, usuario, mutar, setToast, ir, onFechar }) {
       {(atual.andamentos || []).slice(0, 4).map((a) => (
         <div key={a.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line2)" }}>
           <span className="flex flex-wrap gap-1"><Tag>{a.status}</Tag><Tag tipo={a.operacional === "Concluído" ? "ok" : a.operacional === "Pausado" ? "bloq" : "pend"}>{a.operacional}</Tag>{a.previsao && <span className="ajuda" style={{ margin: 0 }}>Previsão {dataBR(a.previsao)}</span>}</span>
-          <div style={{ marginTop: 3 }}>{a.descricaoCliente}</div>
+          <div style={{ marginTop: 3 }}>{a.descricaoCliente}</div><div className="ajuda" style={{ margin: 0 }}>{a.visivelIA ? "Liberado para IA de atendimento" : "Não liberado para IA"}</div>
           <div className="ajuda" style={{ margin: 0 }}>{dataHoraBR(a.data)}, por {a.por}</div>
         </div>
       ))}
       {acessoCRM(usuario).pos && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setAndamento(true)}><Plus size={14} />Novo andamento</button>}
+      {acessoCRM(usuario).pos && <ConfiguracaoIANucleo nucleoId={atual.externo?.kanbanId || atual.id} />}
       <h3 style={{ fontSize: 15, margin: "18px 0 6px" }}>Histórico de etapas</h3>
-      {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
+      {(atual.historicoEtapas || []).length ? atual.historicoEtapas.map((h) => <div key={h.id} className="ajuda" style={{ margin: "4px 0" }}><strong style={{ color: "var(--text)" }}>{h.fluxo === "prefeitura" ? "Prefeitura: " : "Interno: "}{h.de} → {h.para}</strong>. {h.observacao}. {h.por}, {dataHoraBR(h.data)}</div>) : <p className="ajuda">Sem movimentações registradas.</p>}
       {novaMeta && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNovaMeta(false)} />}
-      {andamento && <ModalAndamento db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
+      {andamento && <ModalAndamento protocolado={protocolado} db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAndamento(false)} />}
     </Modal>
   );
 }
 
 function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
+  const [fluxo, setFluxo] = useState("interno");
+  const protocolado = fluxo === "prefeitura";
+  const etapaDe = protocolado ? etapaPrefeitura : etapaProcesso;
+  const nucleos = protocolado ? db.nucleos.filter(processoProtocolado) : db.nucleos;
+  const trocarFluxo = valor => { setFluxo(valor); setEtapa(""); setAberto(null); setListaAberta(false); };
   const [busca, setBusca] = useState("");
   const [etapa, setEtapa] = useState("");
   const [municipio, setMunicipio] = useState("");
@@ -10972,8 +10944,8 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   const [municipioBusca, setMunicipioBusca] = useState("");
   const [listaAberta, setListaAberta] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
-  const etapas = etapasDosProcessos(ETAPAS_PROCESSO, db.nucleos, etapaProcesso);
-  const filtrados = filtrarProcessos(db.nucleos, { etapa, busca }, etapaProcesso, n => rotuloNucleo(db, n));
+  const etapas = protocolado ? ETAPAS_PREFEITURA : etapasDosProcessos(ETAPAS_PROCESSO, nucleos, etapaDe);
+  const filtrados = filtrarProcessos(nucleos, { etapa, busca }, etapaDe, n => rotuloNucleo(db, n));
   const lista = filtrados.filter(n => !municipio || n.municipioId === municipio);
   const municipiosDisponiveis = municipiosDosProcessos(db.municipios, filtrados);
   const municipios = municipiosDosProcessos(db.municipios, lista);
@@ -10982,7 +10954,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   const atual = aberto ? db.nucleos.find((n) => n.id === aberto) : null;
   const cartao = (n) => {
     const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
-    const dias = diasNaEtapa(n);
+    const dias = diasNaEtapa(n, protocolado);
     const a = ultimoAndamento(n);
     const atrasado = n.prazoSLA && n.prazoSLA < hoje && etapaProcesso(n) !== "Concluído";
     return (
@@ -11005,8 +10977,9 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
   return (
     <div className="contem largo">
       <div className="cabeca">
-        <div><h1>Processos</h1><p>Kanban por etapa, agrupado por município, como no ERP. Cada processo é um núcleo, com os moradores por trás.</p></div>
+        <div><h1>Processos</h1><p>{protocolado ? "Acompanhe as análises na prefeitura, registre andamentos para atendimento e observações da equipe." : "Kanban dos processos internos, agrupado por município."}</p></div>
       </div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de processo" style={{ marginBottom: 18 }}><button className={`btn${!protocolado ? " btn-primario" : ""}`} aria-pressed={!protocolado} onClick={() => trocarFluxo("interno")}>Processos Internos</button><button className={`btn${protocolado ? " btn-primario" : ""}`} aria-pressed={protocolado} onClick={() => trocarFluxo("prefeitura")}>Processos Protocolados</button></div>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 14 }}>
         <input className="inp" style={{ maxWidth: 250 }} placeholder="Buscar núcleo, responsável ou pendência" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar processo" />
         <div style={{ position: "relative", flex: "1 1 230px", maxWidth: 280 }}>
@@ -11034,7 +11007,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 14 }} role="group" aria-label="Filtrar por etapa">
         <button className={`btn btn-sm${etapa === "" ? " btn-primario" : ""}`} aria-pressed={etapa === ""} onClick={() => escolherEtapa("")}><Filter size={13} />Todas as etapas</button>
         {etapas.map((st) => {
-          const qtd = db.nucleos.filter((n) => etapaProcesso(n) === st && (!municipio || n.municipioId === municipio)).length;
+          const qtd = nucleos.filter((n) => etapaDe(n) === st && (!municipio || n.municipioId === municipio)).length;
           return <button key={st} className={`btn btn-sm${etapa === st ? " btn-primario" : ""}`} aria-pressed={etapa === st} onClick={() => escolherEtapa(st)}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={15} cor="currentColor" corCheck="currentColor" />{st} <span style={{ opacity: .7 }}>{qtd}</span></button>;
         })}
       </div>
@@ -11051,12 +11024,13 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
                 <span className="ajuda" style={{ display: "block", margin: 0 }}>{doMunicipio.length} processo(s){comPendencia ? `, ${comPendencia} com pendência` : ""}</span>
               </span>
               <span className="flex flex-wrap gap-1">
-                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaProcesso(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
+                {etapas.map((st) => { const q = doMunicipio.filter((n) => etapaDe(n) === st).length; return q ? <Tag key={st}><IconeEtapa id={ICONE_ETAPA_PROCESSO[st]} tamanho={12} cor="currentColor" corCheck="currentColor" />{st} {q}</Tag> : null; })}
               </span>
             </button>
+            {aberto && protocolado && !etapa && doMunicipio.some(n => !etapaPrefeitura(n)) && <details style={{ padding: "12px" }}><summary>Etapa a definir ({doMunicipio.filter(n => !etapaPrefeitura(n)).length})</summary><p className="ajuda">Abra o card para informar a etapa atual na prefeitura.</p><div className="grade">{doMunicipio.filter(n => !etapaPrefeitura(n)).map(cartao)}</div></details>}
             {aberto && <div className="quadro quadro-cheio" style={{ padding: "0 12px 12px" }}>
               {etapas.filter((s) => !etapa || s === etapa).map((s) => {
-                const itens = doMunicipio.filter((n) => etapaProcesso(n) === s);
+                const itens = doMunicipio.filter((n) => etapaDe(n) === s);
 
                 return (
                   <div key={s} className="quadro-col" style={{ minWidth: 250, flex: "1 1 250px", display: "flex", flexDirection: "column" }}>
@@ -11067,7 +11041,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
                     </div>
                     {itens.map(cartao)}
                     {!itens.length && <div style={{ fontSize: 13, color: "var(--muted)", padding: "12px 2px 4px" }}>Nenhum processo</div>}
-                    <div style={{ marginTop: "auto", paddingTop: 12 }}><BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} /></div>
+                    <div style={{ marginTop: "auto", paddingTop: 12 }}>{!protocolado && <BotaoArquivo colecao="nucleos" municipioId={m.id} etapa={s} />}</div>
                   </div>
                 );
               })}
@@ -11076,7 +11050,7 @@ function PaginaProcessos({ db, usuario, ir, mutar, setToast }) {
         );
       })}
       {!municipios.length && <p className="ajuda">Nenhum processo com esses filtros.</p>}
-      {atual && <ModalProcesso db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
+      {atual && <ModalProcesso key={`${fluxo}:${atual.id}`} protocolado={protocolado} db={db} n={atual} usuario={usuario} mutar={mutar} setToast={setToast} ir={ir} onFechar={() => setAberto(null)} />}
     </div>
   );
 }
@@ -11131,15 +11105,16 @@ function itensDoCalendario(db, usuario, filtros = {}) {
   return itens;
 }
 
-function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setToast, onFechar }) {
+function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setToast, onFechar, pedidoAgente }) {
   const novo = !inicial;
   const perm = permissoes(usuario);
   const podeEditar = novo || perm.diretor || inicial.criadoPor === usuario.id;
   const [f, setF] = useState(() => novo
-    ? { titulo: "", descricao: "", dia: diaPadrao || new Date().toISOString().slice(0, 10), inicio: horaPadrao || "09:00", fim: horaPadrao ? `${String(Math.min(23, Number(horaPadrao.slice(0, 2)) + 1)).padStart(2, "0")}:${horaPadrao.slice(3)}` : "10:00", agendaId: (db.agendas || [])[0]?.id || "", participantes: [usuario.id], publico: true, cor: "#0F5F5B", entidade: null, recorrencia: "nenhuma", recorrenciaAte: "" }
+    ? { titulo: "", descricao: "", dia: diaPadrao || new Date().toISOString().slice(0, 10), inicio: horaPadrao || "09:00", fim: horaPadrao ? `${String(Math.min(23, Number(horaPadrao.slice(0, 2)) + 1)).padStart(2, "0")}:${horaPadrao.slice(3)}` : "10:00", agendaId: (db.agendas || [])[0]?.id || "", participantes: [usuario.id], publico: true, cor: "#0F5F5B", entidade: null, recorrencia: "nenhuma", recorrenciaAte: "", ...pedidoAgente }
     : { titulo: inicial.titulo, descricao: inicial.descricao || "", dia: soData(inicial.inicio), inicio: hhmm(inicial.inicio), fim: hhmm(inicial.fim), agendaId: inicial.agendaId || "", participantes: [...inicial.participantes], publico: inicial.publico, cor: inicial.cor, entidade: inicial.entidade, recorrencia: inicial.recorrencia || "nenhuma", recorrenciaAte: inicial.recorrenciaAte || "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const erros = [];
+  if(pedidoAgente?.pendencias?.length && !f.participantes.some(id=>id!==usuario.id))erros.push('Escolha o participante solicitado antes de criar a reunião');
   if (f.titulo.trim().length < 3) erros.push("Dê um título ao evento");
   if (f.fim <= f.inicio) erros.push("O fim precisa ser depois do início");
   if (f.recorrencia !== "nenhuma" && !f.recorrenciaAte) erros.push("Informe a data final da recorrência");
@@ -11162,6 +11137,8 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
     }
     onFechar();
   };
+  const executadoAgente=useRef(false);
+  useEffect(()=>{if(pedidoAgente?.automatico&&!executadoAgente.current&&!erros.length&&!conflito){executadoAgente.current=true;salvar();}},[]); // Pedido completo usa o salvamento oficial uma única vez.
   const responder = (resposta) => {
     mutar((d) => { const e = d.eventos.find((x) => x.id === inicial.id); e.respostas = { ...(e.respostas || []), [usuario.id]: resposta }; return d; }, `Convite ${resposta}`, { detalhe: inicial.titulo });
     setToast(resposta === "aceito" ? "Presença confirmada." : "Convite recusado."); onFechar();
@@ -11174,6 +11151,7 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
   return (
     <Modal titulo={novo ? "Novo evento" : inicial.titulo} largura={580} onFechar={onFechar}
       rodape={<><button className="btn" onClick={onFechar}>Fechar</button>{podeEditar && <button className="btn btn-primario" disabled={erros.length > 0} onClick={salvar}>{novo ? "Criar evento" : "Salvar"}</button>}</>}>
+      {pedidoAgente&&<Aviso tipo="info">{pedidoAgente.pendencias?.join(" ")} {pedidoAgente.nota} Revise os campos preenchidos para criar o evento.</Aviso>}
       {!novo && (
         <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
           {inicial.status === "cancelado" && <Tag tipo="bloq">Cancelado</Tag>}
@@ -11947,16 +11925,19 @@ function PausaRespirar({ onFechar }) {
   const [fase, setFase] = useState("Inspire");
   useEffect(() => {
     if (passo !== "respirando") return undefined;
+    let etapas = 0;
     const relogio = setInterval(() => {
-      setFase((f) => {
-        if (f === "Inspire") return "Solte";
-        setCiclo((c) => c + 1);
-        return "Inspire";
-      });
+      etapas += 1;
+      if (etapas >= 6) {
+        clearInterval(relogio);
+        setPasso("fim");
+        return;
+      }
+      setFase(etapas % 2 === 0 ? "Inspire" : "Solte");
+      setCiclo(Math.floor(etapas / 2) + 1);
     }, 3000);
     return () => clearInterval(relogio);
   }, [passo]);
-  useEffect(() => { if (ciclo > 3) setPasso("fim"); }, [ciclo]);
   return (
     <Modal titulo="Uma pausa" largura={440} onFechar={onFechar}
       rodape={passo === "pergunta"
@@ -11966,12 +11947,12 @@ function PausaRespirar({ onFechar }) {
         <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
           <span className="bolha-respirar parada"><MarcaIntegracao tamanho={44} /></span>
           <h3 style={{ fontSize: 20, margin: "16px 0 6px", color: "var(--titulo)" }}>Está nervoso?</h3>
-          <p style={{ margin: 0, color: "var(--muted)" }}>Leva dez segundos. A gente respira junto.</p>
+          <p style={{ margin: 0, color: "var(--muted)" }}>São três ciclos de seis segundos. A gente respira junto.</p>
         </div>
       )}
       {passo === "respirando" && (
         <div style={{ textAlign: "center", padding: "6px 0" }}>
-          <span className={`bolha-respirar ${fase === "Inspire" ? "enchendo" : "esvaziando"}`}><MarcaIntegracao tamanho={44} clara /></span>
+          <span key={`${ciclo}-${fase}`} className={`bolha-respirar ${fase === "Inspire" ? "enchendo" : "esvaziando"}`}><MarcaIntegracao tamanho={44} clara /></span>
           <h3 style={{ fontSize: 22, margin: "18px 0 4px", color: "var(--primary)" }}>{fase}</h3>
           <p style={{ margin: 0, color: "var(--muted)" }}>{fase === "Inspire" ? "Puxe o ar devagar, em três segundos, enquanto a bolinha enche." : "Solte devagar, em três segundos, enquanto ela esvazia."}</p>
           <p className="ajuda" style={{ marginTop: 14 }}>Ciclo {Math.min(ciclo, 3)} de 3</p>
@@ -12007,7 +11988,7 @@ class Protecao extends Component {
     return (
       <div className="contem">
         <div className="cabeca"><div><h1>Esta tela não abriu</h1><p>O restante do sistema continua funcionando. Use o menu para ir a outra tela.</p></div></div>
-        <Secao titulo="O que aconteceu" nota="Se acontecer de novo, restaurar os dados de exemplo em Configurações costuma resolver.">
+        <Secao titulo="O que aconteceu" nota="Tente abrir a tela novamente. Não apague os dados do navegador; as alterações locais devem ser preservadas.">
           <p style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{String(this.state.erro?.message || this.state.erro)}</p>
           <button className="btn" style={{ marginTop: 12 }} onClick={() => this.setState({ erro: null })}><Undo2 size={16} />Tentar de novo</button>
         </Secao>
@@ -12127,7 +12108,7 @@ export default function App() {
       u = await compartilhado.open(u, db);
       if(temSessao()) await registrarAcesso("login", "autenticacao");
     }
-    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setEntrouEm(new Date().toISOString());
+    usuarioRef.current = u; setUsuarioId(u.id); setAviso(""); setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]);
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
@@ -12155,12 +12136,15 @@ export default function App() {
     setRota({ pag: "home" }); rotaAtual.current = { pag: "home" }; setHistoricoNavegacao([]); setToast("Dados de exemplo restaurados.");
   };
 
-  const [entrouEm, setEntrouEm] = useState(() => new Date().toISOString());
   const [janela, setJanela] = useState(null);
+  useMemoriaAgente(usuario);
+  const [tarefaAgente,setTarefaAgente]=useState(null);
+  const timbradoAgente=useTimbrado(db);
+  useEffect(()=>{setTarefaAgente(null)},[usuarioId]);
   const [respirar, setRespirar] = useState(false);
   const conexao = useConexao();
   const offline = useCampoOffline({ db, usuario, mutar, setToast, online: conexao.online, carregarMunicipio });
-  const [avisoChat, setAvisoChat] = useAvisoChat({ db, usuario, entrouEm });
+  const [avisoChat, setAvisoChat] = useAvisoChat({ db, usuario });
   useEffect(() => {
     if (!avisoChat) return;
     setJanela({ id: avisoChat.conversa.id, minimizada: false });
@@ -12173,14 +12157,14 @@ export default function App() {
     return () => clearInterval(relogio);
   }, [usuario?.id]); // eslint-disable-line
   const comercial = useComercialOffline({ db, usuario, mutar, setToast, carregarMunicipio });
-  if (db) sincronizarTiposDocumento(db.tiposDocumento);
+  if (db) sincronizarTiposDocumento([...(db.tiposDocumento||[]),...Object.values(db.ajustesMunicipio||{}).flatMap(a=>a?.tiposDocumento||[])]);
   if (!db) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><style>{CSS}{UI_GUIDE_CSS}</style><Loader2 size={18} className="girando" />Carregando</div>;
   if (!usuario) return <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}><style>{CSS}{UI_GUIDE_CSS}</style><Login usuarios={db.usuarios} onEntrar={entrar} aviso={aviso} progresso={compartilhado.status} /></div>;
 
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
+  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", pessoalIA: usuario.nome+"_IA", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -12189,7 +12173,24 @@ export default function App() {
     if (!ficha || ficha._resumo) throw new Error('Não foi possível carregar a ficha deste cliente. Tente novamente.');
     await ir({ pag: "processo", id: ficha.id, aba: "cadastro" });
   };
-  const props = { carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const executarAgente=async(task)=>{
+    if(!usuario||usuario.ativo===false)throw Error('Usuário inativo');
+    if(['CRM','Lead'].includes(task.tipo)){if(!podeUsarAgenteComercial(usuario)){setToast('Seu usuário não tem acesso comercial ao CRM.');return;}await ir({pag:'crm',agente:true,pedido:task.pedido,tipo:task.tipo,id:task.id,modo:task.modo,conteudo:task.conteudo,ajustes:task.ajustes,preenchimento:task.preenchimento,nonce:task.nonce||crypto.randomUUID()});return;}
+    const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeEditarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
+    if(denied){setToast('Seu usuário não tem permissão para esta ação.');registrarAcaoNativa(usuario,'Ação bloqueada: '+task.tipo,task.tipo,null,null,{status:'bloqueada'});return;}
+    if(task.tipo==='Cliente'||task.tipo==='Observação'){await abrirCliente(task.cliente||db.processos.find(p=>p.id===task.id));await ir({pag:'processo',id:task.id,aba:task.tipo==='Observação'?'observacoes':'cadastro',agente:true,pedido:task.pedido,conteudo:task.conteudo,ajustes:task.ajustes});return;}
+    if(task.tipo==='PRF'){await ir({pag:'prf',nucleoId:task.id,agente:true,pedido:task.pedido});return;}
+    if(task.tipo==='Ofício'){try{const seq=await listarOficios(Number(new Date().toISOString().slice(0,4)));task={...task,proximo:seq.ultimo?seq.ultimo+1:null}}catch(e){setToast(e.message);return}}
+    setTarefaAgente({...task,userId:usuario.id});
+  };
+  const mutarAgente=(fn,action,extra={})=>{
+    let before,after;mutar(d=>{before=clone(d);after=fn(d);return after;},action+' · '+usuario.nome+'_IA',{...extra,agente:usuario.nome+'_IA',solicitante:usuario.id});
+    if(!before||!after)return;
+    const changes=[];for(const collection of ['processos','nucleos','eventos','metas'])for(const row of after[collection]||[]){const old=before[collection]?.find(x=>x.id===row.id);if(JSON.stringify(old)!==JSON.stringify(row))changes.push({collection,id:row.id,before:old||null,after:row})}
+    registrarAcaoNativa(usuario,action,extra.processoId?'Clientes':extra.nucleoId?'Processos / Núcleo':tarefaAgente?.tipo==='Evento'?'Calendário':tarefaAgente?.tipo==='Devolutiva'?'Metas / Devolutivas':'Integração',changes.map(c=>({collection:c.collection,id:c.id,values:c.before})),changes.map(c=>({collection:c.collection,id:c.id,values:c.after})),{status:'solicitada · acompanhe a sincronização oficial'});
+    if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
+  };
+  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
@@ -12210,7 +12211,8 @@ export default function App() {
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
-          {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
+          {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Gestão Técnica", { pag: "agentes" })}
+          {navItem(rota.pag === "pessoalIA", <AvatarLateralTeste usuario={usuario} />, usuario.nome+"_IA", { pag: "pessoalIA" })}
           {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
             <button className="marca-integral" onClick={() => setRespirar(true)} title="Uma pausa" aria-label="Abrir a pausa para respirar"><LogoIntegral altura={34} branca /></button>
@@ -12237,16 +12239,18 @@ export default function App() {
               <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>Tentar salvar novamente</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
+          {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
+          {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
+          {rota.pag === "pessoalIA" && <AgentePessoalTeste key={usuario.id} {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
           {rota.pag === "processos" && <PaginaProcessos {...props} />}
-          {rota.pag === "crm" && <CRM {...props} />}
+          {rota.pag === "crm" && <CRM key={rota.agente?rota.nonce:undefined} pedidoAgente={rota.agente?rota:null} onRegistroAgente={(action,before,after)=>registrarAcaoNativa(usuario,action,'CRM',before,after,{status:'confirmada pelo CRM'})} {...props} />}
           {rota.pag === "marketing" && <Marketing {...props} />}
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
@@ -12261,16 +12265,22 @@ export default function App() {
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
           {rota.pag === "municipio" && <PaginaMunicipio key={rota.id} {...props} municipioId={rota.id} />}
           {rota.pag === "remessa" && <PaginaRemessa key={rota.id} {...props} remessaId={rota.id} aba={rota.aba || "nucleos"} />}
-          {rota.pag === "nucleo" && <PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba} />}
-          {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} />}
+          {rota.pag === "nucleo" && <><PaginaNucleo key={rota.id || `sem_${rota.semNucleo}`} {...props} nucleoId={rota.id} semNucleo={rota.semNucleo} aba={rota.aba} />{rota.aba === "historico" && <div className="contem"><BibliotecaTeste tipo="PRF" nucleoId={rota.id}/></div>}</>}
+          {rota.pag === "processo" && <PaginaProcesso key={`${rota.id}_${rota.aba || ""}`} {...props} processoId={rota.id} abaInicial={rota.aba} pedidoAgente={rota.agente?{pedido:rota.pedido,conteudo:rota.conteudo,ajustes:rota.ajustes}:null} {...(rota.agente?{mutar:mutarAgente}:{})} />}
           {rota.pag === "campo" && <PaginaCampo key={`${rota.nucleoId}_${rota.processoId || ""}`} {...props} nucleoId={rota.nucleoId} processoId={rota.processoId} />}
-          {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} />}
+          {rota.agente&&rota.pedido&&rota.pag!=="prf"&&<div className="contem"><Aviso tipo="info">Pedido ao agente: {rota.pedido}. Confira as informações no formulário oficial antes de salvar.</Aviso></div>}
+          {rota.pag === "prf" && <PaginaPRF key={rota.nucleoId} {...props} nucleoId={rota.nucleoId} pedidoAgente={rota.pedido} {...(rota.agente?{mutar:mutarAgente,onArquivoAgente:f=>registrarArquivoNativo(usuario,f)}: {})} />}
           {rota.pag === "importar" && perm.importar && <PaginaConfig {...props} db={db} aba="importar" restaurar={restaurar} />}
           {rota.pag === "config" && usuario.ativo !== false && <PaginaConfig {...props} db={db} aba={rota.aba} sub={rota.sub} restaurar={restaurar} trocarUsuario={(id) => setUsuarioId(id)} />}
           </Protecao>
           </ArquivoCadastros>
         </div>
       </div>
+      <AgenteFlutuanteTeste key={usuario.id} {...props} />
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Evento'&&<ModalEvento {...props} pedidoAgente={tarefaAgente.preenchimento} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Processo'&&db.nucleos.some(n=>n.id===tarefaAgente.id)&&<ModalProcesso {...props} n={db.nucleos.find(n=>n.id===tarefaAgente.id)} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Devolutiva'&&<ModalAnaliseDevolutiva {...props} meta={db.metas.find(m=>m.id===tarefaAgente.id)||null} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Rascunho, sem reserva de número'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
         onMinimizar={() => setJanela((j) => ({ ...j, minimizada: !j.minimizada }))} onFechar={() => setJanela(null)} onAbrirChat={(id) => { setJanela(null); ir({ pag: "chat", id }); }} />}
       {respirar && <PausaRespirar onFechar={() => setRespirar(false)} />}

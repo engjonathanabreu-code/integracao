@@ -14,6 +14,7 @@ const devolutiva=(origem,prazo,categorias,naoCorrigidos=0)=>JSON.stringify({devo
 
 async function banco() {
  const db=new PGlite();
+ await db.exec("set timezone='America/Sao_Paulo'");
  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema erp_collab_private;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema auth,public,erp_collab_private to anon,authenticated,service_role;

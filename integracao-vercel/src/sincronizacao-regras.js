@@ -16,5 +16,14 @@ export const GRUPOS_TEMPO_REAL={
 };
 export const tabelasDosGrupos=grupos=>[...new Set(grupos.flatMap(g=>GRUPOS_TEMPO_REAL[g]||[]))];
 export const afetaResumo=grupos=>!grupos||grupos.some(g=>['clientes','processos','config'].includes(g));
-export const falhaTransitoria=e=>[408,429,500,502,503,504].includes(e?.status)||['TypeError','TimeoutError','AbortError'].includes(e?.name);
+// The REST transport keeps the original network/HTTP failure as cause.
+export function falhaTransitoria(e){
+ const vistos=new Set();
+ while(e&&!vistos.has(e)){
+  vistos.add(e);
+  if([408,429,500,502,503,504].includes(e.status)||['TypeError','TimeoutError','AbortError'].includes(e.name))return true;
+  e=e.cause;
+ }
+ return false;
+}
 export function gruposDasOperacoes(ops){if(ops.some(o=>o.action||!Object.values(GRUPOS_TEMPO_REAL).some(ts=>ts.includes(o.table))))return null;return Object.keys(GRUPOS_TEMPO_REAL).filter(g=>ops.some(o=>GRUPOS_TEMPO_REAL[g].includes(o.table)));}

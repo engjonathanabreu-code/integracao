@@ -195,11 +195,11 @@ export function projetar(base, local) {
     const old=(db.nucleos||[]).find(x=>x.externo?.kanbanId===k.id || x.id===k.id);
     const id=old?.id||k.id;
     const nested=(table, collection, map, make)=>group(base[table],'processo_id',k.id).map(r=>bind(collection,r,make(r),map,table,{collection:'nucleos',id,field:collection}));
-    return bind('nucleos',k,{id,ativo:k.ativo!==false,municipioId:m.id,remessaId:old?.remessaId||null,codigo:old?.codigo||k.nucleo,nome:k.nucleo,etapa:old?.etapa||0,campos:old?.campos||{},checks:old?.checks||{},criterio:old?.criterio||{salarioMinimo:'1518,00',rendaMaxima:'5'},responsavel:names[k.responsavel_id]||'',origem:['ERP'],externo:{...old?.externo,kanbanId:k.id,erp:k.nucleo},prioridade:k.prioridade||'Normal',pendencia:text(k.pendencia),prazoSLA:text(k.sla_prazo),etapaProcesso:k.etapa_atual,etapaIniciadaEm:text(k.etapa_iniciada_em),observacaoInterna:text(k.observacao_interna),
-      andamentos:nested('processos_kanban_andamentos','andamentos',{status:'status',operacional:'status_operacional',descricaoCliente:'descricao_cliente',observacao:'observacao_interna',previsao:'previsao',data:'data_atualizacao'},r=>({id:r.id,status:text(r.status),operacional:text(r.status_operacional),descricaoCliente:text(r.descricao_cliente),observacao:text(r.observacao_interna),previsao:text(r.previsao),data:r.data_atualizacao||r.created_at,por:r.origem||'ERP',origem:r.origem})),
+    return bind('nucleos',k,{id,ativo:k.ativo!==false,municipioId:m.id,remessaId:old?.remessaId||null,codigo:old?.codigo||k.nucleo,nome:k.nucleo,etapa:old?.etapa||0,campos:old?.campos||{},checks:old?.checks||{},criterio:old?.criterio||{salarioMinimo:'1518,00',rendaMaxima:'5'},responsavel:names[k.responsavel_id]||'',origem:['ERP'],externo:{...old?.externo,kanbanId:k.id,erp:k.nucleo},prioridade:k.prioridade||'Normal',pendencia:text(k.pendencia),prazoSLA:text(k.sla_prazo),etapaProcesso:k.etapa_atual,etapaPrefeitura:text(k.etapa_prefeitura),etapaPrefeituraIniciadaEm:text(k.etapa_prefeitura_iniciada_em),etapaIniciadaEm:text(k.etapa_iniciada_em),observacaoInterna:text(k.observacao_interna),
+      andamentos:nested('processos_kanban_andamentos','andamentos',{status:'status',operacional:'status_operacional',descricaoCliente:'descricao_cliente',observacao:'observacao_interna',previsao:'previsao',data:'data_atualizacao',visivelIA:'visivel_ia',orientacaoIA:'orientacao_ia'},r=>({id:r.id,status:text(r.status),operacional:text(r.status_operacional),descricaoCliente:text(r.descricao_cliente),observacao:text(r.observacao_interna),visivelIA:r.visivel_ia===true,orientacaoIA:text(r.orientacao_ia),previsao:text(r.previsao),data:r.data_atualizacao||r.created_at,por:r.origem||'ERP',origem:r.origem,criadoEm:r.created_at||''})).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||''))||String(b.criadoEm).localeCompare(String(a.criadoEm))),
       observacoes:nested('processos_kanban_observacoes','observacoes',{texto:'texto'},comment),
-      historicoEtapas:group(base.processos_kanban_historico,'processo_id',k.id).map(r=>({id:r.id,de:r.etapa_anterior,para:r.etapa_nova,por:names[r.alterado_por]||'Equipe',observacao:text(r.observacao),data:r.created_at})),
-    },{nome:'nucleo',prioridade:'prioridade',pendencia:'pendencia',prazoSLA:'sla_prazo',etapaProcesso:'etapa_atual',etapaIniciadaEm:'etapa_iniciada_em',observacaoInterna:'observacao_interna',responsavel:{column:'responsavel_id',encode:v=>base.profiles.find(p=>p.nome===v)?.id||null}},'processos_kanban');
+      historicoEtapas:group(base.processos_kanban_historico,'processo_id',k.id).map(r=>({id:r.id,de:r.etapa_anterior,para:r.etapa_nova,fluxo:r.fluxo||'interno',por:names[r.alterado_por]||'Equipe',observacao:text(r.observacao),data:r.created_at})),
+    },{nome:'nucleo',prioridade:'prioridade',pendencia:'pendencia',prazoSLA:'sla_prazo',etapaProcesso:'etapa_atual',etapaPrefeitura:'etapa_prefeitura',etapaPrefeituraIniciadaEm:'etapa_prefeitura_iniciada_em',etapaIniciadaEm:'etapa_iniciada_em',observacaoInterna:'observacao_interna',responsavel:{column:'responsavel_id',encode:v=>base.profiles.find(p=>p.nome===v)?.id||null}},'processos_kanban');
   }));
   merge('setoresMeta',base.meta_setores.map(r=>bind('setoresMeta',r,{id:r.id,nome:r.nome,ativo:r.ativo},direct('nome,ativo'),'meta_setores')));
   merge('ordensServico',base.ordens_servico.map(r=>bind('ordensServico',r,{id:r.id,nome:r.nome,nucleoReferente:text(r.nucleo_referente),etapaAtual:text(r.etapa_atual),municipio:text(r.municipio),estado:text(r.estado),observacoes:text(r.observacoes),criadoEm:r.created_at,comentarios:group(base.ordem_servico_comentarios,'ordem_servico_id',r.id).map(comment)}, {nome:'nome',nucleoReferente:'nucleo_referente',etapaAtual:'etapa_atual',municipio:'municipio',estado:'estado',observacoes:'observacoes'},'ordens_servico')));
@@ -302,9 +302,9 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const id=n.externo?.kanbanId || n.id;
     if(!prev) { requireUuid(id); const m=after.municipios.find(x=>x.id===n.municipioId); insert('processos_kanban',id,{nucleo:n.nome||n.codigo,municipio:m?.nome||'',estado:m?.uf||'SC',etapa_atual:n.etapaProcesso||'Comercial',origem:'ERP',ativo:true}); }
     if(!uuid(id)) continue;
-    for(const x of newItems(prev?.andamentos,n.andamentos)) insert('processos_kanban_andamentos',x.id,{processo_id:id,status:x.status,status_operacional:x.operacional,descricao_cliente:x.descricaoCliente,observacao_interna:x.observacao,previsao:nullText(x.previsao),data_atualizacao:text(x.data).slice(0,10)||null,origem:'ERP'});
+    for(const x of newItems(prev?.andamentos,n.andamentos)) insert('processos_kanban_andamentos',x.id,{processo_id:id,status:x.status,status_operacional:x.operacional,descricao_cliente:x.descricaoCliente,observacao_interna:x.observacao,visivel_ia:x.visivelIA===true,orientacao_ia:x.orientacaoIA||'',previsao:nullText(x.previsao),data_atualizacao:text(x.data).slice(0,10)||null,origem:'ERP'});
     for(const x of newItems(prev?.observacoes,n.observacoes)) insert('processos_kanban_observacoes',x.id,{processo_id:id,autor_id:who,autor_nome:name,autor_setor:x.setor||actor.setor,texto:x.texto});
-    for(const x of newItems(prev?.historicoEtapas,n.historicoEtapas)) insert('processos_kanban_historico',x.id,{processo_id:id,etapa_anterior:x.de,etapa_nova:x.para,alterado_por:who,observacao:x.observacao||''});
+    for(const x of newItems(prev?.historicoEtapas,n.historicoEtapas)) insert('processos_kanban_historico',x.id,{processo_id:id,etapa_anterior:x.de,etapa_nova:x.para,alterado_por:who,observacao:x.observacao||'',fluxo:x.fluxo||'interno'});
   }
   for(const s of newItems(before.setoresMeta,after.setoresMeta)) if(uuid(s.id)) insert('meta_setores',s.id,{nome:s.nome,ativo:s.ativo!==false,created_by:who});
   for(const m of after.metas||[]) {
@@ -362,7 +362,9 @@ export function mesclarEdicoes(base,local,remote) {
     return ids.flatMap(id=>{
       const b=base.find(x=>x.id===id),l=local.find(x=>x.id===id),r=remote.find(x=>x.id===id);
       if(!l && b) return [];
-      if(!r) return l ? [copy(l)] : [];
+      // A vanished remote row must not be resurrected by an unrelated local edit.
+      // Keep only genuine local changes to that row for explicit conflict handling.
+      if(!r) return l && (!b || !eq(b,l)) ? [copy(l)] : [];
       return [b && l ? mesclarEdicoes(b,l,r) : copy(l||r)];
     });
   }
@@ -546,13 +548,19 @@ async function carregarIndiceClientes() {
   return {clientes, complementos};
 }
 
-export async function lerFichaCliente(cliente) {
+export async function lerFichaCliente(cliente,{permitirAusente=false}={}) {
   const filtro = cliente.financeiroRef ? `referencia_id=eq.${encodeURIComponent(cliente.financeiroRef)}` : `registro_id=eq.${encodeURIComponent(cliente.id)}`;
-  const [clientes, complementos] = await Promise.all([
-    cliente.financeiroRef ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(cliente.financeiroRef)}`) : [],
+  const referencia=cliente.financeiroRef||(uuid(cliente.id)?cliente.id:null);
+  let [clientes, complementos] = await Promise.all([
+    referencia ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(referencia)}`) : [],
     requisicao(`integracao_moradores?colecao=eq.processos&${filtro}`),
   ]);
-  if (!clientes.length && !complementos.length) throw new Error('Cliente indisponível para esta conta.');
+  const vinculo=complementos.find(e=>e.referencia_tabela==='fin_receb_clientes'&&e.referencia_id);
+  if(!clientes.length&&vinculo&&vinculo.referencia_id!==referencia)clientes=await lerTabela('fin_receb_clientes','*',`&id=eq.${encodeURIComponent(vinculo.referencia_id)}`);
+  if (!clientes.length && !complementos.length) {
+    if(permitirAusente)return {clientes,complementos,indisponivel:true};
+    throw Object.assign(new Error('Cliente indisponível para esta conta.'),{code:'CLIENTE_INDISPONIVEL'});
+  }
   return {clientes, complementos};
 }
 
