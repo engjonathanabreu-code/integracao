@@ -12204,7 +12204,7 @@ export default function App() {
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
-          {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Agentes IA", { pag: "agentes" })}
+          {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Gestão Técnica", { pag: "agentes" })}
           {navItem(rota.pag === "pessoalIA", <AvatarLateralTeste usuario={usuario} />, usuario.nome+"_IA", { pag: "pessoalIA" })}
           {usuario.ativo !== false && navItem(rota.pag === "config", <Settings size={18} />, "Configurações", { pag: "config" })}
           <div style={{ marginTop: "auto", paddingTop: 20 }}>
