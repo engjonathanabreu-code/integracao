@@ -2679,7 +2679,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
           <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "10px 12px", whiteSpace: "normal", display: "block" }}>
             <div style={{ marginBottom: 8 }}>Este CPF já é do cliente {cpfDup.codigo} ({cpfDup.requerente.nome}) nesta remessa. Se for outra unidade da mesma pessoa, adicione a unidade ao cliente: ela recebe a próxima letra no código.</div>
             <div className="flex flex-wrap items-center gap-3">
-              {onAdicionarUnidade && perm.cadastro && <button className="btn btn-sm btn-primario" onClick={() => onAdicionarUnidade(cpfDup)}><Plus size={14} />Adicionar unidade {cpfDup.codigo}{String.fromCharCode(65 + unidadesDe(cpfDup).length)}</button>}
+              {onAdicionarUnidade && perm.criarMoradores && <button className="btn btn-sm btn-primario" onClick={() => onAdicionarUnidade(cpfDup)}><Plus size={14} />Adicionar unidade {cpfDup.codigo}{String.fromCharCode(65 + unidadesDe(cpfDup).length)}</button>}
               <label className="flex items-center gap-2" style={{ fontWeight: 500, color: "var(--text)" }}><input type="checkbox" checked={confirmaDup} onChange={(e) => setConfirmaDup(e.target.checked)} style={{ accentColor: "#0F5F5B" }} />Cadastrar como outro cliente mesmo assim</label>
             </div>
           </div>
@@ -3003,7 +3003,7 @@ function PaginaMunicipio({ db, usuario, municipioId, ir, mutar, setToast, abrirC
           {acessoCRM(usuario).pos && <button className="btn" onClick={()=>ir({pag:"prefeitura",id:m.id})}><History size={17} aria-hidden="true"/>Andamentos</button>}
           {perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "municipio", inicial: m })}><Pencil size={14} />Editar</button>}
           {perm.criarNucleosRemessas && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: remessas.length === 1 ? remessas[0].id : "" })}><Plus size={15} />Novo núcleo</button>}
-          {perm.cadastro && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
+          {perm.criarMoradores && <button className="btn" onClick={() => cad.abrir({ tipo: "morador", municipio: m })} disabled={!remessas.length} title={remessas.length ? "" : "Crie uma remessa antes"}><UserPlus size={15} />Novo morador</button>}
           {perm.criarNucleosRemessas && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "remessa", municipio: m })}><Plus size={15} />Nova remessa</button>}
           <BotaoArquivar colecao="municipios" registro={m} />
         </div>
@@ -3082,7 +3082,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
           {perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "remessa", municipio: m, inicial: r })}><Pencil size={14} />Editar</button>}
           {perm.estrutura && livres.length > 0 && <button className="btn" onClick={() => cad.abrir({ tipo: "trazer", remessa: r })} title="Trazer um núcleo que está sem remessa"><Link2 size={15} />Trazer núcleo sem remessa</button>}
           {perm.criarNucleosRemessas && <button className="btn" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, remessaId: r.id })}><Plus size={15} />Novo núcleo</button>}
-          {perm.cadastro && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id })}><UserPlus size={15} />Novo morador</button>}
+          {perm.criarMoradores && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id })}><UserPlus size={15} />Novo morador</button>}
           <BotaoArquivar colecao="remessas" registro={r} />
         </div>
       </div>
@@ -3960,8 +3960,8 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   const [forcar, setForcar] = useState(null);
   const inputRef = useRef(null);
   const regras = regrasMun;
-  const podeEnviar = !cancelado && (perm.cadastro || perm.social);
-  const podeSecao = (path) => { const s = path.split(".")[0]; return s === "imovel" ? perm.imovel : s === "social" ? perm.social : perm.cadastro; };
+  const podeEnviar = !cancelado && (perm.editarClientes || perm.cadastro || perm.social);
+  const podeSecao = (path) => { const s = path.split(".")[0]; return perm.editarClientes || (s === "imovel" ? perm.imovel : s === "social" ? perm.social : perm.cadastro); };
   const qtdRegras = regrasAplicaveis(regras, tipoEsperado).length;
 
   const arquivo = arquivos[0] || null;
@@ -4657,7 +4657,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         <div className="flex flex-wrap gap-2">
           {n && <BotaoArquivo nucleoId={n.id} />}
           {n && perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
-          {perm.cadastro && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
+          {perm.criarMoradores && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
           {n && <BotaoArquivar colecao="nucleos" registro={n} />}
         </div>
       </div>
@@ -6325,7 +6325,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     perm.config && ["requisitos", "Requisitos das etapas", ListTodo],
     (perm.config || perm.modeloPRF) && ["campos", perm.config ? "Campos, checklist e PRF" : "Modelo de PRF", SlidersHorizontal],
     perm.config && ["historico", "Histórico e dados", History],
-  ].filter(Boolean).filter(([id])=>perm.config || perm.modeloPRF || id === "ponto");
+  ].filter(Boolean).filter(([id])=>perm.config || perm.modeloPRF || ["ponto", "temas"].includes(id));
   const pedida = aba === "dados" ? "historico" : aba;
   const atual = ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
   const setAba = (a2) => ir({ pag: "config", aba: a2 });
@@ -7693,7 +7693,7 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
   const inativo = !ativo(p);
   const podeTopo = !inativo && perm.etapa("topografia");
   const podeProjeto = !inativo && perm.etapa("projeto");
-  const podeEstrutura = !inativo && perm.cadastro;
+  const podeEstrutura = !inativo && perm.editarClientes;
   const uns = unidadesDe(p);
   const [rasc, setRasc] = useState(() => clone(uns));
   const [remover, setRemover] = useState(false);

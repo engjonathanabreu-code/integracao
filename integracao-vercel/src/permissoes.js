@@ -25,6 +25,7 @@ export function permissoes(u) {
     editarClientes: !!u && u.ativo !== false,
     editarEstrutura: !!u && u.ativo !== false,
     criarNucleosRemessas: !!u && u.ativo !== false,
+    criarMoradores: !!u && u.ativo !== false,
     financeiro: !!u && u.ativo !== false && (dir || s === "financeiro"),
     planos: dir || s === "comercial" || s === "financeiro",
     verCPF: s === "financeiro" || dir || s === "comercial" || s === "projeto",
