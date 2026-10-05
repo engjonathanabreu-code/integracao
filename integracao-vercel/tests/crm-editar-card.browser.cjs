@@ -1,6 +1,9 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
 (async()=>{const b=await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_EXECUTABLE,headless:true}:{channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1440,height:1000}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 await p.goto('http://127.0.0.1:5178/tests/browser.html?crm');await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();await p.getByRole('button',{name:'CRM',exact:true}).click();
+// A aba inicial do CRM agora é Hoje e a visão padrão do funil é Reduzida (o cartão enxuto tem só o lápis 'Editar <nome>').
+// Este teste usa o botão 'Editar' e o CPF no cartão completo, então abre o Funil comercial e a visão Detalhada.
+await p.getByRole('button',{name:'Funil comercial',exact:true}).click();await p.getByRole('button',{name:'Detalhada',exact:true}).click();
 // Lead sem CPF nem município: somente o nome é exigido antes do Contrato, mas a cidade do lead precisa ser escolhida.
 const lead=p.locator('article.crm-cliente-card',{hasText:'Lead de demonstração'}).first();await lead.getByRole('button',{name:'Editar',exact:true}).click();
 const f=p.getByRole('form',{name:'Editar Lead de demonstração'});await f.getByText('Até a etapa Contrato apenas o nome é obrigatório').waitFor();

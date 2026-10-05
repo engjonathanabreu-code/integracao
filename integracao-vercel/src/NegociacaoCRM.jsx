@@ -3,8 +3,8 @@ import {useState} from 'react';
 import {ETAPAS_CRM} from './crm-regras.js';
 import {CampoCRM} from './modulo-ui.jsx';
 import {formularioNegociacao,prepararNegociacao,resumoNegociacao,lerValorReais} from './crm-negociacao.js';
-export default function NegociacaoCRM({card,ocupado,onSalvar,onConverter}){
- const [base,setBase]=useState(card),[form,setForm]=useState(()=>formularioNegociacao(card)),[status,setStatus]=useState(card.status),[erro,setErro]=useState('');
+export default function NegociacaoCRM({card,ocupado,onSalvar,onConverter,statusSugerido}){
+ const [base,setBase]=useState(card),[form,setForm]=useState(()=>formularioNegociacao(card)),[status,setStatus]=useState(statusSugerido||card.status),[erro,setErro]=useState('');
  const [municipio,setMunicipio]=useState(card.lead_municipio_id||card.municipio_id||''),[remessa,setRemessa]=useState('');
  const converter=!card.cliente_id&&['Contrato','Cliente ativo'].includes(status);
  const mudou=JSON.stringify(form)!==JSON.stringify(formularioNegociacao(base))||status!==base.status;

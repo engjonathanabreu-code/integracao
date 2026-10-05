@@ -1,6 +1,9 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
 (async()=>{const b=await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_EXECUTABLE,headless:true}:{channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1440,height:1000}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 await p.goto('http://127.0.0.1:5178/tests/browser.html?crm');await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();await p.getByRole('button',{name:'CRM',exact:true}).click();
+// A aba inicial do CRM agora é Hoje e a visão padrão do funil é Reduzida (cartão enxuto, sem formulário).
+// O teste usa o formulário de negociação no próprio cartão, então abre o Funil comercial e a visão Detalhada.
+await p.getByRole('button',{name:'Funil comercial',exact:true}).click();await p.getByRole('button',{name:'Detalhada',exact:true}).click();
 // O funil não tem mais a coluna Cliente ativo.
 await p.getByRole('heading',{name:/^Contrato · /}).waitFor();assert.equal(await p.getByRole('heading',{name:/^Cliente ativo · /}).count(),0);
 const form=p.getByRole('form',{name:'Negociação de Morador Teste'});await form.getByLabel('Valor total (R$)').fill('12.500,00');await form.getByLabel('Forma de negociação').selectOption('avista');await form.getByLabel('Desconto à vista (%)').fill('0');await form.getByLabel('Status',{exact:true}).selectOption('Cliente ativo');await form.getByRole('button',{name:'Salvar negociação e status'}).click();

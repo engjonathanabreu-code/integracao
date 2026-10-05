@@ -1,24 +1,24 @@
 .rb .crm-quadro{display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));gap:14px;overflow:auto;padding-bottom:16px}.rb .crm-coluna{background:var(--bg,#f2f6f5);padding:12px;border-radius:12px;min-height:220px}.rb .crm-coluna h2{font-size:16px;margin:0 0 14px}.rb .crm-card{padding:16px;margin-bottom:12px;background:var(--card,white);border:1px solid var(--line2,#dae6e3);border-radius:10px}.rb .crm-card h3{font-size:16px;margin:0 0 8px}.rb .crm-card p{margin:5px 0;overflow-wrap:anywhere}.rb .crm-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.rb .crm-form{display:grid;gap:12px;max-width:720px;margin:16px 0}.rb .crm-form label{display:grid;gap:5px}.rb .crm-form textarea{min-height:90px}.rb .crm-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}.rb .crm-erro{padding:12px;border:1px solid var(--danger,#a22);border-radius:8px;margin:12px 0}.rb .crm-painel{margin:20px 0}.rb .crm-progresso{width:100%;accent-color:#105553}.rb .crm-mensagem{white-space:pre-wrap;border-bottom:1px solid var(--line2,#ddd);padding:12px 0}.rb .crm-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.rb .crm-tarefa{display:flex;gap:12px;align-items:center;padding:12px;border-bottom:1px solid var(--line2,#ddd)}
-.rb .crm-cliente-card{padding:18px;border-radius:15px;border-color:#dce7e3;box-shadow:0 3px 9px #123e3b05}
+.rb .crm-cliente-card{padding:18px;border-radius:15px;border-color:var(--line);box-shadow:var(--sombra)}
 .rb .crm-cliente-abrir{display:block;width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer;color:inherit;font:inherit}
 .rb .crm-cliente-abrir h3{font-size:15px;font-weight:700;line-height:1.45;margin:8px 0 15px}
 .rb .crm-ficha-legenda{font-size:10px;font-weight:750;letter-spacing:1px;text-transform:uppercase;color:var(--tema-texto,#23746f)}
 .rb .crm-ficha-dados{margin:14px 0 20px;display:grid;grid-template-columns:1fr;gap:0}
-.rb .crm-ficha-dados>div{display:flex;align-items:start;justify-content:space-between;gap:12px;border-bottom:1px solid #e4ebe8;padding:11px 0;font-size:12px}
+.rb .crm-ficha-dados>div{display:flex;align-items:start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line2);padding:11px 0;font-size:12px}
 .rb .crm-ficha-dados dt{display:flex;gap:6px;align-items:center;color:var(--tema-texto,#7a8985);flex-shrink:0}
 .rb .crm-ficha-dados dd{text-align:right;margin:0;color:var(--tema-texto,#25443d);font-weight:550;overflow-wrap:anywhere;min-width:0}
 .rb .crm-cliente-card>label{display:grid;gap:7px;font-size:11px;color:var(--tema-texto,#74867f)}
 .rb .crm-cliente-card .inp{width:100%;font-size:12px}
 .rb .crm-cliente-botoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .rb .crm-cliente-card .crm-cliente-botoes .btn{font-size:11px;padding:8px 10px;flex:1 1 auto;justify-content:center}
-.rb .crm-ficha-dialogo{width:min(1180px,calc(100vw - 30px));max-height:92vh;border:1px solid #dce7e3;border-radius:20px;padding:30px;background:var(--tema-superficie,#fff);color:var(--tema-texto,#213e38);box-shadow:0 24px 90px #123e3b35}
+.rb .crm-ficha-dialogo{width:min(1180px,calc(100vw - 30px));max-height:92vh;border:1px solid var(--line);border-radius:20px;padding:30px;background:var(--tema-superficie,#fff);color:var(--tema-texto,#213e38);box-shadow:var(--shadow-modal)}
 .rb .crm-ficha-dialogo::backdrop{background:#103b3970}
 .rb .crm-ficha-fechar{position:absolute;right:20px;top:18px;padding:8px}
-.rb .crm-ficha-cabeca{padding:0 40px 22px 0;margin-bottom:22px;border-bottom:1px solid #e1e9e5}
+.rb .crm-ficha-cabeca{padding:0 40px 22px 0;margin-bottom:22px;border-bottom:1px solid var(--line2)}
 .rb .crm-ficha-cabeca h2{font-size:23px;line-height:1.4;font-weight:700;margin:9px 0 12px}
 .rb .crm-ficha-cabeca p{font-size:13px;color:var(--tema-texto,#7b8984);margin:0}
 .rb .crm-ficha-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
-.rb .crm-ficha-painel{border:1px solid #dfe7e3;border-radius:16px;padding:22px;margin-bottom:18px;min-width:0}
+.rb .crm-ficha-painel{border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px;min-width:0}
 .rb .crm-ficha-painel h3{font-size:17px;font-weight:700;margin:12px 0 20px}
 .rb .crm-ficha-painel .crm-ficha-dados{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:22px;margin:0}
 .rb .crm-ficha-painel .crm-ficha-dados>div{flex-direction:column;gap:6px;padding:13px 0}
@@ -26,7 +26,7 @@
 .rb .crm-ficha-painel .crm-ficha-nome{grid-column:1/-1}
 .rb .crm-ficha-painel>label{display:grid;gap:8px;font-size:12px;color:var(--tema-texto,#74867f)}
 .rb .crm-ficha-painel .inp{width:100%}
-.rb .crm-ficha-painel .crm-form{max-width:none;border-top:1px solid #e5ece8;padding-top:15px;font-size:12px}
+.rb .crm-ficha-painel .crm-form{max-width:none;border-top:1px solid var(--line2);padding-top:15px;font-size:12px}
 .rb .crm-ficha-painel .crm-form h3{font-size:14px;line-height:1.5;margin:0 0 5px}
 .rb .crm-ficha-painel .crm-painel{margin:0}
 .rb .crm-ficha-painel .crm-painel h2{font-size:16px;font-weight:700;margin-bottom:16px}
@@ -34,7 +34,7 @@
 .rb .crm-ficha-relato{white-space:pre-wrap;font-size:13px;line-height:1.6}
 .rb .crm-ficha-painel details{margin-top:18px;font-size:12px;color:var(--tema-texto,#5a7970)}
 .rb .crm-ficha-painel summary{cursor:pointer}
-@media(max-width:800px){.rb .crm-ficha-layout{grid-template-columns:1fr}.rb .crm-ficha-layout>aside{grid-row:1}.rb .crm-ficha-dialogo{padding:20px}.rb .crm-ficha-cabeca h2{font-size:20px}}
+@media(max-width:800px){.rb .crm-ficha-layout{grid-template-columns:1fr}.rb .crm-ficha-dialogo{padding:20px}.rb .crm-ficha-cabeca h2{font-size:20px}}
 @media(max-width:450px){.rb .crm-ficha-painel{padding:16px}.rb .crm-ficha-painel .crm-ficha-dados{grid-template-columns:1fr}}
 
 .rb .crm-negociacao{display:grid;gap:12px;margin:16px 0;min-width:0}.rb .crm-negociacao label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.rb .crm-negociacao .inp{width:100%;min-width:0}.rb .crm-negociacao-resumo{padding:12px;border-radius:10px;background:var(--bg);font-size:12px;line-height:1.65;margin:0;color:var(--titulo)}.rb .crm-negociacao small{color:var(--muted);font-size:11px}
@@ -43,8 +43,9 @@
 /* A densidade muda somente o funil; a ficha aberta mantém o formato completo.
    Os formulários permanecem montados para preservar negociações em edição. */
 .rb .crm-visoes{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:14px 0}
-.rb .crm-visoes>span{font-size:12px;color:var(--muted);margin-right:3px}
-.rb .crm-visoes .btn{min-height:34px}
+.rb .crm-visoes>span{font-size:13px;color:var(--muted);margin-right:3px}
+.rb .crm-pagina>p.ajuda{font-size:13px}
+.rb .crm-visoes .btn.btn-sm{min-height:40px}
 .rb .crm-visao-reduzido .crm-cliente-card{padding:10px 12px;margin-bottom:8px;border-radius:10px}
 .rb .crm-visao-reduzido .crm-cliente-card>.crm-ficha-dados,
 .rb .crm-visao-reduzido .crm-cliente-card>.crm-negociacao,
@@ -75,7 +76,7 @@
 
 .rb .crm-followup-resumo,.rb .crm-chatwoot-resumo{display:grid;gap:6px;padding:12px;margin:10px 0;border:1px solid var(--line);border-radius:10px;font-size:12px;overflow-wrap:anywhere;background:var(--bg)}
 .rb .crm-followup-resumo .btn{white-space:normal;height:auto;min-height:34px}
-.rb .crm-followup-resumo.atrasado,.rb .crm-followup-status.atrasado{border-left:4px solid #c16a24}
+.rb .crm-followup-resumo.atrasado,.rb .crm-followup-status.atrasado{border-left:4px solid var(--warning)}
 .rb .crm-followup fieldset{border:0;padding:0;min-width:0;display:grid;gap:12px}
 .rb .crm-followup .crm-followup-confirmacao{display:flex;align-items:center;gap:8px}.rb .crm-followup-confirmacao input{width:18px;height:18px;flex:none}
 .rb .crm-followup .crm-mensagem p{white-space:pre-wrap;overflow-wrap:anywhere}.rb .crm-followup-status{padding:9px;background:var(--bg);border-radius:6px}
@@ -84,7 +85,7 @@
 .rb .crm-dashboard-cobertura,.rb .crm-dashboard-definicoes{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;line-height:1.6;font-size:13px}
 .rb .crm-dashboard-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
 .rb .crm-dashboard-agente{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;min-width:0}.rb .crm-dashboard-agente h3{font-size:18px;margin:0 0 16px;color:var(--titulo)}
-.rb .crm-dashboard-agente dl{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rb .crm-dashboard-agente dl>div{background:var(--bg);border-radius:8px;padding:10px;min-width:0}.rb .crm-dashboard-agente dt{font-size:11px;color:var(--muted);line-height:1.5}.rb .crm-dashboard-agente dd{font-size:22px;font-weight:700;color:var(--titulo);margin:6px 0 0}.rb .crm-dashboard-agente .crm-dashboard-alerta{border-left:4px solid #c16a24}
+.rb .crm-dashboard-agente dl{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rb .crm-dashboard-agente dl>div{background:var(--bg);border-radius:8px;padding:10px;min-width:0}.rb .crm-dashboard-agente dt{font-size:11px;color:var(--muted);line-height:1.5}.rb .crm-dashboard-agente dd{font-size:22px;font-weight:700;color:var(--titulo);margin:6px 0 0}.rb .crm-dashboard-agente .crm-dashboard-alerta{border-left:4px solid var(--warning)}
 .rb .crm-dashboard-movimentos article{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.rb .crm-dashboard-movimentos small{color:var(--muted)}
 .rb .crm-visao-reduzido .crm-chatwoot-resumo{padding:7px;font-size:10px}.rb .crm-visao-reduzido .crm-followup-resumo{padding:7px;font-size:11px}
 @media(max-width:600px){.rb .crm-dashboard-filtros>*{flex:1;min-width:140px}.rb .crm-dashboard-agente{padding:14px}.rb .crm-dashboard-agente dd{font-size:20px}}
@@ -97,21 +98,21 @@
 .crm-institucional-card dl { display:grid; gap:4px; margin:16px 0; }
 .crm-institucional-card dt { font-size:12px; opacity:.7; }
 .crm-institucional-card dd { margin:0 0 8px; white-space:pre-wrap; }
-.crm-institucional-motivo { white-space:pre-wrap; border-left:3px solid #bd654d; padding-left:12px; }
+.crm-institucional-motivo { white-space:pre-wrap; border-left:3px solid var(--danger); padding-left:12px; }
 .crm-institucional-dialogo { max-width:760px; }
 .crm-institucional-dialogo fieldset { border:0; padding:0; min-width:0; display:grid; gap:14px; }
 .crm-institucional-dialogo h2 { padding-right:40px; }
 .crm-institucional-dialogo .crm-followup { margin-top:24px; }
 
 .rb .crm-institucionais .btn:not(.btn-primario),.rb .crm-institucional-dialogo .btn:not(.btn-primario){background:var(--card);color:var(--titulo);border:1px solid var(--line)}
-.rb .crm-cliente-card{position:relative}.rb .crm-cliente-card .crm-cliente-abrir{padding-right:32px}
-.rb .crm-card-icones{position:absolute;right:8px;top:8px;display:flex;gap:2px}
+.rb .crm-cliente-card{position:relative}.rb .crm-cliente-card .crm-cliente-abrir{padding-right:48px}
+.rb .crm-card-icones{position:absolute;right:4px;top:4px;display:flex;gap:2px}
 .rb .crm-card-icones .crm-card-editar{display:none}
 /* Na visão reduzida os botões do card ficam ocultos: o lápis mantém a edição acessível. */
 .rb .crm-visao-reduzido .crm-card-icones .crm-card-editar{display:grid}
 .rb .crm-visao-reduzido .crm-cliente-card:has(.crm-lead-lixeira) .crm-cliente-abrir{padding-right:66px}
-.rb .crm-lead-lixeira,.rb .crm-card-editar{width:30px;height:30px;display:grid;place-items:center;padding:0;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--muted);cursor:pointer}
-.rb .crm-lead-lixeira:hover,.rb .crm-lead-lixeira:focus-visible{color:#bd654d;border-color:currentColor;background:var(--card)}
+.rb .crm-lead-lixeira,.rb .crm-card-editar{width:40px;height:40px;display:grid;place-items:center;padding:0;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--muted);cursor:pointer}
+.rb .crm-lead-lixeira:hover,.rb .crm-lead-lixeira:focus-visible{color:var(--danger);border-color:currentColor;background:var(--card)}
 .rb .crm-card-editar:hover,.rb .crm-card-editar:focus-visible{color:var(--titulo);border-color:currentColor;background:var(--card)}
 .rb .crm-arquivo{margin-top:24px}.rb .crm-arquivo h2{display:flex;gap:8px;align-items:center}
 .rb .crm-arquivo-card{min-width:0;overflow-wrap:anywhere}.rb .crm-arquivo-card p{white-space:pre-wrap}
@@ -128,3 +129,45 @@
 .rb .crm-ativacoes-tabela thead th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
 .rb .crm-ativacoes-tabela tbody th{font-weight:600;color:var(--titulo)}.rb .crm-ativacoes-tabela small{color:var(--muted)}
 .rb .crm-ativacoes-tabela td:nth-child(n+2):not(:last-child){white-space:nowrap}
+
+/* Navegação do CRM: alternador de carteira, abas, tarefas por prazo e ficha em gaveta lateral.
+   Tudo com prefixo .rb .crm- e só tokens; o escuro vem do .rb.escuro. */
+.rb .crm-carteiras{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 12px}
+.rb .crm-carteiras .btn.crm-aba{min-height:40px;padding-inline:18px;font-size:15px}
+.rb .crm-abas{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 16px}
+.rb .crm-abas .btn.crm-aba{min-height:40px;gap:5px;padding-inline:11px}
+.rb .crm-abas-sep{align-self:stretch;width:1px;min-height:24px;margin:0 4px;background:var(--line)}
+.rb .crm-abas-selo{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--danger);color:var(--on-danger);font-size:13px;font-weight:700;line-height:1}
+.rb .crm-abas .crm-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rb .crm-carteira-inst .crm-institucionais{margin-top:4px}
+.rb .crm-tarefas-grupo{margin:0 0 18px}
+.rb .crm-tarefas-titulo{margin:18px 0 10px;font-size:15px;font-weight:700;line-height:1.35;color:var(--titulo)}
+.rb .crm-tarefas article .btn{min-height:40px}
+.rb .crm-pagina>details.crm-painel>summary{display:flex;align-items:center;min-height:40px;cursor:pointer}
+.rb .crm-ficha-dialogo .btn.crm-ficha-fechar{min-width:40px;min-height:40px;z-index:1}
+.rb .crm-ficha-dialogo.crm-ficha-lateral{position:fixed;inset:0 0 0 auto;margin:0;width:min(560px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;padding:0;border-radius:16px 0 0 16px;overflow:hidden;box-sizing:border-box;background:var(--card);color:var(--text)}
+.rb .crm-ficha-dialogo.crm-ficha-lateral[open]{display:flex;flex-direction:column}
+.rb .crm-ficha-lateral .crm-ficha-corpo{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:22px}
+.rb .crm-ficha-lateral .crm-ficha-layout{grid-template-columns:minmax(0,1fr)}
+.rb .crm-ficha-lateral .crm-ficha-cabeca{padding-right:52px}
+.rb .crm-ficha-lateral .crm-ficha-cabeca .crm-ficha-etapa{margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--text);overflow-wrap:anywhere}
+/* .btn recebe min-height:36px de ui-guide.css com 3 classes de especificidade; 4 classes aqui vencem sem depender da ordem dos arquivos. */
+.rb .crm-ficha-dialogo.crm-ficha-lateral .btn{min-height:40px}
+.rb .crm-ficha-lateral details{font-size:13px}
+.rb .crm-ficha-lateral summary{display:list-item;min-height:40px;box-sizing:border-box;padding:10px 0;line-height:1.4;cursor:pointer}
+.rb .crm-ficha-lateral :is(.crm-ficha-legenda,.crm-ficha-dados>div,.crm-form,label,small,.ajuda,.crm-negociacao-resumo,.crm-followup-resumo,.crm-chatwoot-resumo){font-size:13px}
+.rb .crm-ficha-lateral .crm-ficha-legenda{letter-spacing:.6px}
+.rb .crm-ficha-lateral :is(.crm-ficha-dados dt,.crm-ficha-cabeca p,.crm-negociacao label,.crm-ficha-painel>label){color:var(--muted)}
+@media(max-width:640px){
+ .rb .crm-pagina.contem.largo{padding-left:16px;padding-right:16px}
+ .rb .crm-carteiras .btn.crm-aba{flex:1 1 0;min-height:44px;padding-inline:10px}
+ .rb .crm-abas{flex-wrap:nowrap;overflow-x:auto;padding:4px 3px 8px;overscroll-behavior-x:contain;scroll-snap-type:x proximity}
+ .rb .crm-abas .btn.crm-aba{flex:none;min-height:44px;white-space:nowrap;scroll-snap-align:start}
+ .rb .crm-abas-sep{flex:none}
+ .rb .crm-visoes .btn.btn-sm,.rb .crm-tarefas article .btn,.rb .crm-pagina>details.crm-painel>summary{min-height:44px}
+ .rb .crm-ficha-dialogo.crm-ficha-lateral .btn,.rb .crm-ficha-lateral summary{min-height:44px}
+ .rb .crm-lead-lixeira,.rb .crm-card-editar{width:44px;height:44px}
+ .rb .crm-ficha-dialogo .btn.crm-ficha-fechar{min-width:44px;min-height:44px}
+ .rb .crm-ficha-dialogo.crm-ficha-lateral{inset:auto 0 0 0;width:100vw;height:auto;max-height:92dvh;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+ .rb .crm-ficha-lateral .crm-ficha-corpo{padding:18px 16px}
+}

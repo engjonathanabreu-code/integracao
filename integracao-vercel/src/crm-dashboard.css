@@ -1,0 +1,119 @@
+/* Dashboard comercial do CRM. Todo seletor fica sob .rb[data-ui-guide] e usa classes .crm-dash-*; so tokens var(--...) do ui-guide (claro e escuro). */
+.rb[data-ui-guide] .crm-dash-filtros{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin:18px 0}
+.rb[data-ui-guide] .crm-dash-filtros label{display:grid;gap:6px;min-width:150px;font-size:13px;font-weight:700;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-periodos,.rb[data-ui-guide] .crm-dash-acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rb[data-ui-guide] .crm-dash-acoes{margin-left:auto}
+.rb[data-ui-guide] .crm-dash-filtros .btn{min-height:40px;font-size:13px}
+.rb[data-ui-guide] .crm-dash-filtros .btn[aria-pressed="true"],.rb[data-ui-guide] .crm-dash-filtros .btn[aria-pressed="true"]:hover:not(:disabled){background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.rb[data-ui-guide] .crm-dash-ativados>summary{display:list-item;padding:8px 0;min-height:40px;cursor:pointer;font-weight:700;font-size:16px}
+.rb[data-ui-guide] .crm-dash :is(small,.ajuda){font-size:13px}
+.rb[data-ui-guide] .crm-dash .crm-dashboard-definicoes>summary{display:list-item;padding:8px 0;min-height:40px;cursor:pointer}
+.rb[data-ui-guide] .crm-dash-ativados .crm-dashboard-filtros label{font-size:13px}
+.rb[data-ui-guide] .crm-dash-ativados .crm-ativacoes-totais span{font-size:13px}
+.rb[data-ui-guide] .crm-dash-ativados .crm-ativacoes-tabela thead th{font-size:13px}
+.rb[data-ui-guide] .crm-dash-ativados :is(.btn,.inp){min-height:40px}
+
+.rb[data-ui-guide] .crm-dash-bloco{margin:24px 0}
+.rb[data-ui-guide] .crm-dash-bloco>h3,.rb[data-ui-guide] .crm-dash-detalhe>summary h3{font-size:18px;margin:0 0 4px}
+.rb[data-ui-guide] .crm-dash-bloco>.ajuda{margin:0 0 14px;font-size:13px;line-height:1.5;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-vazio{padding:18px;border:1px dashed var(--line);border-radius:12px;background:var(--card);color:var(--muted);font-size:14px;margin:0}
+
+/* Indicadores principais e situacao de hoje */
+.rb[data-ui-guide] :is(.crm-dash-kpis,.crm-dash-atencao){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;margin:0 0 16px}
+.rb[data-ui-guide] .crm-dash-kpis{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.rb[data-ui-guide] :is(.crm-dash-kpis,.crm-dash-atencao)>div{display:grid;gap:6px;align-content:start;min-width:0;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.rb[data-ui-guide] :is(.crm-dash-kpis,.crm-dash-atencao) dt{font-size:13px;font-weight:700;line-height:1.4;color:var(--muted)}
+.rb[data-ui-guide] :is(.crm-dash-kpis,.crm-dash-atencao) dd{margin:0}
+.rb[data-ui-guide] .crm-dash-valor{font-size:26px;font-weight:700;line-height:1.15;color:var(--titulo);overflow-wrap:anywhere}
+.rb[data-ui-guide] .crm-dash-apoio{font-size:13px;line-height:1.4;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-atencao>div[data-tom="alerta"]{border-left:4px solid var(--danger)}
+.rb[data-ui-guide] .crm-dash-atencao>div[data-tom="alerta"] .crm-dash-valor{color:var(--danger)}
+.rb[data-ui-guide] .crm-dash-delta{display:inline-flex;align-items:center;gap:4px;width:max-content;max-width:100%;padding:2px 8px;border-radius:99px;font-size:13px;font-weight:700;line-height:1.4}
+.rb[data-ui-guide] .crm-dash-delta[data-tom="positivo"]{background:var(--ok-bg);color:var(--ok)}
+.rb[data-ui-guide] .crm-dash-delta[data-tom="negativo"]{background:var(--danger-bg);color:var(--danger)}
+.rb[data-ui-guide] .crm-dash-delta[data-tom="neutro"]{background:var(--pill);color:var(--text)}
+
+/* Tabelas */
+.rb[data-ui-guide] .crm-dash-rolagem{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.rb[data-ui-guide] .crm-dash-rolagem:focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+.rb[data-ui-guide] .crm-dash-tabela{width:100%;min-width:560px;border-collapse:collapse;font-size:14px;color:var(--text)}
+.rb[data-ui-guide] .crm-dash-tabela caption{text-align:left;font-weight:700;color:var(--titulo);padding:12px 14px 8px}
+.rb[data-ui-guide] .crm-dash-tabela :is(th,td){padding:6px 14px;text-align:right;border-top:1px solid var(--line);vertical-align:middle;font-variant-numeric:tabular-nums}
+.rb[data-ui-guide] .crm-dash-tabela :is(th,td):first-child{text-align:left}
+.rb[data-ui-guide] .crm-dash-tabela thead th{background:var(--soft);color:var(--text);font-size:13px;font-weight:700;padding:2px 8px}
+.rb[data-ui-guide] .crm-dash-tabela thead th:first-child{padding-left:14px}
+.rb[data-ui-guide] .crm-dash-tabela tbody th{font-weight:700;color:var(--titulo)}
+.rb[data-ui-guide] .crm-dash-tabela small{font-size:13px;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-tabela td[data-tom="atrasado"]{color:var(--danger);font-weight:700}
+.rb[data-ui-guide] .crm-dash-tabela td[data-tom="sem"]{color:var(--warning);font-weight:700}
+.rb[data-ui-guide] .crm-dash-tabela .crm-dash-total :is(th,td){background:var(--soft);font-weight:700;color:var(--titulo)}
+.rb[data-ui-guide] .crm-dash-ordenar,.rb[data-ui-guide] .crm-dash-nome{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:0 6px;border:0;border-radius:6px;background:transparent;font:inherit;font-weight:700;cursor:pointer}
+.rb[data-ui-guide] .crm-dash-ordenar{color:inherit}
+.rb[data-ui-guide] .crm-dash-ordenar:hover{color:var(--titulo);background:var(--hover)}
+.rb[data-ui-guide] .crm-dash-nome{color:var(--primary);text-align:left;text-decoration:underline;text-underline-offset:3px}
+.rb[data-ui-guide] .crm-dash-nome:hover{background:var(--hover)}
+
+/* Funil de hoje */
+.rb[data-ui-guide] .crm-dash-funil{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.rb[data-ui-guide] .crm-dash-etapa{display:grid;grid-template-columns:minmax(100px,150px) minmax(0,1fr) minmax(90px,auto);gap:2px 12px;align-items:center}
+.rb[data-ui-guide] .crm-dash-etapa-nome{font-size:14px;font-weight:700;color:var(--titulo)}
+.rb[data-ui-guide] .crm-dash-etapa-n{font-size:14px;color:var(--text);text-align:right}
+.rb[data-ui-guide] .crm-dash-etapa-valores{grid-column:2/-1;font-size:13px;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-barra{height:10px;border-radius:99px;background:var(--pill);overflow:hidden}
+.rb[data-ui-guide] .crm-dash-barra>i{display:block;height:100%;border-radius:99px;background:var(--primary)}
+.rb[data-ui-guide] .crm-dash-barra[data-acima="true"]>i{background:var(--ok)}
+.rb[data-ui-guide] .crm-dash-etapa[data-etapa="Cliente ativo"] .crm-dash-barra>i{background:var(--ok)}
+.rb[data-ui-guide] .crm-dash-etapa[data-etapa="Perdido"] .crm-dash-barra>i{background:var(--danger)}
+
+/* Metas */
+.rb[data-ui-guide] .crm-dash-metas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.rb[data-ui-guide] .crm-dash-meta{display:grid;gap:8px;align-content:start;min-width:0;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.rb[data-ui-guide] .crm-dash-meta>h4{margin:0;font-size:16px}
+.rb[data-ui-guide] .crm-dash-meta p{margin:0;font-size:14px;overflow-wrap:anywhere}
+.rb[data-ui-guide] .crm-dash-meta .ajuda{font-size:13px;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-meta summary{display:list-item;padding:8px 0;min-height:40px;cursor:pointer;font-size:13px;font-weight:700}
+.rb[data-ui-guide] .crm-dash-meta ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+
+/* Evolucao mensal: altura de cada coluna = valor / topo do eixo */
+.rb[data-ui-guide] .crm-dash-grafico{--crm-dash-alt:190px;display:grid;grid-template-columns:34px minmax(0,1fr);gap:0 8px;max-width:720px}
+.rb[data-ui-guide] .crm-dash-eixo{position:relative;height:var(--crm-dash-alt);margin-top:26px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rb[data-ui-guide] .crm-dash-eixo>span{position:absolute;right:0;transform:translateY(-50%)}
+.rb[data-ui-guide] .crm-dash-plano{position:relative;display:flex;gap:10px;height:var(--crm-dash-alt);margin-top:26px;padding:0 8px;border-left:1px solid var(--line);border-bottom:1px solid var(--line);background:linear-gradient(var(--line2),var(--line2)) 0 0/100% 1px no-repeat,linear-gradient(var(--line2),var(--line2)) 0 50%/100% 1px no-repeat}
+.rb[data-ui-guide] .crm-dash-col{position:relative;flex:1;min-width:0;height:100%}
+.rb[data-ui-guide] .crm-dash-col>b{position:absolute;left:0;right:0;text-align:center;font-size:13px;line-height:1.2;color:var(--titulo);font-variant-numeric:tabular-nums}
+.rb[data-ui-guide] .crm-dash-pilha{position:absolute;left:50%;bottom:0;display:flex;flex-direction:column;width:100%;max-width:46px;transform:translateX(-50%);border-radius:5px 5px 0 0;overflow:hidden}
+.rb[data-ui-guide] .crm-dash-pilha>i,.rb[data-ui-guide] .crm-dash-legenda i{display:block;flex:1 1 0;min-height:0;background:var(--primary)}
+.rb[data-ui-guide] .crm-dash-pilha>i.crm-dash-estimado,.rb[data-ui-guide] .crm-dash-legenda i.crm-dash-estimado{background:repeating-linear-gradient(135deg,var(--primary) 0 3px,var(--card) 3px 6px);box-shadow:inset 0 0 0 1px var(--primary)}
+.rb[data-ui-guide] .crm-dash-meses{grid-column:2;display:flex;gap:10px;padding:4px 8px 0;font-size:13px;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-meses>span{flex:1;min-width:0;text-align:center}
+.rb[data-ui-guide] .crm-dash-legenda{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;font-size:13px;color:var(--muted)}
+.rb[data-ui-guide] .crm-dash-legenda>span{display:inline-flex;align-items:center;gap:6px}
+.rb[data-ui-guide] .crm-dash-legenda i{flex:none;width:14px;height:14px;border-radius:3px}
+
+/* Detalhe por comercial */
+.rb[data-ui-guide] .crm-dash-detalhe>summary{display:list-item;padding:8px 0;min-height:40px;cursor:pointer;margin-bottom:6px}
+.rb[data-ui-guide] .crm-dash-detalhe>summary h3{display:inline}
+.rb[data-ui-guide] .crm-dash-agente{scroll-margin-top:16px}
+.rb[data-ui-guide] .crm-dash-agente:focus{outline:none}
+.rb[data-ui-guide] .crm-dash-agente[data-destaque="true"]{box-shadow:0 0 0 3px var(--focus-ring)}
+.rb[data-ui-guide] .crm-dash-agente dt{font-size:13px}
+
+@media(max-width:640px){
+ .rb[data-ui-guide] .crm-dash-filtros{padding:12px}
+ .rb[data-ui-guide] .crm-dash-filtros>*{flex:1 1 100%;min-width:0}
+ .rb[data-ui-guide] .crm-dash-filtros label{min-width:0}
+ .rb[data-ui-guide] .crm-dash-filtros .btn{min-height:44px}
+ .rb[data-ui-guide] .crm-dash-acoes{margin-left:0}
+ .rb[data-ui-guide] .crm-dash-acoes .btn{flex:1 1 100%}
+ .rb[data-ui-guide] .crm-dash-periodos .btn{flex:1 1 calc(50% - 8px)}
+ .rb[data-ui-guide] .crm-dash-ativados :is(.btn,.inp){min-height:44px}
+ .rb[data-ui-guide] :is(.crm-dash-ordenar,.crm-dash-nome){min-height:44px}
+ .rb[data-ui-guide] .crm-dash-kpis,.rb[data-ui-guide] .crm-dash-atencao{grid-template-columns:minmax(0,1fr)}
+ .rb[data-ui-guide] .crm-dash-etapa{grid-template-columns:minmax(0,1fr) auto}
+ .rb[data-ui-guide] .crm-dash-barra{grid-column:1/-1;grid-row:2}
+ .rb[data-ui-guide] .crm-dash-etapa-valores{grid-column:1/-1}
+ .rb[data-ui-guide] .crm-dash-grafico{grid-template-columns:28px minmax(0,1fr)}
+ .rb[data-ui-guide] .crm-dash-plano,.rb[data-ui-guide] .crm-dash-meses{gap:6px;padding:0 4px}
+ .rb[data-ui-guide] .crm-dash-meses{padding-top:4px}
+}
+@media(prefers-reduced-motion:reduce){.rb[data-ui-guide] :is(.crm-dash-ordenar,.crm-dash-nome){transition:none}}

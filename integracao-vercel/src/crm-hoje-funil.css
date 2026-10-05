@@ -1,0 +1,131 @@
+/* Aba Hoje e funil de 3 colunas do CRM (HojeCRM.jsx e FunilCRM.jsx).
+   Todo seletor começa por .rb .crm-hf (prefixo exclusivo): nada aqui altera outras abas. Só tokens var(--...) do ui-guide,
+   então o escuro vem do .rb.escuro. Variáveis novas usam o prefixo --crm-. O cartão completo (Semi e Detalhada) continua no crm.css.
+   Quando uma regra precisa vencer .btn / .crm-card de crm.css, ui-guide.css e App.jsx, ela usa 4 classes (especificidade 0,4,0). */
+.rb .crm-hf{min-width:0}
+.rb .crm-hf :is(button,summary):focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+.rb .crm-hf .ajuda{font-size:13px;line-height:1.45}
+.rb .crm-hf .crm-hf-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rb .crm-hf .crm-hf-nome{margin:0;font-size:15px;font-weight:700;line-height:1.35;color:var(--titulo);overflow-wrap:anywhere}
+.rb .crm-hf .crm-hf-apoio{font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.rb .crm-hf .crm-hf-vazio{margin:0;padding:14px;border:1px dashed var(--line);border-radius:10px;background:var(--card);color:var(--muted);font-size:13px;line-height:1.45;text-align:center}
+
+/* botões e etiquetas */
+.rb .crm-hf .crm-hf-btn.btn{min-height:40px;padding:8px 14px;gap:6px;justify-content:center;font-size:14px;line-height:1.25;text-align:center;white-space:normal}
+.rb .crm-hf .crm-hf-etiqueta{display:inline-flex;align-items:center;gap:5px;width:max-content;max-width:100%;padding:2px 10px;border-radius:999px;background:var(--soft);color:var(--primary);font-size:13px;font-weight:700;line-height:1.5}
+.rb .crm-hf .crm-hf-etiqueta[data-tom="atrasado"]{background:var(--danger-bg);color:var(--danger)}
+.rb .crm-hf .crm-hf-etiqueta[data-tom="hoje"]{background:var(--warning-bg);color:var(--warning)}
+.rb .crm-hf .crm-hf-etiqueta[data-tom="sem"]{background:var(--pill);color:var(--text)}
+.rb .crm-hf .crm-hf-pends{display:flex;flex-wrap:wrap;gap:6px}
+.rb .crm-hf .crm-hf-pend{display:inline-flex;align-items:center;padding:1px 8px;border:1px dashed var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:13px;line-height:1.4}
+
+/* Hoje */
+.rb .crm-hoje{display:grid;gap:16px;margin-top:16px}
+.rb .crm-hoje .crm-hf-cabeca h2{margin:0;font-size:22px;line-height:1.3}
+.rb .crm-hoje .crm-hf-cabeca .ajuda{margin:4px 0 0}
+.rb .crm-hf .crm-hf-resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px;margin:0}
+.rb .crm-hf .crm-hf-resumo>div{display:grid;gap:2px;align-content:start;min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.rb .crm-hf .crm-hf-resumo dt{font-size:13px;line-height:1.35;color:var(--muted)}
+.rb .crm-hf .crm-hf-resumo dd{margin:0;font-size:24px;font-weight:700;line-height:1.2;color:var(--titulo);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.rb .crm-hf .crm-hf-resumo dd small{display:block;font-size:13px;font-weight:600;line-height:1.4;color:var(--muted)}
+.rb .crm-hf .crm-hf-resumo>div[data-tom="atrasado"] dd{color:var(--danger)}
+.rb .crm-hf .crm-hf-resumo>div[data-tom="hoje"] dd{color:var(--warning)}
+.rb .crm-hf .crm-hf-resumo .crm-hf-btn.btn{justify-self:start;margin-top:6px}
+.rb .crm-hf .crm-hf-chips{display:flex;flex-wrap:wrap;gap:8px}
+.rb .crm-hf .crm-hf-chip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.rb .crm-hf .crm-hf-chip:hover{background:var(--hover)}
+.rb .crm-hf .crm-hf-chip[aria-pressed="true"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}
+.rb .crm-hf .crm-hf-chip-n{min-width:22px;padding:0 8px;border-radius:999px;background:var(--pill);color:var(--text);font-size:13px;font-weight:700;text-align:center}
+.rb .crm-hf .crm-hf-chip[aria-pressed="true"] .crm-hf-chip-n{background:var(--card);color:var(--titulo)}
+.rb .crm-hf .crm-hf-grupo{display:grid;gap:8px}
+.rb .crm-hf .crm-hf-grupo>h3{margin:0;font-size:15px;font-weight:700;line-height:1.35;color:var(--titulo)}
+.rb .crm-hf .crm-hf-fila{display:grid;gap:8px}
+.rb .crm-hf .crm-hf-mais.btn{justify-self:start}
+.rb .crm-hf .crm-hf-linha{--crm-tom:var(--line);display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.1fr) auto;gap:8px 16px;align-items:center;min-width:0;padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--crm-tom);border-radius:12px;background:var(--card)}
+.rb .crm-hf .crm-hf-linha[data-tom="atrasado"]{--crm-tom:var(--danger)}
+.rb .crm-hf .crm-hf-linha[data-tom="hoje"]{--crm-tom:var(--warning)}
+.rb .crm-hf .crm-hf-linha[data-tom="sem"]{--crm-tom:var(--muted)}
+.rb .crm-hf .crm-hf-linha[data-tom="futuro"]{--crm-tom:var(--primary)}
+.rb .crm-hf .crm-hf-linha .crm-hf-abrir{display:grid;justify-items:start;align-content:center;gap:3px;width:auto;min-width:0;min-height:40px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.rb .crm-hf .crm-hf-linha .crm-hf-nome{font-size:16px}
+.rb .crm-hf .crm-hf-linha .crm-hf-abrir:hover .crm-hf-nome{text-decoration:underline}
+.rb .crm-hf .crm-hf-motivo{display:grid;gap:4px;justify-items:start;min-width:0;color:var(--text);font-size:14px;font-weight:600;line-height:1.4}
+.rb .crm-hf .crm-hf-acoes{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.rb .crm-hf .crm-hf-telefone{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rb .crm-hf .crm-hf-tel{color:var(--text);font-size:13px;font-variant-numeric:tabular-nums}
+
+/* Funil */
+.rb .crm-hf-funil{display:grid;gap:12px}
+.rb .crm-hf .crm-hf-dica{margin:0}
+.rb .crm-hf .crm-hf-quadro{display:grid;grid-template-columns:repeat(var(--crm-colunas,3),minmax(260px,1fr));gap:14px;align-items:start;max-width:100%;overflow-x:auto;padding-bottom:4px}
+.rb .crm-hf .crm-hf-coluna{display:grid;gap:10px;align-content:start;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+.rb .crm-hf .crm-hf-coluna[data-alvo="true"]{outline:2px dashed var(--primary);outline-offset:-2px;background:var(--hover)}
+.rb .crm-hf .crm-hf-titulo{margin:0;font-size:16px;font-weight:700;line-height:1.3;color:var(--titulo)}
+.rb .crm-hf .crm-hf-total{margin:-4px 0 0}
+.rb .crm-hf .crm-hf-cartoes{display:block}
+.rb .crm-visao-compacta .crm-hf-cartoes{display:grid;gap:8px}
+.rb .crm-hf .crm-hf-cartao.crm-cliente-card{position:relative;display:grid;gap:8px;min-width:0;margin:0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--sombra)}
+.rb .crm-hf .crm-hf-cartao.crm-cliente-card[draggable="true"]{cursor:grab}
+.rb .crm-hf .crm-hf-cartao.crm-cliente-card[draggable="true"]:active{cursor:grabbing}
+.rb .crm-hf .crm-hf-cartao.crm-cliente-card[data-arrastando="true"]{opacity:.6}
+.rb .crm-hf .crm-hf-topo{display:flex;align-items:flex-start;justify-content:space-between;gap:4px;min-width:0}
+.rb .crm-hf .crm-hf-cartao .crm-hf-abrir{display:grid;flex:1 1 auto;align-content:center;gap:2px;width:auto;min-width:0;min-height:40px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.rb .crm-hf .crm-hf-cartao .crm-hf-abrir:hover .crm-hf-nome{text-decoration:underline}
+.rb .crm-hf .crm-hf-mun{color:var(--muted);font-size:13px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.rb .crm-hf .crm-hf-icones{display:flex;flex:none;gap:2px;margin:-4px -6px 0 0}
+.rb .crm-hf .crm-hf-icone{display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
+.rb .crm-hf .crm-hf-icone:hover:not(:disabled){border-color:var(--line);background:var(--hover);color:var(--titulo)}
+.rb .crm-hf .crm-hf-icone.crm-lead-lixeira:hover:not(:disabled){color:var(--danger)}
+.rb .crm-hf .crm-hf-icone:disabled{opacity:.5;cursor:not-allowed}
+.rb .crm-hf .crm-hf-valor{color:var(--titulo);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.rb .crm-hf .crm-hf-passo{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.rb .crm-hf .crm-hf-rodape{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.rb .crm-hf .crm-hf-btn-agendar.btn{border-style:dashed}
+.rb .crm-hf .crm-hf-avancar.btn{margin-left:auto}
+.rb .crm-hf .crm-hf-confirmar{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--warning);border-radius:10px;background:var(--warning-bg);color:var(--text);font-size:13px;line-height:1.45}
+.rb .crm-hf .crm-hf-confirmar-acoes{display:flex;flex-wrap:wrap;gap:8px}
+.rb .crm-hf .crm-hf-detalhes{border-top:1px solid var(--line);padding-top:2px}
+.rb .crm-hf .crm-hf-detalhes>summary{display:list-item;min-height:40px;padding:9px 2px;color:var(--primary);font-size:14px;font-weight:700;line-height:1.4;cursor:pointer}
+.rb .crm-hf-funil>.crm-hf-detalhes{padding:2px 14px 4px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.rb .crm-hf .crm-hf-aviso{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.rb .crm-hf .crm-hf-aviso .ajuda{margin:0}
+
+/* listas de cadastros e clientes ativos (só leitura) */
+.rb .crm-hf-lista{display:grid;gap:8px;padding:6px 0 8px}
+.rb .crm-hf-lista .ajuda{margin:0}
+.rb .crm-hf .crm-hf-lista-titulo{margin:0;font-size:15px;font-weight:700;line-height:1.35;color:var(--titulo)}
+.rb .crm-hf .crm-hf-ativos{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.rb .crm-hf .crm-hf-ativo{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.rb .crm-hf .crm-hf-ativo-info{display:grid;justify-items:start;gap:4px;min-width:0}
+.rb .crm-hf .crm-hf-coluna .crm-hf-ativo{grid-template-columns:minmax(0,1fr)}
+.rb .crm-hf .crm-hf-coluna .crm-hf-ativo .crm-hf-btn.btn{justify-self:start}
+
+/* telas médias: a linha da fila passa a 2 colunas e o motivo ocupa a largura toda */
+@media (max-width:1023px){
+ .rb .crm-hf .crm-hf-linha{grid-template-columns:minmax(0,1fr) auto}
+ .rb .crm-hf .crm-hf-linha .crm-hf-motivo{grid-column:1/-1;grid-row:2}
+}
+/* até 900px o quadro vira uma faixa de rolagem horizontal DENTRO dele (a página não rola de lado) */
+@media (max-width:900px){
+ .rb .crm-hf .crm-hf-quadro{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(260px,86%);overscroll-behavior-x:contain;scroll-snap-type:x proximity}
+ .rb .crm-hf .crm-hf-coluna{scroll-snap-align:start}
+}
+@media (min-width:481px) and (max-width:640px){
+ .rb .crm-hf .crm-hf-resumo{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+ .rb .crm-hf .crm-hf-btn.btn,.rb .crm-hf .crm-hf-chip{min-height:44px}
+ .rb .crm-hf .crm-hf-icone{width:44px;height:44px}
+ .rb .crm-hf .crm-hf-cartao .crm-hf-abrir,.rb .crm-hf .crm-hf-linha .crm-hf-abrir{min-height:44px}
+ .rb .crm-hf .crm-hf-detalhes>summary{min-height:44px;padding-block:11px}
+ .rb .crm-hf .crm-hf-linha{grid-template-columns:minmax(0,1fr);padding:12px}
+ .rb .crm-hf .crm-hf-linha .crm-hf-motivo{grid-row:auto}
+ .rb .crm-hf .crm-hf-acoes{justify-content:flex-start}
+ .rb .crm-hf .crm-hf-btn-passo.btn{flex:1 1 auto}
+ .rb .crm-hf .crm-hf-avancar.btn{flex:1 1 100%}
+ .rb .crm-hf .crm-hf-ativo{grid-template-columns:minmax(0,1fr)}
+ .rb .crm-hf .crm-hf-ativo .crm-hf-btn.btn{justify-self:start}
+}
+@media (max-width:480px){
+ .rb .crm-hf .crm-hf-resumo{grid-template-columns:minmax(0,1fr)}
+}
