@@ -1,3 +1,4 @@
+import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
@@ -3699,7 +3700,7 @@ function ExtrasSecao({ defs, secaoId, form, dis }) {
 /* ---------------- blocos de pessoa e endereço (campos do Integrado) ---------------- */
 // Ficha de uma pessoa. base = caminho no rascunho ("requerente", "conjuge", "corequerentes.0.pessoa", "ocupantes.2.pessoa").
 // papel: "requerente" (todos os campos), "conjuge" (sem PJ e sem status) ou "ocupante" (tudo opcional, só a qualificação conta).
-function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ = false, representantes = [] }) {
+function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ = false, representantes = [], campoCodigoMorador = null }) {
   const x = getPath(form.rascunho, base) || pessoaVazia();
   const pj = permitirPJ && ehPJ(x);
   const hojeISO = new Date().toISOString().slice(0, 10);
@@ -3713,6 +3714,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
         <>
           <Campo form={form} rot="Razão social" path={P("nome")} span={2} dis={dis} />
           <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : ""} />
+          {campoCodigoMorador}
           <Campo form={form} rot="Representante legal" path={P("representante")} opcoes={representantes.length ? representantes : undefined} vazio="Escolha ou informe abaixo" span={representantes.length ? 1 : 2} dis={dis} ajuda={representantes.length ? "Um dos requerentes cadastrados nesta ficha." : "Nome de quem assina pela empresa. Cadastre a pessoa em Outros requerentes para ter a qualificação completa."} />
           <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
           <Campo form={form} rot="E-mail" path={P("email")} tipo="email" dis={dis} />
@@ -3730,6 +3732,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
           <Campo form={form} rot="Órgão emissor" path={P("rgOrgao")} dis={dis} />
           <Campo form={form} rot="UF do emissor" path={P("rgUf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
           <Campo form={form} rot="Data de nascimento" path={P("nascimento")} tipo="date" dis={dis} erro={x.nascimento && x.nascimento > hojeISO ? "Data no futuro" : ""} ajuda={i === null ? "" : `${i} anos, calculado pela data`} />
+          {campoCodigoMorador}
           <Campo form={form} rot="Nome da mãe" path={P("mae")} span={2} dis={dis} />
           <Campo form={form} rot="Nome do pai" path={P("pai")} span={2} dis={dis} />
           <Campo form={form} rot="Estado civil" path={P("estadoCivil")} opcoes={ESTADOS_CIVIS} dis={dis} />
@@ -3823,7 +3826,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
     [SECAO_CONFRONTANTES.id]: <FormConfrontantes valores={confrontantesDe(pd)} pode={pode("imovel")} onChange={(lado, valor) => form.set(`extras.${CONFRONTANTES.find((c) => c.lado === lado).id}`, valor)}><ExtrasSecao defs={defs} secaoId={SECAO_CONFRONTANTES.id} form={form} dis={disImovel} /></FormConfrontantes>,
     requerente: (
       <Secao titulo="Requerente" nota={ehPJ(req) ? "Pessoa jurídica: o contrato e a procuração saem em nome da empresa, assinados pelo representante legal." : ""}>
-        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} perm={perm} permitirPJ representantes={representantes.slice(1)} />
+        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} perm={perm} permitirPJ representantes={representantes.slice(1)} campoCodigoMorador={<Campo form={form} rot="Código do morador" path="codigo" dis={disCad} fmt={normalizarCodigoMorador} erro={rascunho.codigo !== p.codigo ? erroCodigoMorador(rascunho.codigo, (db._baseArquivo || db).processos, p.id) : ""} ajuda="A alteração será aplicada ao salvar o cadastro." />} />
         <ExtrasSecao defs={defs} secaoId="requerente" form={form} dis={disCad} />
       </Secao>
     ),
@@ -4464,9 +4467,9 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const p = db.processos.find((x) => x.id === processoId);
   const perm = permissoes(usuario);
   const [aba, setAba] = useState(abaInicial || "cadastro");
-  const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=extrair(p);if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
-  const baseFormulario=useRef(p?extrair(p):null);
-  useEffect(()=>{const anterior=baseFormulario.current,proximo=p?extrair(p):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
+  const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=({ ...extrair(p), codigo: p.codigo });if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
+  const baseFormulario=useRef(p?({ ...extrair(p), codigo: p.codigo }):null);
+  useEffect(()=>{const anterior=baseFormulario.current,proximo=p?({ ...extrair(p), codigo: p.codigo }):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
   const [iaPaths, setIaPaths] = useState([]);
   const [modal, setModal] = useState(null);
 
@@ -4475,7 +4478,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const ctx = contexto(db, p);
   const cancelado = !ativo(p);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
-  const planoAtual = achatar(rascunho); const planoSalvo = achatar(extrair(p));
+  const planoAtual = achatar(rascunho); const planoSalvo = achatar(({ ...extrair(p), codigo: p.codigo }));
   const alterados = Object.keys({ ...planoAtual, ...planoSalvo }).filter((k) => String(planoAtual[k] ?? "") !== String(planoSalvo[k] ?? ""));
   const sujo = alterados.length > 0;
 
@@ -4496,18 +4499,26 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     const nucleoSel = rascunho.nucleoId ? nucleoDe(db, rascunho.nucleoId) : null;
     if (nucleoSel && nucleoSel.remessaId && nucleoSel.remessaId !== rascunho.remessaId) { setToast(`O ${nucleoSel.codigo} pertence a ${nomeRemessa(db, remessaDe(db, nucleoSel.remessaId))}. Escolha outro núcleo.`); return; }
     const vincular = nucleoSel && !nucleoSel.remessaId;
-    let novoCodigo = null; let novoNumero = null;
-    if (rascunho.remessaId !== p.remessaId) {
-      novoNumero = proximoNumeroCliente(db, rascunho.remessaId);
-      novoCodigo = codigoCliente(db, rascunho.remessaId, novoNumero);
-    }
-    const nomes = Array.from(new Set(alterados.map((k) => rotuloCaminho(k, [...defs, ...CONFRONTANTES]))));
+    let alteracaoCodigo;
+    try {
+      if (rascunho.codigo !== p.codigo && (cancelado || !(perm.editarClientes || perm.cadastro))) throw new Error("Você não tem permissão para editar o código do morador.");
+      const mudouRemessa = rascunho.remessaId !== p.remessaId;
+      const numeroAutomatico = mudouRemessa ? proximoNumeroCliente(db, rascunho.remessaId) : null;
+      alteracaoCodigo = resolverCodigoMorador({ atual: p, rascunho, processos: (db._baseArquivo || db).processos, numeroAutomatico, codigoAutomatico: mudouRemessa ? codigoCliente(db, rascunho.remessaId, numeroAutomatico) : null });
+    } catch (e) { setToast(e.message); return; }
+    const novoCodigo = alteracaoCodigo?.codigo;
+    const novoNumero = alteracaoCodigo?.numeroCliente;
+    const nomes = Array.from(new Set(alterados.map((k) => (k === "codigo" ? "Código do morador" : rotuloCaminho(k, [...defs, ...CONFRONTANTES])))));
     const viaIA = alterados.filter((k) => iaPaths.includes(k)).length;
     const extrasDetalhe = `${vincular ? `. ${nucleoSel.codigo} colocado em ${nomeRemessa(db, remessaNova)}` : ""}${novoCodigo ? `. Código alterado para ${novoCodigo}` : ""}`;
     mutar((d) => {
       const q = d.processos.find((x) => x.id === p.id);
       SECOES.forEach((k) => { q[k] = clone(rascunho[k]); });
-      if (novoCodigo) { q.codigo = novoCodigo; q.numeroCliente = novoNumero; }
+      if (novoCodigo) {
+        const erro = erroCodigoMorador(novoCodigo, d.processos, p.id);
+        if (erro) throw new Error(erro);
+        q.codigo = novoCodigo; q.numeroCliente = novoNumero;
+      }
       // A qualificação salva acompanha o cadastro: regenerada a cada alteração, a menos que tenha sido editada à mão (aí só marca como desatualizada)
       q.qualificacao = atualizarQualificacao(q, usuario);
       if (vincular) d.nucleos.find((x) => x.id === nucleoSel.id).remessaId = rascunho.remessaId;
@@ -4612,7 +4623,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           <div className="flex flex-wrap items-center justify-between gap-2" style={{ maxWidth: 1320, margin: "0 auto", padding: "12px 26px" }}>
             <span>{alterados.length} {alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro</span>
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} onClick={() => { setRascunho(extrair(p)); setIaPaths([]); }}>Descartar</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} onClick={() => { setRascunho(({ ...extrair(p), codigo: p.codigo })); setIaPaths([]); }}>Descartar</button>
               <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} onClick={salvar}><Check size={16} />Salvar alterações</button>
             </div>
           </div>
