@@ -106,6 +106,8 @@ const nullText = x => x === '' || x === undefined ? null : x;
 const uuid = id => /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id || '');
 const fieldValue=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value);
 const decimal=v=>Number(typeof v==='string' && v.includes(',')?v.replace(/\./g,'').replace(',','.'):v||0);
+const vazio=v=>v==null || (typeof v==='string' && !v.trim());
+const numeroComercial=(campo,valor)=>['parcelas','diaVencimento'].includes(campo)&&vazio(valor)?null:decimal(valor);
 const group = (rows, key, id) => (rows || []).filter(r => r[key] === id);
 const nestedFields={nucleos:['andamentos','observacoes','historicoEtapas'],metas:['responsaveis','checklist','comentarios','historico','arquivos','associacao_tipo','associacao_id'],planos:['etapas','comentarios','documentos'],etapas:['responsaveis','entregaveis','comentarios'],ordensServico:['comentarios'],eventos:['respostas','participantes','entidade','agendaId','serieERP'],conversas:['mensagens','participantes','entidade','criadoPor','exclusaoSolicitada']};
 const sectors = { Administrador:'diretoria', 'Diretor Técnico':'diretoria', 'Diretor de Projetos':'diretoria', Financeiro:'financeiro', Comercial:'comercial', Atendimentos:'comercial', Topografia:'topografia', Projetos:'projeto', 'Pós-protocolo':'posprotocolo', 'Jurídico':'juridico' };
@@ -153,7 +155,7 @@ export function projetar(base, local) {
       if(saved.situacao && (saved.situacao==='Ativo')===row.ativo)value.situacao=saved.situacao;
       const amounts={valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'};
       value.comercial={modalidade:Number(row.valor_entrada)>0?'Entrada e parcelas':'Parcelado sem entrada',reajuste:'Sem reajuste',observacoes:'',...saved.comercial,primeiroVencimento:row.primeiro_vencimento||''};
-      for(const [field,column] of Object.entries(amounts)) {value.comercial[field]=row[column]==null?'':String(row[column]).replace('.',',');map[`comercial.${field}`]={column,encode:decimal};}
+      for(const [field,column] of Object.entries(amounts)) {value.comercial[field]=row[column]==null?'':String(row[column]).replace('.',',');map[`comercial.${field}`]={column,encode:v=>numeroComercial(field,v)};}
       map['comercial.primeiroVencimento']='primeiro_vencimento';
     }
     bindings.push({ collection, id: value.id, table, key: {id:row.id}, row, map, parent, view: value });
@@ -296,7 +298,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const m=after.municipios.find(x=>x.id===r.municipioId);
     insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
   }
-  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,decimal(r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
+  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,numeroComercial(k,r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
   for(const n of after.nucleos||[]) {
     const prev=(before.nucleos||[]).find(x=>x.id===n.id);
     const id=n.externo?.kanbanId || n.id;
@@ -449,7 +451,22 @@ export function prepararEdicao(before,after,state,actor) {
   for(const op of extras) {if(op.insert && op.key.colecao==='conversas') {op.changes.referencia_tabela='erp_conversas';op.changes.referencia_id=op.key.registro_id;for(const k of ['tipo','titulo','participantes','mensagens','criadoPor'])delete op.changes.dados[k];}}
   return [...extras.filter(o=>o.remove),...canonical,...extras.filter(o=>!o.remove)];
 }
-export async function gravarOperacoes(operations,pedido) {
+// Repair only impossible zero values from older drafts when the original form
+// proves the field was blank. Keep ids, concurrency checks and all other edits.
+export function recuperarCamposVazios(operations,after) {
+  return operations.map(op=>{
+    if(op.table!=='fin_receb_clientes'||op.remove||op.action)return op;
+    const cliente=after?.processos?.find(r=>r.id===op.key?.id||r.financeiroRef===op.key?.id);
+    if(!cliente)return op;
+    let changes=op.changes;
+    for(const [field,column] of [['diaVencimento','dia_vencimento'],['parcelas','numero_parcelas']]) {
+      if(changes?.[column]===0 && vazio(cliente.comercial?.[field]))changes={...changes,[column]:null};
+    }
+    return changes===op.changes?op:{...op,changes};
+  });
+}
+export async function gravarOperacoes(operations,pedido,after) {
+  operations=recuperarCamposVazios(operations,after);
   if(!operations.length) return {aliases:{}};
   const result = await requisicao('rpc/integracao_gravar',{method:'POST',body:JSON.stringify({operacoes:operations,pedido})});
   if (operations.some(op => ['fin_receb_clientes','integracao_moradores','integracao_municipios','integracao_remessas','integracao_nucleos','integracao_complementos'].includes(op.table))) invalidarIndiceClientes();
