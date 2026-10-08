@@ -599,14 +599,14 @@ test('proximaEtapa: Cliente novo, Negociação, Contrato e Cliente ativo; o rest
 });
 
 test('dadosMovimento: só o status muda e a negociação é preservada exatamente', () => {
- const avista=card({valor_total:'1200.50',forma_negociacao:'avista',desconto_percentual:5,parcelas:null,entrada_percentual:null});
- assert.deepEqual(dadosMovimento(congelar(avista),'Contrato'),{ok:true,dados:{status:'Contrato',valor_total:1200.5,forma_negociacao:'avista',parcelas:null,desconto_percentual:5,entrada_percentual:null}});
- const parcelado=card({valor_total:'3000.00',forma_negociacao:'parcelado',parcelas:10,desconto_percentual:null,entrada_percentual:null});
- assert.deepEqual(dadosMovimento(parcelado,'Perdido').dados,{status:'Perdido',valor_total:3000,forma_negociacao:'parcelado',parcelas:10,desconto_percentual:null,entrada_percentual:null});
+ const avista=card({valor_total:'1200.50',forma_negociacao:'avista',desconto_percentual:5,parcelas:null,entrada_percentual:null,entrada_valor:null});
+ assert.deepEqual(dadosMovimento(congelar(avista),'Contrato'),{ok:true,dados:{status:'Contrato',valor_total:1200.5,forma_negociacao:'avista',parcelas:null,desconto_percentual:5,entrada_percentual:null,entrada_valor:null}});
+ const parcelado=card({valor_total:'3000.00',forma_negociacao:'parcelado',parcelas:10,desconto_percentual:null,entrada_percentual:null,entrada_valor:null});
+ assert.deepEqual(dadosMovimento(parcelado,'Perdido').dados,{status:'Perdido',valor_total:3000,forma_negociacao:'parcelado',parcelas:10,desconto_percentual:null,entrada_percentual:null,entrada_valor:null});
  const entrada=card({valor_total:'9000.00',forma_negociacao:'entrada_parcelas',parcelas:6,desconto_percentual:null,entrada_percentual:'30.00'});
- assert.deepEqual(dadosMovimento(entrada,'Negociação').dados,{status:'Negociação',valor_total:9000,forma_negociacao:'entrada_parcelas',parcelas:6,desconto_percentual:null,entrada_percentual:30});
- const vazia=card({valor_total:null,forma_negociacao:null,parcelas:null,desconto_percentual:null,entrada_percentual:null});
- assert.deepEqual(dadosMovimento(vazia,'Negociação'),{ok:true,dados:{status:'Negociação',valor_total:null,forma_negociacao:null,parcelas:null,desconto_percentual:null,entrada_percentual:null}});
+ assert.deepEqual(dadosMovimento(entrada,'Negociação').dados,{status:'Negociação',valor_total:9000,forma_negociacao:'entrada_parcelas',parcelas:6,desconto_percentual:null,entrada_percentual:30,entrada_valor:null});
+ const vazia=card({valor_total:null,forma_negociacao:null,parcelas:null,desconto_percentual:null,entrada_percentual:null,entrada_valor:null});
+ assert.deepEqual(dadosMovimento(vazia,'Negociação'),{ok:true,dados:{status:'Negociação',valor_total:null,forma_negociacao:null,parcelas:null,desconto_percentual:null,entrada_percentual:null,entrada_valor:null}});
 });
 
 test('dadosMovimento: valor sem forma ou cartão ausente devolve ok false com a mensagem', () => {
@@ -790,4 +790,9 @@ test('contrato: o módulo é puro (sem React, rede, DOM, armazenamento ou escrit
  assert.doesNotMatch(fonte,/from\s+['"]react|\.jsx['"]|fetch\(|XMLHttpRequest|localStorage|sessionStorage|document\.|window\.|crm-api|rpcCRM|salvarNegociacaoCRM|editarCRM|supabase/i);
  const imports=[...fonte.matchAll(/^import .* from '([^']+)'/gm)].map(m=>m[1]).sort();
  assert.deepEqual(imports,['./crm-edicao.js','./crm-followup.js','./crm-negociacao.js','./crm-regras.js']);
+});
+
+test('mover preserva entrada em reais exatamente',()=>{
+ const c=card({valor_total:1234.56,forma_negociacao:'entrada_parcelas',parcelas:3,desconto_percentual:null,entrada_percentual:null,entrada_valor:123.45});
+ const r=dadosMovimento(c,'Contrato');assert.equal(r.dados.entrada_valor,123.45);assert.equal(r.dados.entrada_percentual,null);
 });

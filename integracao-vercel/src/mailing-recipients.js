@@ -1,0 +1,5 @@
+import {SETORES} from './permissoes.js';
+const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+export const sectorName=key=>SETORES[key]?.nome||key;
+export function suggestions(users,query,selected=[]){const q=normalize(query);if(!q)return [];const active=users.filter(u=>u.ativo!==false),chosen=new Set(selected);const sectors=[...new Set(active.filter(u=>!u.mailbox).map(u=>u.setor).filter(Boolean))].map(key=>({key:'sector:'+key,type:'sector',label:sectorName(key),ids:active.filter(u=>!u.mailbox&&u.setor===key&&!chosen.has(u.id)).map(u=>u.id)})).filter(s=>s.ids.length&&normalize(s.label).includes(q));const people=active.filter(u=>!chosen.has(u.id)&&normalize(u.nome).includes(q)).map(u=>({key:'user:'+u.id,type:'user',label:u.mailbox?'Caixa do setor: '+u.nome:u.nome,detail:sectorName(u.setor),ids:[u.id]}));return [...people,...sectors].slice(0,12);}
+export function addRecipients(current,ids,users){const active=new Set(users.filter(u=>u.ativo!==false).map(u=>u.id));return [...new Set([...current,...ids.filter(id=>active.has(id))])];}

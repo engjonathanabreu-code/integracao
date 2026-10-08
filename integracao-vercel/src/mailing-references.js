@@ -1,0 +1,3 @@
+const routes={eventos:'calendario',metas:'metas',planos:'plano'};
+export function referenceText(type,item){if(!routes[type]||!item.id)throw Error('Referência inválida');return `[${String(item.titulo||'Item').replace(/[\[\]\n]/g,' ')}](integracao://${routes[type]}/${encodeURIComponent(item.id)})`;}
+export function parseReferences(text=''){const parts=[];const regex=/\[([^\]\n]+)\]\(integracao:\/\/(calendario|metas|plano)\/([^\s)]+)\)/g;let pos=0;for(const match of text.matchAll(regex)){if(match.index>pos)parts.push({text:text.slice(pos,match.index)});try{parts.push({label:match[1],route:{pag:match[2],id:decodeURIComponent(match[3])}})}catch{parts.push({text:match[0]})}pos=match.index+match[0].length;}if(pos<text.length)parts.push({text:text.slice(pos)});return parts;}

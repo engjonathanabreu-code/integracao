@@ -1,0 +1,8 @@
+import {configERP,tokenTempoReal,requisicao} from './dados-compartilhados.js';
+export const MAX_ATTACHMENT=20*1024*1024;
+export const loadMailingCounts=()=>requisicao('rpc/integracao_mailing_contadores',{method:'POST',body:'{}'});
+export const loadMailing=box=>requisicao('rpc/integracao_mailing_ler',{method:'POST',body:JSON.stringify({p_caixa:box})});
+export const saveMailing=(box,version,data)=>requisicao('rpc/integracao_mailing_salvar',{method:'POST',body:JSON.stringify({p_caixa:box,p_versao:version,p_dados:data})});
+async function headers(){const token=await tokenTempoReal();if(!token)throw Error('Entre novamente para acessar o Mailing.');return {apikey:configERP.chave,Authorization:`Bearer ${token}`};}
+export async function uploadMailing(file,owner,draft){if(file.size>MAX_ATTACHMENT)throw Error(`${file.name}: o limite é 20 MB por arquivo.`);const id=crypto.randomUUID(),path=`${owner}/${draft}/${id}`,type=file.type||'application/octet-stream';const r=await fetch(`${configERP.url}/storage/v1/object/integracao-mailing/${path}`,{method:'POST',headers:{...await headers(),'Content-Type':type,'x-upsert':'false'},body:file,signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error('Não foi possível anexar '+file.name+'. A mensagem foi preservada.');return {id,path,name:file.name,size:file.size,type};}
+export async function downloadMailing(path){const r=await fetch(`${configERP.url}/storage/v1/object/sign/integracao-mailing/${path}`,{method:'POST',headers:{...await headers(),'Content-Type':'application/json'},body:JSON.stringify({expiresIn:120}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Não foi possível abrir o anexo.');const d=await r.json();return `${configERP.url}/storage/v1${d.signedURL}`;}
