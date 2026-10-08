@@ -2,7 +2,7 @@
 // totais e decisão de movimento. Sem React, sem rede e sem gravação: só calcula o que a tela mostra.
 // Todo tempo entra por parâmetro (agora, padrão Date.now()). Nenhuma entrada é alterada.
 import {normalizarCRM,ETAPAS_FUNIL} from './crm-regras.js';
-import {formularioNegociacao,prepararNegociacao} from './crm-negociacao.js';
+import {CAMPOS_NEGOCIACAO,formularioNegociacao,prepararNegociacao} from './crm-negociacao.js';
 import {exigeDocumentoCRM} from './crm-edicao.js';
 import {diaFollowup} from './crm-followup.js';
 
@@ -249,7 +249,7 @@ export const proximaEtapa=etapa=>{const n=SEQUENCIA.indexOf(etapa);return n>=0&&
 // Mesmo ciclo da ficha de negociação: valor, forma, parcelas, desconto e entrada são preservados; só o status muda.
 export function dadosMovimento(card,destino){
  if(!card||typeof card!=='object')return {ok:false,erro:'Cartão indisponível para esta ação.'};
- try{return {ok:true,dados:{status:destino,...prepararNegociacao(formularioNegociacao(card))}};}
+ try{prepararNegociacao(formularioNegociacao(card));return {ok:true,dados:{status:destino,...Object.fromEntries(CAMPOS_NEGOCIACAO.map(k=>[k,card[k]==null?null:k==='forma_negociacao'?card[k]:Number(card[k])]))}};}
  catch(e){return {ok:false,erro:e?.message||String(e)};}
 }
 const decisao=(acao,mensagem='',etapaSugerida=null)=>({acao,mensagem,etapaSugerida});

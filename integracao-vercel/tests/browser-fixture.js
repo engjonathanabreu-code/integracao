@@ -1,3 +1,4 @@
+import {instalarMailingFixture} from './mailing-browser-fixture.js';
 import {instalarMetasVendasFixture} from './metas-vendas-browser-fixture.js';
 import {instalarOficiosFixture} from './oficios-browser-fixture.js';
 const oficiosFixture=new URLSearchParams(location.search).has('oficios')?instalarOficiosFixture():null;
@@ -17,6 +18,7 @@ import {compactarResumo} from '../src/resumo-transporte.js';
 import {fixture,id} from './fixture.js';
 import {instalarCRMFixture} from './crm-browser-fixture.js';
 const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
+const mailingFixture=new URLSearchParams(location.search).has('mailing')?instalarMailingFixture(base):null;
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 const chatFixture=new URLSearchParams(location.search).has('chat');
 if(chatFixture){
@@ -100,6 +102,7 @@ window.fetch=async(input,options={})=>{
   if(!url.hostname.endsWith('.supabase.co'))return json({message:'Rede externa bloqueada no teste'},503);
   if(pontoFixture){const result=pontoFixture(url,options,json);if(result!==undefined)return result;}
   if(vendasFixture){const result=vendasFixture(url,options,json);if(result!==undefined)return result;}
+  if(mailingFixture){const r=mailingFixture(url,options,json);if(r!==undefined)return r;}
   if(crmFixture){const result=crmFixture(url,options,json);if(result!==undefined)return result;}
   if(url.pathname.endsWith('/rpc/integracao_registrar_acesso')){const p=JSON.parse(options.body);base.integracao_acessos.push({id:crypto.randomUUID(),usuario_id:base.profiles[0].id,usuario_nome:base.profiles[0].nome,evento:p.p_evento,motivo:p.p_motivo,ocorrido_em:new Date().toISOString()});return json(null);}
   if(url.pathname==='/auth/v1/token')return json({access_token:'fixture-only',refresh_token:'fixture-only',expires_in:3600,user:{id:new URLSearchParams(location.search).get('perfil')==='topografia'?id(70):base.profiles[0].id}});

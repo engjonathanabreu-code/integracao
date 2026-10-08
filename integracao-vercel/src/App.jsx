@@ -1,3 +1,5 @@
+import Mailing from './Mailing.jsx';
+import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
@@ -88,7 +90,7 @@ import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
 import { useState, useEffect, useRef, Fragment, Component } from "react";
 import {
-  Radio, FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
+  Mail, Radio, FileText, Upload, Check, AlertTriangle, AlertCircle, MoreHorizontal, Eye, EyeOff, ChevronLeft, Search, Sparkles, History, LogOut, KeyRound, Paperclip, Reply, Smile,
   Loader2, Ban, Download, Lock, Copy, Undo2, Plus, X, SlidersHorizontal, Menu, ArrowUp, Star,
   ArrowDown, Pencil, Trash2, Fingerprint, Database, MapPin, ChevronRight, ChevronDown, Link2, UserPlus, DatabaseZap,
   Bot, Bell, Users, Camera, Target, ScrollText, ClipboardCheck, MessageSquare, Crosshair, RefreshCw, Image as ImageIcon, Settings, GripVertical, Home, Calendar, CalendarDays, ListTodo, Columns3, Send, Flag, ClipboardList, Wallet, Building2, FolderOpen, Filter, Wifi, WifiOff, CloudUpload, Smartphone, TrendingUp, TrendingDown, BarChart3, Clock, HardDriveDownload,
@@ -10613,14 +10615,14 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     </div>
   );
 }
-function PaginaMetas({ db, usuario, ir, mutar, setToast }) {
+function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial }) {
   const timbradoOficios = useTimbrado(db);
   const arrasteMeta = useRef(null);
   const [tela, setTela] = useState("home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
   const [buscaTitulo, setBuscaTitulo] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
-  const [detalhe, setDetalhe] = useState(null);
+  const [detalhe, setDetalhe] = useState(() => (db.metas||[]).find(m=>m.id===metaInicial&&podeVerMeta(m,usuario))?.id||null);
   const [editando, setEditando] = useState(null);
   const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
@@ -11270,7 +11272,7 @@ function ModalGoogleAgenda({ usuario, onFechar, setToast }) {
   );
 }
 
-function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
+function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
   const [filtroMetas, setFiltroMetas] = useState("");
@@ -11281,9 +11283,11 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast }) {
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
   const [visao, setVisao] = useState("semana");
-  const [ref, setRef] = useState({ ano: agora.getFullYear(), mes: agora.getMonth(), dia: agora.getDate() });
+  const dataInicial=(db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))?.inicio;
+  const dataRef=dataInicial?new Date(dataInicial):agora;
+  const [ref, setRef] = useState({ ano: dataRef.getFullYear(), mes: dataRef.getMonth(), dia: dataRef.getDate() });
   const [dia, setDia] = useState(agora.toISOString().slice(0, 10));
-  const [evento, setEvento] = useState(null);
+  const [evento, setEvento] = useState(() => (db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))||null);
   const [agendasOcultas, setAgendasOcultas] = useState([]);
   const [verOcultos, setVerOcultos] = useState(false);
   const [novoEm, setNovoEm] = useState(null);
@@ -12037,6 +12041,7 @@ export default function App() {
   const ultimoUso = useRef(Date.now());
   const usuarioRef = useRef(null);
   const usuario = db && usuarioId ? (db.usuarios || []).find((u) => u.id === usuarioId && u.ativo) || null : null;
+  const naoLidasMailing=useMailingCount(usuario);
   const [temaLogin, setTemaLogin] = useState(() => {
     try { return localStorage.getItem('integracao-tema-login-v1') === 'escuro' ? 'escuro' : 'claro'; }
     catch { return 'claro'; }
@@ -12187,7 +12192,7 @@ export default function App() {
   const perm = permissoes(usuario);
   const naHierarquia = ["municipios", "municipio", "remessa", "nucleo", "processo", "campo", "prf"].includes(rota.pag);
   const naoLidasChat = totalNaoLidas(db, usuario);
-  const tituloTopo = { financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", pessoalIA: usuario.nome+"_IA", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
+  const tituloTopo = { mailing:"Mailing", financeiro: "Financeiro", crm: "CRM", marketing: "Marketing", andamentos: "Andamentos", semanal: "Gestão Semanal", prefeitura: "Andamentos", home: "Início", pessoalIA: usuario.nome+"_IA", config: "Configurações", importar: "Configurações", campo: "Top. Campo", campoOffline: "Campo offline", prf: "PRF", processos: "Processos", metas: "Metas", calendario: "Calendário", planos: "Planos de trabalho", plano: "Plano de trabalho", chat: "Chat", agentes: "Agentes IA" }[rota.pag] || "Clientes";
   const navItem = (atual, icone, nome, destino) => <button className="nav-item" aria-current={atual ? "page" : undefined} onClick={() => ir(destino)}>{icone}{nome}</button>;
   const mapaArquivo = mapaArquivamento(db);
   const abrirCliente = async (cliente) => {
@@ -12214,7 +12219,7 @@ export default function App() {
     if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
   };
   const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
-  const telaLarga = ["calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
+  const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
     <div data-ui-guide className={`rb${modoVisual === "escuro" ? " escuro" : ""}`}>
@@ -12231,6 +12236,7 @@ export default function App() {
           {navItem(rota.pag === "metas", <Target size={18} />, "Metas", { pag: "metas" })}
           {navItem(rota.pag === "planos" || rota.pag === "plano", <ClipboardList size={18} />, "Planos de trabalho", { pag: "planos" })}
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
+          {navItem(rota.pag === "mailing", <Mail size={18} />, <><span>Mailing</span>{naoLidasMailing>0&&<span className="ml-nav-count" aria-label={`${naoLidasMailing} emails não lidos`}>{naoLidasMailing}</span>}</>, {pag:"mailing"})}
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
           {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
@@ -12269,6 +12275,7 @@ export default function App() {
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
+          {rota.pag === "mailing" && <Mailing key={usuario.id} db={db} usuario={{...usuario,id:`erp_${usuario.erpRef}`}} ir={ir} itensMailing={{eventos:(db.eventos||[]).filter(e=>podeVerEventoCalendario(e,db,usuario)),metas:(db.metas||[]).filter(m=>podeVerMeta(m,usuario)),planos:db.planos||[]}} abrirAgente={()=>ir({pag:"pessoalIA"})} />}
           {rota.pag === "pessoalIA" && <AgentePessoalTeste key={usuario.id} {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
@@ -12278,11 +12285,11 @@ export default function App() {
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
-          {rota.pag === "metas" && <PaginaMetas {...props} />}
+          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} metaInicial={rota.id} />}
           {rota.pag === "financeiro" && <Financeiro db={db} usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
-          {rota.pag === "calendario" && <PaginaCalendario {...props} />}
+          {rota.pag === "calendario" && <PaginaCalendario key={rota.id||"calendario"} {...props} eventoInicial={rota.id} />}
           {rota.pag === "chat" && <PaginaChat key={rota.id || "chat"} {...props} conversaId={rota.id} abrirJanela={(id) => setJanela({ id, minimizada: false })} />}
           {rota.pag === "agentes" && podeUsarAgentes(usuario) && <AgentesIA usuario={usuario} />}
           {rota.pag === "municipios" && <PaginaMunicipios {...props} />}
