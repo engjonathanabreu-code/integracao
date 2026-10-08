@@ -116,7 +116,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(!operations.length){server.current={...server.current,db:copy(after)};attempt.current=null;pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(after);setStatus('Dados atualizados');await saveDraft();if(pending.current)timer.current=setTimeout(flush,500);return;}
       let result=attempt.current.confirmacao;
       if(!result){
-        result=await gravarOperacoes(operations,id);
+        result=await gravarOperacoes(operations,id,after);
         if(gen!==generation.current)return;
         attempt.current.confirmacao=result;
         // Persist the receipt before any read. A reload resumes reconciliation, not the write.

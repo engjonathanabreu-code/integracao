@@ -2,7 +2,7 @@ import { alterarArquivamento, dadosVisiveis } from '../src/arquivamento.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,blank,id} from './fixture.js';
-import {copy,eq,projetar,prepararEdicao,definirSessao} from '../src/dados-compartilhados.js';
+import {copy,eq,projetar,prepararEdicao,definirSessao,recuperarCamposVazios,gravarOperacoes} from '../src/dados-compartilhados.js';
 import {tabelasProprias} from '../src/persistencia-modulos.js';
 import {abrirArquivos,fecharArquivos,agendarArquivo,obterArquivo,prepararArmazenamento,confirmarArquivos,arquivosPendentes} from '../src/arquivos-compartilhados.js';
 
@@ -82,4 +82,45 @@ test('arquivamento dos quatro cadastros grava somente complementos próprios e s
   assert.equal(outro[colecao].find(r=>r.id===id).extras.arquivamento.ativo,true);
   assert.equal(dadosVisiveis(outro)[colecao].some(r=>r.id===id),false);
  }
+});
+
+test('cadastro incompleto conserva campos financeiros opcionais vazios sem produzir zeros inválidos',()=>{
+ for(const vazio of ['',null,'   ']) {
+  const s=projetar(fixture(),blank()),n=copy(s.db);
+  n.processos.push({...copy(n.processos[0]),id:id(80),comercial:{diaVencimento:vazio,parcelas:vazio,entrada:'0',valorTotal:'2.400,50'}});
+  const op=prepararEdicao(s.db,n,s,n.usuarios[0]).find(o=>o.table==='fin_receb_clientes');
+  assert.equal(op.changes.dia_vencimento,null);assert.equal(op.changes.numero_parcelas,null);
+  assert.equal(op.changes.valor_entrada,0);assert.equal(op.changes.valor_global,2400.5);
+  assert.equal(n.processos.at(-1).comercial.diaVencimento,vazio);
+ }
+});
+test('limpar dia ou parcelas usa null e mantém controle de concorrência e condições preenchidas',()=>{
+ const b=fixture();Object.assign(b.fin_receb_clientes[0],{dia_vencimento:10,numero_parcelas:4,valor_global:2400});
+ const s=projetar(b,blank()),n=copy(s.db);n.processos[0].comercial.diaVencimento='';n.processos[0].comercial.parcelas='';
+ const op=prepararEdicao(s.db,n,s,n.usuarios[0]).find(o=>o.table==='fin_receb_clientes');
+ assert.deepEqual(op.changes,{numero_parcelas:null,dia_vencimento:null});
+ assert.deepEqual(op.expected,{numero_parcelas:4,dia_vencimento:10});
+ assert.equal(projetar(apply(s.base,[op]),blank()).db.processos[0].comercial.valorTotal,'2400');
+});
+test('recuperação de rascunho corrige somente zeros comprovadamente originados de campos vazios',()=>{
+ const ops=[{table:'fin_receb_clientes',key:{id:id(80)},insert:true,changes:{nome:'Preservado',dia_vencimento:0,numero_parcelas:0,valor_entrada:0}},
+ {table:'fin_receb_clientes',key:{id:id(81)},changes:{dia_vencimento:0}},
+ {table:'integracao_moradores',key:{registro_id:id(80)},changes:{dados:{texto:'Preservado'}}}];
+ const original=copy(ops),after={processos:[{id:id(80),comercial:{diaVencimento:'',parcelas:''}},{id:id(81),comercial:{diaVencimento:'0'}}]};
+ const result=recuperarCamposVazios(ops,after);
+ assert.deepEqual(result[0],{...ops[0],changes:{...ops[0].changes,dia_vencimento:null,numero_parcelas:null}});
+ assert.equal(result[1],ops[1]);assert.equal(result[2],ops[2]);assert.deepEqual(ops,original);
+ assert.deepEqual(recuperarCamposVazios(ops),ops);
+});
+test('reenvio do pedido antigo preserva identificador, rascunho e dados ao enviar campos vazios válidos',async()=>{
+ const oldFetch=globalThis.fetch;let request;
+ globalThis.fetch=async(url,options)=>{request=JSON.parse(options.body);return Response.json({aliases:{}});};
+ definirSessao({access_token:'fixture-only',expires_in:3600});
+ const ops=[{table:'fin_receb_clientes',key:{id:id(80)},insert:true,changes:{nome:'Preservado',dia_vencimento:0,numero_parcelas:0}}];
+ try {
+  await gravarOperacoes(ops,'pedido-antigo',{processos:[{id:id(80),comercial:{diaVencimento:'',parcelas:''}}]});
+  assert.equal(request.pedido,'pedido-antigo');assert.equal(request.operacoes[0].changes.nome,'Preservado');
+  assert.equal(request.operacoes[0].changes.dia_vencimento,null);assert.equal(request.operacoes[0].changes.numero_parcelas,null);
+  assert.equal(ops[0].changes.dia_vencimento,0);
+ }finally{globalThis.fetch=oldFetch;definirSessao(null);}
 });
