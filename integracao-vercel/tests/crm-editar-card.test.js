@@ -58,3 +58,23 @@ test('cliente vinculado antes do contrato: edita cadastro sem CPF, preserva dado
  await assert.rejects(()=>editar(db,3,82,{nome:'Sem acesso'}),/Sem permissão/);
  await editar(db,1,82,{nome:'Editado pela diretoria'});assert.equal((await funil(db,2,82)).nome,'Editado pela diretoria');
  }finally{await db.close();}});
+
+test('telefone compartilhado: pai e filho separados, edição, legado, idempotência e permissões preservadas',async()=>{
+ const db=await preparar();try{
+  const before=(await db.query(`select md5(string_agg(to_jsonb(c)::text,'' order by id)) hash from integracao_crm_cards c`)).rows[0].hash;
+  await db.exec(read('migrations/20261008180000_crm_telefone_compartilhado.sql'));
+  assert.equal((await db.query(`select md5(string_agg(to_jsonb(c)::text,'' order by id)) hash from integracao_crm_cards c`)).rows[0].hash,before,'migração não altera registros');
+  const criar=(n,nome)=>como(db,2,'select integracao_crm_cadastrar_lead_compartilhado($1,$2,$3,$4,$5) id',[id(n),nome,'48999990000',id(30),[id(2),id(3)]]);
+  await criar(90,'Pai Teste');await criar(91,'Filho Teste');await criar(91,'Filho Teste');
+  assert.equal((await db.query(`select count(*)::int n from integracao_crm_cards where id in ('${id(90)}','${id(91)}')`)).rows[0].n,2);
+  await assert.rejects(()=>criar(91,'Outro cadastro'),/Pedido já usado/);
+  await editar(db,3,81,{telefone:'48999990000',municipio_id:id(30)});
+  assert.equal((await funil(db,3,81)).lead_telefone,'48999990000');
+  await como(db,2,'select integracao_crm_cadastrar_lead($1,$2,$3,$4)',[id(92),'Avó Teste','48999990000',id(30)]);
+  await como(db,2,'select integracao_crm_cadastrar_lead($1,$2,$3,$4,$5)',[id(93),'Tio Teste','48999990000',id(30),id(2)]);
+  assert.equal((await como(db,4,`select id from integracao_crm_funil where id='${id(90)}'`)).length,0);
+  await assert.rejects(()=>como(db,6,'select integracao_crm_cadastrar_lead_compartilhado($1,$2,$3,$4,$5)',[id(94),'Sem permissão','48999990000',id(30),[id(2)]]));
+  await assert.rejects(()=>como(db,2,'select integracao_crm_cadastrar_lead_compartilhado($1,$2,$3,$4,$5)',[id(95),'Inválido','123',id(30),[id(2)]]));
+  assert.equal((await db.query(`select lead_nome from integracao_crm_cards where id='${id(80)}'`)).rows[0].lead_nome,'Lead Ana');
+ }finally{await db.close();}
+});
