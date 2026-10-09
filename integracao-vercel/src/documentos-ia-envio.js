@@ -4,12 +4,14 @@ export function validarDocumentoIA(arquivo) {
   if (!arquivo || arquivo.size > LIMITE_DOCUMENTO_IA) throw new Error('Cada documento pode ter até 20 MB.');
 }
 // Nenhum resultado parcial sai desta função. Uma falha preserva o cadastro e o arquivo original.
-export async function transcreverPDFGrande(arquivo, enviar, carregarPDF = carregarPDFBrowser) {
+export async function transcreverPDFGrande(arquivo, enviar, carregarPDF = carregarPDFBrowser, cachePaginas = null) {
   validarDocumentoIA(arquivo);
   const pdf = await carregarPDF(arquivo);
   const paginas = [];
   try {
     for (let numero = 1; numero <= pdf.numPages; numero++) {
+      const recuperado = cachePaginas?.obter(numero, pdf.numPages);
+      if (recuperado) { paginas.push(`Página ${numero}/${pdf.numPages}:\n${recuperado}`); continue; }
       const pagina = await pdf.getPage(numero);
       try {
         const imagem = await imagemPagina(pagina);
@@ -18,6 +20,7 @@ export async function transcreverPDFGrande(arquivo, enviar, carregarPDF = carreg
         }], 8000);
         const texto = (resposta.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
         if (!texto) throw new Error(`Não foi possível ler a página ${numero}. Tente novamente.`);
+        cachePaginas?.guardar(numero, pdf.numPages, texto);
         paginas.push(`Página ${numero}/${pdf.numPages}:\n${texto}`);
       } finally { pagina.cleanup(); }
     }
@@ -43,8 +46,8 @@ async function imagemPagina(pagina) {
     throw new Error('Uma página ficou grande demais para leitura segura. Reduza a resolução desta página e tente novamente.');
   } finally { canvas.width = 0; canvas.height = 0; }
 }
-export async function enviarPedidoIA(url, headers, content, max_tokens = 2000, fetcher = fetch) {
-  const body = JSON.stringify({ max_tokens, messages: [{ role: 'user', content }] });
+export async function enviarPedidoIA(url, headers, content, max_tokens = 2000, fetcher = fetch, documento = null) {
+  const body = JSON.stringify({ max_tokens, messages: [{ role: 'user', content }], ...(documento ? { purpose: 'documentos_cliente', stage: documento.stage, document_config: documento.configuracao } : {}) });
   if (new TextEncoder().encode(body).length > 4250000) throw new Error('O conteúdo excedeu o limite de análise. Divida o documento e tente novamente.');
   const resp = await fetcher(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(130000) });
   if (!resp.ok) {
@@ -54,3 +57,4 @@ export async function enviarPedidoIA(url, headers, content, max_tokens = 2000, f
   }
   return resp.json();
 }
+
