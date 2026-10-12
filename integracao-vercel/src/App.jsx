@@ -1,3 +1,7 @@
+import NotificacoesUsuario from './NotificacoesUsuario.jsx';
+import PlanejamentoMetas from './PlanejamentoMetas.jsx';
+import PermissoesAtuais from './PermissoesAtuais.jsx';
+import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador } from "./codigo-morador.js";
@@ -77,7 +81,7 @@ import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontra
 import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
-import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
+import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
@@ -6424,6 +6428,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
   const perm = permissoes(usuario);
   const ABAS = [
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
+    perm.usuarios && ["permissoes", "Permissões atuais", KeyRound],
     ["ponto", "Folha Ponto", Clock],
     podeSupervisionarAgentes(usuario) && ["restrito", "Restrito", Lock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
@@ -6451,6 +6456,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {atual === "restrito" && podeSupervisionarAgentes(usuario) && <RestritoTeste db={db} usuario={usuario} />}
         {atual === "ponto" && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
+        {atual === "permissoes" && perm.usuarios && <PermissoesAtuais db={db} usuario={usuario} gerenciaMetas={gerenciaMetas}/>}
         {atual === "usuarios" && <ConfigUsuarios db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
         {atual === "regras" && <ConfigRegras db={db} mutar={mutar} setToast={setToast} />}
         {atual === "modelos" && <ConfigModelos db={db} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -10676,10 +10682,10 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     </div>
   );
 }
-function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial }) {
+function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [] }) {
   const timbradoOficios = useTimbrado(db);
   const arrasteMeta = useRef(null);
-  const [tela, setTela] = useState("home");
+  const [tela, setTela] = useState(() => gerenciaPlanejamento(usuario) && !metaInicial ? "planejamento" : "home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
   const [buscaTitulo, setBuscaTitulo] = useState("");
   const [semanaOffset, setSemanaOffset] = useState(0);
@@ -10759,7 +10765,9 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial }) {
     <div className="contem largo pagina-metas">
       {!AMBIENTE.DEMO && metasLocais.length>0 && <p role="status" className="card" style={{padding:14}}>Há {metasLocais.length} meta(s) neste aparelho ainda sem confirmação de envio. Elas só aparecerão aos responsáveis após a sincronização. Confira o aviso de salvamento no topo.</p>}
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
+      {gerencia && <div className="flex flex-wrap gap-2" style={{marginBottom:12}}><button className={`btn${tela==='planejamento'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('planejamento');}}>Planejamento futuro</button><button className={`btn${tela==='home'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('home');}}>Visão atual de Metas</button></div>}
       {barra}
+      {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
 
       {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia && <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button>}>
         <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
@@ -11184,7 +11192,7 @@ function itensDoCalendario(db, usuario, filtros = {}) {
     if (estaOculto(usuario, chave) || !podeVerEventoCalendario(e, db, usuario) || (gestaoCalendario(usuario) && !eventoDoFiltro(e, db, filtros))) return;
 
     ocorrenciasDoEvento(e).forEach((dia) => {
-      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: soData(e.inicio) === dia || e.recorrencia !== "nenhuma" ? hhmm(e.inicio) : "", titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
+      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: hhmm(e.fim), titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
     });
   });
   itens.push(...prazosDoCalendario(db, {...filtros, ator: usuario}).filter(i => !estaOculto(usuario, i.chave)));
@@ -11344,8 +11352,8 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
   const [visao, setVisao] = useState("semana");
-  const dataInicial=(db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))?.inicio;
-  const dataRef=dataInicial?new Date(dataInicial):agora;
+  const dataInicial=(db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))?.fim;
+  const dataRef=dataInicial?new Date(diaCivilEvento(dataInicial)+"T12:00:00"):agora;
   const [ref, setRef] = useState({ ano: dataRef.getFullYear(), mes: dataRef.getMonth(), dia: dataRef.getDate() });
   const [dia, setDia] = useState(agora.toISOString().slice(0, 10));
   const [evento, setEvento] = useState(() => (db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))||null);
@@ -12279,7 +12287,7 @@ export default function App() {
     registrarAcaoNativa(usuario,action,extra.processoId?'Clientes':extra.nucleoId?'Processos / Núcleo':tarefaAgente?.tipo==='Evento'?'Calendário':tarefaAgente?.tipo==='Devolutiva'?'Metas / Devolutivas':'Integração',changes.map(c=>({collection:c.collection,id:c.id,values:c.before})),changes.map(c=>({collection:c.collection,id:c.id,values:c.after})),{status:'solicitada · acompanhe a sincronização oficial'});
     if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
   };
-  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis(db), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:db.metas.filter(metaOperacional)}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
@@ -12326,7 +12334,7 @@ export default function App() {
               <span className="pill-papel">{SETORES[usuario.setor].nome}</span>
               <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label="Voltar à tela anterior" title="Voltar à tela anterior" disabled={!historicoNavegacao.length || !!abrindoMunicipio} onClick={() => ir(historicoNavegacao[historicoNavegacao.length - 1], true)}><ChevronLeft size={18} /></button>
               <button className="btn-icone" style={{ width: 40, height: 40, flexShrink: 0 }} aria-label={atualizandoDados ? "Atualizando dados" : "Atualizar dados"} title="Atualizar dados" disabled={atualizandoDados || !conexao.online} aria-busy={atualizandoDados} onClick={atualizarDados}><RefreshCw size={18} className={atualizandoDados ? "girando" : undefined} /></button>
-              <SinoNotificacoes db={db} usuario={usuario} ir={ir} mutar={mutar} />
+              <NotificacoesUsuario db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
           {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
@@ -12346,7 +12354,7 @@ export default function App() {
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
-          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} metaInicial={rota.id} />}
+          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} ideiasPlanejamento={db.metas.filter(ideiaPlanejamento)} metaInicial={rota.id} />}
           {rota.pag === "financeiro" && <Financeiro db={db} usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}

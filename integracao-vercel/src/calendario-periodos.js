@@ -1,7 +1,5 @@
 // Datas civis ISO: comparar strings evita deslocamento por fuso horário.
-export const ocorreNoDia = (item, dia) => item.tipo === 'meta'
-  ? dia >= (item.inicio || item.dia) && dia <= (item.fim || item.dia)
-  : item.dia === dia;
+export const ocorreNoDia = (item, dia) => Boolean(item.dia) && item.dia === dia;
 
 export function segmentosMetas(itens, dias) {
   return itens.filter(i => i.tipo === 'meta').flatMap(item => {
