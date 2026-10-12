@@ -562,10 +562,10 @@ async function carregarIndiceClientes() {
   const complementosJob = (async () => {
     const rows = [];
     // Explicit JSON projections avoid downloading documents, CPF or financial data.
-    const select = 'registro_id,referencia_id,nome:dados->requerente->>nome,tipoPessoa:dados->requerente->>tipoPessoa,municipioId:dados->>municipioId,remessaId:dados->>remessaId,nucleoId:dados->>nucleoId,codigo:dados->>codigo,arquivamento:dados->extras->arquivamento';
+    const select = 'registro_id,referencia_id,nome:dados->requerente->>nome,nomeConjuge:dados->conjuge->>nome,tipoPessoa:dados->requerente->>tipoPessoa,municipioId:dados->>municipioId,remessaId:dados->>remessaId,nucleoId:dados->>nucleoId,codigo:dados->>codigo,arquivamento:dados->extras->arquivamento';
     for (let offset = 0; ; offset += 500) {
       const page = await requisicao(`integracao_moradores?select=${encodeURIComponent(select)}&colecao=eq.processos&order=registro_id&limit=500&offset=${offset}`);
-      rows.push(...page.map(e => ({registro_id:e.registro_id, referencia_id:e.referencia_id, dados:{municipioId:e.municipioId, remessaId:e.remessaId, nucleoId:e.nucleoId, codigo:e.codigo, extras:{arquivamento:e.arquivamento}, requerente:{nome:e.nome, tipoPessoa:e.tipoPessoa}}})));
+      rows.push(...page.map(e => ({registro_id:e.registro_id, referencia_id:e.referencia_id, dados:{municipioId:e.municipioId, remessaId:e.remessaId, nucleoId:e.nucleoId, codigo:e.codigo, extras:{arquivamento:e.arquivamento}, conjuge:{nome:e.nomeConjuge}, requerente:{nome:e.nome, tipoPessoa:e.tipoPessoa}}})));
       if (page.length < 500) return rows;
     }
   })();

@@ -11,7 +11,7 @@ export function CampoBusca(props) {
   </div>;
 }
 
-export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFocus=false, emModal=false}) {
+export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFocus=false, emModal=false, incluirConjuge=false}) {
   const id = useId();
   const [busca, setBusca] = useState('');
   const [indice, setIndice] = useState(() => demo ? {clientes:[], complementos:[]} : obterIndiceClientes());
@@ -29,7 +29,7 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
     return () => { vivo = false; };
   }, [demo, tentativa]);
   const clientes = useMemo(() => reunirClientes(indice?.clientes || [], indice?.complementos || [], db._baseArquivo || db), [indice, db]);
-  const resultados = useMemo(() => filtrarClientes(clientes, busca, municipioId), [clientes, busca, municipioId]);
+  const resultados = useMemo(() => filtrarClientes(clientes, busca, municipioId, {incluirConjuge}), [clientes, busca, municipioId, incluirConjuge]);
   const visivel = aberto && !!busca.trim();
   useEffect(() => { lista.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest'}); }, [ativo]);
   const escolher = async p => {
@@ -39,8 +39,8 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
     finally { setAbrindo(false); }
   };
   return <div style={{position:'relative', width:'100%', maxWidth:520}} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAberto(false); }}>
-    <CampoBusca id={id} autoFocus={autoFocus} autoComplete="off" role="combobox" aria-label="Buscar cliente por nome ou código" aria-autocomplete="list" aria-expanded={visivel} aria-controls={`${id}-lista`} aria-activedescendant={visivel && ativo >= 0 && resultados[ativo] ? `${id}-${ativo}` : undefined}
-      placeholder="Buscar cliente por nome ou código" value={busca} onFocus={() => setAberto(true)} onChange={e => {setBusca(e.target.value); setAtivo(-1); setAberto(true);}}
+    <CampoBusca id={id} autoFocus={autoFocus} autoComplete="off" role="combobox" aria-label={incluirConjuge?"Buscar cliente por nome, cônjuge ou código":"Buscar cliente por nome ou código"} aria-autocomplete="list" aria-expanded={visivel} aria-controls={`${id}-lista`} aria-activedescendant={visivel && ativo >= 0 && resultados[ativo] ? `${id}-${ativo}` : undefined}
+      placeholder={incluirConjuge?"Nome, cônjuge ou código":"Buscar cliente por nome ou código"} value={busca} onFocus={() => setAberto(true)} onChange={e => {setBusca(e.target.value); setAtivo(-1); setAberto(true);}}
       onKeyDown={e => {
         if (e.key === 'Escape') {setAberto(false); e.stopPropagation();}
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {e.preventDefault(); setAberto(true); setAtivo(v => Math.max(0, Math.min(resultados.length - 1, v + (e.key === 'ArrowDown' ? 1 : -1))));}
@@ -52,7 +52,7 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
       </button>)}
       {!resultados.length && <div className="ajuda" style={{padding:10}}>{indice ? 'Nenhum cliente encontrado.' : erro ? 'Busca indisponível.' : 'Carregando clientes…'}</div>}
     </div>}
-    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : !indice && !erro ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : 'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
+    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : !indice && !erro ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : incluirConjuge?'Pesquise PF ou PJ por nome, cônjuge, prefixo ou código.':'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
     {erro && <div role="alert" className="msg-erro">{erro} <button className="btn btn-sm" onClick={() => setTentativa(v => v+1)}>Tentar novamente</button></div>}
   </div>;
 }

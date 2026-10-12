@@ -20,10 +20,10 @@ export function reunirClientes(clientes, complementos, db, incluirArquivados=fal
   return incluirArquivados?[...unicos.values()]:dadosVisiveis({...db, processos:[...unicos.values()]}).processos;
 }
 
-export function filtrarClientes(clientes, busca, municipioId) {
+export function filtrarClientes(clientes, busca, municipioId, {incluirConjuge=false}={}) {
   const termo = normalizar(busca.trim());
   if (!termo) return [];
   return clientes.filter(p => (!municipioId || p.municipioId === municipioId)
-    && [p.requerente?.nome, p.codigo].some(v => normalizar(v || '').includes(termo)))
+    && [p.requerente?.nome, p.codigo, incluirConjuge?p.conjuge?.nome:null].some(v => normalizar(v || '').includes(termo)))
     .sort((a,b) => compararTextos(a.requerente?.nome,b.requerente?.nome) || compararTextos(a.codigo,b.codigo) || compararTextos(a.id,b.id));
 }
