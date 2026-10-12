@@ -81,7 +81,7 @@ import { contextoPRF, prepararModeloPRF, mapaDoModeloPRF, REGEX_LACUNA, encontra
 import { aplicarCondicionais, expandirLacos, lacunasDoDocumento, ESTILOS_WORD } from './modelos-html.js';
 import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe, confrontantesFaltando, campoComConfrontantes, aplicarLevantamento, versaoConfrontantes, conflitoConfrontantes } from './confrontantes.js';
 import {useCardCalendario} from './use-card-calendario.js';
-import {ocorrenciasDoEvento} from './calendario-ocorrencias.js';
+import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
@@ -11352,8 +11352,8 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
   const podeGerenciar = gestaoCalendario(usuario);
   const agora = new Date();
   const [visao, setVisao] = useState("semana");
-  const dataInicial=(db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))?.inicio;
-  const dataRef=dataInicial?new Date(dataInicial):agora;
+  const dataInicial=(db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))?.fim;
+  const dataRef=dataInicial?new Date(diaCivilEvento(dataInicial)+"T12:00:00"):agora;
   const [ref, setRef] = useState({ ano: dataRef.getFullYear(), mes: dataRef.getMonth(), dia: dataRef.getDate() });
   const [dia, setDia] = useState(agora.toISOString().slice(0, 10));
   const [evento, setEvento] = useState(() => (db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))||null);
