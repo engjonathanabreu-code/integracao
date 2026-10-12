@@ -27,10 +27,7 @@ export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().to
       if(anterior){const nomesAtuais=[anterior.responsaveisTexto,nomes(responsaveis)].filter(Boolean);anterior.responsaveisTexto=[...new Set(nomesAtuais)].join(', ');continue;}
       const item={inicio:dia,fim:dia,tipo:'meta',id:`dev_${registro}`,chave,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`Devolutiva: ${meta.titulo}`,cor:corSetor(meta.setor,db.setoresMeta),atrasada,devolutiva:true};devolutivas.set(chave,item);itens.push(item);continue;
     }
-    const inicioInformado=dataPrazo(meta.semana_inicio) || dataPrazo(meta.criadoEm) || dia;
-    const inicio=inicioInformado > dia ? dia : inicioInformado;
-    const fim=atrasada ? hoje : dia;
-    itens.push({inicio,fim,tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:corSetor(meta.setor,db.setoresMeta),atrasada});
+    itens.push({inicio:dia,fim:dia,tipo:'meta',id:`mt_${meta.id}`,chave:`meta:${meta.id}`,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`${atrasada?'Atrasada':'Meta'}: ${meta.titulo}`,cor:corSetor(meta.setor,db.setoresMeta),atrasada});
   }
   for(const plano of db.planos || []) {
     if(encerrado(plano.status))continue;

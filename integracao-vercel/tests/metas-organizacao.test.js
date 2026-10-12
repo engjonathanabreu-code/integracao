@@ -45,7 +45,7 @@ test('calendário usa cor por setor e remove concluídas sem alterar prazo', () 
   const metas=[{id:'1',titulo:'Teste',setor:'Projeto',status:'Em andamento',semana_inicio:'2026-09-20',prazo:'2026-09-24'}, {id:'2',setor:'Projeto',status:'Concluído',prazo:'2026-09-24'}];
   const db={metas,setoresMeta:[{nome:'Projeto',cor:'#123456'}]};
   const itens=prazosDoCalendario(db,{hoje:'2026-09-26'});
-  assert.equal(itens.length,1);assert.equal(itens[0].cor,'#123456');assert.equal(itens[0].fim,'2026-09-26');assert.equal(metas[0].prazo,'2026-09-24');
+  assert.equal(itens.length,1);assert.equal(itens[0].cor,'#123456');assert.equal(itens[0].fim,'2026-09-24');assert.equal(metas[0].prazo,'2026-09-24');
   assert.notEqual(corSetor('Projeto'),corSetor('Topografia'));
 });
 test('agentes recusam inativo e função local forjada sobre perfil ERP', () => {

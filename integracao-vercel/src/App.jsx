@@ -11192,7 +11192,7 @@ function itensDoCalendario(db, usuario, filtros = {}) {
     if (estaOculto(usuario, chave) || !podeVerEventoCalendario(e, db, usuario) || (gestaoCalendario(usuario) && !eventoDoFiltro(e, db, filtros))) return;
 
     ocorrenciasDoEvento(e).forEach((dia) => {
-      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: soData(e.inicio) === dia || e.recorrencia !== "nenhuma" ? hhmm(e.inicio) : "", titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
+      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: hhmm(e.fim), titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
     });
   });
   itens.push(...prazosDoCalendario(db, {...filtros, ator: usuario}).filter(i => !estaOculto(usuario, i.chave)));
