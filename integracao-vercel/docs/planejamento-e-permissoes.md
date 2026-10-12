@@ -16,7 +16,13 @@ Executar `npm test` e `npm run build` em `integracao-vercel`. O roteiro `tests/p
 
 O navegador integrado apresenta MXC 0x80070003 neste computador. Isso limita a abertura integrada, mas o Edge instalado permite QA isolado. Testes de autorização e paginação da rota usam respostas controladas; não substituem uma conferência autenticada em produção. Não foram realizados testes que gravem eventos reais nem chamadas pagas de IA. A cópia independente de demonstração em 4173 não faz parte deste deploy.
 
-Resultado no JonathanHome: 813 testes aprovados; build Vite aprovado. Edge em 1440 e 390 pixels validou navegação, filtros combinados, cor/status, horizontes, movimentação por setas, conversão, notificações e representação de permissões sem erros de página. Os eventos HTML5 de arraste e a persistência foram validados; o arraste por ponteiro no roteiro automático não foi confirmado. A exportação tem testes de rota, sessão, isolamento, paginação de 1.201 complementos e proteção de CSV; download pela interface e autenticação em produção ainda requerem conferência.
+Resultado no JonathanHome: 813 testes aprovados; build Vite aprovado. Edge em 1440 e 390 pixels validou navegação, filtros combinados, cor/status, horizontes, movimentação por setas, conversão, notificações e representação de permissões sem erros de página. Em desktop, movimento real do ponteiro gerou dragstart/drop confiáveis (isTrusted=true), moveu o cartão entre semanas e confirmou a gravação. No celular, foram validados setas e eventos HTML5; o arraste por ponteiro entre colunas fora da área visível não foi confirmado.
+
+O roteiro `tests/contatos-interface.browser.cjs` percorreu seleção de NUI, resumo, geração e download de CSV pela interface usando o handler real e um backend exclusivamente fictício. Conferiu nome do arquivo, um registro fictício, BOM UTF-8, neutralização de fórmula, ausência de CPF e JWT da fixture em todas as consultas. Os testes da rota também cobrem paginação de 1.201 complementos. Nenhum morador real foi consultado ou exportado. A conferência autenticada em produção permanece fora desta validação isolada.
+
+A comparação com a base confirmou que o componente ConfigUsuarios inteiro, sua aba, os parâmetros e os módulos permissoes.js, crm-regras.js e agente-memoria-teste.js são idênticos. A nova matriz não substitui a edição de usuários/setores. SHA-256 do componente normalizando somente CRLF/LF: `82dde3301fbe8575aa772fdaeaeb3f3bafe0a3e45e913b0cd905acfc39b433cc`.
+
+Para o commit `5270ec8a1e0201745729771e95b79daafe3cbce6`, GitHub retornou zero status checks, zero check runs e zero workflows de PR. Não há CI remoto aprovado para declarar. O PR e sua aba de checks são https://github.com/engjonathanabreu-code/integracao/pull/80 e https://github.com/engjonathanabreu-code/integracao/pull/80/checks.
 
 ## Publicação e reversão
 
