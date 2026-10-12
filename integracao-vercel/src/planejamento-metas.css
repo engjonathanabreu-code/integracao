@@ -4,3 +4,5 @@
 @media(max-width:600px){.pm-quadro .pm-titulo .inp,.pm-quadro .pm-cartao>.ajuda,.pm-quadro .pm-status,.pm-quadro .pm-setor{font-size:14px}.pm-densidade .btn{min-height:40px}.pm-densidade>span.ajuda{flex-basis:100%}}
 .pm-titulo-completo{position:fixed;bottom:16px;left:16px;right:16px;max-width:900px;max-height:30vh;overflow:auto;margin:0 auto;z-index:1100;background:var(--card);color:var(--text);box-shadow:0 4px 20px #0002;pointer-events:none}
 @media(max-width:600px){.pm-quadro .pm-titulo .inp,.pm-quadro .pm-cartao>.ajuda,.pm-quadro .pm-status,.pm-quadro .pm-setor{font-size:clamp(14px,calc(14px * var(--pm-zoom,1)),17px)}}
+.pm-alca{touch-action:none;min-width:24px;min-height:36px}.pm-arrastando{outline:2px solid var(--focus-ring);cursor:grabbing}.pm-tipo{max-width:100%;white-space:nowrap}.pm-cartao[data-tipo="plano"] .pm-tipo{background:var(--soft);color:var(--primary);border:1px solid var(--line)}.pm-cartao[data-tipo="meta"] .pm-tipo{background:var(--ok-bg);color:var(--ok);border:1px solid var(--line)}
+@media(max-width:600px){.pm-alca{min-width:40px;min-height:44px}}
