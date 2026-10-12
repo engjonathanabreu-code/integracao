@@ -15,11 +15,18 @@ export function prazosDoCalendario(db, {usuarioId='',setor='',hoje=new Date().to
     return !setor || setorCalendario(setorItem) === setorCalendario(setor) || responsaveis.some(id=>setorCalendario(usuarios.get(id)?.setor) === setorCalendario(setor));
   };
   const nomes = ids => ids.map(id=>usuarios.get(id)?.nome || 'Responsável indisponível').join(', ') || 'Sem responsável';
-  const itens=[];
+  const itens=[],devolutivas=new Map();
   for(const meta of db.metas || []) {
-    const dia=dataPrazo(meta.prazo),responsaveis=meta.responsaveis || [];
+    const dia=dataPrazo(meta.devolutiva?.prazo || meta.prazo),responsaveis=meta.responsaveis || [];
     if(!dia || encerrado(meta.status) || !corresponde(responsaveis,meta.setor))continue;
     const atrasada=dia<hoje;
+    if(meta.devolutiva){
+      // Prazo já confirmado no fluxo de revisão. Sem criar evento nem inferir data de documentos.
+      const registro=meta.devolutiva.registroId||meta.id,chave=`devolutiva:${registro}`;
+      const anterior=devolutivas.get(chave);
+      if(anterior){const nomesAtuais=[anterior.responsaveisTexto,nomes(responsaveis)].filter(Boolean);anterior.responsaveisTexto=[...new Set(nomesAtuais)].join(', ');continue;}
+      const item={inicio:dia,fim:dia,tipo:'meta',id:`dev_${registro}`,chave,meta,dia,responsaveisTexto:nomes(responsaveis),titulo:`Devolutiva: ${meta.titulo}`,cor:corSetor(meta.setor,db.setoresMeta),atrasada,devolutiva:true};devolutivas.set(chave,item);itens.push(item);continue;
+    }
     const inicioInformado=dataPrazo(meta.semana_inicio) || dataPrazo(meta.criadoEm) || dia;
     const inicio=inicioInformado > dia ? dia : inicioInformado;
     const fim=atrasada ? hoje : dia;

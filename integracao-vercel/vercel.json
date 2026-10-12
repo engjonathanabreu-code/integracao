@@ -35,6 +35,9 @@
     },
     "api/claude.js": {
       "maxDuration": 150
+    },
+    "api/contatos-nucleo.js": {
+      "maxDuration": 90
     }
   },
   "rewrites": [

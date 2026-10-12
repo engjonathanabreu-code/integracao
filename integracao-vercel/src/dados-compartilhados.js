@@ -1,3 +1,4 @@
+import {ideiaPlanejamento} from './planejamento-metas.js';
 import {buscarREST} from './transporte-rest.js';
 import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
@@ -310,7 +311,9 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
   }
   for(const s of newItems(before.setoresMeta,after.setoresMeta)) if(uuid(s.id)) insert('meta_setores',s.id,{nome:s.nome,ativo:s.ativo!==false,created_by:who});
   for(const m of after.metas||[]) {
-    const prev=(before.metas||[]).find(x=>x.id===m.id);
+    if(ideiaPlanejamento(m))continue;
+    const anterior=(before.metas||[]).find(x=>x.id===m.id);
+    const prev=ideiaPlanejamento(anterior) && !(state.base.metas||[]).some(x=>x.id===m.id) ? null : anterior;
     if(!prev) insert('metas',requireUuid(m.id),{titulo:m.titulo,observacoes:m.observacoes||'',semana_inicio:nullText(m.semana_inicio),prazo:nullText(m.prazo),status:m.status,setor_id:after.setoresMeta.find(s=>s.nome===m.setor && uuid(s.id))?.id||null,associacao_tipo:m.associacao_tipo==='nucleo'?'avulsa':m.associacao_tipo,associacao_id:m.associacao_tipo==='nucleo'?null:nullText(m.associacao_id),integracao_nucleo_id:m.associacao_tipo==='nucleo'?(after.nucleos.find(n=>n.id===m.associacao_id)?.externo?.kanbanId||m.associacao_id):null,created_by:who,icone:nullText(m.icone)});
     if(!uuid(m.id)) continue;
     const removed=(prev?.responsaveis||[]).filter(x=>!(m.responsaveis||[]).includes(x));
@@ -448,6 +451,11 @@ export function prepararEdicao(before,after,state,actor) {
   const extended=projetar(projected,after);
   const metadata={...state,bindings:[...state.bindings,...extended.bindings.filter(b=>!state.bindings.some(old=>old.table===b.table && old.id===b.id))]};
   const extras=complementos(before,after,metadata,actor);
+  // A conversão cria a meta canônica e passa a autorizar os extras por esse registro, atomicamente.
+  for(const m of after.metas||[])if(!ideiaPlanejamento(m)&&ideiaPlanejamento((before.metas||[]).find(x=>x.id===m.id))){
+    const op=extras.find(op=>op.key?.colecao==='metas'&&op.key.registro_id===m.id&&!op.remove);
+    if(op)op.changes={...op.changes,referencia_tabela:'metas',referencia_id:m.id};
+  }
   for(const op of extras) {if(op.insert && op.key.colecao==='conversas') {op.changes.referencia_tabela='erp_conversas';op.changes.referencia_id=op.key.registro_id;for(const k of ['tipo','titulo','participantes','mensagens','criadoPor'])delete op.changes.dados[k];}}
   return [...extras.filter(o=>o.remove),...canonical,...extras.filter(o=>!o.remove)];
 }
