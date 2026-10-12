@@ -7726,7 +7726,7 @@ function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
           ))}
         </div>
       )}
-      {buscaClientes && <Modal titulo="Buscar cliente" onFechar={() => setBuscaClientes(false)}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} autoFocus emModal /></Modal>}
+      {buscaClientes && <Modal titulo="Buscar cliente" onFechar={() => setBuscaClientes(false)}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} autoFocus emModal incluirConjuge /></Modal>}
       {!AMBIENTE.DEMO && <MetasVendas usuario={usuario} db={db} resumo />}
       <div className="layout-home">
         <Secao titulo="Suas pendências" nota="Em ordem cronológica: o que está esperando há mais tempo aparece primeiro. Metas aparecem pelo prazo.">
