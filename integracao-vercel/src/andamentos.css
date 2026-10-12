@@ -3,4 +3,55 @@
 
 .rb .andamentos-resumo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}.rb .andamentos-resumo .card{padding:18px}.rb .andamentos-resumo strong{display:block;font-size:30px}.rb .andamentos-cobertura{padding:16px;margin-bottom:16px}.rb .andamentos-nucleos{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}@media(max-width:520px){.rb .andamentos-resumo{grid-template-columns:1fr}.rb .andamentos-resumo .card{display:flex;justify-content:space-between;align-items:center}}
 .andamentos-municipios{display:grid;gap:18px}.andamentos-municipio{min-width:0;padding:18px}.andamentos-municipio>header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;margin-bottom:14px}.andamentos-municipio h3{margin:0;font-size:18px}.andamentos-municipio header>span{font-size:13px;color:var(--muted)}.andamentos-tabela-rolagem{max-width:100%;overflow-x:auto}.andamentos-municipio .tab{width:100%;table-layout:fixed}.andamentos-municipio th:first-child{width:170px}.andamentos-municipio th:nth-child(3){width:150px}.andamentos-municipio th:nth-child(4){width:130px}.andamentos-municipio td{vertical-align:top;overflow-wrap:anywhere}.andamentos-adicao small{display:block;color:var(--muted);margin-top:8px}.andamentos-contexto-registro{font-size:13px}.andamentos-municipio>.btn{margin-top:14px}.andamentos-municipio .andamentos-etapa{display:inline-block}.andamentos-municipio .andamentos-descricao{font-size:14px;margin:12px 0}.andamentos-municipio .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* Navegacao municipal: pares semanticos e medidas do UI Guide oficial. */
+.rb .andamentos-pagina{min-width:0}
+.rb .andamentos-pagina :is(.andamentos-filtros,.andamentos-editor,.andamentos-indice,.andamentos-municipio){min-width:0;border-radius:12px;background:var(--card);border-color:var(--line);box-shadow:var(--sombra)}
+.rb .andamentos-pagina :is(.andamentos-filtros,.andamentos-form-grid){grid-template-columns:repeat(2,minmax(0,1fr))}
+.rb .andamentos-pagina :is(.andamentos-filtros,.andamentos-form-grid)>*{min-width:0}
+.rb .andamentos-pagina .andamentos-editor{border-top-color:var(--primary)}
+.rb .andamentos-pagina :is(.andamentos-contexto,.andamentos-etapa,.andamentos-autorizacao){background:var(--soft);color:var(--text);border-color:var(--line)}
+.rb .andamentos-pagina .andamentos-contexto :is(strong,small){color:var(--text)}
+.rb .andamentos-pagina :is(.andamentos-metadados,.andamentos-interno,.andamentos-historico-titulo>span){color:var(--muted)}
+.rb .andamentos-pagina .andamentos-interno{border-color:var(--line)}
+.rb .andamentos-pagina .andamentos-interno strong{color:var(--text)}
+.rb .andamentos-pagina .andamentos-ia-autorizada{color:var(--ok)}
+.rb .andamentos-pagina .andamentos-vazio{padding:32px 16px;background:var(--card);color:var(--muted);border-color:var(--line)}
+.rb .andamentos-pagina .andamentos-vazio h3{color:var(--titulo)}
+.rb .andamentos-historico-titulo{margin:8px 0 16px;flex-wrap:wrap}
+.rb .andamentos-historico-titulo p{margin:6px 0 0;font-size:14px;color:var(--muted)}
+.rb .andamentos-detalhe-titulo>div{flex:1;min-width:180px}
+.rb .andamentos-indice{padding:16px}
+.rb .andamentos-tabela-rolagem{position:relative;min-width:0}
+.rb .andamentos-indice-tabela{width:100%;table-layout:fixed}
+.rb .andamentos-indice-tabela th:first-child{width:35%}
+.rb .andamentos-indice-tabela th:nth-child(2),.rb .andamentos-indice-tabela th:nth-child(3){width:10%}
+.rb .andamentos-indice-tabela th:nth-child(4){width:25%}
+.rb .andamentos-indice-tabela th:last-child{width:20%}
+.rb .andamentos-indice-tabela td{vertical-align:middle;overflow-wrap:anywhere}
+.rb .andamentos-indice-nome{font-weight:700;color:var(--titulo)}
+.rb .andamentos-indice-tabela td:last-child{text-align:right}
+.rb .andamentos-indice-tabela .btn{max-width:100%;white-space:normal;min-height:40px}
+.rb .andamentos-municipios .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.rb .andamentos-pagina .andamentos-cabeca h1{font-size:clamp(26px,2vw,30px)}
+.rb .andamentos-pagina .andamentos-cabeca .btn{flex-shrink:0}
+@media(max-width:700px){
+ .rb .andamentos-pagina :is(.andamentos-filtros,.andamentos-form-grid){grid-template-columns:minmax(0,1fr)}
+ .rb .andamentos-indice{padding:12px}
+ .rb .andamentos-indice-tabela :is(tbody,tr,td){display:block;width:100%}
+ .rb .andamentos-indice-tabela thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .rb .andamentos-indice-tabela tr{padding:12px 0;border-bottom:1px solid var(--line)}
+ .rb .andamentos-indice-tabela tr:last-child{border-bottom:0}
+ .rb .andamentos-indice-tabela td{padding:6px 4px;border:0;text-align:left}
+ .rb .andamentos-indice-tabela td[data-label]::before{content:attr(data-label) ': ';color:var(--muted)}
+ .rb .andamentos-indice-tabela td:last-child{text-align:left}
+ .rb .andamentos-indice-tabela .btn{min-height:44px}
+ .rb .andamentos-historico-titulo{align-items:stretch}
+ .rb .andamentos-detalhe-titulo>div{min-width:0}
+ .rb .andamentos-pagina .andamentos-resumo{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+ .rb .andamentos-pagina .andamentos-resumo .card{display:block;padding:12px}
+ .rb .andamentos-pagina .andamentos-resumo span{display:block;font-size:12px;line-height:1.4;min-height:34px}
+ .rb .andamentos-pagina .andamentos-resumo strong{font-size:24px;margin-top:4px}
+ .rb .andamentos-pagina .andamentos-cabeca{gap:16px;margin-bottom:16px}
+}
 @media(max-width:700px){.andamentos-municipio{padding:12px}.andamentos-municipio table,.andamentos-municipio tbody,.andamentos-municipio tr,.andamentos-municipio td{display:block;width:100%}.andamentos-municipio thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.andamentos-municipio tr{border-bottom:1px solid var(--line);padding:12px 0}.andamentos-municipio td{border:0;padding:6px}.andamentos-municipio .andamentos-adicao{font-weight:650}.andamentos-contexto-registro{color:var(--muted)}}
