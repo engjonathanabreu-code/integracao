@@ -1,4 +1,6 @@
-export const ideiaPlanejamento = m => m?.planejamento?.tipo === 'ideia';
+// Metas canônicas nunca são reclassificadas por um marcador complementar legado.
+export const ideiaPlanejamento = m => !m?.erpId && ['ideia','plano'].includes(m?.planejamento?.tipo);
+export const planoPlanejamento = ideiaPlanejamento;
 export const metaOperacional = m => !ideiaPlanejamento(m);
 export const gerenciaPlanejamento = u => u?.setor === 'diretoria';
 export function segundaPlanejamento(date = new Date(), offset = 0) {
@@ -24,6 +26,12 @@ export function criarIdeiaPlanejamento(db,{id=crypto.randomUUID(),titulo,semana,
 }
 export function converterIdeiaPlanejamento(db,id,usuario,data=new Date().toISOString()) {
   exigirGestao(usuario);const m=db.metas.find(m=>m.id===id);if(!ideiaPlanejamento(m))return db;
+  const eraPlano=m.planejamento.tipo==='plano';
   m.planejamento={...m.planejamento,tipo:'meta',convertidaEm:data};m.status='Em andamento';
-  m.historico=[{id:crypto.randomUUID(),acao:'Criada',descricao:'Ideia do planejamento convertida em meta.',autor:usuario.nome,autorId:usuario.id,data},...(m.historico||[])];return db;
+  m.historico=[{id:crypto.randomUUID(),acao:'Criada',descricao:eraPlano?'Plano do planejamento convertido em meta.':'Ideia do planejamento convertida em meta.',autor:usuario.nome,autorId:usuario.id,data},...(m.historico||[])];return db;
 }
+export function criarPlanoPlanejamento(db,args,usuario){
+  exigirGestao(usuario);const id=args.id||crypto.randomUUID();if(db.metas.some(m=>m.id===id))return db;
+  criarIdeiaPlanejamento(db,{...args,id},usuario);const m=db.metas.find(m=>m.id===id);m.planejamento.tipo='plano';m.status='Plano';return db;
+}
+export const converterPlanoPlanejamento=converterIdeiaPlanejamento;
