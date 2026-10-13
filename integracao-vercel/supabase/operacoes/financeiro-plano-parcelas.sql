@@ -34,62 +34,7 @@ begin
  select coalesce(max(numero),0) into maximo from public.fin_receb_parcelas where cliente_id=p_cliente;
  for item in select value from jsonb_array_elements(p_itens) loop
   if jsonb_typeof(item)<>'object' or exists(select 1 from jsonb_object_keys(item) k where k not in ('id','vencimento','valor_previsto')) then raise exception 'Campo inválido no plano';end if;
-  if coalesce(item->>'valor_previsto','') !~ '^[0-9]+(\.[0-9]{1,2})? or (item->>'valor_previsto')::numeric<0 or round((item->>'valor_previsto')::numeric,2)<>(item->>'valor_previsto')::numeric or item->>'vencimento' is null then raise exception 'Confira vencimentos e valores';end if;
-  if nullif(item->>'id','') is null then
-   maximo:=maximo+1;
-   insert into public.fin_receb_parcelas(cliente_id,numero,vencimento,valor_previsto,status,valor_liquidado,diferenca,ativo,tipo,juros,multa)
-   values(p_cliente,maximo,(item->>'vencimento')::date,(item->>'valor_previsto')::numeric,'Pendente',0,0,true,'Parcela',0,0) returning id into afetada;
-   insert into integracao_financeiro_privado.auditoria(parcela_id,autor,antes,depois) select id,auth.uid(),null,to_jsonb(t) from public.fin_receb_parcelas t where id=afetada;
-  else
-   if (item->>'id')::uuid=any(protegidas) or not exists(select 1 from jsonb_array_elements(linhas) x where x->>'id'=item->>'id') then raise exception 'Parcela protegida ou indisponível';end if;
-   select * into p from public.fin_receb_parcelas where id=(item->>'id')::uuid;
-   perform public.integracao_financeiro_editar(p.id,p.versao,jsonb_build_object('vencimento',item->>'vencimento','valor_previsto',(item->>'valor_previsto')::numeric));
-   afetada:=p.id;
-  end if;
-  total:=total+1;
- end loop;
- for p in select * from public.fin_receb_parcelas where cliente_id=p_cliente and ativo and not(id=any(protegidas)) and exists(select 1 from jsonb_array_elements(linhas) x where x->>'id'=id::text) loop
-  if not exists(select 1 from jsonb_array_elements(p_itens) x where x->>'id'=p.id::text) then
-   update public.fin_receb_parcelas set ativo=false,status='Cancelado' where id=p.id;
-   afetada:=p.id;
-  end if;
- end loop;
- resultado:=jsonb_build_object('editaveis',total,'protegidas',cardinality(protegidas),'pedido',p_pedido);
- if afetada is not null then insert into integracao_financeiro_privado.auditoria(parcela_id,autor,antes,depois) values(afetada,auth.uid(),null,jsonb_build_object('plano_pedido',p_pedido,'autor',auth.uid(),'hash',hash,'motivo',p_motivo,'resultado',resultado));end if;
- return resultado;
-end $$;
-revoke all on function public.integracao_financeiro_plano(uuid,jsonb,jsonb,text,uuid) from public,anon;
-grant execute on function public.integracao_financeiro_plano(uuid,jsonb,jsonb,text,uuid) to authenticated;
-commit;
- or coalesce(item->>'vencimento','') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} or (item->>'valor_previsto')::numeric<0 or round((item->>'valor_previsto')::numeric,2)<>(item->>'valor_previsto')::numeric or item->>'vencimento' is null then raise exception 'Confira vencimentos e valores';end if;
-  if nullif(item->>'id','') is null then
-   maximo:=maximo+1;
-   insert into public.fin_receb_parcelas(cliente_id,numero,vencimento,valor_previsto,status,valor_liquidado,diferenca,ativo,tipo,juros,multa)
-   values(p_cliente,maximo,(item->>'vencimento')::date,(item->>'valor_previsto')::numeric,'Pendente',0,0,true,'Parcela',0,0) returning id into afetada;
-   insert into integracao_financeiro_privado.auditoria(parcela_id,autor,antes,depois) select id,auth.uid(),null,to_jsonb(t) from public.fin_receb_parcelas t where id=afetada;
-  else
-   if (item->>'id')::uuid=any(protegidas) or not exists(select 1 from jsonb_array_elements(linhas) x where x->>'id'=item->>'id') then raise exception 'Parcela protegida ou indisponível';end if;
-   select * into p from public.fin_receb_parcelas where id=(item->>'id')::uuid;
-   perform public.integracao_financeiro_editar(p.id,p.versao,jsonb_build_object('vencimento',item->>'vencimento','valor_previsto',(item->>'valor_previsto')::numeric));
-   afetada:=p.id;
-  end if;
-  total:=total+1;
- end loop;
- for p in select * from public.fin_receb_parcelas where cliente_id=p_cliente and ativo and not(id=any(protegidas)) and exists(select 1 from jsonb_array_elements(linhas) x where x->>'id'=id::text) loop
-  if not exists(select 1 from jsonb_array_elements(p_itens) x where x->>'id'=p.id::text) then
-   update public.fin_receb_parcelas set ativo=false,status='Cancelado' where id=p.id;
-   afetada:=p.id;
-  end if;
- end loop;
- resultado:=jsonb_build_object('editaveis',total,'protegidas',cardinality(protegidas),'pedido',p_pedido);
- if afetada is not null then insert into integracao_financeiro_privado.auditoria(parcela_id,autor,antes,depois) values(afetada,auth.uid(),null,jsonb_build_object('plano_pedido',p_pedido,'autor',auth.uid(),'hash',hash,'motivo',p_motivo,'resultado',resultado));end if;
- return resultado;
-end $$;
-revoke all on function public.integracao_financeiro_plano(uuid,jsonb,jsonb,text,uuid) from public,anon;
-grant execute on function public.integracao_financeiro_plano(uuid,jsonb,jsonb,text,uuid) to authenticated;
-commit;
- then raise exception 'Confira vencimentos e valores em centavos';end if;
-  if (item->>'valor_previsto')::numeric is null or (item->>'valor_previsto')::numeric<0 or round((item->>'valor_previsto')::numeric,2)<>(item->>'valor_previsto')::numeric or item->>'vencimento' is null then raise exception 'Confira vencimentos e valores';end if;
+  if coalesce(item->>'valor_previsto','') !~ '^[0-9]+(\.[0-9]{1,2})?$' or coalesce(item->>'vencimento','') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then raise exception 'Confira vencimentos e valores em centavos';end if;
   if nullif(item->>'id','') is null then
    maximo:=maximo+1;
    insert into public.fin_receb_parcelas(cliente_id,numero,vencimento,valor_previsto,status,valor_liquidado,diferenca,ativo,tipo,juros,multa)
