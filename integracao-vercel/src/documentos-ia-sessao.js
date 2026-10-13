@@ -1,5 +1,5 @@
 // Cache somente em memória da aba Documentos. Nunca grava arquivos, tokens ou OCR no storage.
-export const VERSAO_DOCUMENTOS_CLIENTE = 'documentos-cliente-v1';
+export const VERSAO_DOCUMENTOS_CLIENTE = 'documentos-cliente-v2';
 const copiar = valor => structuredClone(valor);
 const serializar = valor => JSON.stringify(valor, (_, v) => v && typeof v === 'object' && !Array.isArray(v)
   ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v);
@@ -17,7 +17,7 @@ export function validarResultadoDocumentoCliente(res, regras = [], tipos = null)
   const textoOpcional = (v, k) => v[k] === undefined || typeof v[k] === 'string';
   const valido = objeto(res) && typeof res.tipo === 'string' && res.tipo.length > 0
     && typeof res.legivel === 'boolean' && Number.isFinite(res.confianca) && res.confianca >= 0 && res.confianca <= 1
-    && ['requerente', 'conjuge', 'outro_familiar', 'terceiro', 'indefinido'].includes(res.pessoa)
+    && ['requerente', 'conjuge', 'corequerente', 'ocupante', 'outro_familiar', 'terceiro', 'indefinido'].includes(res.pessoa)
     && objeto(res.campos) && Object.values(res.campos).every(x => typeof x === 'string' || Number.isFinite(x))
     && Array.isArray(res.regras) && res.regras.every(r => objeto(r) && typeof r.id === 'string'
       && ['atende', 'nao_atende', 'nao_aplicavel'].includes(r.resultado) && textoOpcional(r, 'observacao'))

@@ -10,6 +10,7 @@ async function preparar(){const db=await prepararBanco();await db.exec(`alter ta
   insert into integracao_crm_cards(id,cliente_id,responsavel_id,status) values('${id(82)}','${id(20)}','${id(2)}','Negociação');
   update fin_receb_clientes set municipio_id='${id(30)}',remessa_id='${id(31)}' where id='${id(20)}';
   insert into integracao_moradores(colecao,registro_id,referencia_id,dados) values('processos','${id(20)}','${id(20)}','{"nucleoId":"n1","docs":[1],"requerente":{"telefone":"4833330000","rg":"123"}}');`);
+ await db.exec(read("operacoes/cpf-menores.sql"));
  return db;}
 const funil=async(db,n,card)=>(await como(db,n,`select * from integracao_crm_funil where id='${id(card)}'`))[0];
 const editar=async(db,n,card,form)=>{const atual=await funil(db,1,card);const dados=prepararEdicaoCard({...valoresCard(atual),...form},atual);return como(db,n,'select integracao_crm_editar_card($1,$2,$3,$4,$5,$6,$7)',[dados.p_card,dados.p_nome,dados.p_telefone,dados.p_cpf,dados.p_municipio,dados.p_nucleo,JSON.stringify(dados.p_anterior)]);};
@@ -78,3 +79,12 @@ test('telefone compartilhado: pai e filho separados, edição, legado, idempotê
   assert.equal((await db.query(`select lead_nome from integracao_crm_cards where id='${id(80)}'`)).rows[0].lead_nome,'Lead Ana');
  }finally{await db.close();}
 });
+
+test('CRM: dispensa CPF somente de menor comprovado no cadastro, preservando a validação do documento informado',async()=>{const db=await preparar();try{
+ await db.exec(`update integracao_crm_cards set status='Contrato' where id='${id(82)}';update integracao_moradores set dados=jsonb_set(dados,'{requerente,nascimento}','"2020-01-01"') where referencia_id='${id(20)}';`);
+ let atual=await funil(db,2,82);await direto(db,2,82,{nome:atual.nome,telefone:atual.telefone||'',municipio:atual.municipio_id,nucleo:atual.nucleo_id,cpf:'',anterior:valoresCard(atual)});
+ atual=await funil(db,2,82);await assert.rejects(direto(db,2,82,{nome:atual.nome,telefone:atual.telefone||'',municipio:atual.municipio_id,nucleo:atual.nucleo_id,cpf:'123',anterior:valoresCard(atual)}),/CPF|CNPJ/);
+ await db.exec(`update integracao_moradores set dados=jsonb_set(dados,'{requerente,nascimento}','"1980-01-01"') where referencia_id='${id(20)}';`);
+ await assert.rejects(direto(db,2,82,{nome:atual.nome,telefone:atual.telefone||'',municipio:atual.municipio_id,nucleo:atual.nucleo_id,cpf:'',anterior:valoresCard(atual)}),/obrigatório/);
+ for(const [nascimento,referencia,esperado] of [['2008-10-14','2026-10-13',true],['2008-10-13','2026-10-13',false],['2020-02-30','2026-10-13',false],['2028-01-01','2026-10-13',false],['2008-02-29','2026-02-28',true],['2008-02-29','2026-03-01',false]])assert.equal((await db.query('select integracao_crm_privado.menor_nascimento($1,$2) as menor',[nascimento,referencia])).rows[0].menor,esperado);
+ }finally{await db.close();}});

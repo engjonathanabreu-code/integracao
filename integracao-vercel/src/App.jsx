@@ -1,3 +1,7 @@
+import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
+import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
+import {registrarVerificacaoHumana} from './documentos-verificacao-humana.js';
+import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
@@ -376,9 +380,9 @@ const fmtCNPJ = (v) => { const c = so(v).slice(0, 14); return c.replace(/^(\d{2}
 
 
 const qtdSalarios = (teto, sm) => (teto && sm ? (teto / sm).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : null);
-function sugerirModalidade(p, nucleo) {
+function sugerirModalidade(p, nucleo, db) {
   if (!nucleo) return { aviso: "Defina o núcleo do processo para calcular a modalidade." };
-  const { teto, sm } = criterioNucleo(nucleo);
+  const { teto, sm } = criterioNucleo(nucleo, db);
   if (!teto) return { aviso: `O ${nucleo.codigo} ainda não tem teto de renda para REURB-S. Edite o núcleo para definir.` };
   const base = { teto, sm };
   const renda = parseNum(p.social.rendaFamiliar);
@@ -425,7 +429,7 @@ function requisitosPadraoNucleo(db, n, etapaId) {
   }
   switch (etapaId) {
     case "documental":
-      auto("teto", "Teto de renda para REURB-S definido", !!criterioNucleo(n).teto, "Defina no cadastro do núcleo");
+      auto("teto", "Teto de renda para REURB-S definido", !!criterioNucleo(n, db).teto, "Defina no cadastro do núcleo");
       break;
     case "projeto":
       campo("artPrf", "ART do PRF", "Número da ART");
@@ -784,7 +788,7 @@ function criarSeed() {
         p.social.ocupantes = String((temConjuge(p) ? 2 : 1) + Math.floor(rnd() * 3));
         p.social.rendaFamiliar = String((parseNum(p.requerente.renda) || 0) + (parseNum(p.conjuge.renda) || 0));
         p.social.possuiImovel = "nao";
-        p.social.modalidade = sugerirModalidade(p, nucleo).modalidade || "REURB-S";
+        p.social.modalidade = sugerirModalidade(p, nucleo, db).modalidade || "REURB-S";
         p.checks.parecer = true;
         p.extras.cp_familia = [{ s_nome: p.requerente.nome, s_parentesco: "Requerente", s_nascimento: p.requerente.nascimento }];
         if (temConjuge(p)) p.extras.cp_familia.push({ s_nome: p.conjuge.nome, s_parentesco: "Cônjuge", s_nascimento: p.conjuge.nascimento });
@@ -987,6 +991,7 @@ async function analisarDocumentoIA(arquivoBruto, tipoEsperado, regras, pessoas, 
     pessoas.endereco ? `endereço do imóvel "${pessoas.endereco}"` : "",
     pessoas.municipio ? `município ${pessoas.municipio}` : "",
     pessoas.nucleo ? `núcleo ${pessoas.nucleo}` : "",
+    pessoas.pessoas?.length ? `pessoas cadastradas (identificadores estáveis): ${JSON.stringify(pessoas.pessoas)}; pessoa selecionada pelo usuário: ${pessoas.pessoaEscolhida || "identificar sem presumir"}` : "",
     pessoas.membros ? `outras pessoas do grupo familiar já cadastradas: ${pessoas.membros}` : "",
   ].filter(Boolean).join("; ");
   const instrucao = `Você é analista documental sênior de processos de REURB (Lei 13.465/2017) no Brasil, trabalhando para a Integral Soluções em Engenharia. Hoje é ${hoje}.
@@ -1005,7 +1010,7 @@ ${listaRegras}
 Tipos de documento aceitos, responda com o id: ${listaTipos}. Se nenhum servir, use "outro".
 
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
-{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","historicoPosse":"","emissao":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":"","cnpj":"","naturalidade":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
+{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|corequerente|ocupante|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","historicoPosse":"","emissao":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":"","cnpj":"","naturalidade":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
 Orientações:
 - Em "campos", só o que está escrito no documento. Não invente. Omita chaves sem valor.
 - RG e CNH são "identidade". Certidões de nascimento ou casamento são "estado_civil". Contratos de compra e venda, cessões e declarações de posse são "comp_posse".
@@ -1146,20 +1151,21 @@ const MAPA_IA = {
   historicoPosse: { rot: "Histórico da posse", path: "imovel.historicoPosse" },
   cnpj: { rot: "CNPJ", campo: "cnpj", fmt: fmtCNPJ }, naturalidade: { rot: "Naturalidade", campo: "naturalidade" },
 };
-function montarLinhas(res, rascunho) {
-  const pessoa = res.pessoa === "conjuge" || res.tipo === "identidade_conjuge" ? "conjuge" : "requerente";
+function montarLinhas(res, rascunho, pessoaEscolhida = "") {
+  const destino = destinoDocumento(res, rascunho, pessoaEscolhida);
+  const pessoa = destino?.path;
   const linhas = [];
   Object.entries(res.campos || {}).forEach(([k, bruto]) => {
     const m = MAPA_IA[k];
-    if (!m || !preenchido(bruto)) return;
+    if (!m || !preenchido(bruto) || (!m.path && !destino)) return;
     const path = m.path || `${pessoa}.${m.campo}`;
     const sugerido = m.fmt ? m.fmt(bruto) : String(bruto).trim();
     if (!sugerido) return;
     const atual = String(getPath(rascunho, path) ?? "");
     const igual = k === "cpf" ? so(atual) === so(sugerido) : normalizar(atual) === normalizar(sugerido);
     if (igual) return;
-    const rot = m.path ? m.rot : `${m.rot} (${pessoa === "conjuge" ? "cônjuge" : "requerente"})`;
-    linhas.push({ path, rot, atual, sugerido, diverge: atual !== "", cpf: k === "cpf" });
+    const rot = m.path ? m.rot : `${m.rot} (${destino.papel}: ${destino.pessoa.nome})`;
+    linhas.push({ path, rot, atual, sugerido, ...(!m.path ? {pessoaId: destino.id, campoPessoa: m.campo} : {}), diverge: atual !== "", cpf: k === "cpf" });
   });
   return linhas;
 }
@@ -1231,7 +1237,7 @@ function dadosPRF(db, n, opcoes, fotos) {
   const linhasUn = ps.flatMap((p) => unidadesDe(p).map((u, i) => ({ p, u, codigo: codigoUnidade(p, i) })));
   const areaTotal = linhasUn.reduce((s, x) => s + (parseNum(x.u.area) || 0), 0);
   const qS = ps.filter((p) => p.social.modalidade === "REURB-S").length; const qE = ps.filter((p) => p.social.modalidade === "REURB-E").length;
-  const { teto } = criterioNucleo(n);
+  const { teto } = criterioNucleo(n, db);
   const sn = (v) => (v === "sim" ? "Sim" : v === "nao" ? "Não" : "");
   const tabela = (cab, linhas) => `<table style="width:100%;border-collapse:collapse;font-size:10pt;margin:8px 0" border="1" cellpadding="4"><thead><tr>${cab.map((c) => `<th style="background:#e8f2f1;text-align:left">${e(c)}</th>`).join("")}</tr></thead><tbody>${linhas.map((l) => `<tr>${l.map((c) => `<td>${e(c)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cab.length}">Sem dados</td></tr>`}</tbody></table>`;
   const cpfDe = (c) => (cpfValido(c) ? fmtCPF(c) : "");
@@ -1263,7 +1269,7 @@ function dadosPRF(db, n, opcoes, fotos) {
   };
   const infraestruturaNucleo = INFRA_PRF.filter(([id]) => n.infra?.[id]?.presente != null);
   if(infraestruturaNucleo.length) valores["bloco.infraestrutura"] += tabela(["Infraestrutura do núcleo", "Situação", "Descrição", "Vias"], infraestruturaNucleo.map(([id,nome]) => { const d=n.infra[id];return [nome,d.presente ? "Sim" : "Não",d.presente ? d.descricao || "" : "",d.presente ? d.vias || "" : ""]; }));
-  const complemento = marcadoresPRF({ municipio: m, dadosPRF: m?.prf, nucleo: { ...n, dados: n }, moradores: ps.map((p) => ({ ...p, unidades: unidadesDe(p) })), elaboracao: db.empresa });
+  const complemento = marcadoresPRF({ municipio: m, dadosPRF: m?.prf, nucleo: { ...n, dados: n }, moradores: ps.map((p) => ({ ...p, unidades: unidadesDe(p) })), elaboracao: empresaDoMunicipio(db, n.municipioId) });
   const estrutura = contextoPRF({ municipio: m, remessa: r, nucleo: n, cpfDe,
     unidades: linhasUn.map(({ p, u, codigo }) => ({
       nome: p.requerente.nome, cpf: p.requerente.cpf, conjuge: p.conjuge.nome || "",
@@ -2507,13 +2513,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
         <div><label className="rot" htmlFor="nnome">Nome (opcional)</label><input id="nnome" className="inp" value={nome} disabled={disEstr} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Ponto Chic" /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nresp">Responsável</label><input id="nresp" className="inp" value={responsavel} disabled={disEstr} onChange={(e) => setResponsavel(e.target.value)} /></div>
       </div>
-      <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Critério para REURB-S neste núcleo</h3>
-      <p className="ajuda" style={{ margin: "0 0 10px" }}>Use o valor definido pelo município. Confira o salário mínimo vigente na data de referência.</p>
-      <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div><label className="rot" htmlFor="nsm">Salário mínimo de referência (R$)</label><input id="nsm" className="inp" inputMode="decimal" value={sm} disabled={!(editando ? perm.editarEstrutura : perm.criarNucleosRemessas)} onChange={(e) => setSm(e.target.value)} /></div>
-        <div><label className="rot" htmlFor="nteto">Renda familiar máxima (R$)</label><input id="nteto" className="inp" inputMode="decimal" value={teto} disabled={!(editando ? perm.editarEstrutura : perm.criarNucleosRemessas)} onChange={(e) => setTeto(e.target.value)} /></div>
-      </div>
-      {tetoN > 0 && smN > 0 && <div className="tag tag-neutra" style={{ marginTop: 10, borderRadius: 10, padding: "8px 12px" }}>Equivale a {qtdSalarios(tetoN, smN)} salários mínimos</div>}
+      <p className="ajuda">O critério de renda para REURB-S é definido em Município → Regras → Critério REURB. O valor legado deste núcleo é preservado enquanto não houver definição municipal.</p>
       <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Localização do núcleo</h3>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nlog">Logradouro ou referência</label><input id="nlog" className="inp" value={end.logradouro} disabled={disEstr} onChange={(e) => setE("logradouro", e.target.value)} /></div>
@@ -2611,7 +2611,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       const got = (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
-    novo.docs.push({ id: uid("d"), tipo, nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
+    novo.docs.push({ id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
     const falhas = avaliadas.filter((x) => x.resultado === "nao_atende");
     const div = linhas.filter((l) => l.diverge).map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
     const partes = [`${aplicar.length} ${aplicar.length === 1 ? "campo preenchido" : "campos preenchidos"}`];
@@ -3507,9 +3507,9 @@ function TabelaNucleos({ db, nucleos, ir, perm, onEditar, onVincular, semNucleo 
       <table className="tab">
         <thead><tr>{ordem.cabecalho("codigo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa do núcleo")}{ordem.cabecalho("moradores", "Moradores")}{ordem.cabecalho("pendencias", "Com pendência")}{ordem.cabecalho("teto", "Teto REURB-S")}{ordem.cabecalho("andamento", "Andamento das unidades")}{ordem.cabecalho("origem", "Origem")}<th><span className="sr-only">Ações</span></th></tr></thead>
         <tbody>
-          {ordem.ordenar(nucleos, { codigo:n=>n.codigo, etapa:n=>n.etapa, moradores:n=>resumos.get(n.id).ativos, pendencias:n=>resumos.get(n.id).ativos ? resumos.get(n.id).comPend : null, teto:n=>criterioNucleo(n).teto, andamento:n=>{const x=resumos.get(n.id);return x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null;}, origem:n=>(n.origem || []).join(", ") }).map((n) => {
+          {ordem.ordenar(nucleos, { codigo:n=>n.codigo, etapa:n=>n.etapa, moradores:n=>resumos.get(n.id).ativos, pendencias:n=>resumos.get(n.id).ativos ? resumos.get(n.id).comPend : null, teto:n=>criterioNucleo(n, db).teto, andamento:n=>{const x=resumos.get(n.id);return x.ativos ? x.cont.reduce((s,n,i)=>s+n*i,0)/x.ativos : null;}, origem:n=>(n.origem || []).join(", ") }).map((n) => {
             const rs = resumoMoradores(db, db.processos.filter((p) => p.nucleoId === n.id));
-            const { teto, sm } = criterioNucleo(n);
+            const { teto, sm } = criterioNucleo(n, db);
             return (
               <tr key={n.id} className="clic" tabIndex={0} onClick={() => ir({ pag: "nucleo", id: n.id })} onKeyDown={(e) => { if (e.key === "Enter") ir({ pag: "nucleo", id: n.id }); }}>
                 <td><strong style={{ color: "var(--titulo)" }}>{n.codigo}</strong>{n.nome && <div className="ajuda" style={{ margin: 0 }}>{n.nome}</div>}</td>
@@ -3740,7 +3740,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
           <Campo form={form} rot="Sexo" path={P("sexo")} opcoes={["Feminino", "Masculino"]} dis={dis} />
           <Campo form={form} rot="Nacionalidade" path={P("nacionalidade")} dis={dis} />
           <Campo form={form} rot="Naturalidade" path={P("naturalidade")} dis={dis} ph="Cidade/UF" />
-          <CampoCPF form={form} rot={papel === "requerente" ? (exigeDocumentoCRM(x.statusCRM) ? "CPF (obrigatório)" : "CPF (obrigatório a partir do Contrato)") : "CPF"} path={P("cpf")} dis={dis} />
+          <CampoCPF form={form} rot={menorDeIdade(x) ? "CPF (opcional para menor de idade)" : papel === "requerente" ? (exigeDocumentoCRM(x.statusCRM) ? "CPF (obrigatório)" : "CPF (obrigatório a partir do Contrato)") : "CPF"} path={P("cpf")} dis={dis} />
           <Campo form={form} rot="RG" path={P("rg")} dis={dis} />
           <Campo form={form} rot="Órgão emissor" path={P("rgOrgao")} dis={dis} />
           <Campo form={form} rot="UF do emissor" path={P("rgUf")} fmt={(s) => s.toUpperCase().slice(0, 2)} dis={dis} />
@@ -3828,7 +3828,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
   const alertas = alertasDados(pd, { nucleo: nucleoDraft, duplicado: acharDuplicado(db, pd) });
   const req = rascunho.requerente;
   const mostraConj = !ehPJ(req) && (COM_CONJUGE.includes(req.estadoCivil) || !!rascunho.conjuge.nome);
-  const sug = sugerirModalidade(pd, nucleoDraft);
+  const sug = sugerirModalidade(pd, nucleoDraft, db);
   const disCad = !pode("cadastro");
   const disImovel = !pode("imovel");
   const copiarEndereco = (de, para) => form.set(para, clone(getPath(rascunho, de) || enderecoVazio()));
@@ -3968,7 +3968,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
             ) : <div className="ajuda">Preencha renda familiar e a declaração sobre outro imóvel para ver a sugestão.</div>}
           </div>
         )}
-        <ExtrasSecao defs={defs} secaoId="social" form={form} dis={!pode("social")} />
+        <ExtrasSecao defs={defs.filter(d => d.id !== "cp_familia")} secaoId="social" form={form} dis={!pode("social")} />
       </Secao>
     ),
   };
@@ -4000,6 +4000,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
 function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado }) {
   const regrasMun = regrasDoMunicipio(db, p.municipioId);
   const [tipoEsperado, setTipoEsperado] = useState("auto");
+  const [pessoaEscolhida, setPessoaEscolhida] = useState("");
   const [arquivos, setArquivos] = useState([]);
   const [fila, setFila] = useState(null);
   const [lote, setLote] = useState([]);
@@ -4008,6 +4009,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   const [resultado, setResultado] = useState(null);
   const [selecao, setSelecao] = useState({});
   const [forcar, setForcar] = useState(null);
+  const [verificarHumano, setVerificarHumano] = useState(null);
   const inputRef = useRef(null);
   const sessaoIA = useRef(null);
   if (!sessaoIA.current) sessaoIA.current = criarSessaoDocumentosIA();
@@ -4052,6 +4054,8 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
       endereco: `${rascunho.endereco.logradouro || ""}${rascunho.endereco.numero ? `, ${rascunho.endereco.numero}` : ""}${rascunho.endereco.bairro ? `, ${rascunho.endereco.bairro}` : ""}`.replace(/^,\s*/, "").trim(),
       municipio: m ? `${m.nome}/${m.uf}` : "",
       nucleo: n ? nomeNucleo(n) : "",
+      pessoaEscolhida,
+      pessoas: pessoasDocumentais(rascunho).map(x => ({id:x.id, papel:x.papel, nome:x.pessoa.nome, cpf:x.pessoa.cpf || "", nascimento:x.pessoa.nascimento || ""})),
       membros: (rascunho.social?.membros || []).map((x) => x.nome).filter(Boolean).join(", "),
     };
   };
@@ -4093,8 +4097,9 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     const r2 = { ...res, tipo };
-    const linhas = montarLinhas(r2, rascunho);
-    const sel = {}; linhas.forEach((l) => { sel[l.path] = !l.diverge && podeSecao(l.path); });
+    const destino = destinoDocumento(r2, rascunho, pessoaEscolhida);
+    const linhas = montarLinhas(r2, rascunho, pessoaEscolhida);
+    const sel = {}; linhas.forEach((l) => { sel[l.path] = !l.diverge && podeSecao(l.path) && !pessoaEscolhida && !!destino; });
     setSelecao(sel);
     setResultado({ ...r2, simulado, linhas, regrasAvaliadas: avaliadas, meta });
     if (!processandoRef.current) setEstado("resultado");
@@ -4164,8 +4169,20 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     return d;
   }, status === "validado" ? (justificativa ? "Documento validado com justificativa" : "Documento validado") : "Documento rejeitado", { processoId: p.id, remessaId: p.remessaId, detalhe: justificativa ? `${DOC_TIPOS[doc.tipo]}: ${justificativa}` : DOC_TIPOS[doc.tipo] });
 
+  const verificarSemIA = async (tipo, justificativa) => {
+    if (cancelado || !perm.validarDocs) return;
+    try {
+      await mutar(d => {
+        const processo = d.processos.find(x => x.id === p.id);
+        const doc = registrarVerificacaoHumana({processo, tipo, justificativa, usuario, perm, id: uid()});
+        processo.docs = [...(processo.docs || []), doc];
+        return d;
+      }, "Documento verificado por pessoa autorizada, sem IA", {processoId: p.id, remessaId: p.remessaId, detalhe: `${DOC_TIPOS[tipo]}: ${justificativa}`});
+      setVerificarHumano(null); setToast("Verificação humana registrada.");
+    } catch (e) { setToast(e.message); }
+  };
   const exigidos = ["identidade", ...(temConjuge(p) ? ["identidade_conjuge"] : []), "comp_residencia", "estado_civil", "comp_renda", "comp_posse"];
-  const outros = p.docs.filter((d) => !exigidos.includes(d.tipo));
+  const outros = p.docs.filter((d) => !exigidos.includes(d.tipo) || (d.pessoaId && !["requerente", "conjuge"].includes(d.pessoaId)));
   const qtdSel = resultado ? resultado.linhas.filter((l) => selecao[l.path]).length : 0;
   const mostrarValor = (l, v) => (l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
   const tagResultado = (r) => r.resultado === "atende" ? <Tag tipo="ok">Atende</Tag> : r.resultado === "nao_atende" ? <Tag tipo={r.gravidade === "bloqueia" ? "bloq" : "pend"}>Não atende</Tag> : <Tag>Não verificada</Tag>;
@@ -4177,7 +4194,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     return (
       <tr key={doc ? doc.id : tipo}>
         <td>
-          <strong style={{ fontWeight: 650, color: "var(--titulo)" }}>{DOC_TIPOS[tipo]}</strong>
+          <strong style={{ fontWeight: 650, color: "var(--titulo)" }}>{DOC_TIPOS[tipo]}{doc?.pessoaNome ? ` — ${doc.pessoaNome}` : ""}</strong>
           {doc && (
             <div className="ajuda" style={{ margin: 0 }}>
               {doc.origem}{doc.confianca ? `, confiança ${Math.round(doc.confianca * 100)}%` : ""}{doc.arquivoDescartado && doc.origem !== "sistema anterior" ? ", arquivo descartado" : ""}
@@ -4189,6 +4206,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
         </td>
         <td>{status === "validado" ? <Tag tipo="ok">Validado</Tag> : status === "recebido" ? (bloqueado ? <Tag tipo="bloq">Regra não atendida</Tag> : <Tag tipo="pend">Aguardando validação</Tag>) : status === "rejeitado" ? <Tag tipo="bloq">Rejeitado</Tag> : <Tag>Não enviado</Tag>}</td>
         <td style={{ whiteSpace: "nowrap" }}>
+          {perm.validarDocs && !cancelado && (!doc?.pessoaId || ["requerente", "conjuge"].includes(doc.pessoaId)) && (!bloqueado || perm.forcarValidacao) && status !== "validado" && <button className="btn btn-sm" onClick={() => setVerificarHumano(tipo)}>Verificar sem IA</button>}
           {doc && doc.status === "recebido" && perm.validarDocs && !cancelado && (
             <span className="flex gap-1 flex-wrap">
               {!bloqueado && <button className="btn btn-sm" onClick={() => validar(doc, "validado")}><Check size={13} />Validar</button>}
@@ -4208,6 +4226,12 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
           <>
             <div className="fg">
               <div style={{ gridColumn: "span 2" }}>
+                <label className="rot" htmlFor="pessoa-doc">Pessoa do documento</label>
+                <select id="pessoa-doc" className="inp" value={pessoaEscolhida} disabled={estado === "analisando"} onChange={e => {setPessoaEscolhida(e.target.value); setResultado(null); setSelecao({}); sessaoIA.current.limpar();}}>
+                  <option value="">Identificar pelo CPF ou nome completo, sem ambiguidade</option>
+                  {pessoasDocumentais(rascunho).map(x => <option key={x.id} value={x.id}>{x.papel}: {x.pessoa.nome}</option>)}
+                </select>
+                <div className="ajuda">Confira o destinatário antes de aplicar campos. Nomes repetidos exigem seleção explícita.</div>
                 <label className="rot" htmlFor="tipo-doc">Tipo de documento</label>
                 <select id="tipo-doc" className="inp" disabled={estado === "analisando"} value={tipoEsperado} onChange={(e) => setTipoEsperado(e.target.value)}>
                   <option value="auto">Deixar a IA identificar</option>
@@ -4358,17 +4382,18 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
         </Secao>
       )}
 
-      <Secao titulo="Documentos do processo" nota="Só o resultado das análises fica guardado. Nenhum arquivo é armazenado no sistema.">
+      <Secao titulo="Documentos do processo" nota="São guardados resultados das análises e registros de verificação humana. Nenhum arquivo é armazenado no sistema.">
         <div className="rolagem">
           <table className="tab">
             <thead><tr><th>Documento</th><th>Situação</th><th><span className="sr-only">Ações</span></th></tr></thead>
             <tbody>
-              {exigidos.map((t) => linhaDoc(t, [...p.docs].reverse().find((d) => d.tipo === t)))}
+              {exigidos.map((t) => linhaDoc(t, [...p.docs].reverse().find((d) => d.tipo === t && (!d.pessoaId || d.pessoaId === (t === "identidade_conjuge" ? "conjuge" : "requerente")))))}
               {outros.map((d) => linhaDoc(d.tipo, d))}
             </tbody>
           </table>
         </div>
       </Secao>
+      {verificarHumano && <ModalMotivo titulo="Registrar verificação humana" texto={`Confirme que você conferiu pessoalmente o documento “${DOC_TIPOS[verificarHumano]}” e as exigências aplicáveis. Descreva a conferência e eventual justificativa. Este registro não executa análise por IA.`} rotuloBotao="Confirmar documento verificado" onFechar={() => setVerificarHumano(null)} onConfirmar={m => verificarSemIA(verificarHumano, m)} />}
       {forcar && <ModalMotivo titulo="Validar com justificativa" texto={`Uma regra obrigatória não foi atendida em "${DOC_TIPOS[forcar.tipo]}". Explique por que o documento pode ser aceito.`} rotuloBotao="Validar documento" onFechar={() => setForcar(null)} onConfirmar={(m) => { validar(forcar, "validado", m); setForcar(null); setToast("Documento validado com justificativa."); }} />}
     </div>
   );
@@ -4382,7 +4407,7 @@ function gerarQualificacao(p, modo) {
   const cnpjTxt = (c, nome) => { if (!cnpjValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCNPJ(c); };
   const r = p.requerente; const c = p.conjuge; const casal = temConjuge(p) && c.nome;
   const outros = (p.corequerentes || []).filter((x) => x.beneficiario !== "nao");
-  const docCurto = (x, rotulo) => (ehPJ(x) ? `inscrita no CNPJ nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}` : `portador(a) do CPF nº ${cpfTxt(x.cpf, `CPF de ${rotulo}`)}`);
+  const docCurto = (x, rotulo) => (cpfDispensado(x) && !ehPJ(x) ? "menor de idade, CPF não informado" : ehPJ(x) ? `inscrita no CNPJ nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}` : `portador(a) do CPF nº ${cpfTxt(x.cpf, `CPF de ${rotulo}`)}`);
   if (modo === "simples") {
     const cods = codigosUnidades(p);
     let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, ${docCurto(r, "requerente")}`;
@@ -4394,7 +4419,7 @@ function gerarQualificacao(p, modo) {
   const endTxt = (e, plural) => `${plural ? "residentes e domiciliados" : "residente e domiciliado(a)"} na ${token(e.logradouro, "logradouro")}, nº ${token(e.numero, "número")}${e.complemento ? `, ${e.complemento}` : ""}, bairro ${token(e.bairro, "bairro")}, ${token(e.municipio, "município")}/${token(e.uf, "UF")}, CEP ${so(e.cep).length === 8 ? fmtCEP(e.cep) : token("", "CEP")}`;
   const pessoa = (x, rotulo, ehReq) => {
     if (ehPJ(x)) return `${token(x.nome, `razão social de ${rotulo}`)}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}, neste ato representada por ${token(x.representante, `representante de ${rotulo}`)}`;
-    return `${token(x.nome, `nome do ${rotulo}`)}, ${nac(x.nacionalidade || "Brasileira")}${x.naturalidade ? `, natural de ${x.naturalidade}` : ""}${ehReq ? `, ${minus(token(x.estadoCivil, `estado civil de ${rotulo}`))}` : ""}, ${minus(token(x.profissao, `profissão de ${rotulo}`))}, portador(a) do RG nº ${token(x.rg, `RG do ${rotulo}`)} ${x.rgOrgao || ""}${x.rgUf ? `/${x.rgUf}` : ""}, inscrito(a) no CPF sob o nº ${cpfTxt(x.cpf, `CPF do ${rotulo}`)}, filho(a) de ${token(x.mae, `mãe do ${rotulo}`)}${x.pai ? ` e ${x.pai}` : ""}`;
+    return `${token(x.nome, `nome do ${rotulo}`)}, ${nac(x.nacionalidade || "Brasileira")}${x.naturalidade ? `, natural de ${x.naturalidade}` : ""}${ehReq ? `, ${minus(token(x.estadoCivil, `estado civil de ${rotulo}`))}` : ""}, ${minus(token(x.profissao, `profissão de ${rotulo}`))}, portador(a) do RG nº ${token(x.rg, `RG do ${rotulo}`)} ${x.rgOrgao || ""}${x.rgUf ? `/${x.rgUf}` : ""}${cpfDispensado(x) ? ", menor de idade, CPF não informado" : `, inscrito(a) no CPF sob o nº ${cpfTxt(x.cpf, `CPF do ${rotulo}`)}`}, filho(a) de ${token(x.mae, `mãe do ${rotulo}`)}${x.pai ? ` e ${x.pai}` : ""}`;
   };
   const regime = (x) => (x.estadoCivil === "Casado(a)" ? `, casados sob o regime de ${minus(token(x.regimeBens, "regime de bens"))}` : ", em união estável");
   let t = pessoa(r, "requerente", true);
@@ -4554,7 +4579,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     // Antes da etapa Contrato o cadastro ainda é comercial: o documento pode ficar em branco, mas, se informado, precisa ser válido.
     const documentoObrigatorio = exigeDocumentoCRM(rascunho.requerente.statusCRM);
     if (ehPJ(rascunho.requerente)) { if ((rascunho.requerente.cnpj || documentoObrigatorio) && !cnpjValido(rascunho.requerente.cnpj)) invalidos.push(rascunho.requerente.cnpj ? "CNPJ do requerente" : "CNPJ do requerente, que é obrigatório a partir da etapa Contrato"); }
-    else if ((rascunho.requerente.cpf || documentoObrigatorio) && !cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório a partir da etapa Contrato");
+    else if ((rascunho.requerente.cpf || (documentoObrigatorio && !cpfDispensado(rascunho.requerente))) && !cpfValido(rascunho.requerente.cpf)) invalidos.push(rascunho.requerente.cpf ? "CPF do requerente" : "CPF do requerente, que é obrigatório a partir da etapa Contrato");
     if (rascunho.conjuge.cpf && !cpfValido(rascunho.conjuge.cpf)) invalidos.push("CPF do cônjuge");
     (rascunho.corequerentes || []).forEach((c) => { if (ehPJ(c.pessoa) ? (c.pessoa.cnpj && !cnpjValido(c.pessoa.cnpj)) : (c.pessoa.cpf && !cpfValido(c.pessoa.cpf))) invalidos.push(`documento de ${c.pessoa.nome || "outro requerente"}`); if (c.conjuge?.cpf && !cpfValido(c.conjuge.cpf)) invalidos.push(`CPF do cônjuge de ${c.pessoa.nome || "outro requerente"}`); });
     (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
@@ -4595,7 +4620,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     setToast("Cadastro salvo.");
   };
   const aplicarIA = (linhas) => {
-    setRascunho((rr) => { const c = clone(rr); linhas.forEach((l) => setPath(c, l.path, l.sugerido)); return c; });
+    setRascunho((rr) => { const c = clone(rr); linhas.forEach((l) => { const atual = linhaDocumentalAtual(l, c); if (atual) setPath(c, atual.path, atual.sugerido); }); return c; });
     setIaPaths((a) => Array.from(new Set([...a, ...linhas.map((l) => l.path)])));
     mutar((d) => d, "Sugestões da IA levadas ao cadastro para revisão", { processoId: p.id, remessaId: p.remessaId, detalhe: `${linhas.length} campo(s)` });
     setAba("cadastro");
@@ -4710,7 +4735,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   const [cronogramaAberto, setCronogramaAberto] = useState(false);
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [modal, setModal] = useState(null);
-  const timbradoMemoriais = useTimbrado(db);
+  const timbradoMemoriais = useTimbrado(db, p.municipioId);
   const n = nucleoId ? nucleoDe(db, nucleoId) : null;
   const r = n ? remessaDe(db, n.remessaId) : remessaDe(db, semNucleo);
   const m = n ? municipioDe(db, n.municipioId) : r ? municipioDe(db, r.municipioId) : null;
@@ -4719,7 +4744,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => compararTextos(a.codigo, b.codigo));
   const at = ps.filter(ativo);
   const x = resumoMoradores(db, ps);
-  const { teto, sm } = criterioNucleo(n);
+  const { teto, sm } = criterioNucleo(n, db);
   const metasAbertas = n ? (db.metas || []).filter((mt) => (mt.nucleos || []).includes(n.id) && mt.status !== "Concluído").length : 0;
   const ABAS = n
     ? [
@@ -5165,7 +5190,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast, onArquivoAgente
   const [erro, setErro] = useState("");
   const [fotos, setFotos] = useState({});
   const [modeloProprio, setModeloProprio] = useState(false);
-  const timbrado = useTimbrado(db);
+  const timbrado = useTimbrado(db, n?.municipioId);
   useEffect(() => {
     let vivo = true;
     const chaveMun = `${CHAVE_MODELO_PRF_MUN}${n?.municipioId}`;
@@ -7308,6 +7333,10 @@ const municipioDoProcesso = (db, p) => p?.municipioId || null;
 
 function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
   const [aba, setAba] = useState("ia");
+  const [criterioDraft, setCriterioDraft] = useState(() => db.ajustesMunicipio?.[municipio.id]?.criterioREURB || {salarioMinimo:"", rendaMaxima:""});
+  const [empresaCodigo, setEmpresaCodigo] = useState(() => db.ajustesMunicipio?.[municipio.id]?.empresaDocumento?.codigo || "integral");
+  const [empresaDraft, setEmpresaDraft] = useState(() => ({...empresaDoMunicipio(db, municipio.id)}));
+  const criteriosLegados = [...new Set(db.nucleos.filter(n => n.municipioId === municipio.id && n.criterio).map(n => JSON.stringify(n.criterio)))];
   const perm = permissoes(usuario);
   const pode = perm.diretor;
   const ajustes = ajustesDoMunicipio(db, municipio.id);
@@ -7385,11 +7414,28 @@ function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
       </Secao>
 
       <div className="abas" role="tablist" aria-label="Regras do município">
-        {[["ia", "Regras da IA"], ["requisitos", "Requisitos das etapas"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
+        {[["empresa", "Empresa e timbrado"], ["criterio", "Critério REURB"], ["ia", "Regras da IA"], ["requisitos", "Requisitos das etapas"], ["checklist", "Checklist de campo"], ["prf", "Modelo do PRF"]].map(([k, t]) => (
           <button key={k} role="tab" aria-selected={aba === k} className={aba === k ? "ativa" : ""} onClick={() => setAba(k)}>{t}</button>
         ))}
       </div>
 
+      {aba === "empresa" && <>
+        <Secao titulo="Empresa e timbrado do município" nota="A seleção vale para novos documentos deste município. Documentos e contratos já gerados são preservados.">
+          <label className="rot">Empresa<select className="inp" disabled={!pode} value={empresaCodigo} onChange={e => {setEmpresaCodigo(e.target.value);setEmpresaDraft(e.target.value === "integral" ? {...db.empresa} : ajustes?.empresaDocumento?.codigo === "mcl" ? {...ajustes.empresaDocumento.dados} : {razaoSocial:"",cnpj:"",endereco:""});}}><option value="integral">Integral</option><option value="mcl">Minha Casa Legal</option></select></label>
+          {empresaCodigo === "mcl" && <Aviso>Os dados fiscais, endereço e timbrado oficial da Minha Casa Legal precisam ser confirmados. O sistema não os preenche por suposição.</Aviso>}
+          {[["razaoSocial","Razão social"],["cnpj","CNPJ"],["endereco","Endereço"]].map(([key,label]) => <label className="rot" key={key}>{label}<input className="inp" disabled={!pode} value={empresaDraft[key] || ""} onChange={e => setEmpresaDraft(x => ({...x,[key]:e.target.value}))}/></label>)}
+          {pode && <button className="btn btn-primario" onClick={async () => {try {const empresa = prepararEmpresaMunicipal(empresaCodigo, empresaDraft, ajustes, cnpjValido);await gravar(a => {a.empresaDocumento = empresa;}, "Empresa do município selecionada", empresaCodigo);setToast("Empresa municipal salva.");}catch(e){setToast(e.message);}}}>Salvar empresa do município</button>}
+        </Secao>
+        <ConfigTimbrado db={{...db,timbrado:ajustes?.timbradosEmpresa?.[empresaCodigo] ?? (empresaCodigo === "integral" ? db.timbrado : {ativo:true,cabecalho:null,rodape:null})}} usuario={usuario} setToast={setToast} mutar={(fn,acao,meta) => mutar(d => {if(!pode)throw Error("Sem permissão para alterar timbrado.");d.ajustesMunicipio ||= {};const a = d.ajustesMunicipio[municipio.id] || {};const escopo = {...d,timbrado:a.timbradosEmpresa?.[empresaCodigo] ?? (empresaCodigo === "integral" ? d.timbrado : {ativo:true,cabecalho:null,rodape:null})};fn(escopo);d.ajustesMunicipio[municipio.id] = {...a,timbradosEmpresa:{...a.timbradosEmpresa,[empresaCodigo]:escopo.timbrado}};return d;},acao,{...meta,municipioId:municipio.id})}/>
+      </>}
+      {aba === "criterio" && <Secao titulo="Critério para REURB-S no município" nota="Define apenas a referência da sugestão. Modalidades já cadastradas não são alteradas; a decisão continua humana.">
+        {!ajustes?.criterioREURB && <Aviso>Sem critério municipal confirmado: cada núcleo conserva seu critério legado.{criteriosLegados.length > 1 ? " Existem critérios diferentes entre os núcleos; confira a definição municipal antes de salvar." : ""}</Aviso>}
+        <div className="fg">
+          <div><label className="rot" htmlFor="municipio-sm">Salário mínimo de referência (R$)</label><input id="municipio-sm" className="inp" inputMode="decimal" value={criterioDraft.salarioMinimo} disabled={!pode} onChange={e => setCriterioDraft(x => ({...x,salarioMinimo:e.target.value}))}/></div>
+          <div><label className="rot" htmlFor="municipio-teto">Renda familiar máxima (R$)</label><input id="municipio-teto" className="inp" inputMode="decimal" value={criterioDraft.rendaMaxima} disabled={!pode} onChange={e => setCriterioDraft(x => ({...x,rendaMaxima:e.target.value}))}/></div>
+        </div>
+        {pode && <button className="btn btn-primario" disabled={!(parseNum(criterioDraft.salarioMinimo)>0 && parseNum(criterioDraft.rendaMaxima)>0)} onClick={() => {if (!pode) return; gravar(a => {a.criterioREURB = {...criterioDraft};}, "Critério municipal REURB atualizado", "referência de renda alterada, sem reenquadramento dos moradores"); setToast("Critério municipal salvo. Modalidades existentes preservadas.");}}>Salvar critério municipal</button>}
+      </Secao>}
       {aba === "ia" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigRegras db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['regrasIA','tiposDocumento'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{regras&&rodape(true,criarCopiaRegras,()=>voltarGeral("regrasIA","As regras da IA"),"Regras da IA")}</fieldset>}
       {aba === "checklist" && <fieldset disabled={!pode} style={{border:0,padding:0,minWidth:0}}><ConfigChecklist db={escopoRegrasMunicipio(db,municipio.id)} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar regras.");return alterarRegrasMunicipio(d,municipio.id,['checklistCampo'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{checklist&&rodape(true,criarCopiaChecklist,()=>voltarGeral("checklistCampo","O checklist de campo"),"Checklist")}</fieldset>}
       {aba === "requisitos" && <><ConfigRequisitos db={escopoRegrasMunicipio(db,municipio.id)} usuario={usuario} mutar={(fn,acao,meta)=>mutar(d=>{if(!pode)throw Error("Sem permissão para alterar requisitos.");return alterarRegrasMunicipio(d,municipio.id,['ajustesRequisitos'],fn,usuario.nome)},acao,{...meta,municipioId:municipio.id})} setToast={setToast}/>{ajustes?.ajustesRequisitos&&rodape(true,()=>{},()=>voltarGeral("ajustesRequisitos","Os requisitos das etapas"),"Requisitos")}</>}
@@ -8563,7 +8609,7 @@ function dadosDocumento(db, p, usuario) {
   const un = unidadesDe(p);
   const hoje = new Date();
   return {
-    elaboracao: db.empresa || {},
+    elaboracao: empresaDoMunicipio(db, p.municipioId),
     remessa: remessaDe(db,p.remessaId)?.titulo || (remessaDe(db,p.remessaId) ? `Remessa ${remessaDe(db,p.remessaId).numero}` : "____________"),
     enderecoImovelContrato: `${enderecoLinha(temValor(p.enderecoImovel) ? p.enderecoImovel : p.endereco)}, ${m ? `${m.nome}/${m.uf}` : "____________"}${(p.enderecoImovel?.cep || p.endereco?.cep) ? `, CEP ${p.enderecoImovel?.cep || p.endereco?.cep}` : ""}`,
     nome: p.requerente.nome || "____________", cpf: (ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)) || "____________",
@@ -8597,7 +8643,7 @@ function dadosDocumento(db, p, usuario) {
 function faltandoPara(doc, d, p) {
   const falta = [];
   if (doc.precisa.includes("nome") && !preenchido(p.requerente.nome)) falta.push("nome do requerente");
-  if (doc.precisa.includes("cpf") && !preenchido(ehPJ(p.requerente) ? p.requerente.cnpj : p.requerente.cpf)) falta.push(ehPJ(p.requerente) ? "CNPJ" : "CPF");
+  if (doc.precisa.includes("cpf") && !(!ehPJ(p.requerente) && cpfDispensado(p.requerente)) && !preenchido(ehPJ(p.requerente) ? p.requerente.cnpj : p.requerente.cpf)) falta.push(ehPJ(p.requerente) ? "CNPJ" : "CPF");
   if (doc.precisa.includes("endereco") && !preenchido(p.endereco?.logradouro)) falta.push("endereço");
   if (doc.precisa.includes("nucleo") && !p.nucleoId) falta.push("núcleo");
   if (doc.precisa.includes("condicoes") && !d.condicoes) falta.push("forma de pagamento");
@@ -8869,7 +8915,7 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
   const [previa, setPrevia] = useState(null);
   const [gerandoArquivo,setGerandoArquivo]=useState(false);
   useEffect(() => { setF({ ...compromissoVazio(), ...(p.compromisso || {}) }); }, [JSON.stringify(p.compromisso)]); // eslint-disable-line
-  const timbrado = useTimbrado(db);
+  const timbrado = useTimbrado(db, p.municipioId);
   const n = nucleoDe(db, p.nucleoId);
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...compromissoVazio(), ...(p.compromisso || {}) });
   const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
@@ -8966,7 +9012,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const [gerandoArquivo,setGerandoArquivo]=useState(false);
   const [confirmarProprio, setConfirmarProprio] = useState(false);
   const [escolherProc, setEscolherProc] = useState(null);
-  const timbrado = useTimbrado(db);
+  const timbrado = useTimbrado(db, p.municipioId);
   const gerar = (doc, procuradoresEscolhidos) => {
     const lista = (procuradoresEscolhidos || []).map((id) => (db.advogados || []).find((a) => a.id === id)).filter(Boolean);
     const texto = lista.length ? lista.map(qualificacaoAdvogado).join("; ") : "";
@@ -9238,8 +9284,16 @@ function ComercialEmCampoNucleo({ db, n, usuario, comercial, ir, setToast }) {
 /* ---------------- papel timbrado ---------------- */
 const CHAVE_TIMBRE = "integracao-timbrado-v1-";
 // O modelo incluído fica pronto imediatamente, inclusive para exportação offline.
-function useTimbrado(db) {
-  const config = configTimbrado(db?.timbrado);
+async function carregarTimbradoDocumento(db, municipioId) {
+  if (municipioId && !db.municipios.some(m => m.id === municipioId)) throw Error("Município indisponível. Confira a seleção.");
+  const config = configTimbrado(timbradoDoMunicipio(db, municipioId));
+  const ler = (item, lugar) => item?.chave ? armazenamento.get(item.chave) : Promise.resolve(imagemPadrao(item, lugar));
+  const [cabecalho,rodape] = await Promise.all([ler(config.cabecalho,"cabecalho"),ler(config.rodape,"rodape")]);
+  if (db.ajustesMunicipio?.[municipioId]?.empresaDocumento?.codigo === "mcl" && !cabecalho) throw Error("Timbrado da Minha Casa Legal indisponível. Confira a configuração municipal.");
+  return {...config,imagens:{cabecalho,rodape}};
+}
+function useTimbrado(db, municipioId) {
+  const config = configTimbrado(timbradoDoMunicipio(db || {}, municipioId));
   const versao = versaoTimbrado(config);
   const [carregadas, setCarregadas] = useState(null);
   useEffect(() => {
@@ -10773,7 +10827,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
         <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
         {catalogoDevolutivas(todasVisiveis).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => <div key={m.id} className="card" style={{padding:14,marginTop:10}}><strong>{m.titulo}</strong><p className="ajuda">{rotuloAssociacao(db,m)}</p><p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p><p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>{vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}<div className="flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>{podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}{gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}</div></div>)}
       </Secao>}
-      {tela === "oficios" && <><BibliotecaTeste tipo="Ofício"/><Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios}/></>}
+      {tela === "oficios" && <><BibliotecaTeste tipo="Ofício"/><Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios} municipios={db.municipios} resolverTimbrado={id => carregarTimbradoDocumento(db,id)}/></>}
       {tela === "home" && !colaborador && (
         <>
           <div className="grade-indicadores" style={{ marginBottom: 14 }}>
@@ -12379,7 +12433,7 @@ export default function App() {
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Evento'&&<ModalEvento {...props} pedidoAgente={tarefaAgente.preenchimento} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Processo'&&db.nucleos.some(n=>n.id===tarefaAgente.id)&&<ModalProcesso {...props} n={db.nucleos.find(n=>n.id===tarefaAgente.id)} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Devolutiva'&&<ModalAnaliseDevolutiva {...props} meta={db.metas.find(m=>m.id===tarefaAgente.id)||null} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
-      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Rascunho, sem reserva de número'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio municipios={db.municipios} resolverTimbrado={id => carregarTimbradoDocumento(db,id)} pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Rascunho, sem reserva de número'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
         onMinimizar={() => setJanela((j) => ({ ...j, minimizada: !j.minimizada }))} onFechar={() => setJanela(null)} onAbrirChat={(id) => { setJanela(null); ir({ pag: "chat", id }); }} />}
       {respirar && <PausaRespirar onFechar={() => setRespirar(false)} />}
