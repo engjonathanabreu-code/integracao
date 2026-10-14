@@ -20,15 +20,18 @@ export async function prepararContrato(){
  create function public.can_access_plan(plano uuid) returns boolean language sql stable security definer as $$select public.is_admin() or exists(select 1 from public.etapas_plano e join public.etapa_responsaveis r on r.etapa_id=e.id join public.profiles p on p.id=r.usuario_id where e.plano_id=plano and r.usuario_id=auth.uid() and p.ativo)$$;
  create function public.is_stage_assignee(etapa uuid) returns boolean language sql stable security definer as $$select is_admin() or exists(select 1 from etapa_responsaveis where etapa_id=etapa and usuario_id=auth.uid())$$;
  create function public.integracao_acesso(tabela text,registro uuid,dono uuid) returns boolean language plpgsql stable as $$declare ok boolean;begin if not exists(select 1 from profiles where id=auth.uid() and ativo)then return false;end if;if tabela is null then return dono=auth.uid();end if;execute format('select exists(select 1 from public.%I where id=$1)',tabela) into ok using registro;return ok;end$$;
- create table fin_receb_clientes(id uuid primary key,nome text,ativo boolean default true);
+ create table fin_receb_clientes(id uuid primary key,nome text,ativo boolean default true,municipio_id uuid);
  create table fin_receb_remessas(id uuid primary key,nome text);
- create table processos_kanban(id uuid primary key,nucleo text,excluido_erp boolean default false);
+ create table fin_receb_municipios(id uuid primary key,nome text,uf text);
+ create table processos_kanban(id uuid primary key,nucleo text,excluido_erp boolean default false,municipio text,estado text);
  create table metas(id uuid primary key,titulo text,status text,created_by uuid);
  create table ordens_servico(id uuid primary key,nome text);
  create table erp_conversas(id uuid primary key,titulo text,participantes uuid[]);
  create table erp_mensagens(id uuid primary key,conversa_id uuid,texto text,autor_id uuid);
  create table documentos(id uuid primary key,enviado_por uuid,etapa_plano_id uuid,nome text);
  create table integracao_configuracoes(colecao text,registro_id text,dados jsonb,primary key(colecao,registro_id));
+ create table integracao_complementos(colecao text,registro_id text,dados jsonb,referencia_id uuid,primary key(colecao,registro_id));
+ alter table integracao_complementos enable row level security;grant all on integracao_complementos to authenticated;create policy legado on integracao_complementos for all to authenticated using(exists(select 1 from profiles where id=auth.uid() and ativo)) with check(exists(select 1 from profiles where id=auth.uid() and ativo));
  grant select on profiles to authenticated;
  do $$declare t text;begin foreach t in array array['integracao_moradores','integracao_nucleos','integracao_remessas','integracao_metas','integracao_ordens_servico','integracao_planos','integracao_chat'] loop execute format('create table public.%I(colecao text,registro_id text,dados jsonb,referencia_tabela text,referencia_id uuid,criado_por uuid,primary key(colecao,registro_id))',t);end loop;end$$;
  do $$declare t text;begin foreach t in array array['fin_receb_clientes','fin_receb_remessas','processos_kanban','metas','ordens_servico','integracao_moradores','integracao_nucleos','integracao_remessas','integracao_metas','integracao_ordens_servico','integracao_planos','integracao_chat','documentos','erp_conversas','erp_mensagens','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano'] loop
@@ -44,8 +47,8 @@ export async function prepararContrato(){
  insert into planos_trabalho values('${id(100)}','${id(4)}','Plano acessível',null,'Em andamento'),('${id(101)}','${id(4)}','Plano alheio',null,'Em andamento');
  insert into etapas_plano values('${id(110)}','${id(100)}','Etapa acessível','Pendente'),('${id(111)}','${id(101)}','Etapa alheia','Pendente');
  insert into etapa_responsaveis values('${id(110)}','${id(1)}');
- insert into fin_receb_clientes values('${id(200)}','Pessoa fictícia',true);
- insert into processos_kanban values('${id(201)}','Núcleo fictício',false);
+ insert into fin_receb_clientes(id,nome,ativo) values('${id(200)}','Pessoa fictícia',true);
+ insert into processos_kanban(id,nucleo,excluido_erp) values('${id(201)}','Núcleo fictício',false);
  insert into metas values('${id(202)}','Meta fictícia','Aguardando aprovação','${id(4)}');
  insert into ordens_servico values('${id(203)}','OS fictícia');
  insert into integracao_moradores values('processos','${id(200)}','{"etapa":0,"situacao":"Ativo","checks":{},"campos":{},"requerente":{"nome":"Pessoa fictícia"},"docs":[]}',null,null,'${id(4)}');

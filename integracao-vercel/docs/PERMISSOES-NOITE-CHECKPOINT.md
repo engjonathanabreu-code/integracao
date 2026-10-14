@@ -1,5 +1,7 @@
 # Contrato de permissões — checkpoint de implementação
 
+**Estado de 14/10, após continuação:** correções locais e validações estão descritas em [CONTRATO-PERMISSOES-VALIDACAO.md](CONTRATO-PERMISSOES-VALIDACAO.md). O histórico abaixo registra os impedimentos anteriores; eles não devem ser interpretados como estado do código atual. A publicação/migração/contratos efetivos continuam pendentes de aprovação separada, e QA autenticado está bloqueado pelo navegador conectado.
+
 Branch independente `codex/permissoes-contrato-noite`, baseada em `0bfa140`. Não contém os nove ajustes da Page nem dados do laboratório. Não aplicar esta migração como se a implementação estivesse concluída.
 
 ## Implementado localmente

@@ -36,7 +36,13 @@ test('RLS e gates: negativos prevalecem, planos respeitam escopo e outros 14 per
   await assert.rejects(como(db,0,'select public.integracao_atribuicoes_contrato_ler()'),/permission denied/);
   await assert.rejects(como(db,2,'select public.integracao_atribuicoes_contrato_ler($1)',[id(1)]),/administração/);
   for(let n=4;n<=17;n++)assert.equal((await como(db,n,"select integracao_atribuicoes_privado.escolha('clientes','editar') regra"))[0].regra,null);
+  await db.exec(`update profiles set ativo=false where id='${id(17)}'`);
+  assert.equal((await como(db,17,"select integracao_atribuicoes_privado.escolha('clientes','excluir') regra"))[0].regra,null);
+  assert.equal((await como(db,17,"select public.integracao_atribuicoes_autorizar('clientes','exportar') ok"))[0].ok,false);
+  await db.exec(`update profiles set ativo=true where id='${id(17)}'`);
   await assert.rejects(como(db,1,`update metas set status='Concluído' where id='${id(202)}'`),/Aprovação/);
+  await db.exec(`insert into integracao_metas values('metas','fixture-meta','{"status":"Em andamento"}',null,null,'${id(4)}');insert into integracao_complementos values('metas','fixture-meta','{"status":"Em andamento"}',null)`);
+  for(const t of ['integracao_metas','integracao_complementos'])await assert.rejects(como(db,1,`update ${t} set dados=jsonb_set(dados,'{status}','"Concluído"') where registro_id='fixture-meta'`),/Aprovacao/);
   assert.equal((await como(db,1,`delete from metas where id='${id(202)}' returning id`)).length,0);
   assert.equal((await como(db,1,`delete from ordens_servico where id='${id(203)}' returning id`)).length,0);
   await assert.rejects(como(db,2,`update processos_kanban set excluido_erp=true where id='${id(201)}'`),/Exclusão/);
@@ -52,8 +58,22 @@ test('RLS e gates: negativos prevalecem, planos respeitam escopo e outros 14 per
   await assert.rejects(como(db,1,`update planos_trabalho set created_by='${id(4)}' where id='${id(120)}'`),/Autoria/);
   assert.equal((await como(db,1,`update planos_trabalho set titulo='Proibido' where id='${id(101)}' returning id`)).length,0);
   await assert.rejects(como(db,1,`insert into etapas_plano values('${id(122)}','${id(101)}','Etapa alheia','Pendente')`),/row-level security/);
+  await como(db,1,`insert into etapa_responsaveis values('${id(121)}','${id(2)}')`);
+  assert.equal((await como(db,2,`select id from planos_trabalho where id='${id(120)}'`)).length,1);
+  assert.equal((await como(db,2,`select id from planos_trabalho where id='${id(101)}'`)).length,0);
+  await assert.rejects(como(db,1,`insert into etapa_responsaveis values('${id(111)}','${id(2)}')`),/row-level security/);
+  await assert.rejects(como(db,1,`update etapa_responsaveis set etapa_id='${id(111)}' where etapa_id='${id(121)}'`),/row-level security/);
+  await db.exec(`update profiles set ativo=false where id='${id(17)}'`);
+  await assert.rejects(como(db,1,`insert into etapa_responsaveis values('${id(121)}','${id(17)}')`),/row-level security/);
+  await assert.rejects(como(db,1,`update etapa_responsaveis set usuario_id='${id(17)}' where etapa_id='${id(121)}'`),/row-level security/);
+  await como(db,1,`delete from etapa_responsaveis where etapa_id='${id(121)}'`);
+  assert.equal((await como(db,2,`select id from planos_trabalho where id='${id(120)}'`)).length,0);
+  await db.exec(`update profiles set ativo=true where id='${id(17)}'`);
   assert.equal((await como(db,3,`select id from erp_conversas`)).length,1);
   assert.equal((await como(db,3,`select id from erp_conversas where id='${id(301)}'`)).length,0);
+  await db.exec(`insert into integracao_complementos values('conversas','fixture-chat','{"titulo":"Conversa ficticia"}',null)`);
+  await assert.rejects(como(db,3,`delete from integracao_complementos where registro_id='fixture-chat'`),/autorizada/);
+  await assert.rejects(como(db,3,`update integracao_complementos set dados='{"excluida":true}' where registro_id='fixture-chat'`),/autorizada/);
   await assert.rejects(como(db,1,'select * from integracao_atribuicoes_privado.contratos'),/permission denied/);
   await assert.rejects(db.exec('delete from integracao_atribuicoes_privado.auditoria'),/imutável/);
  }finally{await db.close();}

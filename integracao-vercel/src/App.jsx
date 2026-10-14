@@ -1394,6 +1394,7 @@ function PreviaDocumento({ html, titulo, timbrado }) {
   return <iframe title={`Prévia de ${titulo}`} src={`${arquivo}#view=FitH&toolbar=0`} style={{width:"100%",height:"60vh",border:"1px solid var(--line)",background:"#e8e8e8",borderRadius:8}} />;
 }
 async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
+  await exigirAcao("clientes","exportar");
   await exigirAcao("documentos","exportar");
   if(formato === "pdf") {
     const {baixarPdf}=await Promise.resolve(documentoPdf);
@@ -1402,6 +1403,11 @@ async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
     const {baixarDocx}=await Promise.resolve(documentoDocx);
     await baixarDocx(html,titulo,timbrado,nome);
   }
+}
+async function baixarMemorialNucleo(html,titulo,timbrado,nome) {
+  await exigirAcao("nucleos","exportar");
+  await exigirAcao("documentos","exportar");
+  return documentoDocx.baixarDocx(html,titulo,timbrado,nome);
 }
 
 function baixarArquivo(nome, conteudo, tipo) {
@@ -3481,7 +3487,7 @@ function PainelEtapaNucleo({ db, n, usuario, mutar, setToast, setModal }) {
   };
   const retroceder = () => setModal({
     tipo: "motivo", titulo: `Voltar o núcleo para ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, texto: "Os moradores não mudam de etapa. Use quando algo do núcleo precisa ser refeito.", rotuloBotao: "Voltar etapa do núcleo",
-    onConfirmar: (motivo) => { mutar((d) => { d.nucleos.find((x) => x.id === n.id).etapa = n.etapa - 1; return d; }, `Etapa do núcleo reaberta: ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, { ...log, detalhe: `${n.codigo}: ${motivo}` }); setModal(null); setToast("Etapa do núcleo reaberta."); },
+    onConfirmar: (motivo) => { mutar((d) => { {const q=d.nucleos.find((x) => x.id === n.id);q.etapa=n.etapa-1;q.reaberturaFluxo={de:n.etapa,para:n.etapa-1,motivo:motivo.trim()};} return d; }, `Etapa do núcleo reaberta: ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, { ...log, detalhe: `${n.codigo}: ${motivo}` }); setModal(null); setToast("Etapa do núcleo reaberta."); },
   });
   return (
     <section className="card" style={{ padding: 18 }}>
@@ -4879,10 +4885,10 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
               montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
-              baixarDocumento={(item, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
+              baixarDocumento={(item, html) => baixarMemorialNucleo(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`)} />
               <IntegracaoMemoriais por={usuario.nome} key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
-              baixarDocumento={(unidade, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
+              baixarDocumento={(unidade, html) => baixarMemorialNucleo(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`)} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "dadosNui" && n && <DadosNUI usuario={usuario} key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
