@@ -34,12 +34,13 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
     } catch(e) {setErro(e.message || 'Não foi possível salvar o fluxo.');}
     finally {setOcupado(false);}
   };
+  const verDetalhes=(tipo,id)=>{setErro('');setSelecionado({tipo,id});};
   const origem = c => institucionais?.find(i=>i.id===c.institucionalId);
   const nomeNucleo = item => item.nome || db.nucleos?.find(n=>n.id===item.nucleoId)?.codigo || null;
   const municipioNucleo = item => fluxo.cidades.find(c=>item.cidadeId?c.id===item.cidadeId:c.municipioId===item.municipioId);
   const etapaCidade = c => pode&&<CampoCRM nome="Etapa municipal"><select className="inp" aria-label={`Etapa de ${c.nome||'município não informado'}`} disabled={ocupado} value={c.etapa} onChange={e=>salvar({tipo:'cidade',...c,etapa:e.target.value})}><option value="nuvens">Nuvens</option><option value="prospeccao">Prospecção</option>{c.etapa==='carteiras'&&<option value="carteiras">Núcleos nas etapas seguintes</option>}</select></CampoCRM>;
   const etapaNucleo = item => pode&&<CampoCRM nome="Mover para"><select className="inp" aria-label={`Carteira de ${nomeNucleo(item)||'núcleo não informado'}`} disabled={ocupado} value={item.carteira} onChange={e=>salvar({tipo:'nucleo',nucleoId:item.nucleoId,carteira:e.target.value})}>{CARTEIRAS_INSTITUCIONAIS.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></CampoCRM>;
-  const cidade = (c,compacto=false) => <CardFunilInstitucional key={c.id} tipo="Município" titulo={municipioTexto(c)} municipio={municipioTexto(c)} referencia={c.etapa==='nuvens'?'Nuvens':c.etapa==='prospeccao'?'Prospecção':'Núcleos nas etapas seguintes'} etiquetas={etiquetasRegistro(c,c.etapa==='nuvens'?'Nuvens':'Prospecção',!!c.municipioId&&!c.institucionalId)} compacto={compacto} controleEtapa={etapaCidade(c)} abrirDetalhes={()=>setSelecionado({tipo:'cidade',id:c.id})} abrirNegocio={origem(c)?()=>abrirInstitucional(origem(c)):null}/>;
+  const cidade = (c,compacto=false) => <CardFunilInstitucional key={c.id} tipo="Município" titulo={municipioTexto(c)} municipio={municipioTexto(c)} referencia={c.etapa==='nuvens'?'Nuvens':c.etapa==='prospeccao'?'Prospecção':'Núcleos nas etapas seguintes'} etiquetas={etiquetasRegistro(c,c.etapa==='nuvens'?'Nuvens':'Prospecção',!!c.municipioId&&!c.institucionalId)} compacto={compacto} controleEtapa={etapaCidade(c)} abrirDetalhes={()=>verDetalhes('cidade',c.id)} abrirNegocio={origem(c)?()=>abrirInstitucional(origem(c)):null}/>;
   const detalheCidade = selecionado?.tipo==='cidade'&&fluxo.cidades.find(c=>c.id===selecionado.id);
   const detalheNucleo = selecionado?.tipo==='nucleo'&&fluxo.nucleos.find(n=>n.nucleoId===selecionado.id);
   const detalheMunicipio = detalheCidade||detalheNucleo&&municipioNucleo(detalheNucleo);
@@ -47,7 +48,7 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
   const candidatos=fluxo.cidades.filter(c=>c.etapa==='nuvens'), prospectados=fluxo.cidades.filter(c=>c.etapa==='prospeccao');
   return <section className="card fi-painel" aria-label="Fluxo institucional integrado">
     <div className="cabeca"><div><h2>Fluxo institucional</h2><p className="ajuda">Fluxo próprio de municípios e núcleos. Prospecção acompanha até quatro municípios; as etapas seguintes acompanham seus núcleos.</p></div></div>
-    {erro && <p role="alert" className="msg-erro">{erro}</p>}
+    {erro && !selecionado && <p role="alert" className="msg-erro">{erro}</p>}
     <section className="fi-nuvem" aria-label="Nuvens">
       <svg viewBox="0 0 1000 420" preserveAspectRatio="none" aria-hidden="true"><path d="M120 96 C120 38 205 18 267 57 C294 1 394 0 440 44 C499 3 611 6 648 62 C725 20 829 43 838 99 C937 86 988 150 966 205 C1000 270 957 348 877 348 C855 408 757 416 704 380 C650 421 544 422 498 390 C441 426 337 416 303 380 C238 415 143 393 131 349 C47 367 2 302 29 245 C-9 183 33 104 120 96 Z"/></svg>
       <h3><Cloud size={22} aria-hidden="true"/>Nuvens <span className="pill">{candidatos.length} município(s)</span></h3>
@@ -70,7 +71,7 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
       {CARTEIRAS_INSTITUCIONAIS.map(c=><section key={c.id} className="crm-coluna fi-etapa" aria-label={`Carteira ${c.nome}`}><h3>{c.nome}</h3><p className="ajuda">{fluxo.nucleos.filter(n=>n.carteira===c.id).length} núcleo(s) · {c.descricao}</p>
         {fluxo.nucleos.filter(n=>n.carteira===c.id).map(item=>{
           const municipal=municipioNucleo(item),cliente=municipal&&origem(municipal);
-          return <CardFunilInstitucional key={item.nucleoId} tipo="Núcleo" titulo={nomeNucleo(item)} municipio={municipioTexto(municipal)} referencia={c.nome} etiquetas={etiquetasRegistro(item,c.nome,!item.cidadeId)} controleEtapa={etapaNucleo(item)} abrirDetalhes={()=>setSelecionado({tipo:'nucleo',id:item.nucleoId})} abrirNegocio={cliente?()=>abrirInstitucional(cliente):null}/>;
+          return <CardFunilInstitucional key={item.nucleoId} tipo="Núcleo" titulo={nomeNucleo(item)} municipio={municipioTexto(municipal)} referencia={c.nome} etiquetas={etiquetasRegistro(item,c.nome,!item.cidadeId)} controleEtapa={etapaNucleo(item)} abrirDetalhes={()=>verDetalhes('nucleo',item.nucleoId)} abrirNegocio={cliente?()=>abrirInstitucional(cliente):null}/>;
         })}{!fluxo.nucleos.some(n=>n.carteira===c.id)&&<p className="fi-vazio">Nenhum núcleo nesta etapa.</p>}
       </section>)}
     </div></div>
@@ -80,6 +81,7 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
       <CampoCRM nome="Etapa"><select className="inp" value={carteira} onChange={e=>setCarteira(e.target.value)}>{CARTEIRAS_INSTITUCIONAIS.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></CampoCRM><button className="btn btn-primario" disabled={ocupado}>Adicionar núcleo</button>
     </form></details>}
     {selecionado&&<DetalhesFunil titulo={detalheTitulo} ocupado={ocupado} fechar={()=>setSelecionado(null)}>
+      {erro&&<p role="alert" className="msg-erro">{erro}</p>}
       {!(detalheCidade||detalheNucleo)?<p>Registro indisponível. Feche os detalhes e atualize a tela.</p>:<>
         <dl className="fi-detalhes-campos"><dt>Tipo</dt><dd>{detalheCidade?'Município':'Núcleo'}</dd><dt>Identificação</dt><dd>{detalheTitulo||'Não informado'}</dd><dt>Município</dt><dd>{municipioTexto(detalheMunicipio)||'Não informado'}</dd><dt>Etapa</dt><dd>{detalheCidade?detalheCidade.etapa==='nuvens'?'Nuvens':detalheCidade.etapa==='prospeccao'?'Prospecção':'Núcleos nas etapas seguintes':CARTEIRAS_INSTITUCIONAIS.find(c=>c.id===detalheNucleo.carteira)?.nome||'Não informado'}</dd><dt>Etiquetas</dt><dd>{(Array.isArray((detalheCidade||detalheNucleo).etiquetas)?(detalheCidade||detalheNucleo).etiquetas.filter(x=>typeof x==='string'):[]).join(' · ')||'Sem etiquetas adicionais'}</dd></dl>
         {detalheMunicipio?.municipioId&&!detalheMunicipio.institucionalId&&<p className="ajuda">Vínculo anterior preservado.</p>}
