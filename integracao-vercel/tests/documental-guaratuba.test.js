@@ -28,6 +28,7 @@ test('SQL exige administrador ativo, conexão, pasta e versão; desligar preserv
   create table integracao_configuracoes(colecao text,registro_id text,dados jsonb);
   grant all on fin_receb_clientes,integracao_crm_conversas,integracao_crm_cards,integracao_moradores,integracao_configuracoes to service_role;`);
   await db.exec(readFileSync(new URL('../supabase/migrations/20261014170000_documental_guaratuba.sql',import.meta.url),'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261014173000_documental_pastas_seguras.sql',import.meta.url),'utf8'));
   async function call(who,sql,args=[]){await db.exec(`set role authenticated;set request.jwt.claim.sub='${id(who)}';`);try{return (await db.query(sql,args)).rows;}finally{await db.exec('reset role;reset request.jwt.claim.sub;');}}
   await assert.rejects(call(2,'select integracao_documental_ler()'),/administradores/);
   assert.equal((await call(2,'select * from integracao_documental_config')).length,0);
@@ -35,21 +36,25 @@ test('SQL exige administrador ativo, conexão, pasta e versão; desligar preserv
   await assert.rejects(call(1,'select integracao_documental_vincular($1,$2)',[id(4),'PastaOutro12345']),/Guaratuba/);
   await call(1,'select integracao_documental_vincular($1,$2)',[id(3),'PastaTeste12345']);
   await db.exec('update integracao_documental_config set pronto=true,checado_em=now()');
-  const on=(await call(1,'select integracao_documental_alternar(true,1) estado'))[0].estado;
-  assert.equal(on.ativo,true);assert.equal(on.versao,2);
+  const on=(await call(1,'select integracao_documental_alternar(true,2) estado'))[0].estado;
+  assert.equal(on.ativo,true);assert.equal(on.versao,3);
   await db.exec(`insert into integracao_crm_cards values('${id(5)}','${id(3)}');insert into integracao_crm_conversas values('${id(6)}','${id(5)}','chatwoot-cxbqw-u77386.vm.elestio.app',1,55,true);insert into integracao_moradores values('processos','morador-teste','${id(3)}','{"requerente":{"rg":"manual"},"docs":[{"id":"doc-original","status":"validado"}],"etapa":2,"unidades":[{"id":"un-original"}]}',now());`);
-  const doc={id:'doc-bot',configVersao:2,origem:'Chatwoot / Google Drive',driveId:'drive-ficticio',status:'recebido',documentalConforme:true,pessoa:'requerente',camposExtraidos:{rg:'troca-indesejada',mae:'Dado documental fictício',cpf:'00000000000'}};
+  const doc={id:'doc-bot',configVersao:3,origem:'Chatwoot / Google Drive',driveId:'drive-ficticio',status:'recebido',documentalConforme:true,pessoa:'requerente',camposExtraidos:{rg:'troca-indesejada',mae:'Dado documental fictício',cpf:'00000000000'}};
   async function registrar(value){await db.exec('set role service_role');try{return (await db.query('select integracao_documental_registrar($1,1,55,$2,$3) ok',['chatwoot-cxbqw-u77386.vm.elestio.app',id(3),JSON.stringify(value)])).rows[0].ok;}finally{await db.exec('reset role');}}
   assert.equal(await registrar(doc),true);assert.equal(await registrar(doc),false);
   const saved=(await db.query('select dados from integracao_moradores')).rows[0].dados;
   assert.equal(saved.requerente.rg,'manual');assert.equal(saved.requerente.mae,'Dado documental fictício');assert.equal(saved.requerente.cpf,undefined);assert.equal(saved.etapa,2);assert.equal(saved.unidades[0].id,'un-original');assert.equal(saved.docs[0].status,'validado');assert.equal(saved.docs.length,2);
   await assert.rejects(registrar({...doc,id:'outro',status:'validado'}),/recibo/);
   await assert.rejects(call(1,'select integracao_documental_alternar(false,1)'),/outra sessão/);
+  await db.exec(`insert into fin_receb_clientes values('${id(7)}','${city}','Segundo cliente fictício','00000000000','GUA02',true)`);
+  await assert.rejects(call(1,'select integracao_documental_vincular($1,$2)',[id(7),'PastaTeste12345']),/unique constraint/);
+  await call(1,'select integracao_documental_vincular($1,$2)',[id(3),'PastaNova123456']);
+  await assert.rejects(registrar({...doc,id:'vinculo-antigo'}),/desligado/);
   await db.exec('update integracao_documental_config set pronto=false');
-  const off=(await call(1,'select integracao_documental_alternar(false,2) estado'))[0].estado;
+  const off=(await call(1,'select integracao_documental_alternar(false,4) estado'))[0].estado;
   assert.equal(off.ativo,false);assert.equal(off.pastas,1);
   await assert.rejects(registrar({...doc,id:'apos-desligar'}),/desligado/);
-  assert.equal((await db.query('select count(*)::int n from integracao_documental_auditoria')).rows[0].n,3);
+  assert.equal((await db.query('select count(*)::int n from integracao_documental_auditoria')).rows[0].n,4);
   await assert.rejects(call(1,"update integracao_documental_config set ativo=true"),/permission denied/);
   await db.exec(`update profiles set ativo=false where id='${id(1)}'`);
   await assert.rejects(call(1,'select integracao_documental_ler()'),/administradores/);
