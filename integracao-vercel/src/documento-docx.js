@@ -39,5 +39,6 @@ export async function gerarDocx(html,titulo,timbrado,options={}){
  return zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
 }
 export async function baixarDocx(html,titulo,timbrado,nome){
+ await (await import('./atribuicoes-api.js')).exigirAcao('documentos','exportar');
  const blob=await gerarDocx(html,titulo,timbrado);const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=nome.replace(/\.(docx?|html|pdf)$/i,'')+'.docx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
 }

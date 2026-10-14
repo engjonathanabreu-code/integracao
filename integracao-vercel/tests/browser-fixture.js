@@ -1,4 +1,5 @@
 import {instalarMailingFixture} from './mailing-browser-fixture.js';
+import {instalarAtribuicoesFixture} from './atribuicoes-browser-fixture.js';
 import {instalarMetasVendasFixture} from './metas-vendas-browser-fixture.js';
 import {instalarOficiosFixture} from './oficios-browser-fixture.js';
 const oficiosFixture=new URLSearchParams(location.search).has('oficios')?instalarOficiosFixture():null;
@@ -18,6 +19,7 @@ import {compactarResumo} from '../src/resumo-transporte.js';
 import {fixture,id} from './fixture.js';
 import {instalarCRMFixture} from './crm-browser-fixture.js';
 const base=fixture();window.baseFixture=base;base.meta_arquivos=[];base.erp_exclusoes_chat=[];base.documentos=[];
+const atribuicoesFixture=instalarAtribuicoesFixture(base,id);
 const mailingFixture=new URLSearchParams(location.search).has('mailing')?instalarMailingFixture(base):null;
 const crmFixture=new URLSearchParams(location.search).has('crm')?instalarCRMFixture(base):null;
 const chatFixture=new URLSearchParams(location.search).has('chat');
@@ -90,6 +92,7 @@ const objects=new Map();
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.finRequests=[];
 window.fetch=async(input,options={})=>{
+  if(atribuicoesFixture){const nome=new URL(typeof input==='string'?input:input.url,location.href).pathname.split('/').pop();if(['integracao_atribuicoes_ler','integracao_atribuicoes_salvar'].includes(nome))try{return json(atribuicoesFixture(nome,JSON.parse(options.body)));}catch(e){return json({message:e.message},409);}}
   const url=new URL(typeof input==='string'?input:input.url,location.href);window.finRequests.push(url.pathname);if(url.pathname==='/api/agente-pessoal')return json({mode:'indisponivel',autonomous:false});if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='POST'){const x=JSON.parse(options.body);base.integracao_agentes_pessoais_registros.push(...(Array.isArray(x)?x:[x]));return new Response(null,{status:201});}if(url.pathname.endsWith('/rest/v1/integracao_agentes_pessoais_registros')&&options.method==='PATCH'){const x=base.integracao_agentes_pessoais_registros.find(r=>r.kind==='avatar'&&r.record_id==='current');if(x)Object.assign(x,JSON.parse(options.body));return new Response(null,{status:204});}
   if(oficiosFixture){const r=oficiosFixture(url,options,json);if(r!==undefined)return r;}
   if(url.pathname==='/api/ia'&&new URLSearchParams(location.search).has('prfpessoal')){window.pedidoPRF=JSON.parse(options.body);return json({content:[{type:'text',text:JSON.stringify({html:'<h1>PRF pessoal {{nucleo.nome}}</h1><p>Infraestrutura do núcleo conforme cadastro oficial.</p><script>alert("unsafe")</script>'})}]});}
@@ -116,6 +119,8 @@ window.fetch=async(input,options={})=>{
   if(url.pathname.endsWith('/rpc/integracao_financeiro_resumo'))return json([{municipio_id:id(2),remessa_id:id(3),nucleo_id:id(5),clientes:1,parcelas:1,pagas:base.fin_receb_parcelas[0].status==='Pago'?1:0,previsto:105,recebido:base.fin_receb_parcelas[0].valor_liquidado}]);
   if(url.pathname.endsWith('/rpc/integracao_financeiro_editar_conciliado')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);for(const k of Object.keys(b.p_dados))if(JSON.stringify(p[k]??null)!==JSON.stringify(b.p_anterior[k])&&JSON.stringify(p[k]??null)!==JSON.stringify(b.p_dados[k]))return json({message:'Valores diferentes na parcela',code:'PT409'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/integracao_financeiro_editar')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);if(p.versao!==b.p_versao)return json({message:'Esta parcela mudou. Atualize antes de salvar.'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
+  if(url.pathname.endsWith('/rpc/integracao_atribuicoes_contrato_ler'))return json(window.contratoFixture||{regras:{},pendencias:[]});
+  if(url.pathname.endsWith('/rpc/integracao_atribuicoes_autorizar')){const p=JSON.parse(options.body);return json(window.contratoFixture?.regras?.[p.p_recurso]?.[p.p_acao]!==false);}
   if(url.pathname.endsWith('/rpc/erp_collab_directory'))return json(base.profiles);
   if(url.pathname.endsWith('/rpc/integracao_gravar')) {
     const {operacoes}=JSON.parse(options.body);

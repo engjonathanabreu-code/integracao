@@ -4,7 +4,7 @@ export default async function handler(req,res){
   if(req.method!=='POST')return res.status(405).json({erro:'Use POST.'});
   try{const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
     if(!body||!['csv','resumo'].includes(body.formato)||!['todos','sem-contato'].includes(body.filtro||'todos'))return res.status(400).json({erro:'Formato ou filtro inválido.'});
-    const {nucleo,rows}=await carregarContatosNucleo({nucleoId:body.nucleoId,authorization:req.headers.authorization});const selecionados=body.filtro==='sem-contato'?rows.filter(r=>!r.telefone&&!r.whatsapp&&!r.email):rows;
+    const {nucleo,rows}=await carregarContatosNucleo({nucleoId:body.nucleoId,authorization:req.headers.authorization,exportar:body.formato==='csv'});const selecionados=body.filtro==='sem-contato'?rows.filter(r=>!r.telefone&&!r.whatsapp&&!r.email):rows;
     if(body.formato==='resumo')return res.status(200).json({nucleo:nucleo.nucleo,total:rows.length,filtrados:selecionados.length,comTelefone:rows.filter(r=>r.telefone||r.whatsapp).length,comEmail:rows.filter(r=>r.email).length,semContato:rows.filter(r=>!r.telefone&&!r.whatsapp&&!r.email).length});
     res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition',`attachment; filename="moradores-contatos-${nucleo.id}.csv"`);res.setHeader('X-Registros-Total',String(selecionados.length));
     const csv=csvContatos(selecionados);res.status(200);

@@ -105,6 +105,7 @@ export async function gerarPdf(html,titulo,timbrado,options={}){
  return doc.output('blob');
 }
 export async function baixarPdf(html,titulo,timbrado,nome){
+ await (await import('./atribuicoes-api.js')).exigirAcao('documentos','exportar');
  const blob=await gerarPdf(html,titulo,timbrado),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download=nome.replace(/\.(docx?|html|pdf)$/i,'')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
 }

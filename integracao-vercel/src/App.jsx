@@ -1,3 +1,5 @@
+import {exigirAcao} from './atribuicoes-api.js';
+import {acaoPermitida} from './permissoes-contrato.js';
 import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoResidencia, limiteResidencia, diaReferenciaResidencia} from './prazo-residencia.js';
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
@@ -1392,6 +1394,8 @@ function PreviaDocumento({ html, titulo, timbrado }) {
   return <iframe title={`Prévia de ${titulo}`} src={`${arquivo}#view=FitH&toolbar=0`} style={{width:"100%",height:"60vh",border:"1px solid var(--line)",background:"#e8e8e8",borderRadius:8}} />;
 }
 async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
+  await exigirAcao("clientes","exportar");
+  await exigirAcao("documentos","exportar");
   if(formato === "pdf") {
     const {baixarPdf}=await Promise.resolve(documentoPdf);
     await baixarPdf(html,titulo,timbrado,nome);
@@ -1399,6 +1403,11 @@ async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
     const {baixarDocx}=await Promise.resolve(documentoDocx);
     await baixarDocx(html,titulo,timbrado,nome);
   }
+}
+async function baixarMemorialNucleo(html,titulo,timbrado,nome) {
+  await exigirAcao("nucleos","exportar");
+  await exigirAcao("documentos","exportar");
+  return documentoDocx.baixarDocx(html,titulo,timbrado,nome);
 }
 
 function baixarArquivo(nome, conteudo, tipo) {
@@ -3142,7 +3151,7 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
         {aba === "nucleos" && <TabelaNucleos db={db} nucleos={nucleos} ir={ir} perm={perm} onEditar={(n) => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })} semNucleo={{ qtd: semNuc, abrir: () => ir({ pag: "nucleo", semNucleo: r.id }) }} />}
         {aba === "moradores" && <TabProcessos db={db} ps={ps} ir={ir} mostrarNucleo />}
         {aba === "quadro" && <TabQuadro db={db} ps={at} ir={ir} remessaId={r.id} />}
-        {aba === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${nomeRemessa(db, r)}`} log={{ municipioId: m.id, remessaId: r.id }} />}
+        {aba === "pendencias" && <TabPendencias usuario={usuario} db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${nomeRemessa(db, r)}`} log={{ municipioId: m.id, remessaId: r.id }} />}
         {aba === "historico" && <Secao titulo="Histórico da remessa"><ListaHistorico itens={db.auditoria.filter((a) => a.remessaId === r.id)} vazio="Nenhuma ação registrada nesta remessa." /></Secao>}
       </div>
       <LegendaEtapas />
@@ -3151,9 +3160,10 @@ function PaginaRemessa({ db, usuario, remessaId, aba, ir, mutar, setToast }) {
   );
 }
 
-function TabPendencias({ db, ps, ir, mutar, setToast, arquivo, log }) {
+function TabPendencias({ db, ps, ir, mutar, setToast, arquivo, log, usuario }) {
   const grupos = ps.map((p) => ({ p, pend: pendencias(db, p), alertas: alertasDados(p, contexto(db, p)) })).filter((g) => g.pend.length || g.alertas.length);
-  const exportar = () => {
+  const exportar = async () => {
+    try { await exigirAcao("clientes","exportar"); if(log?.nucleoId)await exigirAcao("nucleos","exportar"); if(log?.remessaId)await exigirAcao("remessas","exportar"); }catch(e){setToast(e.message);return;}
     const linhas = [["Código", "Morador", "Núcleo", "Etapa", "Tipo", "Pendência", "Detalhe"]];
     grupos.forEach(({ p, pend, alertas }) => {
       const et = ETAPAS[p.etapa]?.nome || "Concluído";
@@ -3166,7 +3176,7 @@ function TabPendencias({ db, ps, ir, mutar, setToast, arquivo, log }) {
     setToast("Planilha de pendências gerada.");
   };
   return (
-    <Secao titulo="O que falta para cada morador" nota="Lista gerada pelas regras de cada etapa. Some sozinha quando o requisito é cumprido." acao={<button className="btn btn-sm" onClick={exportar} disabled={!grupos.length}><Download size={14} />Exportar planilha</button>}>
+    <Secao titulo="O que falta para cada morador" nota="Lista gerada pelas regras de cada etapa. Some sozinha quando o requisito é cumprido." acao={<button className="btn btn-sm" onClick={exportar} disabled={!grupos.length || !acaoPermitida(usuario,"clientes","exportar") || (log?.nucleoId && !acaoPermitida(usuario,"nucleos","exportar")) || (log?.remessaId && !acaoPermitida(usuario,"remessas","exportar"))}><Download size={14} />Exportar planilha</button>}>
       {!grupos.length && <p style={{ margin: 0, color: "var(--muted)" }}>Nenhuma pendência aqui.</p>}
       {grupos.map(({ p, pend, alertas }) => (
         <div key={p.id} style={{ padding: "12px 0", borderTop: "1px solid var(--line2)" }}>
@@ -3422,7 +3432,7 @@ function PainelEtapa({ db, p, ctx, usuario, mutar, setToast, setModal, onAbrirAb
   };
   const retroceder = () => setModal({
     tipo: "motivo", titulo: `Voltar para ${ETAPAS[p.etapa - 1].nome}`, texto: "Use quando algo da etapa anterior precisa ser refeito. Os requisitos cumpridos continuam marcados.", rotuloBotao: "Voltar etapa",
-    onConfirmar: (motivo) => { mutar((d) => { d.processos.find((x) => x.id === p.id).etapa = p.etapa - 1; return d; }, `Etapa reaberta: ${ETAPAS[p.etapa - 1].nome}`, { ...log, detalhe: `${p.codigo}: ${motivo}` }); setModal(null); setToast("Etapa anterior reaberta."); },
+    onConfirmar: (motivo) => { mutar((d) => { { const q=d.processos.find((x) => x.id === p.id);q.etapa=p.etapa-1;q.reaberturaFluxo={de:p.etapa,para:p.etapa-1,motivo:motivo.trim()}; } return d; }, `Etapa reaberta: ${ETAPAS[p.etapa - 1].nome}`, { ...log, detalhe: `${p.codigo}: ${motivo}` }); setModal(null); setToast("Etapa anterior reaberta."); },
   });
   return (
     <section className="card" style={{ padding: 18 }}>
@@ -3477,7 +3487,7 @@ function PainelEtapaNucleo({ db, n, usuario, mutar, setToast, setModal }) {
   };
   const retroceder = () => setModal({
     tipo: "motivo", titulo: `Voltar o núcleo para ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, texto: "Os moradores não mudam de etapa. Use quando algo do núcleo precisa ser refeito.", rotuloBotao: "Voltar etapa do núcleo",
-    onConfirmar: (motivo) => { mutar((d) => { d.nucleos.find((x) => x.id === n.id).etapa = n.etapa - 1; return d; }, `Etapa do núcleo reaberta: ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, { ...log, detalhe: `${n.codigo}: ${motivo}` }); setModal(null); setToast("Etapa do núcleo reaberta."); },
+    onConfirmar: (motivo) => { mutar((d) => { {const q=d.nucleos.find((x) => x.id === n.id);q.etapa=n.etapa-1;q.reaberturaFluxo={de:n.etapa,para:n.etapa-1,motivo:motivo.trim()};} return d; }, `Etapa do núcleo reaberta: ${NUCLEO_ETAPAS[n.etapa - 1].nome}`, { ...log, detalhe: `${n.codigo}: ${motivo}` }); setModal(null); setToast("Etapa do núcleo reaberta."); },
   });
   return (
     <section className="card" style={{ padding: 18 }}>
@@ -4863,7 +4873,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
           <div style={{ marginTop: 16 }}>
             {abaAtual === "moradores" && <TabProcessos db={db} ps={ps} ir={ir} mostrarNucleo={false} />}
             {abaAtual === "quadro" && <TabQuadro db={db} ps={at} ir={ir} nucleoId={n?.id} remessaId={n ? undefined : r?.id} />}
-            {abaAtual === "pendencias" && <TabPendencias db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${r ? nomeRemessa(db, r) : m.nome} ${n ? n.codigo : "sem nucleo"}`} log={{ municipioId: m.id, remessaId: r?.id, nucleoId: n?.id }} />}
+            {abaAtual === "pendencias" && <TabPendencias usuario={usuario} db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${r ? nomeRemessa(db, r) : m.nome} ${n ? n.codigo : "sem nucleo"}`} log={{ municipioId: m.id, remessaId: r?.id, nucleoId: n?.id }} />}
             {abaAtual === "andamentos" && n && <AbaAndamentos db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "devolutivas" && n && <AbaDevolutivas db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "comercial" && n && (
@@ -4875,10 +4885,10 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
               montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
-              baixarDocumento={(item, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`))} />
+              baixarDocumento={(item, html) => baixarMemorialNucleo(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`)} />
               <IntegracaoMemoriais por={usuario.nome} key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
-              baixarDocumento={(unidade, html) => Promise.resolve(documentoDocx).then(m=>m.baixarDocx(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`))} /></>}
+              baixarDocumento={(unidade, html) => baixarMemorialNucleo(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`)} /></>}
             {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "dadosNui" && n && <DadosNUI usuario={usuario} key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
@@ -5231,6 +5241,7 @@ function PaginaPRF({ db, usuario, nucleoId, ir, mutar, setToast, onArquivoAgente
   const preencherPalavras = () => { setMapa(mapearPorPalavras(lacunas)); setOrigemMapa("palavras-chave"); setErro(""); mutar((d) => d, "Prévia do PRF preenchida por palavras-chave", { ...log, detalhe: `${lacunas.length} lacunas no modelo` }); };
   const baixar = async (tipo) => {
     setErro("");setEstado("exportando");try{
+    await exigirAcao("nucleos","exportar");await exigirAcao("documentos","exportar");
     const nomeArq = normalizar(titulo).replace(/[^a-z0-9]+/g, "-");
     const aviso = documentoCompleto ? "" : `<p style="background:#fff3cd;padding:8px;border:1px solid #e4c98f">Documento para revisão técnica: ${pronto.prontos} de ${pronto.ativos} moradores ativos chegaram à etapa Projeto. Confira os campos pendentes e os trechos destacados antes da emissão final.</p>`;
     if(tipo==="doc"){const {baixarDocx}=await Promise.resolve(documentoDocx);await baixarDocx(aviso+resultado.html,titulo,timbrado,`${nomeArq}${documentoCompleto ? "" : "-previa"}.docx`);}else baixarArquivo(`${nomeArq}.html`,documentoWord(aplicarTimbrado(aviso+resultado.html,timbrado),titulo),"text/html;charset=utf-8");
@@ -7041,12 +7052,13 @@ function FichaComercialOffline({ db, pk, cliente, usuario, conexao, comercial, m
   };
   const salvar = async () => { await comercial.salvarCliente(pk.remessaId, cliente.id, f); setToast("Dados guardados no aparelho."); };
   const baixarFoto = async (foto) => {
+    try{await exigirAcao("clientes","exportar");await exigirAcao("documentos","exportar");}catch(e){setToast(e.message);return false;}
     const dataUrl = await armazenamento.get(foto.chave);
     if (!dataUrl) { setToast("Foto não encontrada no aparelho."); return; }
     baixarArquivo(`${cliente.codigo}-${foto.tipo}-${foto.id.slice(-4)}.jpg`, await (await fetch(dataUrl)).blob(), "image/jpeg");
   };
   const baixarTodas = async () => {
-    for (const foto of cliente.fotos) await baixarFoto(foto); // eslint-disable-line no-await-in-loop
+    for (const foto of cliente.fotos) {if(await baixarFoto(foto)===false)return;} // eslint-disable-line no-await-in-loop
     await comercial.marcarBaixadas(pk.remessaId, cliente.id);
     setToast("Arquivos baixados. Guarde-os no servidor interno e depois apague do aparelho.");
   };
@@ -8183,6 +8195,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
   const [relatorio, setRelatorio] = useState(null);
   const baixar = async (arq) => {
     try {
+      await exigirAcao("metas","exportar"); await exigirAcao("documentos","exportar");
       const dataUrl = await armazenamento.get(arq.chave);
       if (!dataUrl) throw new Error("arquivo não encontrado");
       baixarArquivo(arq.nome, await (await fetch(dataUrl)).blob(), arq.tipo);
@@ -8967,7 +8980,7 @@ function TermoCompromisso({ db, p, usuario, podeEditar, mutar, setToast }) {
       {bloqueio && <p role="status" className="ajuda">{bloqueio}</p>}
       {previa && (
         <Modal titulo="Termo de compromisso" largura={920} onFechar={() => setPrevia(null)}
-          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo} onClick={() => baixar("docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo} onClick={() => baixar("pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
+          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar("docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar("pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
           {lacunasDoDocumento(previa).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa).tracos} campo(s) em branco no texto</Tag></div>}
           <PreviaDocumento html={previa} titulo="Termo de compromisso" timbrado={timbrado} />
         </Modal>
@@ -9115,7 +9128,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
       )}
       {previa && (
         <Modal titulo={previa.doc.nome} largura={920} onFechar={() => setPrevia(null)}
-          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo} onClick={() => baixar(previa.doc, previa.html, "docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo} onClick={() => baixar(previa.doc, previa.html, "pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
+          rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar(previa.doc, previa.html, "docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar(previa.doc, previa.html, "pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
           {previa.doc.id === "procuracao" && previa.procuradores?.length > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">Representantes: {previa.procuradores.join(", ")}</Tag></div>}
           {lacunasDoDocumento(previa.html).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa.html).tracos} campo(s) em branco no texto</Tag></div>}
           {previa.doc.id === "contrato" && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">{resumoCondicoes(condicoes)}</Tag> <span className="ajuda" style={{ margin: 0 }}>{p.comercial ? "condição própria deste morador" : `regra do núcleo ${n?.codigo || ""}`}</span></div>}
@@ -10162,9 +10175,10 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   };
   const baixarKML = async () => {
     try {
+      await exigirAcao("nucleos","exportar");
       const texto = await armazenamento.get(geo.chave);
       baixarArquivo(geo.arquivo?.replace(/\.kmz$/i, ".kml") || `${n.codigo}.kml`, texto, "application/vnd.google-earth.kml+xml");
-    } catch (e) { setToast("O arquivo não está mais guardado neste aparelho."); }
+    } catch (e) { setToast(e.message||"O arquivo não está mais guardado neste aparelho."); }
   };
   const dentroDoNucleo = (ponto) => {
     if (!geo) return true;
@@ -10265,7 +10279,7 @@ const ASSOC_TIPOS = [["plano", "Plano de Trabalho"], ["nucleo", "Processo"], ["o
 // No ERP quem gerencia e aprova metas são Administrador, Diretor Técnico, Diretor de Projetos e Pós-protocolo
 // No Integração só a Diretoria cria e aprova metas; o Pós-protocolo recebe e executa as suas
 const gerenciaMetas = (u) => u.setor === "diretoria";
-const aprovaMetas = (u) => gerenciaMetas(u);
+const aprovaMetas = (u) => acaoPermitida(u,"metas","aprovar",gerenciaMetas(u));
 const gerenciaOS = (u) => ["diretoria", "posprotocolo"].includes(u.setor);
 const respMeta = responsavelMeta;
 const vePendenteAprovacao = (m) => m.status === "Aguardando aprovação";
@@ -10560,6 +10574,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   };
   const baixarAnexo = async (a) => {
     try {
+      await exigirAcao("metas","exportar"); await exigirAcao("documentos","exportar");
       const dataUrl = await armazenamento.get(a.chave);
       if (!dataUrl) throw new Error("arquivo não encontrado");
       baixarArquivo(a.nome, await (await fetch(dataUrl)).blob(), a.tipo);
@@ -11680,7 +11695,7 @@ function PaginaPlanos({ db, usuario, ir, mutar, setToast }) {
     <div className="contem">
       <div className="cabeca">
         <div><h1>Planos de trabalho</h1><p>Planos avulsos ou vinculados a clientes, com prazos, responsáveis e entregáveis.</p></div>
-        {perm.planos && <button className="btn btn-primario" onClick={() => setNovo(true)}><Plus size={16} />Novo plano</button>}
+        {perm.criarPlanos && <button className="btn btn-primario" onClick={() => setNovo(true)}><Plus size={16} />Novo plano</button>}
       </div>
       <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
         {planos.map((p) => {
@@ -11815,7 +11830,7 @@ function PaginaPlano({ db, usuario, planoId, ir, mutar, setToast }) {
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
         <div className="barra-progresso"><span style={{ width: `${(feitas / p.etapas.length) * 100}%` }} /></div>
       </div>
-      {!!p.documentos?.length && <Secao titulo="Documentos do plano">{p.documentos.map(a=><button key={a.id} className="btn btn-sm" onClick={async()=>{try{const url=await armazenamento.get(a.chave);baixarArquivo(a.nome,await(await fetch(url)).blob(),a.tipo);}catch(e){setToast(e.message);}}}><Download size={14}/>{a.nome}</button>)}</Secao>}
+      {!!p.documentos?.length && <Secao titulo="Documentos do plano">{p.documentos.map(a=><button key={a.id} className="btn btn-sm" onClick={async()=>{try{await exigirAcao("planos","exportar","planos_trabalho",p.erpRef||p.id);await exigirAcao("documentos","exportar");const url=await armazenamento.get(a.chave);baixarArquivo(a.nome,await(await fetch(url)).blob(),a.tipo);}catch(e){setToast(e.message);}}}><Download size={14}/>{a.nome}</button>)}</Secao>}
       <p className="ajuda" style={{ margin: "0 0 8px" }}>Arraste uma etapa pela alça para mudar a ordem do plano.</p>
       <div className="flex flex-col gap-2">
         {[...p.etapas].sort((a, b) => a.ordem - b.ordem).map((e, i, todas) => {
@@ -12014,7 +12029,7 @@ function PaginaChat({ db, usuario, conversaId, ir, mutar, setToast, abrirJanela 
                       {!meu && <span className="ajuda" style={{ margin: 0 }}>{(db.usuarios || []).find((u) => u.id === m.autorId)?.nome || "Usuário"}</span>}
                       {m.respostaId && <CitacaoMensagem mensagem={atual.mensagens.find(x => x.id === m.respostaId)} usuarios={db.usuarios || []} usuarioId={usuario.id} onIr={() => irParaMensagem(fim.current, m.respostaId)}/>}
                       <span style={estiloMensagem(m)}><TextoFormatado texto={m.texto} /></span>
-                      {m.arquivoERP && <button className="btn btn-sm" onClick={async()=>{try{const url=await lerArquivoERP(`erp-storage|erp-chat|${m.arquivoERP.caminho}`);baixarArquivo(m.arquivoERP.nome,await(await fetch(url)).blob());}catch(e){setToast(e.message);}}}><Download size={13}/>{m.arquivoERP.nome||'Baixar anexo'}</button>}
+                      {m.arquivoERP && <button className="btn btn-sm" onClick={async()=>{try{await exigirAcao("chat","exportar");const url=await lerArquivoERP(`erp-storage|erp-chat|${m.arquivoERP.caminho}`);baixarArquivo(m.arquivoERP.nome,await(await fetch(url)).blob());}catch(e){setToast(e.message);}}}><Download size={13}/>{m.arquivoERP.nome||'Baixar anexo'}</button>}
                       <BotaoResponder onClick={() => resposta.responder(m)}/>
                       <span className="hora-msg">{dataHoraBR(m.data)}</span>
                     </div>

@@ -1,3 +1,4 @@
+import {registrarContrato,limparContratos} from './permissoes-contrato.js';
 import {ideiaPlanejamento} from './planejamento-metas.js';
 import {buscarREST} from './transporte-rest.js';
 import {setorDoPerfilERP} from './permissoes.js';
@@ -15,6 +16,7 @@ const VALIDADE_INDICE_MS = 5 * 60 * 1000;
 export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceJob = null; indiceCarregadoEm = 0; }
 export function obterIndiceClientes() { return session ? indiceClientes : null; }
 export function definirSessao(dados) {
+  if (!dados || dados.user?.id !== session?.user?.id) limparContratos();
   if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) invalidarIndiceClientes();
   session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
@@ -56,6 +58,7 @@ const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_rece
 const compositeOrder = { integracao_agente_estrategias: 'agente', integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
 export async function tokenTempoReal(){if(!session)return null;if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});return session?.access_token||null;}
 export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
+  if(!tabelas||tabelas.includes("profiles")){const contrato=await requisicao("rpc/integracao_atribuicoes_contrato_ler",{method:"POST",body:"{}"});registrarContrato(session?.user?.id,contrato); }
   const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {

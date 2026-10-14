@@ -10,7 +10,7 @@ export function contatosDaCarga(carga,aliases,nucleo) {
   }
   return [...rows.values()].sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),'pt-BR',{numeric:true})||a.nome.localeCompare(b.nome,'pt-BR'));
 }
-export async function carregarContatosNucleo({nucleoId,authorization,fetchImpl=fetch,url=process.env.VITE_ERP_SUPABASE_URL||'https://ycdsyilyvaxslkwbkxyo.supabase.co',apikey=process.env.VITE_ERP_SUPABASE_KEY||'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4'}) {
+export async function carregarContatosNucleo({nucleoId,authorization,exportar=false,fetchImpl=fetch,url=process.env.VITE_ERP_SUPABASE_URL||'https://ycdsyilyvaxslkwbkxyo.supabase.co',apikey=process.env.VITE_ERP_SUPABASE_KEY||'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4'}) {
   if(!uuid(nucleoId))throw new ErroContatos('Selecione um NUI válido e confirme o registro.',400);
   if(!/^Bearer \S+$/.test(authorization||''))throw new ErroContatos('Entre novamente para exportar.',401);
   const headers={apikey,Authorization:authorization,'Content-Type':'application/json'};
@@ -21,6 +21,7 @@ export async function carregarContatosNucleo({nucleoId,authorization,fetchImpl=f
   const nucleos=await request('/rest/v1/processos_kanban?select=id,nucleo,municipio,estado&id=eq.'+encodeURIComponent(nucleoId));
   if(nucleos.length!==1||nucleos[0].id!==nucleoId)throw new ErroContatos('NUI não encontrado no seu acesso. Confirme a seleção.',404);const nucleo=nucleos[0];
   if(!nucleo.municipio||!nucleo.estado)throw new ErroContatos('Confirme o município e a UF do NUI no cadastro antes de exportar.',409);
+  if(exportar){for(const recurso of ["clientes","nucleos"]){const permitido=await request("/rest/v1/rpc/integracao_atribuicoes_autorizar",{p_recurso:recurso,p_acao:"exportar",p_tabela:"processos_kanban",p_registro:nucleoId});if(permitido!==true)throw new ErroContatos("Exportação bloqueada nas atribuições.",403);}}
   const municipios=await request('/rest/v1/fin_receb_municipios?select=id,nome,uf&nome=eq.'+encodeURIComponent(nucleo.municipio)+'&uf=eq.'+encodeURIComponent(nucleo.estado||'SC'));
   if(municipios.length!==1)throw new ErroContatos('Não foi possível identificar um único município autorizado para este NUI.',409);
   const extras=await request('/rest/v1/integracao_nucleos?select=registro_id&colecao=eq.nucleos&referencia_tabela=eq.processos_kanban&referencia_id=eq.'+encodeURIComponent(nucleoId));

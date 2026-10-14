@@ -1,3 +1,4 @@
+import {acaoPermitida} from './permissoes-contrato.js';
 export const SETORES = {
   diretoria: { nome: "Diretoria", descricao: "Acesso total, como administrador" },
   comercial: { nome: "Comercial", descricao: "Mobilização, contrato e análise documental" },
@@ -27,7 +28,9 @@ export function permissoes(u) {
     criarNucleosRemessas: !!u && u.ativo !== false,
     criarMoradores: !!u && u.ativo !== false,
     financeiro: !!u && u.ativo !== false && (dir || s === "financeiro"),
-    planos: dir || s === "comercial" || s === "financeiro",
+    planos: acaoPermitida(u,"planos","editar",dir || s === "comercial" || s === "financeiro"),
+    criarPlanos: acaoPermitida(u,"planos","criar",dir || s === "comercial" || s === "financeiro"),
+    acao: (recurso,acao,herdado=true) => acaoPermitida(u,recurso,acao,herdado),
     verCPF: s === "financeiro" || dir || s === "comercial" || s === "projeto",
     cadastro: s === "financeiro" || dir || s === "comercial",
     social: dir || s === "comercial",

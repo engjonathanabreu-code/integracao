@@ -1,0 +1,10 @@
+import fs from 'node:fs';import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url)),app=fs.readFileSync(root+'src/App.jsx','utf8');
+const trecho=app.slice(app.indexOf('const CAMPOS_PADRAO ='),app.indexOf('const USUARIOS_PADRAO ='));
+const padrao=new Function(trecho+';return {campos:CAMPOS_PADRAO,checklist:CHECKLIST_CAMPO_PADRAO};')();
+const defaults="create function integracao_atribuicoes_privado.padroes_fluxo() returns jsonb language sql immutable set search_path='' as $$select $padroes$"+JSON.stringify(padrao)+"$padroes$::jsonb$$;\n";
+const bloco='-- BEGIN EXISTING WORKFLOW EVALUATION\n'+defaults+fs.readFileSync(root+'supabase/operacoes/atribuicoes-fluxo.sql','utf8')+'\n-- END EXISTING WORKFLOW EVALUATION\n';
+const path=root+'supabase/migrations/20261014001107_atribuicoes_contrato_especifico.sql',sql=fs.readFileSync(path,'utf8');
+const inicio=sql.indexOf('-- BEGIN EXISTING WORKFLOW EVALUATION'),fim=sql.indexOf('-- END EXISTING WORKFLOW EVALUATION');
+if(inicio<0||fim<inicio)throw Error('Marcadores ausentes');
+fs.writeFileSync(path,sql.slice(0,inicio)+bloco+sql.slice(fim+'-- END EXISTING WORKFLOW EVALUATION\n'.length));
