@@ -1,3 +1,4 @@
+import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoResidencia, limiteResidencia, diaReferenciaResidencia} from './prazo-residencia.js';
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
 import {registrarVerificacaoHumana} from './documentos-verificacao-humana.js';
@@ -502,7 +503,7 @@ function rotuloCaminho(k, defs) {
 const REGRAS_PADRAO = [
   { id: "rg_validade", categoria: "pessoal", tipos: ["identidade", "identidade_conjuge"], nome: "CNH dentro da validade", instrucao: "Se o documento for CNH, confira se a data de validade é posterior a hoje. RG não tem validade: considere atendida.", gravidade: "alerta", ativa: true },
   { id: "rg_nome", categoria: "pessoal", tipos: ["identidade", "identidade_conjuge", "estado_civil", "comp_residencia", "comp_renda"], nome: "Nome confere com o cadastro", instrucao: "O nome no documento deve ser o do requerente ou do cônjuge cadastrados. Aceite abreviação de nomes do meio. Nome de outra pessoa não atende.", gravidade: "bloqueia", ativa: true },
-  { id: "rg_residencia_90", categoria: "pessoal", tipos: ["comp_residencia"], nome: "Comprovante de residência recente", instrucao: "A data de emissão ou de vencimento deve estar dentro dos últimos 90 dias.", gravidade: "bloqueia", ativa: true },
+  { id: "rg_residencia_90", categoria: "pessoal", tipos: ["comp_residencia"], nome: "Comprovante de residência recente", instrucao: INSTRUCAO_RESIDENCIA_SEIS_MESES, gravidade: "bloqueia", ativa: true },
   { id: "rg_residencia_titular", categoria: "pessoal", tipos: ["comp_residencia"], nome: "Titular do comprovante", instrucao: "O titular deve ser o requerente ou o cônjuge. Se estiver em nome de terceiro, não atende e informe o nome na observação.", gravidade: "alerta", ativa: true },
   { id: "rg_certidao", categoria: "pessoal", tipos: ["estado_civil"], nome: "Averbações legíveis", instrucao: "Se houver averbação de divórcio, separação ou óbito, ela deve estar legível e o estado civil deve refletir a averbação.", gravidade: "alerta", ativa: true },
   { id: "rg_renda", categoria: "pessoal", tipos: ["comp_renda"], nome: "Renda recente e com valor", instrucao: "O documento deve mostrar o valor da renda mensal e ser dos últimos 3 meses.", gravidade: "alerta", ativa: true },
@@ -979,7 +980,7 @@ async function analisarDocumentoIA(arquivoBruto, tipoEsperado, regras, pessoas, 
     ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
     : { type: "image", source: { type: "base64", media_type: arquivo.type, data: base64 } };
   base64 = null; // a cópia local some; o bloco some ao fim da função
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = diaReferenciaResidencia();
   const listaRegras = regras.length
     ? regras.map((r) => `- id "${r.id}" (vale para: ${r.tipos.map((t) => DOC_TIPOS[t]).join(", ")}): ${r.nome}. ${r.instrucao}`).join("\n")
     : "- nenhuma regra cadastrada";
@@ -1006,11 +1007,12 @@ Faça o trabalho em quatro passos, nesta ordem:
 
 Regras da Integral para verificar. Avalie cada regra que vale para o tipo identificado; para as demais use "nao_aplicavel":
 ${listaRegras}
+${regras.some(r => r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES) ? `Para a regra padrão de residência: data limite inclusiva ${limiteResidencia(hoje)}; hoje ${hoje}. Não confunda com datas históricas de posse.` : ""}
 
 Tipos de documento aceitos, responda com o id: ${listaTipos}. Se nenhum servir, use "outro".
 
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
-{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|corequerente|ocupante|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","historicoPosse":"","emissao":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":"","cnpj":"","naturalidade":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
+{"tipo":"id do tipo","legivel":true,"confianca":0.9,"pessoa":"requerente|conjuge|corequerente|ocupante|outro_familiar|terceiro|indefinido","campos":{"nome":"","cpf":"","rg":"","rgOrgao":"","nascimento":"AAAA-MM-DD","mae":"","pai":"","estadoCivil":"","regimeBens":"","dataUniao":"AAAA-MM-DD","nomeConjuge":"","profissao":"","renda":"","logradouro":"","numero":"","bairro":"","municipio":"","uf":"","cep":"","area":"","historicoPosse":"","emissao":"AAAA-MM-DD","vencimento":"AAAA-MM-DD","validade":"AAAA-MM-DD","orgaoEmissor":"","cnpj":"","naturalidade":""},"vinculo":{"pertenceAoProcesso":"sim|provavel|nao|indefinido","explicacao":"até 25 palavras dizendo com quem bate e por quê","divergencias":["campo: cadastro X, documento Y"]},"analise":{"resumo":"até 30 palavras sobre o que é o documento e o que ele comprova","encontrado":["o que foi lido de útil, uma frase curta por item"],"melhorar":["o que falta ou precisa ser refeito, uma frase curta por item, com o motivo"],"qualidade":"boa|regular|ruim"},"alertas":[],"regras":[{"id":"","resultado":"atende|nao_atende|nao_aplicavel","observacao":"até 15 palavras"}]}
 Orientações:
 - Em "campos", só o que está escrito no documento. Não invente. Omita chaves sem valor.
 - RG e CNH são "identidade". Certidões de nascimento ou casamento são "estado_civil". Contratos de compra e venda, cessões e declarações de posse são "comp_posse".
@@ -2608,7 +2610,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     const aplicar = linhas.filter((l) => !l.diverge);
     aplicar.forEach((l) => setPath(novo, l.path, l.sugerido));
     const avaliadas = regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), tipo).map((r) => {
-      const got = (res.regras || []).find((x) => x.id === r.id);
+      const got = tipo === "comp_residencia" && r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES ? avaliarPrazoResidencia(res.campos) : (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     novo.docs.push({ id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
@@ -5420,6 +5422,7 @@ function EditorRegra({ inicial, onSalvar, onFechar }) {
 }
 
 function ConfigRegras({ db, mutar, setToast }) {
+  db = db._municipioRegras ? db : {...db,regrasIA:regrasResidenciaPadrao(db.regrasIA)};
   const [editando, setEditando] = useState(null);
   const [excluir, setExcluir] = useState(null);
   const [excluirTipo, setExcluirTipo] = useState(null);
@@ -7326,7 +7329,7 @@ function ComercialOffline({ db, usuario, comercial, conexao, ir, mutar, setToast
 // Enquanto não houver cópia, valem as regras gerais do sistema. Só a Diretoria altera.
 const CHAVE_MODELO_PRF_MUN = "integracao-prf-modelo-mun-v1-";
 
-const regrasDoMunicipio = (db, municipioId) => ajustesDoMunicipio(db, municipioId)?.regrasIA || db.regrasIA || [];
+const regrasDoMunicipio = (db, municipioId) => ajustesDoMunicipio(db, municipioId)?.regrasIA ?? regrasResidenciaPadrao(db.regrasIA);
 
 const temAjustePRF = (db, municipioId) => !!ajustesDoMunicipio(db, municipioId)?.prf;
 const municipioDoProcesso = (db, p) => p?.municipioId || null;
