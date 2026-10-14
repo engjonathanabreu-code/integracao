@@ -1,3 +1,4 @@
+import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
 import {acaoPermitida} from './permissoes-contrato.js';
 import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoResidencia, limiteResidencia, diaReferenciaResidencia} from './prazo-residencia.js';
@@ -502,6 +503,7 @@ function rotuloCaminho(k, defs) {
 }
 
 /* ---------------- configurações padrão ---------------- */
+
 const REGRAS_PADRAO = [
   { id: "rg_validade", categoria: "pessoal", tipos: ["identidade", "identidade_conjuge"], nome: "CNH dentro da validade", instrucao: "Se o documento for CNH, confira se a data de validade é posterior a hoje. RG não tem validade: considere atendida.", gravidade: "alerta", ativa: true },
   { id: "rg_nome", categoria: "pessoal", tipos: ["identidade", "identidade_conjuge", "estado_civil", "comp_residencia", "comp_renda"], nome: "Nome confere com o cadastro", instrucao: "O nome no documento deve ser o do requerente ou do cônjuge cadastrados. Aceite abreviação de nomes do meio. Nome de outra pessoa não atende.", gravidade: "bloqueia", ativa: true },
@@ -6472,6 +6474,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     ["ponto", "Folha Ponto", Clock],
     podeSupervisionarAgentes(usuario) && ["restrito", "Restrito", Lock],
     acessoCRM(usuario).admin && ["acessos", "Controle de acessos", Lock],
+    administradorDocumental(usuario) && ["documentalChatwoot", "Coleta de documentos", Sparkles],
     perm.config && ["regras", "Regras da IA", Sparkles],
     podeUsarAgentes(usuario) && ["agentes", "Agentes IA", Sparkles],
     perm.importar && ["importar", "Importar do ERP", DatabaseZap],
@@ -6509,6 +6512,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {atual === "campos" && (perm.config
           ? <PaginaCamposConfig db={db} usuario={usuario} sub={sub} setSub={(x) => ir({ pag: "config", aba: "campos", sub: x })} mutar={mutar} setToast={setToast} />
           : <ConfigPRF db={db} usuario={usuario} mutar={mutar} setToast={setToast} />)}
+        {atual === "documentalChatwoot" && administradorDocumental(usuario) && <DocumentalChatwootConfig usuario={usuario} />}
         {atual === "agentes" && <EstrategiasAgentes usuario={usuario} />}
         {atual === "historico" && (
           <div className="flex flex-col gap-3">

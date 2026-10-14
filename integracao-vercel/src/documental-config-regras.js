@@ -1,0 +1,2 @@
+export function administradorDocumental(usuario){return usuario?.ativo!==false&&String(usuario?.tipoERP||usuario?.tipo||'').trim().toLowerCase()==='administrador';}
+export function idPastaDocumental(valor){const s=String(valor||'').trim();if(/^[A-Za-z0-9_-]{10,200}$/.test(s))return s;try{const u=new URL(s);if(u.hostname!=='drive.google.com'||u.protocol!=='https:'||u.username||u.password)return '';return u.pathname.match(/^\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]{10,200})\/?$/)?.[1]||'';}catch{return '';}}
