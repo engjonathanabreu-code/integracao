@@ -46,3 +46,5 @@
 .rb .fi-mobile{display:none}
 @media(max-width:1100px){.rb .fi-mobile{display:block}}
 @media(max-width:640px){.rb .fi-card:not(.fi-card-compacto){height:416px}.rb .fi-card:not(.fi-card-compacto) .fi-card-acoes{grid-template-rows:repeat(2,minmax(44px,auto))}.rb .fi-form{grid-template-columns:minmax(0,1fr)}.rb .fi-nuvem{padding:70px 16%;}.rb .fi-resumo li{gap:6px;padding:10px 12px;font-size:11px}.rb .fi-painel{padding:14px}}
+
+.rb .fi-filtro{margin-bottom:16px;align-items:end}.rb .fi-filtro label{display:grid;gap:5px;min-width:0}.rb .fi-filtro .inp{max-width:100%}.rb .fi-legado{padding:16px;margin-top:20px}.rb .fi-legado summary{font-weight:700;cursor:pointer}

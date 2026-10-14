@@ -20,6 +20,7 @@ export function definirSessao(dados) {
   if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) invalidarIndiceClientes();
   session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
+export function idDaSessao() { return session?.user?.id || null; }
 export async function requisicao(path, options = {}) {
   if (!session) throw new Error('Entre novamente com sua conta para acessar os dados compartilhados.');
   if (session.expires_at < Date.now() + 60000) {
