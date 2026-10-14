@@ -1159,7 +1159,7 @@ function montarLinhas(res, rascunho, pessoaEscolhida = "") {
   const linhas = [];
   Object.entries(res.campos || {}).forEach(([k, bruto]) => {
     const m = MAPA_IA[k];
-    if (!m || !preenchido(bruto) || (!m.path && !destino)) return;
+    if (!m || !preenchido(bruto) || !destino || (m.path && !["requerente","conjuge"].includes(destino.id))) return;
     const path = m.path || `${pessoa}.${m.campo}`;
     const sugerido = m.fmt ? m.fmt(bruto) : String(bruto).trim();
     if (!sugerido) return;
@@ -2605,6 +2605,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     let tipo = DOC_TIPOS[res.tipo] ? res.tipo : "outro";
     if (tipo === "identidade" && res.pessoa === "conjuge") tipo = "identidade_conjuge";
     const r2 = { ...res, tipo };
+    const destino = destinoDocumento(r2, extrair(np));
     const linhas = montarLinhas(r2, extrair(np));
     const novo = clone(np);
     const aplicar = linhas.filter((l) => !l.diverge);
@@ -4095,7 +4096,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     let tipo = DOC_TIPOS[res.tipo] ? res.tipo : "outro";
     if (tipo === "identidade" && res.pessoa === "conjuge") tipo = "identidade_conjuge";
     const avaliadas = regrasDocumentoCliente(regras, tipo).map((r) => {
-      const got = (res.regras || []).find((x) => x.id === r.id);
+      const got = tipo === "comp_residencia" && r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES ? avaliarPrazoResidencia(res.campos) : (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     const r2 = { ...res, tipo };
@@ -4106,7 +4107,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     setResultado({ ...r2, simulado, linhas, regrasAvaliadas: avaliadas, meta });
     if (!processandoRef.current) setEstado("resultado");
     const analiseChave = !simulado ? res.metaIA?.chave : null;
-    const doc = { ...(analiseChave ? { analiseChave, modeloIA: res.metaIA.model } : {}), id: uid("d"), tipo, nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true };
+    const doc = { ...(analiseChave ? { analiseChave, modeloIA: res.metaIA.model } : {}), id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true };
     const falhas = avaliadas.filter((x) => x.resultado === "nao_atende").length;
     if (analiseChave && (registradosRef.current.has(analiseChave) || p.docs.some(d => d.analiseChave === analiseChave))) return;
     mutar((d) => { const docs = d.processos.find((x) => x.id === p.id).docs; if (!analiseChave || !docs.some(x => x.analiseChave === analiseChave)) docs.push(doc); return d; }, "Documento analisado e arquivo descartado", { processoId: p.id, remessaId: p.remessaId, detalhe: `${DOC_TIPOS[tipo]} (${doc.origem}), ${avaliadas.length} regras, ${falhas} não atendidas` });

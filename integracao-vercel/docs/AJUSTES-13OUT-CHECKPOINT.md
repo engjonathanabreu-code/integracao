@@ -41,4 +41,18 @@ PDF/Word: declaração de renda, contrato e distrato; PDF do termo de compromiss
 
 Suíte Integração mais recente: 856 testes esperados após teste adicional de metadados; conferir log final em ../../ajustes-page-evidencias/testes-build-final.log antes de citar contagem. Suíte Financeiro: 84/84 passaram. Financeiro não possui script build: módulos alterados e server.js passaram em node --check; servidor local atende em http://127.0.0.1:5182. Nenhuma integração de banco, pagamento ou IA real foi executada.
 
-Permanecem pendentes: prazo de seis meses, limites de núcleos, dados/timbrado oficiais MCL, revisão final de risco SQL e geração/aplicação formal das migrations. Nenhum push/deploy autorizado ou executado para este conjunto. Permissões noturnas serão implementadas em ../integracao-permissoes, branch separada codex/permissoes-contrato-noite, baseada em main.
+## Retomada para publicação isolada — 14/10
+
+O usuário autorizou publicar os demais ajustes completos separadamente caso o contrato de permissões não esteja integralmente validado. A branch WIP de permissões permanece excluída deste conjunto; os direitos atuais são preservados.
+
+Prazo de residência concluído em seis meses calendários, com limite inclusivo, fim de mês, emissão/vencimento e revisão humana quando falta data. Customizações explícitas e resultados antigos preservados. Posse não alterada.
+
+O QA adicional encontrou e corrigiu destino indefinido no cadastro novo e falta de vínculo da pessoa no histórico documental. O teste real da UI, com resposta simulada e sem IA paga, passou em 1440/390 px: preencher/salvar RG somente do ocupante; preservar requerente; registrar pessoa do documento; aceitar residência na data-limite; rejeitar data antiga; exigir revisão sem data; incluir vencimento no prompt. Teste dos handlers reais cobre reordenação por ID e documento de terceiro sem preenchimento.
+
+Concorrência testada em PostgreSQL temporário local com duas conexões reais: bloqueio observado, atualização com snapshot antigo rejeitada, inserção concorrente rejeitada e parcelas pagas/Ailos preservadas. Nenhuma conexão de teste ao banco real.
+
+Árvore final: **861/861 testes e build** (conferir `ajustes-page-evidencias/testes-build-publicacao-final.log`). QA anterior de parcelas, funil, municípios, perfis e documentos permanece válido; não houve alteração desses fluxos desde os testes, exceto os handlers documentais revalidados acima.
+
+Migração formal criada pelo CLI: `20261014005548_ajustes_cpf_menores_revisao_parcelas.sql`. Instala somente funções e preserva os autorizadores e políticas existentes; não altera registros durante a instalação. A aplicação e o deployment devem ser reportados separadamente depois de confirmados.
+
+MCL permanece sem cadastro/timbrado oficiais, com seleção incompleta bloqueada e fallback Integral preservado. Não existe limite arbitrário para o número de núcleos; não foram excluídos ou bloqueados núcleos por quantidade.
