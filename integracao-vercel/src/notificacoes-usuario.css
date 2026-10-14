@@ -1,4 +1,4 @@
-.rb .painel-notif.notificacoes-painel{width:min(440px,calc(100vw - 24px));max-height:min(720px,calc(100dvh - 88px));display:flex;flex-direction:column;box-shadow:var(--shadow-modal);color:var(--text)}
+.rb .painel-notif.notificacoes-painel{width:min(440px,calc(100vw - 24px));max-height:min(720px,calc(100dvh - 88px));display:flex;flex-direction:column;box-shadow:var(--shadow-modal);color:var(--text);white-space:normal}
 .rb .notificacoes-cabeca{flex-shrink:0;padding:16px;border-bottom:1px solid var(--line);background:var(--card)}
 .rb .notificacoes-titulo{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .rb .notificacoes-titulo h2{font-size:18px;margin:0;line-height:1.35}
