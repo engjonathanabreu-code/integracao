@@ -53,6 +53,6 @@ Concorrência testada em PostgreSQL temporário local com duas conexões reais: 
 
 Árvore final: **861/861 testes e build** (conferir `ajustes-page-evidencias/testes-build-publicacao-final.log`). QA anterior de parcelas, funil, municípios, perfis e documentos permanece válido; não houve alteração desses fluxos desde os testes, exceto os handlers documentais revalidados acima.
 
-Migração formal criada pelo CLI: `20261014005548_ajustes_cpf_menores_revisao_parcelas.sql`. Instala somente funções e preserva os autorizadores e políticas existentes; não altera registros durante a instalação. A aplicação e o deployment devem ser reportados separadamente depois de confirmados.
+Migração formal criada pelo CLI: `20261014010006_ajustes_cpf_menores_revisao_parcelas.sql`. Instala somente funções e preserva os autorizadores e políticas existentes; não altera registros durante a instalação. A aplicação e o deployment devem ser reportados separadamente depois de confirmados.
 
 MCL permanece sem cadastro/timbrado oficiais, com seleção incompleta bloqueada e fallback Integral preservado. Não existe limite arbitrário para o número de núcleos; não foram excluídos ou bloqueados núcleos por quantidade.
