@@ -1,35 +1,44 @@
 export const CARTEIRAS_INSTITUCIONAIS = [
   {id:'reserva', nome:'Reserva', descricao:'Núcleos qualificados aguardando capacidade.'},
-  {id:'preparacao', nome:'Preparação', descricao:'Construção institucional e pré-mobilização dos próximos lançamentos.'},
+  {id:'preparacao', nome:'Preparação', descricao:'Construção institucional e pré-mobilização.'},
   {id:'venda', nome:'Venda', descricao:'Núcleos lançados, com produção de contratos.'},
 ];
 const chaveCidade = (nome, uf) => `${String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}|${String(uf || '').trim().toUpperCase()}`;
 export const funilVazio = () => ({versao:1, cidades:[], nucleos:[], historico:[]});
-export function alterarFunil(base, acao, {municipios, nucleos, autor, data = new Date().toISOString()}) {
+export function alterarFunil(base, acao, {institucionais = [], autor, data = new Date().toISOString()}) {
   const novo = structuredClone(base || funilVazio());
   if (!autor) throw new Error('Responsável ausente.');
   if (acao.tipo === 'cidade') {
-    const municipio = acao.municipioId ? municipios.find(m => m.id === acao.municipioId) : null;
-    if (acao.municipioId && !municipio) throw new Error('Município não encontrado.');
-    const nome = (municipio?.nome || acao.nome || '').trim(), uf = (municipio?.uf || acao.uf || '').trim().toUpperCase();
-    if (nome.length < 2 || !/^[A-Z]{2}$/.test(uf)) throw new Error('Informe cidade e UF.');
-    if (novo.cidades.some(c => c.id !== acao.id && chaveCidade(c.nome,c.uf) === chaveCidade(nome,uf))) throw new Error('A cidade já está no fluxo.');
     const anterior = novo.cidades.find(c => c.id === acao.id);
-    if (anterior?.municipioId && anterior.municipioId !== municipio?.id && novo.nucleos.some(n => n.municipioId === anterior.municipioId)) throw new Error('A cidade já possui núcleos no fluxo. Preserve o vínculo municipal.');
+    const institucionalId = acao.institucionalId || null;
+    if (institucionalId && !institucionais.some(c => c.id === institucionalId)) throw new Error('Cliente institucional não encontrado. Atualize a lista antes de vincular.');
+    const nome = String(acao.nome || '').trim(), uf = String(acao.uf || '').trim().toUpperCase();
+    if (nome.length < 2 || !/^[A-Z]{2}$/.test(uf)) throw new Error('Informe município e UF.');
+    if (novo.cidades.some(c => c.id !== acao.id && chaveCidade(c.nome,c.uf) === chaveCidade(nome,uf))) throw new Error('A cidade já está no fluxo.');
+    if (institucionalId && novo.cidades.some(c => c.id !== acao.id && c.institucionalId === institucionalId)) throw new Error('O cliente institucional já está vinculado a outro município do fluxo.');
+    if (anterior?.institucionalId !== institucionalId && novo.nucleos.some(n => n.cidadeId === acao.id)) throw new Error('O município já possui núcleos. Preserve o vínculo institucional.');
+    if (acao.municipioId && acao.municipioId !== anterior?.municipioId) throw new Error('Novos vínculos devem usar Clientes institucionais.');
     const etapa = acao.etapa || anterior?.etapa || 'nuvens';
     if (!['nuvens','prospeccao','carteiras'].includes(etapa)) throw new Error('Etapa inválida.');
-    if (etapa !== 'nuvens' && !municipio) throw new Error('Vincule o município cadastrado antes de avançar.');
+    if (etapa !== 'nuvens' && !institucionalId && !(anterior?.municipioId && anterior.etapa !== 'nuvens')) throw new Error('Vincule um cliente institucional antes de avançar.');
     if (etapa === 'prospeccao' && novo.cidades.filter(c => c.id !== acao.id && c.etapa === 'prospeccao').length >= 4) throw new Error('Prospecção já acompanha quatro municípios. Conclua ou devolva um deles às Nuvens antes de incluir outro.');
-    const cidade = {id:acao.id, nome, uf, municipioId:municipio?.id || null, etapa};
+    const cidade = {...anterior,id:acao.id, nome, uf, institucionalId, etapa};
     novo.cidades = [...novo.cidades.filter(c => c.id !== cidade.id), cidade];
   } else if (acao.tipo === 'nucleo') {
-    const nucleo = nucleos.find(n => n.id === acao.nucleoId);
-    if (!nucleo || !CARTEIRAS_INSTITUCIONAIS.some(c => c.id === acao.carteira)) throw new Error('Selecione núcleo e carteira válidos.');
-    const cidade = novo.cidades.find(c => c.municipioId === nucleo.municipioId);
-    if (!cidade || cidade.etapa === 'nuvens') throw new Error('O município do núcleo precisa passar pela Prospecção.');
-    novo.nucleos = [...novo.nucleos.filter(n => n.nucleoId !== nucleo.id), {nucleoId:nucleo.id, municipioId:nucleo.municipioId, carteira:acao.carteira}];
-    // A passagem ocorre por vínculo explícito, sem criar ou converter cadastros.
-    cidade.etapa = 'carteiras';
+    if (!CARTEIRAS_INSTITUCIONAIS.some(c => c.id === acao.carteira)) throw new Error('Selecione uma etapa válida.');
+    const anterior = novo.nucleos.find(n => n.nucleoId === acao.nucleoId);
+    if (anterior) {
+      // Alterar a etapa mantém todos os identificadores e vínculos anteriores.
+      anterior.carteira = acao.carteira;
+    } else {
+      const cidade = novo.cidades.find(c => c.id === acao.cidadeId);
+      if (!cidade?.institucionalId || cidade.etapa === 'nuvens') throw new Error('O município vinculado a Clientes institucionais precisa passar pela Prospecção.');
+      const nome = String(acao.nome || '').trim();
+      if (nome.length < 2 || nome.length > 120) throw new Error('Informe o nome do núcleo institucional.');
+      if (novo.nucleos.some(n => n.cidadeId === cidade.id && chaveCidade(n.nome,'') === chaveCidade(nome,''))) throw new Error('Este núcleo já está no município.');
+      novo.nucleos.push({nucleoId:acao.nucleoId,cidadeId:cidade.id,nome,carteira:acao.carteira});
+      cidade.etapa = 'carteiras';
+    }
   } else throw new Error('Ação inválida.');
   novo.historico.push({id:acao.eventoId, data, autor, acao:structuredClone(acao)});
   return novo;
