@@ -94,7 +94,7 @@ export async function lerResumoMoradores(db) {
   // Refresh the caller's session if needed, without exposing it to application state.
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   const contexto=Object.fromEntries(['nucleos','campos','checklistCampo','ajustesRequisitos','ajustesMunicipio'].map(k=>[k,db[k]]));
-  contexto.nucleos=(db.nucleos||[]).map(({id,codigo,criterio})=>({id,codigo,criterio}));
+  contexto.nucleos=(db.nucleos||[]).map(({id,codigo,criterio,municipioId})=>({id,codigo,criterio,municipioId}));
   const response=await fetch('/api/resumo-moradores',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({contexto}),signal:AbortSignal.timeout(90000)});
   const body=await response.json();
   if(!response.ok)throw new Error(body.message||'Não foi possível carregar as pendências.');

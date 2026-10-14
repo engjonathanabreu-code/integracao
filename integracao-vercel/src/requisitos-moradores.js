@@ -1,3 +1,4 @@
+import {cpfDispensado} from './pessoa-menor.js';
 import {requisitosDoMunicipio,configuracaoMunicipio} from './regras-municipio.js';
 import { confrontantesFaltando, campoConfrontante } from './confrontantes.js';
 // Shared rules: the dashboard summary and the resident detail use the same checks.
@@ -65,11 +66,11 @@ function cnpjValido(v) {
   return c.endsWith(`${d1}${d2}`);
 }
 
-const documentoValido = (x) => (ehPJ(x) ? cnpjValido(x.cnpj) : cpfValido(x.cpf));
+const documentoValido = (x) => (ehPJ(x) ? cnpjValido(x.cnpj) : (cpfDispensado(x) || cpfValido(x.cpf)));
 
 const docBloqueado = (d) => !!d?.regras?.some((r) => r.gravidade === "bloqueia" && r.resultado === "nao_atende");
 
-const docOk = (p, tipo) => (p.docs || []).some((d) => d.tipo === tipo && d.status === "validado");
+const docOk = (p, tipo) => (p.docs || []).some((d) => d.tipo === tipo && d.status === "validado" && (!d.pessoaId || d.pessoaId === (tipo === "identidade_conjuge" ? "conjuge" : "requerente")));
 
 function docStatusTexto(p, tipo) {
   const d = [...(p.docs || [])].reverse().find((x) => x.tipo === tipo);
@@ -89,7 +90,7 @@ function faltantesPessoa(x, ehRequerente) {
     return f;
   }
   if (!x.nome) f.push("nome");
-  if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
+  if (!cpfDispensado(x) && !cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
   if (!x.rg) f.push("RG");
   if (!x.nascimento) f.push("nascimento");
   if (!x.mae) f.push("nome da mãe");
@@ -103,7 +104,7 @@ function faltantesQualificacao(x) {
   if (ehPJ(x)) return faltantesPessoa(x, true);
   const f = [];
   if (!x.nome) f.push("nome");
-  if (!cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
+  if (!cpfDispensado(x) && !cpfValido(x.cpf)) f.push(x.cpf ? "CPF válido" : "CPF");
   if (!x.rg) f.push("RG");
   if (!x.nascimento) f.push("nascimento");
   if (!x.mae) f.push("nome da mãe");
@@ -140,7 +141,7 @@ function acharDuplicado(db, p) {
   return o?{codigo:o.codigo,motivo:o===c?'CPF':'nome',id:o.id}:null;
 }
 
-const contexto = (db, p) => ({ nucleo: db.nucleos.find((n) => n.id === p.nucleoId) || null, duplicado: acharDuplicado(db, p), campos: configuracaoMunicipio(db,p.municipioId,"campos")?.lista || [], checklist: checklistDoMunicipio(db,p.municipioId), ajustesReq: requisitosDoMunicipio(db,p.municipioId) });
+const contexto = (db, p) => ({ nucleo: (() => { const n = db.nucleos.find(n => n.id === p.nucleoId); return n ? {...n, criterio: db.ajustesMunicipio?.[p.municipioId]?.criterioREURB ?? n.criterio} : null; })(), duplicado: acharDuplicado(db, p), campos: configuracaoMunicipio(db,p.municipioId,"campos")?.lista || [], checklist: checklistDoMunicipio(db,p.municipioId), ajustesReq: requisitosDoMunicipio(db,p.municipioId) });
 
 function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
   const a = (ajustes || {})[etapaId] || {};
@@ -162,9 +163,10 @@ function aplicarAjustesRequisitos(lista, etapaId, ajustes, p) {
   return base;
 }
 
-function criterioNucleo(n) {
-  const teto = parseNum(n?.criterio?.rendaMaxima);
-  const sm = parseNum(n?.criterio?.salarioMinimo);
+function criterioNucleo(n, db) {
+  const criterio = db?.ajustesMunicipio?.[n?.municipioId]?.criterioREURB ?? n?.criterio;
+  const teto = parseNum(criterio?.rendaMaxima);
+  const sm = parseNum(criterio?.salarioMinimo);
   return { teto: teto && teto > 0 ? teto : null, sm: sm && sm > 0 ? sm : null };
 }
 
@@ -248,7 +250,7 @@ function requisitosPadrao(etapaId, p, ctx) {
       break;
     default:
   }
-  (ctx.campos || []).filter((c) => c.ativo && !campoConfrontante(c.id) && c.obrigatorioEtapa === etapaId)
+  (ctx.campos || []).filter((c) => c.ativo && c.id !== "cp_familia" && !campoConfrontante(c.id) && c.obrigatorioEtapa === etapaId)
     .forEach((c) => auto(`extra_${c.id}`, `${c.rotulo} preenchido`, campoPreenchido(c, p.extras?.[c.id]), "Preencha no cadastro"));
   return R;
 }

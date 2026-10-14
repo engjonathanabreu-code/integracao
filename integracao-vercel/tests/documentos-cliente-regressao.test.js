@@ -1,3 +1,4 @@
+import {cpfDispensado} from '../src/pessoa-menor.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,7 +7,7 @@ import {parseHTML} from 'linkedom';
 import {montar,dadosExemplo} from './documentos-comerciais.fixture.js';
 import {preenchido,ehPJ} from '../src/requisitos-moradores.js';
 const source=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
-const ctx={preenchido,ehPJ};vm.createContext(ctx);
+const ctx={preenchido,ehPJ,cpfDispensado};vm.createContext(ctx);
 vm.runInContext(source.slice(source.indexOf('function faltandoPara('),source.indexOf('const paragrafo ='))+';this.verificar=faltandoPara;',ctx);
 test('CNPJ satisfaz identificação de PJ sem exigir CPF, endereço ausente vira pendência',()=>{
  const doc={precisa:['nome','cpf','endereco']},p={requerente:{tipoPessoa:'juridica',nome:'Empresa',cnpj:'29212382000107'}};
