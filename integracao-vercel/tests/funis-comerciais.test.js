@@ -7,7 +7,7 @@ test('consolidado identifica responsáveis e distingue IDs iguais sem alterar os
  const f=apresentarFunis(participantes,rows,{consolidado:true});assert.deepEqual(f.cidades.map(c=>c.id),['a:c','b:c']);assert.deepEqual(f.nucleos.map(n=>n.cidadeId),['a:c','b:c']);assert.deepEqual(f.cidades.map(c=>c.responsavelNome),['Comercial A','Comercial B']);assert.deepEqual(rows,antes);
  const individual=apresentarFunis([participantes[1]],rows);assert.equal(individual.cidades.length,1);assert.equal(individual.cidades[0].id,'c');assert.equal(individual.cidades[0].nome,'Comercial B');
 });
-test('ações enviadas não contêm metadados visuais, dono ou autor',()=>{
- assert.deepEqual(acaoDoFunil({tipo:'cidade',id:'c',nome:'Cidade',uf:'SC',etapa:'prospeccao',responsavelId:'b',responsavelNome:'Pessoa',autor:'Fake'}),{tipo:'cidade',id:'c',nome:'Cidade',uf:'SC',etapa:'prospeccao'});
- assert.equal(apresentarFunis(participantes,[]).cidades.length,0);
+test('ações enviadas não contêm metadados visuais/autor são removidos; responsável só segue na entrada em Prospecção',()=>{
+ assert.deepEqual(acaoDoFunil({tipo:'cidade',id:'c',nome:'Cidade',uf:'SC',etapa:'prospeccao',responsavelId:'b',responsavelNome:'Pessoa',autor:'Fake'}),{tipo:'cidade',id:'c',nome:'Cidade',uf:'SC',etapa:'prospeccao',responsavelId:'b'});
+ assert.equal(acaoDoFunil({tipo:'cidade',id:'c',etapa:'nuvens',responsavelId:'b'}).responsavelId,undefined);assert.equal(apresentarFunis(participantes,[]).cidades.length,0);
 });

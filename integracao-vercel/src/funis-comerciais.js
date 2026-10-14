@@ -14,6 +14,6 @@ export function apresentarFunis(participantes,registros,{consolidado=false}={}) 
  return total;
 }
 export function acaoDoFunil(acao) {
- const campos=acao.tipo==='cidade'?['tipo','id','nome','uf','etapa','municipioId','institucionalId']:['tipo','nucleoId','cidadeId','nome','carteira'];
- return Object.fromEntries(campos.filter(c=>Object.hasOwn(acao,c)).map(c=>[c,acao[c]]));
+ const campos=acao.tipo==='cidade'?['tipo','id','nome','uf','etapa','municipioId','institucionalId','responsavelId']:['tipo','nucleoId','cidadeId','nome','carteira'];
+ return Object.fromEntries(campos.filter(c=>Object.hasOwn(acao,c)&&(c!=='responsavelId'||acao.etapa==='prospeccao')).map(c=>[c,acao[c]]));
 }
