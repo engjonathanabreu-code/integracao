@@ -1,0 +1,18 @@
+import {useEffect,useState} from 'react';
+import {rpcAtribuicoes} from './atribuicoes-api.js';
+const ETAPAS=[['mobilizacao','Mobilização — Comercial'],['contrato','Contrato — Comercial'],['documental','Análise documental — Comercial'],['topografia','Topografia'],['projeto','Projeto'],['prefeitura','Prefeitura — Pós-protocolo']];
+const ACOES=[['consultar','Consultar'],['campos_operacionais','Preencher campos operacionais'],['requisitos_manuais','Marcar requisitos manuais'],['avancar','Concluir/avançar'],['reabrir','Reabrir/retroceder com motivo']];
+export default function FluxoMoradoresPermissoes({alvo,usuario}){
+ const [base,setBase]=useState(null),[fluxo,setFluxo]=useState({}),[motivo,setMotivo]=useState(''),[erro,setErro]=useState(''),[ocupado,setOcupado]=useState(false),[mensagem,setMensagem]=useState('');
+ const id=alvo.erpRef||alvo.id,self=id===(usuario.erpRef||usuario.id);
+ useEffect(()=>{let vivo=true;setBase(null);setErro('');setMensagem('');setMotivo('');rpcAtribuicoes('integracao_atribuicoes_ler',{p_usuario_id:id}).then(data=>{if(vivo){setBase(data);setFluxo(data.matriz?.fluxo_moradores||{});}}).catch(e=>{if(vivo)setErro(e.message);});return()=>{vivo=false;};},[id]);
+ const mudar=(chave,valor)=>setFluxo(f=>({...f,[chave]:valor}));
+ const seletor=(chave,rotulo)=><label className="rot" key={chave}>{rotulo}<select className="inp" aria-label={rotulo} disabled={!base||ocupado||self} value={fluxo[chave]||'herdar'} onChange={e=>mudar(chave,e.target.value)}><option value="herdar">Manter atual</option><option value="permitir">Propor permitir</option><option value="negar">Propor restringir</option></select></label>;
+ return <section className="card" style={{padding:16,paddingBottom:110}}><h2>Fluxo dos moradores</h2><p>As regras setoriais atuais continuam valendo. Editar Clientes não concede avanço de etapas, validação documental ou alteração de situação.</p><p className="ajuda">Seleções diferentes de “Manter atual” são somente rascunhos para revisão. Este contrato não aplica novas liberações ao fluxo. Requisitos automáticos e opcionais continuam com suas regras atuais.</p>{self&&<p>Não é permitido alterar suas próprias atribuições.</p>}
+ {ETAPAS.map(([id,nome])=><fieldset key={id} disabled={ocupado} style={{border:'1px solid var(--line)',borderRadius:12,padding:12,marginBottom:12,minWidth:0}}><legend>{nome}</legend><div className="fg">{ACOES.map(([acao,rotulo])=>seletor(`${id}.${acao}`,`${nome}: ${rotulo}`))}</div></fieldset>)}
+ <div className="fg">{[['situacao','Alterar situação do morador'],['validar_documentos','Validar/rejeitar documentos'],['validacao_justificada','Validar com justificativa — Diretoria'],['requisitos_config','Configurar requisitos']].map(([chave,nome])=>seletor(chave,nome))}</div>
+ <label className="rot">Motivo do rascunho<textarea className="inp" value={motivo} maxLength={1000} disabled={ocupado||self} onChange={e=>setMotivo(e.target.value)}/></label>
+ <button className="btn btn-primario" disabled={!base||ocupado||self||!motivo.trim()} onClick={async()=>{setOcupado(true);setErro('');try{const matriz={...base.matriz,fluxo_moradores:fluxo};await rpcAtribuicoes('integracao_atribuicoes_salvar',{p_usuario_id:id,p_revisao_esperada:base.revisao,p_matriz:matriz,p_motivo:motivo.trim(),p_requisicao_id:crypto.randomUUID()});const nova=await rpcAtribuicoes('integracao_atribuicoes_ler',{p_usuario_id:id});setBase(nova);setMensagem('Rascunho salvo com auditoria. Acesso efetivo preservado.');setMotivo('');}catch(e){setErro(e.message);}finally{setOcupado(false);}}}>Salvar rascunho do fluxo</button>
+ {erro&&<p role="alert">{erro}</p>}{mensagem&&<p role="status">{mensagem}</p>}
+ </section>;
+}
