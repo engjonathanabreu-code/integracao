@@ -4748,10 +4748,10 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
   const [cronogramaAberto, setCronogramaAberto] = useState(false);
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [modal, setModal] = useState(null);
-  const timbradoMemoriais = useTimbrado(db, p.municipioId);
   const n = nucleoId ? nucleoDe(db, nucleoId) : null;
   const r = n ? remessaDe(db, n.remessaId) : remessaDe(db, semNucleo);
   const m = n ? municipioDe(db, n.municipioId) : r ? municipioDe(db, r.municipioId) : null;
+  const timbradoMemoriais = useTimbrado(db, m?.id);
   if ((!n && !r) || !m) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Núcleo não encontrado.</p></div>;
   const perm = cad.perm;
   const ps = (n ? db.processos.filter((p) => p.nucleoId === n.id) : db.processos.filter((p) => p.remessaId === r.id && !p.nucleoId)).sort((a, b) => compararTextos(a.codigo, b.codigo));
