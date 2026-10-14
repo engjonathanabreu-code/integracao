@@ -46,6 +46,10 @@ test('RLS e gates: negativos prevalecem, planos respeitam escopo e outros 14 per
   await como(db,1,`insert into planos_trabalho values('${id(120)}','${id(1)}','Plano criado no teste',null,'Em andamento')`);
   await como(db,1,`insert into etapas_plano values('${id(121)}','${id(120)}','Nova etapa','Pendente')`);
   await como(db,1,`update planos_trabalho set titulo='Plano de teste editado' where id='${id(120)}'`);
+  await como(db,1,`update planos_trabalho set projeto_id='${id(400)}' where id='${id(120)}'`);
+  await assert.rejects(como(db,1,`update planos_trabalho set projeto_id='${id(401)}' where id='${id(120)}'`),/row-level security/);
+  await assert.rejects(como(db,1,`insert into planos_trabalho values('${id(123)}','${id(1)}','Vinculo proibido','${id(401)}','Em andamento')`),/row-level security/);
+  await assert.rejects(como(db,1,`update planos_trabalho set created_by='${id(4)}' where id='${id(120)}'`),/Autoria/);
   assert.equal((await como(db,1,`update planos_trabalho set titulo='Proibido' where id='${id(101)}' returning id`)).length,0);
   await assert.rejects(como(db,1,`insert into etapas_plano values('${id(122)}','${id(101)}','Etapa alheia','Pendente')`),/row-level security/);
   assert.equal((await como(db,3,`select id from erp_conversas`)).length,1);

@@ -29,3 +29,11 @@ Branch independente `codex/permissoes-contrato-noite`, baseada em `0bfa140`. Nã
 6. Só então aplicar migração/atribuições e publicar exclusivamente esta branch, com verificação de leitura posterior. Nenhum desses atos foi realizado neste checkpoint.
 
 Não há solicitação genérica de aprovação pendente. A autorização específica da noite foi preservada; as pendências acima são técnicas. Não usar exclusões reais para QA nem misturar correções de segurança fora do contrato aprovado.
+
+## Continuação depois dos ajustes oficiais
+
+Branch original `codex/permissoes-contrato-noite` preservada em `573c58d`. A continuação local é `codex/permissoes-pos-ajustes`, que incorporou a produção `1668004` sem publicar permissões.
+
+Foi resolvido o vínculo de `projeto_id`: criação/edição verifica a visibilidade do projeto com o RLS do próprio usuário. A autoria de um plano não pode ser transferida por editar. Testes positivos e negativos passaram, incluindo inserção com projeto alheio, mudança de vínculo e tentativa de trocar o autor. Os testes anteriores continuam negando escrita em plano/etapa alheios. A revisão dos demais caminhos de responsabilidade permanece parte do fechamento de escopo.
+
+A árvore combinada passou **866/866 testes e build**, sem aplicar esta migração ou contratos efetivos no banco real. Permanecem a avaliação completa de avanço no servidor, o fechamento dos exports/responsabilidades e o script privado/CAS das concessões. Os direitos atuais continuam preservados.

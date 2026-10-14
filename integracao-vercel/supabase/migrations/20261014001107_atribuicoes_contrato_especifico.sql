@@ -61,8 +61,8 @@ language sql stable security definer set search_path='' as $$
  (public.can_access_plan(plano) or (integracao_atribuicoes_privado.escolha('planos','criar') is true and exists(select 1 from public.planos_trabalho where id=plano and created_by=auth.uid())))
 $$;
 create policy atribuicoes_plano_proprio on public.planos_trabalho for select to authenticated using(integracao_atribuicoes_privado.escolha('planos','ler') is true and created_by=auth.uid());
-create policy atribuicoes_plano_criar on public.planos_trabalho for insert to authenticated with check(integracao_atribuicoes_privado.escolha('planos','criar') is true and created_by=auth.uid());
-create policy atribuicoes_plano_editar on public.planos_trabalho for update to authenticated using(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(id)) with check(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(id));
+create policy atribuicoes_plano_criar on public.planos_trabalho for insert to authenticated with check(integracao_atribuicoes_privado.escolha('planos','criar') is true and created_by=auth.uid() and (projeto_id is null or exists(select 1 from public.projetos pr where pr.id=planos_trabalho.projeto_id)));
+create policy atribuicoes_plano_editar on public.planos_trabalho for update to authenticated using(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(id)) with check(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(id) and (projeto_id is null or exists(select 1 from public.projetos pr where pr.id=planos_trabalho.projeto_id)));
 create policy atribuicoes_etapa_ler on public.etapas_plano for select to authenticated using(integracao_atribuicoes_privado.escolha('planos','ler') is true and integracao_atribuicoes_privado.escopo_plano(plano_id));
 create policy atribuicoes_etapa_criar on public.etapas_plano for insert to authenticated with check(integracao_atribuicoes_privado.escolha('planos','criar') is true and integracao_atribuicoes_privado.escopo_plano(plano_id));
 create policy atribuicoes_etapa_editar on public.etapas_plano for update to authenticated using(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(plano_id)) with check(integracao_atribuicoes_privado.escolha('planos','editar') is true and integracao_atribuicoes_privado.escopo_plano(plano_id));
@@ -114,6 +114,7 @@ begin
  antes:=case when tg_op='INSERT' then '{}'::jsonb else to_jsonb(old) end;
  depois:=case when tg_op='DELETE' then '{}'::jsonb else to_jsonb(new) end;
  if not integracao_atribuicoes_privado.permitido(recurso,case tg_op when 'INSERT' then 'criar' when 'DELETE' then 'excluir' else 'editar' end) then raise exception 'Ação não autorizada pelo contrato' using errcode='42501';end if;
+ if tg_table_name='planos_trabalho' and tg_op='UPDATE' and antes->'created_by' is distinct from depois->'created_by' then raise exception 'Autoria do plano nao pode ser transferida por editar' using errcode='42501';end if;
  if tg_table_name='processos_kanban' and tg_op='UPDATE' and coalesce((depois->>'excluido_erp')::boolean,false) and not coalesce((antes->>'excluido_erp')::boolean,false) and not integracao_atribuicoes_privado.permitido('nucleos','excluir') then raise exception 'Exclusão de núcleo não autorizada' using errcode='42501';end if;
  if tg_table_name='metas' and tg_op in ('INSERT','UPDATE') and depois->>'status'='Concluído' and antes->>'status' is distinct from 'Concluído' and not integracao_atribuicoes_privado.permitido('metas','aprovar') then raise exception 'Aprovação de meta não autorizada' using errcode='42501';end if;
  if tg_table_name='fin_receb_clientes' and tg_op='UPDATE' and antes->'ativo' is distinct from depois->'ativo' then raise exception 'Situação do morador é uma ação separada do cadastro' using errcode='42501';end if;
@@ -151,7 +152,7 @@ begin
  if tg_op='DELETE' then return old;else return new;end if;
 end $$;
 do $$declare t text;r text;begin
- for t,r in select * from (values ('fin_receb_clientes','clientes'),('integracao_moradores','clientes'),('processos_kanban','nucleos'),('metas','metas'),('integracao_nucleos','nucleos'),('integracao_remessas','remessas'),('integracao_metas','metas'),('integracao_ordens_servico','ordens_servico'),('integracao_chat','chat')) q loop
+ for t,r in select * from (values ('fin_receb_clientes','clientes'),('integracao_moradores','clientes'),('processos_kanban','nucleos'),('metas','metas'),('integracao_nucleos','nucleos'),('integracao_remessas','remessas'),('integracao_metas','metas'),('integracao_ordens_servico','ordens_servico'),('integracao_chat','chat'),('planos_trabalho','planos')) q loop
   execute format('create trigger atribuicoes_proteger before insert or update or delete on public.%I for each row execute function integracao_atribuicoes_privado.proteger_mutacao(%L)',t,r);
  end loop;
 end $$;

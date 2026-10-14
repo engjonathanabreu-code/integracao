@@ -11,6 +11,8 @@ export async function prepararContrato(){
  create function public.is_erp_admin() returns boolean language sql stable security definer as $$select exists(select 1 from public.profiles where id=auth.uid() and ativo and tipo='Administrador')$$;
  create function public.is_admin() returns boolean language sql stable as $$select public.is_erp_admin()$$;
  create table planos_trabalho(id uuid primary key,created_by uuid,titulo text,projeto_id uuid,status text);
+ create table projetos(id uuid primary key,leitor uuid);alter table projetos enable row level security;grant select on projetos to authenticated;create policy projeto_escopo on projetos for select to authenticated using(leitor=auth.uid());
+ insert into projetos values('${id(400)}','${id(1)}'),('${id(401)}','${id(4)}');
  create table etapas_plano(id uuid primary key,plano_id uuid,titulo text,status text);
  create table etapa_responsaveis(etapa_id uuid,usuario_id uuid,primary key(etapa_id,usuario_id));
  create table entregaveis(id uuid primary key,etapa_id uuid,titulo text,concluido boolean);
