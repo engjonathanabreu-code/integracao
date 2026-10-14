@@ -56,7 +56,7 @@ export async function prepararContrato(){
  `);
  const antes=(await db.query(`select md5(string_agg(row(id,tipo,setor,ativo)::text,',' order by id)) hash from profiles`)).rows[0].hash;
  await db.exec(readFileSync(new URL('./atribuicoes-etapa1.fixture.sql',import.meta.url),'utf8'));
- await db.exec(readFileSync(new URL('../supabase/migrations/20261014001107_atribuicoes_contrato_especifico.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20261014113728_atribuicoes_contrato_especifico.sql',import.meta.url),'utf8'));
  const regras=[{planos:{ler:true,criar:true,editar:true,exportar:true},clientes:{ler:true,criar:true,editar:true,exportar:true,excluir:true},nucleos:{ler:true,criar:true,editar:true,exportar:true,excluir:true},remessas:{ler:true,criar:true,editar:true,exportar:true,excluir:true},metas:{ler:true,aprovar:false,exportar:false,excluir:false},ordens_servico:{ler:true,exportar:false,excluir:false}},
  {clientes:{ler:true,criar:true,editar:true,exportar:false,excluir:false},nucleos:{ler:true,criar:true,editar:true,exportar:false,excluir:false},remessas:{ler:true,criar:true,editar:true,exportar:false,excluir:false}},
  {chat:{ler:true,criar:true,exportar:false,excluir:false},documentos:{ler:true,criar:true,editar:true,exportar:false,excluir:false}}];

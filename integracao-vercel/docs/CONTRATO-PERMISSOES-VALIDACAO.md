@@ -1,5 +1,15 @@
 # Contrato específico — validação local e ordem de aplicação
 
+## Publicação autorizada em 14/10/2026
+
+PR 87 mesclado em `495fba7fa0029e4757ac0fa25a2020fd93efc12a`; produção confirmada READY em `dpl_J93RbSn3ikdCSE9huejUAraV1wyM`. A migração genérica foi aplicada ao ERP em `20261014113728`, nome `atribuicoes_contrato_especifico`. O arquivo e os testes foram alinhados a esse identificador; seu conteúdo SQL não mudou e não deve ser reaplicado.
+
+O gerador privado foi recuperado do histórico oficial, incluindo comparação de cada regra à fonte original, CAS dos 17 perfis, idempotência, auditoria e rollback. Os testes fictícios passaram no Mac. Após confirmar o frontend publicado, exatamente três contratos foram aplicados e três INSERTs auditados com executor real. As revisões dos 17 perfis, os hashes das regras globais e das políticas anteriores e as contagens verificadas permaneceram iguais. Nenhum dado de negócio foi alterado para QA.
+
+Advisors acrescentaram duas informações esperadas sobre tabelas privadas com RLS sem políticas (acesso direto revogado) e um aviso sobre o RPC autenticado de leitura do contrato, cujo SECURITY DEFINER é intencional e exige perfil ativo/próprio ou administração. O RPC continua negado a anon. Os avisos anteriores permaneceram.
+
+Revalidação desta versão no Mac: 872 testes e build aprovados. QA autenticado continua pendente: o controle do Safari expirou e os provedores de navegador conectado estão indisponíveis. Nenhuma sessão humana foi fabricada. As seções abaixo registram o preparo anterior e a ordem executada.
+
 Base oficial incorporada: `cd35fcdb524b5a8e16590e4521255862cf37adec`. Esta branch contém os nove ajustes publicados e a continuação específica de permissões. Não contém contas, hashes de perfis, escolhas pessoais ou script de atribuições. A migração ainda não foi aplicada ao banco oficial e não existem contratos efetivos em produção na última consulta de leitura.
 
 ## Servidor e escopo
