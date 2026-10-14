@@ -74,6 +74,8 @@ test('RLS e gates: negativos prevalecem, planos respeitam escopo e outros 14 per
   await db.exec(`insert into integracao_complementos values('conversas','fixture-chat','{"titulo":"Conversa ficticia"}',null)`);
   await assert.rejects(como(db,3,`delete from integracao_complementos where registro_id='fixture-chat'`),/autorizada/);
   await assert.rejects(como(db,3,`update integracao_complementos set dados='{"excluida":true}' where registro_id='fixture-chat'`),/autorizada/);
+  await como(db,3,`update integracao_complementos set dados=dados||'{"exclusaoSolicitada":{"id":"pedido-ficticio","status":"pendente"}}'::jsonb where registro_id='fixture-chat'`);
+  assert.equal((await db.query(`select count(*)::int n from integracao_atribuicoes_privado.auditoria where recurso='integracao_complementos' and ator='${id(3)}' and origem_sha256='fixture'`)).rows[0].n,1);
   await assert.rejects(como(db,1,'select * from integracao_atribuicoes_privado.contratos'),/permission denied/);
   await assert.rejects(db.exec('delete from integracao_atribuicoes_privado.auditoria'),/imutável/);
  }finally{await db.close();}

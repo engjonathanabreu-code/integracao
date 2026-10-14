@@ -401,7 +401,7 @@ begin
  if tg_op='DELETE' then return old;else return new;end if;
 end $$;
 do $$declare t text;begin
- foreach t in array array['fin_receb_clientes','integracao_moradores','processos_kanban','fin_receb_remessas','integracao_nucleos','integracao_remessas','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','metas','ordens_servico','documentos'] loop
+ foreach t in array array['fin_receb_clientes','integracao_moradores','processos_kanban','fin_receb_remessas','integracao_nucleos','integracao_remessas','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','metas','ordens_servico','documentos','integracao_planos','integracao_metas','integracao_ordens_servico','integracao_chat','erp_conversas','erp_mensagens','integracao_complementos'] loop
   execute format('create trigger atribuicoes_auditar after insert or update or delete on public.%I for each row execute function integracao_atribuicoes_privado.auditar()',t);
  end loop;
 end $$;
