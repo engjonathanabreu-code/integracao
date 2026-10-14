@@ -28,3 +28,17 @@ Base: main 0bfa14035650ff2d7f128a6e3f7222351b9a0a35. Branch: codex/ajustes-integ
 ## Retomada e isolamento
 
 Não misturar esta branch com a etapa de permissões programada. Para permissões, iniciar outra branch/worktree a partir de origin/main. Os scripts SQL deste checkpoint são propostas em operacoes; não foram registrados nem aplicados como migrations. CLI Supabase não encontrada localmente; antes da publicação, gerar migrations pelo fluxo suportado e concluir revisão.
+
+## Atualização posterior ao checkpoint
+
+As telas de revisão de quantidade/valores foram concluídas nos dois sistemas, com editor compartilhado, prévia, motivo e confirmação explícita. RPC ausente apresenta indisponibilidade; não existe fallback de gravações parciais. A proposta SQL continua local e não foi aplicada.
+
+QA Edge concluído em 1440 e 390: cancelar sem gravação, conflito sem perda, confirmação única, preservação de parcelas pagas/parciais/entrada/boletos e reabertura. No Financeiro Integral, o editor e o adaptador reais foram executados em harness isolado; não foi realizado login financeiro de produção. Perfis Financeiro/Administrador/Diretor de Projetos operacionais e Comercial/Topografia em consulta verificados no Integração com fixture.
+
+Funil: Nuvens → Prospecção → vínculo de núcleo → Reserva/Preparação/Venda, histórico e recarga a partir de backend fictício preservado passaram nos dois tamanhos. Critério municipal salvo e MCL incompleta bloqueada. Não foi configurada empresa real MCL.
+
+PDF/Word: declaração de renda, contrato e distrato; PDF do termo de compromisso, em desktop e celular. Foi corrigida a sobreposição do botão flutuante do agente sobre Baixar PDF no celular. Teste adicional verifica empresa municipal nos metadados de PDF/DOCX. Margens e timbrados existentes cobertos pela suíte. Ainda não é possível validar um timbrado oficial MCL sem o material confirmado.
+
+Suíte Integração mais recente: 856 testes esperados após teste adicional de metadados; conferir log final em ../../ajustes-page-evidencias/testes-build-final.log antes de citar contagem. Suíte Financeiro: 84/84 passaram. Financeiro não possui script build: módulos alterados e server.js passaram em node --check; servidor local atende em http://127.0.0.1:5182. Nenhuma integração de banco, pagamento ou IA real foi executada.
+
+Permanecem pendentes: prazo de seis meses, limites de núcleos, dados/timbrado oficiais MCL, revisão final de risco SQL e geração/aplicação formal das migrations. Nenhum push/deploy autorizado ou executado para este conjunto. Permissões noturnas serão implementadas em ../integracao-permissoes, branch separada codex/permissoes-contrato-noite, baseada em main.

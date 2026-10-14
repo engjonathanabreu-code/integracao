@@ -9290,7 +9290,7 @@ async function carregarTimbradoDocumento(db, municipioId) {
   const ler = (item, lugar) => item?.chave ? armazenamento.get(item.chave) : Promise.resolve(imagemPadrao(item, lugar));
   const [cabecalho,rodape] = await Promise.all([ler(config.cabecalho,"cabecalho"),ler(config.rodape,"rodape")]);
   if (db.ajustesMunicipio?.[municipioId]?.empresaDocumento?.codigo === "mcl" && !cabecalho) throw Error("Timbrado da Minha Casa Legal indisponível. Confira a configuração municipal.");
-  return {...config,imagens:{cabecalho,rodape}};
+  return {...config,empresa:empresaDoMunicipio(db,municipioId),imagens:{cabecalho,rodape}};
 }
 function useTimbrado(db, municipioId) {
   const config = configTimbrado(timbradoDoMunicipio(db || {}, municipioId));
@@ -9310,7 +9310,7 @@ function useTimbrado(db, municipioId) {
     cabecalho: imagemPadrao(config.cabecalho, "cabecalho"),
     rodape: imagemPadrao(config.rodape, "rodape"),
   };
-  return { ...config, imagens, temTimbre: config.ativo !== false && !!(imagens.cabecalho || imagens.rodape) };
+  return { ...config, empresa:empresaDoMunicipio(db || {},municipioId), imagens, temTimbre: config.ativo !== false && !!(imagens.cabecalho || imagens.rodape) };
 }
 
 const TEMAS = [
