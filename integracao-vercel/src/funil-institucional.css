@@ -1,0 +1,50 @@
+.rb .fi-painel{padding:clamp(14px,2.5vw,28px);margin-bottom:20px;min-width:0}
+.rb .fi-painel h2{margin:0 0 6px}
+.rb .fi-intro{margin:0 0 24px;max-width:70ch}
+.rb .fi-nuvem{position:relative;isolation:isolate;padding:58px clamp(28px,7%,90px) 54px;min-width:0;text-align:center}
+.rb .fi-nuvem-contorno{position:absolute;inset:0;width:100%;height:100%;z-index:-1;overflow:visible;pointer-events:none}
+.rb .fi-nuvem-contorno path{fill:var(--soft);stroke:var(--primary);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.rb .fi-nuvem-topo{display:none}
+.rb .fi-nuvem h3{display:flex;align-items:center;justify-content:center;gap:10px;margin:0;color:var(--titulo)}
+.rb .fi-nuvem .ajuda{margin:8px 0 18px}
+.rb .fi-cidades{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;text-align:left;min-width:0}
+.rb .fi-registro{padding:14px;min-width:0;overflow-wrap:anywhere;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.rb .fi-registro strong{display:block;color:var(--titulo);font-size:15px;line-height:1.4}
+.rb .fi-registro .ajuda{margin:6px 0 12px;font-size:12px}
+.rb .fi-registro .btn{margin:0;max-width:100%;white-space:normal}
+.rb .fi-registro details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.rb .fi-registro summary{font-size:13px;font-weight:700;cursor:pointer}
+.rb .fi-registro .rot{margin:12px 0 0;display:block;font-size:12px}
+.rb .fi-registro .inp{display:block;width:100%;min-width:0;margin-top:5px}
+.rb .fi-form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:18px 0 24px;padding:16px;background:var(--soft);border:1px solid var(--line);border-radius:12px;min-width:0}
+.rb .fi-form .rot{flex:1 1 220px;margin:0;min-width:0}
+.rb .fi-form .fi-uf{flex:0 1 72px}
+.rb .fi-form .inp{display:block;width:100%;min-width:0;margin-top:5px}
+.rb .fi-form .btn{white-space:normal;flex:0 1 auto}
+.rb .fi-conexao{display:flex;justify-content:center;color:var(--primary);margin:12px 0}
+.rb .fi-funil{display:flex;flex-direction:column;align-items:center;gap:10px;margin:0;padding:0;list-style:none;min-width:0}
+.rb .fi-etapa{position:relative;isolation:isolate;width:var(--fi-largura);padding:30px clamp(24px,7%,90px);min-width:0}
+.rb .fi-etapa::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--soft);clip-path:polygon(0 0,100% 0,94% 100%,6% 100%)}
+.rb .fi-etapa:nth-child(even)::before{background:var(--pill)}
+.rb .fi-etapa-cabeca{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;min-width:0}
+.rb .fi-numero{display:grid;place-items:center;flex-shrink:0;width:32px;height:32px;background:var(--primary);color:var(--on-primary);border-radius:50%;font-size:13px;font-weight:800}
+.rb .fi-etapa-cabeca h3{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:18px;margin:0}
+.rb .fi-etapa-cabeca .ajuda{margin:4px 0 0}
+.rb .fi-total{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:700;background:var(--card);color:var(--titulo);white-space:nowrap}
+.rb .fi-vazio{margin:0;padding:16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;text-align:center;background:var(--card)}
+.rb .fi-historico{margin-top:24px;padding-top:16px;border-top:1px solid var(--line)}
+.rb .fi-historico summary{font-weight:700;cursor:pointer}
+@media(max-width:640px){
+ .rb .fi-nuvem{padding:58px 20px 28px}
+ .rb .fi-nuvem-contorno{display:none}
+ .rb .fi-nuvem-topo{display:block;position:absolute;top:0;left:0;width:100%;height:50px;z-index:-1;overflow:visible}
+ .rb .fi-nuvem-topo path{fill:var(--soft);stroke:var(--primary);stroke-width:1.5;vector-effect:non-scaling-stroke}
+ .rb .fi-nuvem::after{content:'';position:absolute;inset:49px 0 0;z-index:-1;background:var(--soft);border:1.5px solid var(--primary);border-top:0;border-radius:0 0 28px 28px}
+ .rb .fi-cidades{grid-template-columns:1fr}
+ .rb .fi-etapa{width:calc(100% - var(--fi-indice)*2%);padding:24px 22px}
+ .rb .fi-etapa::before{clip-path:polygon(0 0,100% 0,97% 100%,3% 100%)}
+ .rb .fi-etapa-cabeca{gap:9px}
+ .rb .fi-etapa-cabeca h3{font-size:17px}
+ .rb .fi-form{padding:12px}
+ .rb .fi-form .btn{width:100%}
+}

@@ -9,7 +9,7 @@ const ordenado=x=>x.toSorted();
 test('SQL versionado conserva os defaults reais e a fonte do avaliador',()=>{
  const app=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8'),trecho=app.slice(app.indexOf('const CAMPOS_PADRAO ='),app.indexOf('const USUARIOS_PADRAO ='));
  const padrao=new Function(trecho+';return {campos:CAMPOS_PADRAO,checklist:CHECKLIST_CAMPO_PADRAO};')();
- const sql=fs.readFileSync(new URL('../supabase/migrations/20261014001107_atribuicoes_contrato_especifico.sql',import.meta.url),'utf8');
+ const sql=fs.readFileSync(new URL('../supabase/migrations/20261014113728_atribuicoes_contrato_especifico.sql',import.meta.url),'utf8');
  assert.ok(sql.includes('$padroes$'+JSON.stringify(padrao)+'$padroes$'));
  assert.ok(sql.includes(fs.readFileSync(new URL('../supabase/operacoes/atribuicoes-fluxo.sql',import.meta.url),'utf8')));
 });
