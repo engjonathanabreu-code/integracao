@@ -6,7 +6,7 @@ const pt=mm=>mm*72/25.4;
 export async function gerarPdf(html,titulo,timbrado,options={}){
 
  const f=formatoDocumento(timbrado),doc=new jsPDF({unit:'pt',format:'a4',compress:true});
- doc.setProperties({title:titulo,author:'Integral Soluções em Engenharia'});
+ doc.setProperties({title:titulo,author:timbrado?.empresa?.razaoSocial || 'Integral Soluções em Engenharia'});
  const left=pt(f.esquerda),right=pt(f.largura-f.direita),top=pt(f.topo),bottom=pt(f.altura-f.base),width=right-left;
  const blocks=analisarDocumento(html,options);let y=top;
  const font=(r,size)=>{doc.setFont('times',r.bold?(r.italics?'bolditalic':'bold'):(r.italics?'italic':'normal'));doc.setFontSize(r.superScript||r.subScript?size*.7:size);};

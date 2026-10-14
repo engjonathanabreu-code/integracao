@@ -23,3 +23,11 @@ test('preserva negrito, marca-texto, sobrescrito, listas, tabelas mescladas e ti
  const zip=await JSZip.loadAsync(await(await gerarDocx(html,'Teste',{ativo:false,imagens:timbrado.imagens},{parse})).arrayBuffer());const xml=await zip.file('word/document.xml').async('string');
  assert.match(xml,/w:pStyle w:val="Heading1"/);assert.match(xml,/w:vertAlign w:val="superscript"/);assert.match(xml,/w:highlight w:val="yellow"/);assert.match(xml,/3\. /);assert.match(xml,/w:gridSpan w:val="2"/);assert.match(xml,/w:vMerge/);assert.equal(Object.keys(zip.files).filter(k=>k.startsWith('word/media/')&&!zip.files[k].dir).length,0);
 });
+
+test('empresa municipal fica nos metadados de PDF e Word sem reescrever documentos anteriores',async()=>{
+ const t={ativo:false,empresa:{razaoSocial:'Empresa Municipal QA'}};
+ const pdf=await gerarPdf('<p>Documento fictício</p>','Teste',t,{parse});
+ assert.match(Buffer.from(await pdf.arrayBuffer()).toString('latin1'),/Empresa Municipal QA/);
+ const word=await gerarDocx('<p>Documento fictício</p>','Teste',t,{parse});
+ const zip=await JSZip.loadAsync(await word.arrayBuffer());assert.match(await zip.file('docProps/core.xml').async('string'),/Empresa Municipal QA/);
+});
