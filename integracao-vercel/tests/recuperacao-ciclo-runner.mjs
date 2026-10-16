@@ -12,11 +12,18 @@ window.localStorage=localStorage;window.location=globalThis.location;document.vi
 globalThis.fetch=(...args)=>window.fetch(...args);
 await import(bundle);
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-for(let i=0;i<70;i++){await wait(100);const h=window.syncHarness;if(h?.ready&&!h.draft()?.pending)break;if(cenario==='resposta-perdida'&&h?.stats.writes===1&&h.draft()?.pending)await h.sync.flush();}
+// Persisting the draft and committing React's render are separate async steps.
+// Wait for both before asserting the screen, including on a busy build worker.
+for(let i=0;i<70;i++){
+ await wait(100);const h=window.syncHarness,draft=h?.draft();
+ if(h?.ready&&draft&&!draft.pending&&JSON.stringify(h.db)===JSON.stringify(draft.db))break;
+ if(cenario==='resposta-perdida'&&h?.stats.writes===1&&draft?.pending)await h.sync.flush();
+}
 const h=window.syncHarness;
 assert.ok(h?.ready,'hook ready');
 assert.equal(h.sync.conflitos.length,0);
 assert.equal(h.draft().pending,false,JSON.stringify({status:h.sync.status,error:h.sync.error,attempt:h.draft().attempt,posts:h.stats.posts}));
+assert.deepEqual(JSON.parse(JSON.stringify(h.db)),h.draft().db,'a tela deve refletir o estado recuperado e persistido');
 if(cenario==='concorrente-divergente')assert.equal(h.db.processos[0].etapa,2);
 if(cenario==='exclusao-recusada')assert.equal(h.db.processos.length,1);
 if(cenario==='resposta-perdida')assert.equal(h.stats.writes,1);
