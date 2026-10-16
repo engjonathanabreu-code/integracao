@@ -5,4 +5,4 @@ export function atualizarComRascunho(base,local,remoto){
  const resultado=conciliarEdicoes(base,local,remoto);
  return {...resultado,baseline:conciliarEdicoes(local,base,remoto).dados};
 }
-export const rejeicaoDefinitiva=e=>['42501','PT409','40001'].includes(e?.code)||e?.status===403;
+export const rejeicaoDefinitiva=e=>['42501','PT409','40001','P0001','23505','23514','23P01'].includes(e?.code)||e?.status===403;

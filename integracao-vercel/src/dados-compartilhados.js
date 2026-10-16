@@ -146,7 +146,9 @@ export function projetar(base, local) {
     const extension = extra.get(`${collection}:${view.id}`);
     const saved=unirCampos(existing?._resumo?{}:existing||{},extension?.dados||{});
     const value = { ...saved, ...view };
-    const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP','setorERP',...(collection==='usuarios'?['setor']:[]),'origem','externo','criadoPor','criadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
+    // Version metadata is read-only and participates in automatic reconciliation.
+    if(row.updated_at)value._atualizadoEm=row.updated_at;
+    const canonical=new Set(['id','erpId','erpRef','financeiroRef','tipoERP','setorERP',...(collection==='usuarios'?['setor']:[]),'origem','externo','criadoPor','criadoEm','_atualizadoEm',...Object.keys(map).map(p=>p.split('.')[0]),...(nestedFields[collection]||[])]);
     for(const [field,v] of Object.entries(extension?.dados||{}))if(!canonical.has(field))value[field]=copy(v);
     const ownFields={usuarios:['tema','agendaPessoal','calendarioOculto','online','ultimaAtividade'],nucleos:['remessaId','etapa','campos','checks','criterio','codigo'],processos:['nucleoId','etapa','motivoSituacao','conjuge','endereco','imovel','social','extras','docs','checks','campos','campo','unidades'],planos:['municipioId','municipioNome','uf','remessaId'],conversas:['lidaPor']};
     for(const field of ownFields[collection]||[]) if(saved[field]!==undefined) value[field]=saved[field];
@@ -256,6 +258,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
       if(old && !next) {
         if(b.table==='erp_mensagens')throw new Error('Mensagens existentes são preservadas no histórico do ERP.');
         if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw new Error('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
+        else if(b.table==='erp_eventos') ops.push({action:'evento_status',payload:{id:b.row.id,status:'cancelado'},expected:{status:b.row.status},table:b.table,key:b.key});
         else if(b.table==='processos_kanban') ops.push({table:b.table,key:b.key,expected:b.row,changes:{excluido_erp:true}});
         else ops.push({table:b.table,key:b.key,expected:b.row,remove:true});
       }
@@ -384,7 +387,7 @@ export function mesclarEdicoes(base,local,remote) {
 
 export function complementos(before,after,state,actor) {
   const operations=[];
-  const ignored=new Set(['_compartilhado','online','ultimaAtividade']);
+  const ignored=new Set(['_compartilhado','_atualizadoEm','online','ultimaAtividade']);
   for(const collection of Object.keys(after)) {
     if(['previaERP','versao'].includes(collection)) continue;
     const array=Array.isArray(after[collection]) && after[collection].every(x=>x && typeof x==='object' && x.id);

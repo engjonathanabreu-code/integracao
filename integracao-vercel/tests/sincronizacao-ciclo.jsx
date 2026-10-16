@@ -11,6 +11,15 @@ const tipo=new URLSearchParams(location.search).get('tipo')||'Comercial';
 const storage={get:async k=>localStorage.getItem(k),set:async(k,v)=>localStorage.setItem(k,v)};
 const initial=fixture();initial.profiles[0].tipo=tipo;
 initial.integracao_moradores=[{colecao:'processos',registro_id:id(4),referencia_tabela:'fin_receb_clientes',referencia_id:id(4),criado_por:id(1),dados:{etapa:0,checks:{}}}];
+if(scenario==='municipio-restaurado'){
+ initial.integracao_moradores[0].dados.nucleoId=id(5);
+ initial.fin_receb_clientes.push({...initial.fin_receb_clientes[0],id:id(44),codigo:'TST01_002',nome:'Outro cliente ativo'});
+ initial.integracao_moradores.push({...initial.integracao_moradores[0],registro_id:id(44),referencia_id:id(44),dados:{etapa:0,nucleoId:id(5),checks:{}}});
+}
+if(scenario==='reserva-recusada'){
+ initial.erp_agendas=[{id:id(40),nome:'Sala'}];
+ initial.erp_eventos=[{id:id(41),titulo:'Reserva confirmada',agenda_id:id(40),inicio:'2026-10-15T13:00:00Z',fim:'2026-10-15T14:00:00Z',status:'ativo',participantes:[id(1)],created_by:id(1)}];
+}
 let base=JSON.parse(localStorage.getItem('harness-server')||'null')||copy(initial);
 let receipts=JSON.parse(localStorage.getItem('harness-receipts')||'{}');
 const actor=projetar(initial,blank()).db.usuarios[0];
@@ -23,7 +32,9 @@ if(!localStorage.getItem(key)){
  const state=projetar(initial,blank()),before=copy(state.db),after=copy(before);
  after.processos[0].etapa=1;
  if(scenario==='fantasma'){before.processos.push(copy(ghost));after.processos.push(copy(ghost));}
- const operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},expected:{dados:initial.integracao_moradores[0].dados},changes:{dados:{etapa:1,checks:{}}}}];
+ let operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},expected:{dados:initial.integracao_moradores[0].dados},changes:{dados:{etapa:1,checks:{}}}}];
+ if(scenario==='reserva-recusada'){const evento={...after.eventos[0],id:id(42),titulo:'Reserva pendente'};delete evento._compartilhado;after.eventos.push(evento);operations.push({action:'evento',tempId:evento.id,payload:{titulo:evento.titulo,agenda_id:id(40),inicio:evento.inicio,fim:evento.fim}});}
+ if(scenario==='exclusao-recusada'){after.processos=[];operations=[{table:'fin_receb_clientes',key:{id:id(4)},expected:initial.fin_receb_clientes[0],remove:true}];}
  localStorage.setItem(key,JSON.stringify({db:after,baseline:before,base:initial,pending:true,attempt:{id:crypto.randomUUID(),before,after,operations,sent:{}},municipios:[id(2)]}));
 }
 if(scenario==='concorrente-igual')base.integracao_moradores[0].dados.etapa=1;
@@ -39,6 +50,8 @@ window.fetch=async(input,options={})=>{
  if(url.pathname.endsWith('/rpc/integracao_gravar')){
   stats.posts++;const {operacoes,pedido}=JSON.parse(options.body);
   if(receipts[pedido])return response(receipts[pedido]);
+  if(scenario==='reserva-recusada'&&operacoes.some(o=>o.action==='evento'))return response({message:'O ativo já está reservado em uma das datas selecionadas',code:'P0001'},400);
+  if(scenario==='exclusao-recusada'&&operacoes.some(o=>o.remove))return response({message:'Exclusão não autorizada',code:'P0001'},400);
   if(flags.deny)return response({message:'Sem permissão para gravar',code:'42501'},403);
   if(flags.conflict)return response({message:'Conflito real preservado',code:'PT409'},409);
   const next=copy(base);

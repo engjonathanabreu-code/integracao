@@ -4,7 +4,7 @@ import {acaoPermitida} from './permissoes-contrato.js';
 import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoResidencia, limiteResidencia, diaReferenciaResidencia} from './prazo-residencia.js';
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
-import {registrarVerificacaoHumana} from './documentos-verificacao-humana.js';
+import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
@@ -4402,7 +4402,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
           <table className="tab">
             <thead><tr><th>Documento</th><th>Situação</th><th><span className="sr-only">Ações</span></th></tr></thead>
             <tbody>
-              {exigidos.map((t) => linhaDoc(t, [...p.docs].reverse().find((d) => d.tipo === t && (!d.pessoaId || d.pessoaId === (t === "identidade_conjuge" ? "conjuge" : "requerente")))))}
+              {exigidos.map((t) => linhaDoc(t, documentoMaisRecente(p.docs,t)))}
               {outros.map((d) => linhaDoc(d.tipo, d))}
             </tbody>
           </table>
@@ -12416,6 +12416,7 @@ export default function App() {
           </header>
           {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
+          {!AMBIENTE.DEMO && compartilhado.reservasPreservadas>0 && <div role="status" className="ajuda" style={{padding:"8px 18px"}}>{compartilhado.reservasPreservadas} reserva(s) conflitante(s) preservada(s) em cópia. As reservas já confirmadas foram mantidas; os demais dados podem sincronizar.<button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das reservas</button></div>}
           {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}

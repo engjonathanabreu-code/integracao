@@ -11,25 +11,27 @@ const etiquetasRegistro = (registro,etapa,legado=false) => [etapa,legado?'Víncu
 function DetalhesFunil({titulo,fechar,ocupado,children}) {
   const dialog=useRef(null);
   useEffect(()=>{const d=dialog.current;d.showModal();return()=>d.close();},[]);
-  return <dialog ref={dialog} className="crm-ficha-dialogo crm-institucional-dialogo fi-detalhes" aria-label="Detalhes do registro institucional" onCancel={e=>{e.preventDefault();if(!ocupado)fechar();}}><button className="btn crm-ficha-fechar" disabled={ocupado} aria-label="Fechar detalhes do registro" onClick={fechar}><X size={20}/></button><h2>{titulo||'Registro institucional'}</h2>{children}</dialog>;
+  return <dialog ref={dialog} className="crm-ficha-dialogo crm-institucional-dialogo fi-detalhes" aria-label={titulo||"Detalhes do registro institucional"} onCancel={e=>{e.preventDefault();if(!ocupado)fechar();}}><button className="btn crm-ficha-fechar" disabled={ocupado} aria-label="Fechar detalhes do registro" onClick={fechar}><X size={20}/></button><h2>{titulo||'Registro institucional'}</h2>{children}</dialog>;
 }
 export default function FunilInstitucional({db, usuario, mutar, institucionais, abrirInstitucional}) {
   const fluxo = db.funilInstitucional || funilVazio();
-  const pode = acessoCRM(usuario).admin;
+  const acesso = acessoCRM(usuario);
+  const pode = acesso.admin, podeMunicipios = acesso.comercial;
+  const [cadastrar,setCadastrar]=useState(false);
   const [nome,setNome] = useState(''), [uf,setUf] = useState('SC');
   const [ocupado,setOcupado] = useState(false), [erro,setErro] = useState('');
   const [cidadeId,setCidadeId] = useState(''),[nucleoNome,setNucleoNome] = useState('');
   const [carteira,setCarteira] = useState('reserva');
   const [selecionado,setSelecionado]=useState(null);
   const salvar = async acao => {
-    if (!pode || ocupado) return;
+    if (!(acao.tipo==='cidade'?podeMunicipios:pode) || ocupado) return;
     setOcupado(true);setErro('');
     try {
       await mutar(d => {
         d.funilInstitucional = alterarFunil(d.funilInstitucional, {...acao, eventoId:crypto.randomUUID()}, {autor:usuario.nome});
         return d;
       }, 'Fluxo institucional atualizado', {detalhe:acao.tipo === 'cidade' ? 'Município no fluxo institucional' : 'Núcleo no fluxo institucional'});
-      if(acao.tipo==='cidade'&&!fluxo.cidades.some(c=>c.id===acao.id))setNome('');
+      if(acao.tipo==='cidade'&&!fluxo.cidades.some(c=>c.id===acao.id)){setNome('');setCadastrar(false);}
       if(acao.tipo==='nucleo'&&!fluxo.nucleos.some(n=>n.nucleoId===acao.nucleoId))setNucleoNome('');
     } catch(e) {setErro(e.message || 'Não foi possível salvar o fluxo.');}
     finally {setOcupado(false);}
@@ -38,7 +40,7 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
   const origem = c => institucionais?.find(i=>i.id===c.institucionalId);
   const nomeNucleo = item => item.nome || db.nucleos?.find(n=>n.id===item.nucleoId)?.codigo || null;
   const municipioNucleo = item => fluxo.cidades.find(c=>item.cidadeId?c.id===item.cidadeId:c.municipioId===item.municipioId);
-  const etapaCidade = c => pode&&<CampoCRM nome="Etapa municipal"><select className="inp" aria-label={`Etapa de ${c.nome||'município não informado'}`} disabled={ocupado} value={c.etapa} onChange={e=>salvar({tipo:'cidade',...c,etapa:e.target.value})}><option value="nuvens">Nuvens</option><option value="prospeccao">Prospecção</option>{c.etapa==='carteiras'&&<option value="carteiras">Núcleos nas etapas seguintes</option>}</select></CampoCRM>;
+  const etapaCidade = c => podeMunicipios&&<CampoCRM nome="Etapa municipal"><select className="inp" aria-label={`Etapa de ${c.nome||'município não informado'}`} disabled={ocupado} value={c.etapa} onChange={e=>salvar({tipo:'cidade',...c,etapa:e.target.value})}><option value="nuvens">Nuvens</option><option value="prospeccao">Prospecção</option>{c.etapa==='carteiras'&&<option value="carteiras">Núcleos nas etapas seguintes</option>}</select></CampoCRM>;
   const etapaNucleo = item => pode&&<CampoCRM nome="Mover para"><select className="inp" aria-label={`Carteira de ${nomeNucleo(item)||'núcleo não informado'}`} disabled={ocupado} value={item.carteira} onChange={e=>salvar({tipo:'nucleo',nucleoId:item.nucleoId,carteira:e.target.value})}>{CARTEIRAS_INSTITUCIONAIS.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></CampoCRM>;
   const cidade = (c,compacto=false) => <CardFunilInstitucional key={c.id} tipo="Município" titulo={municipioTexto(c)} municipio={municipioTexto(c)} referencia={c.etapa==='nuvens'?'Nuvens':c.etapa==='prospeccao'?'Prospecção':'Núcleos nas etapas seguintes'} etiquetas={etiquetasRegistro(c,c.etapa==='nuvens'?'Nuvens':'Prospecção',!!c.municipioId&&!c.institucionalId)} compacto={compacto} controleEtapa={etapaCidade(c)} abrirDetalhes={()=>verDetalhes('cidade',c.id)} abrirNegocio={origem(c)?()=>abrirInstitucional(origem(c)):null}/>;
   const detalheCidade = selecionado?.tipo==='cidade'&&fluxo.cidades.find(c=>c.id===selecionado.id);
@@ -51,17 +53,18 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
     {erro && !selecionado && <p role="alert" className="msg-erro">{erro}</p>}
     <section className="fi-nuvem" aria-label="Nuvens">
       <svg viewBox="0 0 1000 420" preserveAspectRatio="none" aria-hidden="true"><path d="M120 96 C120 38 205 18 267 57 C294 1 394 0 440 44 C499 3 611 6 648 62 C725 20 829 43 838 99 C937 86 988 150 966 205 C1000 270 957 348 877 348 C855 408 757 416 704 380 C650 421 544 422 498 390 C441 426 337 416 303 380 C238 415 143 393 131 349 C47 367 2 302 29 245 C-9 183 33 104 120 96 Z"/></svg>
-      <h3><Cloud size={22} aria-hidden="true"/>Nuvens <span className="pill">{candidatos.length} município(s)</span></h3>
+      <div className="fi-nuvem-cabeca"><h3><Cloud size={22} aria-hidden="true"/>Nuvens <span className="pill">{candidatos.length} município(s)</span></h3>{podeMunicipios&&<button type="button" className="btn btn-primario" onClick={()=>{setErro('');setCadastrar(true);}}><Plus size={18}/>Adicionar município</button>}</div>
       <div className="fi-nomes">{candidatos.map(c=>cidade(c,true))}{!candidatos.length&&<p className="ajuda">Nenhum município candidato.</p>}</div>
     </section>
     <details className="fi-candidatos"><summary>Gerenciar municípios nas Nuvens</summary>
       <div className="crm-grade">{candidatos.map(c=>cidade(c))}</div>
-      {pode && <form className="crm-form fi-form" onSubmit={e=>{e.preventDefault();salvar({tipo:'cidade',id:crypto.randomUUID(),nome,uf,etapa:'nuvens'});}}>
-        <CampoCRM nome="Município candidato"><input className="inp" required minLength={2} maxLength={120} value={nome} onChange={e=>setNome(e.target.value)}/></CampoCRM>
+
+    </details>
+      {cadastrar && podeMunicipios && <DetalhesFunil titulo="Adicionar município às Nuvens" ocupado={ocupado} fechar={()=>setCadastrar(false)}>{erro&&<p role="alert" className="msg-erro">{erro}</p>}<form className="crm-form fi-form" onSubmit={e=>{e.preventDefault();salvar({tipo:'cidade',id:crypto.randomUUID(),nome,uf,etapa:'nuvens'});}}>
+        <CampoCRM nome="Município candidato"><input className="inp" autoFocus placeholder="Nome do município" required minLength={2} maxLength={120} value={nome} onChange={e=>setNome(e.target.value)}/></CampoCRM>
         <CampoCRM nome="UF"><input className="inp" required pattern="[A-Z]{2}" maxLength={2} value={uf} onChange={e=>setUf(e.target.value.toUpperCase())}/></CampoCRM>
         <button className="btn btn-primario" disabled={ocupado}><Plus size={17}/>Adicionar às Nuvens</button>
-      </form>}
-    </details>
+      </form></DetalhesFunil>}
     <div className="fi-conexao" aria-hidden="true"><ArrowDown size={22}/></div>
     <ol className="fi-resumo" aria-label="Formato do funil comercial">{[{nome:'Prospecção',total:`${prospectados.length}/4 municípios`},...CARTEIRAS_INSTITUCIONAIS.map(c=>({nome:c.nome,total:`${fluxo.nucleos.filter(n=>n.carteira===c.id).length} núcleo(s)`}))].map(c=><li key={c.nome}><strong>{c.nome}</strong><span>{c.total}</span></li>)}</ol>
     <h3>Quadro das quatro etapas</h3><p className="ajuda fi-mobile">Deslize o quadro para consultar todas as etapas.</p>
@@ -86,7 +89,7 @@ export default function FunilInstitucional({db, usuario, mutar, institucionais, 
         <dl className="fi-detalhes-campos"><dt>Tipo</dt><dd>{detalheCidade?'Município':'Núcleo'}</dd><dt>Identificação</dt><dd>{detalheTitulo||'Não informado'}</dd><dt>Município</dt><dd>{municipioTexto(detalheMunicipio)||'Não informado'}</dd><dt>Etapa</dt><dd>{detalheCidade?detalheCidade.etapa==='nuvens'?'Nuvens':detalheCidade.etapa==='prospeccao'?'Prospecção':'Núcleos nas etapas seguintes':CARTEIRAS_INSTITUCIONAIS.find(c=>c.id===detalheNucleo.carteira)?.nome||'Não informado'}</dd><dt>Etiquetas</dt><dd>{(Array.isArray((detalheCidade||detalheNucleo).etiquetas)?(detalheCidade||detalheNucleo).etiquetas.filter(x=>typeof x==='string'):[]).join(' · ')||'Sem etiquetas adicionais'}</dd></dl>
         {detalheMunicipio?.municipioId&&!detalheMunicipio.institucionalId&&<p className="ajuda">Vínculo anterior preservado.</p>}
         {detalheMunicipio?.institucionalId&&<p className="ajuda">Referência institucional anterior preservada: {origem(detalheMunicipio)?.nome||'registro indisponível'}.</p>}
-        {pode&&detalheCidade&&<div className="crm-form">{etapaCidade(detalheCidade)}</div>}
+        {podeMunicipios&&detalheCidade&&<div className="crm-form">{etapaCidade(detalheCidade)}</div>}
         {detalheNucleo&&<div className="crm-form">{etapaNucleo(detalheNucleo)}</div>}
         {detalheMunicipio&&origem(detalheMunicipio)&&<div className="crm-acoes"><button className="btn" onClick={()=>{setSelecionado(null);abrirInstitucional(origem(detalheMunicipio));}}>Abrir negócio</button></div>}
       </>}

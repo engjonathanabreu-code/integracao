@@ -1,6 +1,7 @@
 import {temConexao} from './conexao-rede.js';
-import {conciliarEdicoes,erroConcorrencia} from './concorrencia.js';
-import {atualizarComRascunho,rejeicaoDefinitiva} from './atualizacao-rascunho.js';
+import {erroConcorrencia} from './concorrencia.js';
+import {conciliarMaisRecentes as conciliarEdicoes,atualizarAutomaticamente as atualizarComRascunho,preservarRegistrosAusentes,separarReservasConflitantes} from './conciliacao-automatica.js';
+import {rejeicaoDefinitiva} from './atualizacao-rascunho.js';
 import {temEdicaoEmAndamento} from './protecao-edicao.js';
 import {conectarTempoReal} from './tempo-real.js';
 import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
@@ -9,19 +10,26 @@ import {clientesDasOperacoes,clientesComEdicao,atualizarFichas} from './sincroni
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
-import {configERP,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,mesclarEdicoes,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
+import {configERP,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const current=useRef(null), server=useRef(null), actor=useRef(null), busy=useRef(false), pending=useRef(false), timer=useRef(null), generation=useRef(0);
   const vivo=useRef(null),avisos=useRef(new Set()),avisoTimer=useRef(null),retentativas=useRef(0);
   const [tempoReal,setTempoReal]=useState('desconectado');
   const [status,setStatus]=useState(''),[error,setError]=useState('');
+  const recuperacoes=useRef([]),[reservasPreservadas,setReservasPreservadas]=useState(0);
   const [conflitos,setConflitos]=useState([]),revisao=useRef(null);
   const [summaryReady,setSummaryReady]=useState(false),[summaryError,setSummaryError]=useState('');
   const summaryJob=useRef(null);
   const attempt=useRef(null),lastRefresh=useRef(0);
   const municipioAtivo=useRef(null),desatualizados=useRef(new Set());
   const municipios=useRef(new Set()), opening=useRef(false), municipalityLoads=useRef(new Map());
+  const restaurarMunicipios=ids=>{
+    municipios.current=new Set(ids);
+    // A restored draft is not proof of a complete current municipal load.
+    // Opening recovers only edited client files; entering a nucleus must fetch all.
+    municipios.current.forEach(id=>desatualizados.current.add(id));
+  };
   const carregarBase=async(seed,grupos=null)=>{
     const tabelas=grupos?tabelasDosGrupos(grupos):null;
     const base=await lerBase({municipios:municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[],tabelas,anterior:grupos?server.current?.base:null});
@@ -43,7 +51,18 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   const publish=db=>{current.current=db;setDb(db);};
   const gravaRascunho=useRef(null);if(!gravaRascunho.current)gravaRascunho.current=filaRascunho(storage);
-  const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await gravaRascunho.current(storageKey(),JSON.stringify({db:current.current,baseline:server.current?.db,base:server.current?.base,pending:pending.current,attempt:attempt.current,municipios:[...municipios.current]}),owner);}};
+  const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await gravaRascunho.current(storageKey(),JSON.stringify({db:current.current,baseline:server.current?.db,base:server.current?.base,pending:pending.current,attempt:attempt.current,recuperacoes:recuperacoes.current,municipios:[...municipios.current]}),owner);}};
+  const atualizarPreservando=async(base,remoto,gen,obter=()=>current.current)=>{
+    for(let i=0;i<3;i++){
+      const local=copy(obter()),resultado=atualizarComRascunho(base,local,remoto);
+      if(!resultado.resolvidos.length)return resultado;
+      await storage.set(`${storageKey()}-conflitos-${Date.now()}-${i}`,JSON.stringify({base,local,remoto,resolvidos:resultado.resolvidos}));
+      if(gen!==generation.current)throw new Error('Sessão encerrada.');
+      if(JSON.stringify(local)===JSON.stringify(obter()))return resultado;
+    }
+    throw new Error('Novas edições preservadas. A sincronização será retomada.');
+  };
+
   const remap=(value,aliases)=>{
     if(!value) return value;
     if(typeof value==='string') return aliases[value]||value;
@@ -69,6 +88,17 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     await atualizarPendentes(base,anterior.db,current.current);
     if(gen!==generation.current)return false;
     const state=projetar(base,current.current);
+    if(attempt.current?.rejeitada)publish(preservarRegistrosAusentes(anterior.db,current.current,state.db));
+    if(attempt.current?.rejeitada&&/ativo já está reservado/.test(attempt.current.erro||'')){
+      const versaoLocal=JSON.stringify(current.current);
+      const reparo=separarReservasConflitantes(attempt.current.before,current.current,state.db);
+      if(reparo.preservadas.length){
+        await storage.set(`${storageKey()}-reservas-${Date.now()}`,JSON.stringify(reparo.preservadas));
+        if(gen!==generation.current)return false;
+        if(versaoLocal!==JSON.stringify(current.current)){timer.current=setTimeout(flush,500);return false;}
+        recuperacoes.current.push(...reparo.preservadas);setReservasPreservadas(recuperacoes.current.length);publish(reparo.dados);
+      }
+    }
     // Choices apply only to the version actually shown in the review.
     const atuais=revisao.current&&JSON.stringify(revisao.current.remoto)===JSON.stringify(state.db)?escolhas:{};
     let resultado=conciliarEdicoes(anterior.db,current.current,state.db,atuais);
@@ -102,6 +132,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     const who=actor.current;
     setStatus('Salvando alterações no Supabase…');setError('');
     try {
+      if(attempt.current?.rejeitada){await conciliar();return;}
       if(!attempt.current) {
         const before=copy(server.current.db),after=copy(current.current);
         const operations=prepararEdicao(before,after,server.current,who);
@@ -133,7 +164,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(gen!==generation.current) return;
       await confirmarArquivos(sent,base);
       const state=projetar(base,saved);
-      const resultado=atualizarComRascunho(saved,remap(current.current,aliases),state.db);
+      const resultado=await atualizarPreservando(saved,state.db,gen,()=>remap(current.current,aliases));
+      if(gen!==generation.current)return;
       attempt.current=null;publish(resultado.dados);
       pending.current=arquivosPendentes()||JSON.stringify(resultado.dados)!==JSON.stringify(state.db);
       server.current=pending.current?{...state,db:resultado.baseline}:state;
@@ -148,8 +180,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(pending.current&&!revisao.current) timer.current=setTimeout(flush,500);
     } catch(e) {
       if(gen!==generation.current)return;
-      if(attempt.current&&!attempt.current.confirmacao&&rejeicaoDefinitiva(e))attempt.current.rejeitada=true;
-      if(erroConcorrencia(e)&&attempt.current&&!attempt.current.confirmacao){
+      if(attempt.current&&!attempt.current.confirmacao&&rejeicaoDefinitiva(e)){attempt.current.rejeitada=true;attempt.current.erro=e.message;}
+      if((erroConcorrencia(e)||rejeicaoDefinitiva(e))&&attempt.current&&!attempt.current.confirmacao){
         try {
           if(retentativas.current++<3){await conciliar();return;}
           setError('As alterações continuam concorrentes. Tente novamente para consultar a versão atual.');setStatus('Alterações pendentes — dados locais preservados.');await saveDraft();return;
@@ -166,12 +198,12 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     try {
     const cached=await storage.get(storageKey());
     const draft=cached?JSON.parse(cached):null;
-    attempt.current=draft?.attempt||null;
+    attempt.current=draft?.attempt||null;recuperacoes.current=draft?.recuperacoes||[];setReservasPreservadas(recuperacoes.current.length);
     if(!temSessao()) {
       if(!draft?.base) throw new Error('Entre conectado uma vez para disponibilizar os dados desta conta neste aparelho.');
       await abrirArquivos(user,draft.base,storage);
       server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);pending.current=!!draft.pending;
-      municipios.current=new Set(draft.municipios||[]);setSummaryReady(true);
+      restaurarMunicipios(draft.municipios||[]);setSummaryReady(true);
       setStatus('Modo offline. Entre novamente conectado para enviar as alterações.');
       return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
     }
@@ -181,7 +213,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(!draft?.base||!draft?.baseline||!falhaTransitoria(e))throw e;
       await abrirArquivos(user,draft.base,storage);
       server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);
-      pending.current=!!draft.pending||!!attempt.current;municipios.current=new Set(draft.municipios||[]);
+      pending.current=!!draft.pending||!!attempt.current;restaurarMunicipios(draft.municipios||[]);
       setSummaryReady(true);setStatus(attempt.current?.confirmacao?'Alterações já salvas — retomando atualização automaticamente.':'Dados locais disponíveis; retomando a conexão automaticamente.');
       if(pending.current)timer.current=setTimeout(flush,2000);else timer.current=setTimeout(()=>refresh({force:true}),2000);
       iniciarTempoReal();
@@ -197,10 +229,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     const state=projetar(base,draft?.db||seed);
     // In-flight edits from an earlier session retain their original baseline for conflict checks.
     if(draft?.pending && draft.baseline) {
-      municipios.current=new Set(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
+      restaurarMunicipios(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
       await storage.set(`${storageKey()}-revisao-recebimento`,JSON.stringify(draft));
       const resultado=atualizarComRascunho(draft.baseline,draft.db,state.db);
-      server.current={...state,db:resultado.baseline};publish(resultado.dados);pending.current=true;
+      server.current={...state,db:resultado.baseline};publish(attempt.current?.rejeitada?preservarRegistrosAusentes(draft.baseline,resultado.dados,state.db):resultado.dados);pending.current=true;
       if(resultado.conflitos.length){revisao.current={remoto:state.db};setConflitos(resultado.conflitos);setError('Há alterações diferentes no mesmo campo. Escolha os valores para continuar.');}
       setStatus('Dados atualizados — alterações locais preservadas.');
     } else {
@@ -243,7 +275,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
           fin_receb_clientes:[...prior.base.fin_receb_clientes.filter(c=>(individual||c.municipio_id!==id)&&!clientIds.has(c.id)),...carga.clientes],
           integracao_moradores:[...(prior.base.integracao_moradores||[]).filter(e=>!extraIds.has(e.registro_id)&&(individual||e.dados?.municipioId!==id)),...carga.complementos]};
         const state=projetar(base,prior.db);
-        const merged=mesclarEdicoes(prior.db,current.current,state.db);
+        const merged=(await atualizarPreservando(prior.db,state.db,gen,()=>attempt.current?.rejeitada?preservarRegistrosAusentes(prior.db,current.current,state.db):current.current)).dados;
+        if(gen!==generation.current)throw new Error('Sessão encerrada.');
         server.current=state;publish(merged);if(!individual){municipios.current.add(id);desatualizados.current.delete(id);}
         await saveDraft();return current.current;
       } finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
@@ -305,7 +338,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const reopen=async()=>{
     if(busy.current)return;
     try {
-      const snapshot=JSON.stringify({dados:current.current,base:server.current?.db,envio:attempt.current},null,2);
+      const snapshot=JSON.stringify({dados:current.current,base:server.current?.db,envio:attempt.current,reservasPreservadas:recuperacoes.current},null,2);
       await storage.set(`${storageKey()}-revisao-${Date.now()}`,snapshot);
       const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
       const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -323,5 +356,5 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
     return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
-  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush:()=>{retentativas.current=0;return flush();},refresh,reopen,loadMunicipio,status,error,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush:()=>{retentativas.current=0;return flush();},refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }

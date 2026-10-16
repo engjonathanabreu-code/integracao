@@ -56,13 +56,10 @@ test('finance and institutions merge independent edits using original validation
  await login(1);await db.query('select integracao_financeiro_importar($1,$2)',[JSON.stringify([{id:id(80),versao:0,anterior:{juros:3},dados:{juros:4}}]),'fixture.csv']);assert.equal(Number((await db.query('select juros from fin_receb_parcelas')).rows[0].juros),4);
 
  }finally{await db.close();}});
-test('CAS editor retries races, reviews divergent fields and invalidates choices if remote changes again',async()=>{
+test('CAS editor automatically keeps latest server conflicts and retries independent races',async()=>{
  let remote={x:2,y:1},writes=0;
  const options={anterior:{x:0,y:0},local:{x:1,y:0},ler:async()=>({...remote}),gravar:async novo=>{writes++;remote={...remote,...novo};return remote;}};
- let conflict;try{await editarConciliado(options);}catch(e){conflict=e;}
- assert.equal(writes,0);assert.equal(conflict.conflitos.length,1);remote.x=3;
- let changed;try{await conflict.resolver({[conflict.conflitos[0].chave]:'local'});}catch(e){changed=e;}
- assert.equal(writes,0);assert.equal(changed.conflitos[0].remoto,3);await changed.resolver({[changed.conflitos[0].chave]:'local'});assert.deepEqual(remote,{x:1,y:1});
+ assert.deepEqual(await editarConciliado(options),{x:2,y:1});assert.equal(writes,0);
  remote={x:0,y:1};let race=true;
  await editarConciliado({...options,gravar:async novo=>{if(race){race=false;remote.y=2;const e=new Error('race');e.code='PT409';throw e;}remote={...remote,...novo};return remote;}});assert.deepEqual(remote,{x:1,y:2});
 });

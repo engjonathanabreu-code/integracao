@@ -1,4 +1,5 @@
-import {conciliarEdicoes,erroConcorrencia} from './concorrencia.js';
+import {erroConcorrencia} from './concorrencia.js';
+import {conciliarMaisRecentes as conciliarEdicoes} from './conciliacao-automatica.js';
 const igual=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 // Each retry reads a new baseline and still uses a database CAS/row lock.
 // A choice never authorizes overwriting a value changed since it was shown.
@@ -7,6 +8,9 @@ export async function editarConciliado({anterior,local,ler,gravar,sempreGravar=f
   const remoto=await ler();
   if(!remoto)throw new Error('Registro indisponível ou sem permissão.');
   const conciliado=conciliarEdicoes(anterior,local,remoto,mostrado&&igual(mostrado,remoto)?escolhas:{});
+  if(conciliado.resolvidos.length&&typeof window!=='undefined'&&window.storage){
+   await window.storage.set(`integracao-editor-revisao-${Date.now()}-${crypto.randomUUID()}`,JSON.stringify({anterior,local,remoto,resolvidos:conciliado.resolvidos}));
+  }
   if(conciliado.conflitos.length){
    const e=new Error('Escolha os valores diferentes para continuar.');e.code='PT409';e.conflitos=conciliado.conflitos;
    e.resolver=opcoes=>editarConciliado({anterior,local,ler,gravar,sempreGravar},opcoes,remoto);throw e;
