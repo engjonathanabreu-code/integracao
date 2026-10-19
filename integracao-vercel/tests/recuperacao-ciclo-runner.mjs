@@ -35,5 +35,14 @@ if(cenario==='municipio-restaurado'){
  assert.equal(atualizado.processos.find(p=>p.codigo==='TST01_001').etapa,1,'edição recuperada deve ser mantida');
  assert.equal(h.stats.writes,1,'carregamento não deve alterar os cadastros');
 }
+if(cenario==='meta-historico-ausente'){
+ assert.equal(h.stats.posts,2,'rejected batch rebuilt once');
+ assert.equal(h.stats.writes,1,'one atomic successful write');
+ assert.equal(h.base().metas.find(m=>m.id.endsWith('000000000007')).status,'Concluído');
+ assert.ok(h.base().metas.some(m=>m.titulo==='Meta criada offline'));
+ assert.ok(h.base().meta_historico.some(h=>h.descricao==='Criação preservada'));
+ assert.ok(h.db.conversas[0].mensagens.some(m=>m.texto==='Mensagem recebida durante a pendência'));
+ assert.ok([...cache.keys()].some(k=>k.includes('-revisao-')),'original rejected draft archived');
+}
 console.log(JSON.stringify({cenario,pending:h.draft().pending,posts:h.stats.posts,writes:h.stats.writes,clientes:h.db.processos.length,conflitos:h.sync.conflitos.length}));
 h.sync.close();process.exit(0);

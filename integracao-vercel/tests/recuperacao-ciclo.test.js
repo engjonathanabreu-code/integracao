@@ -13,7 +13,7 @@ test('real React sync hook recovers conflicts, refused deletions, lost receipts 
  try{
   const bundle=join(dir,'harness.mjs');
   await build({entryPoints:['tests/sincronizacao-ciclo.jsx'],bundle:true,format:'esm',platform:'node',define:{'import.meta.env':'{}'},outfile:bundle,logLevel:'silent'});
-  for(const scenario of ['municipio-restaurado','concorrente-divergente','concorrente-igual','concorrente-independente','exclusao-recusada','resposta-perdida','reserva-recusada']){
+  for(const scenario of ['meta-historico-ausente','municipio-restaurado','concorrente-divergente','concorrente-igual','concorrente-independente','exclusao-recusada','resposta-perdida','reserva-recusada']){
    const {stdout}=await exec(process.execPath,[fileURLToPath(new URL('./recuperacao-ciclo-runner.mjs',import.meta.url)),pathToFileURL(bundle).href,scenario],{timeout:15000});
    assert.match(stdout,/"pending":false/,scenario);assert.match(stdout,/"conflitos":0/,scenario);
   }

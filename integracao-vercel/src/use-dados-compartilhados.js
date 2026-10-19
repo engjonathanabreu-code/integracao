@@ -44,6 +44,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     await atualizarFichas(base,!grupos||grupos.includes('clientes')?avulsos:[],lerFichaCliente);
     lastRefresh.current=Date.now();return base;
   };
+  // Projection carries local-only goals for display; they are not server rows.
+  // Keep them out of the remote baseline when rebasing pending edits, otherwise
+  // their creation disappears from the diff and only child history may be sent.
+  const projetarRemoto=(base,seed)=>{
+    const state=projetar(base,seed);
+    const locais=new Set(metasLocaisParaCompartilhar(base,state.db,actor.current).map(m=>m.id));
+    return locais.size?{...state,db:{...state.db,metas:state.db.metas.filter(m=>!locais.has(m.id))}}:state;
+  };
   const storageKey=()=>`integracao-compartilhado-${actor.current?.erpRef}`;
   const atualizarPendentes=(base,before,local,envio=attempt.current)=>{
     const clientes=[...clientesComEdicao(before,local),...clientesDasOperacoes((envio?.operations||[]).map(op=>({...op,remove:false})),[...local.processos,...before.processos])];
@@ -87,7 +95,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     if(gen!==generation.current)return false;
     await atualizarPendentes(base,anterior.db,current.current);
     if(gen!==generation.current)return false;
-    const state=projetar(base,current.current);
+    const state=projetarRemoto(base,current.current);
     if(attempt.current?.rejeitada)publish(preservarRegistrosAusentes(anterior.db,current.current,state.db));
     if(attempt.current?.rejeitada&&/ativo já está reservado/.test(attempt.current.erro||'')){
       const versaoLocal=JSON.stringify(current.current);
@@ -226,7 +234,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     const seed=(!legacyOwner||legacyOwner===user.erpRef?legacy:null) || baseLimpa();
     if(!legacy) {seed.setoresMeta=[];seed.agendas=[];}
     if(draft?.pending&&draft.baseline)await atualizarPendentes(base,draft.baseline,draft.db,draft.attempt);
-    const state=projetar(base,draft?.db||seed);
+    const state=draft?.pending?projetarRemoto(base,draft.db):projetar(base,draft?.db||seed);
     // In-flight edits from an earlier session retain their original baseline for conflict checks.
     if(draft?.pending && draft.baseline) {
       restaurarMunicipios(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
@@ -311,7 +319,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       if(gen!==generation.current||(!manual&&temEdicaoEmAndamento()))return false;
       await abrirArquivos(actor.current,base,storage);
       if(gen!==generation.current||(!manual&&temEdicaoEmAndamento()))return false;
-      const state=projetar(base,current.current);
+      const state=projetarRemoto(base,current.current);
       if(pending.current){
         // Keep the original request, receipt and local baseline durably recoverable.
         await storage.set(`${storageKey()}-revisao-recebimento`,JSON.stringify({dados:current.current,base:server.current.db,envio:attempt.current,remoto:state.db}));

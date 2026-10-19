@@ -20,6 +20,10 @@ if(scenario==='reserva-recusada'){
  initial.erp_agendas=[{id:id(40),nome:'Sala'}];
  initial.erp_eventos=[{id:id(41),titulo:'Reserva confirmada',agenda_id:id(40),inicio:'2026-10-15T13:00:00Z',fim:'2026-10-15T14:00:00Z',status:'ativo',participantes:[id(1)],created_by:id(1)}];
 }
+if(scenario==='meta-historico-ausente'){
+ initial.erp_conversas=[{id:id(60),tipo:'grupo',titulo:'Equipe',participantes:[id(1)],created_by:id(1)}];
+ initial.erp_mensagens=[{id:id(61),conversa_id:id(60),autor_id:id(1),texto:'Mensagem recebida durante a pendência',created_at:'2026-10-19T12:00:00Z'}];
+}
 let base=JSON.parse(localStorage.getItem('harness-server')||'null')||copy(initial);
 let receipts=JSON.parse(localStorage.getItem('harness-receipts')||'{}');
 const actor=projetar(initial,blank()).db.usuarios[0];
@@ -35,6 +39,11 @@ if(!localStorage.getItem(key)){
  let operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},expected:{dados:initial.integracao_moradores[0].dados},changes:{dados:{etapa:1,checks:{}}}}];
  if(scenario==='reserva-recusada'){const evento={...after.eventos[0],id:id(42),titulo:'Reserva pendente'};delete evento._compartilhado;after.eventos.push(evento);operations.push({action:'evento',tempId:evento.id,payload:{titulo:evento.titulo,agenda_id:id(40),inicio:evento.inicio,fim:evento.fim}});}
  if(scenario==='exclusao-recusada'){after.processos=[];operations=[{table:'fin_receb_clientes',key:{id:id(4)},expected:initial.fin_receb_clientes[0],remove:true}];}
+ if(scenario==='meta-historico-ausente'){
+  after.metas[0].status='Concluído';
+  after.metas.push({...copy(after.metas[0]),id:id(70),erpId:undefined,_compartilhado:undefined,titulo:'Meta criada offline',status:'Em andamento',historico:[{id:id(71),acao:'criar',descricao:'Criação preservada'}]});
+  operations.push({table:'meta_historico',key:{id:id(98)},insert:true,changes:{meta_id:id(99),meta_titulo:'Meta removida',acao:'alterar',autor_id:id(1)}});
+ }
  localStorage.setItem(key,JSON.stringify({db:after,baseline:before,base:initial,pending:true,attempt:{id:crypto.randomUUID(),before,after,operations,sent:{}},municipios:[id(2)]}));
 }
 if(scenario==='concorrente-igual')base.integracao_moradores[0].dados.etapa=1;
@@ -58,6 +67,7 @@ window.fetch=async(input,options={})=>{
   for(const op of operacoes){
    const rows=next[op.table]||=[];const matches=r=>Object.entries(op.key).every(([k,v])=>r[k]===v);
    const row=rows.find(matches);
+   if(op.insert&&op.table==='meta_historico'&&!next.metas.some(m=>m.id===op.changes.meta_id))return response({message:'insert or update on table "meta_historico" violates foreign key constraint "meta_historico_meta_id_fkey"',code:'23503'},409);
    if(op.insert){if(row)return response({message:'Duplicação'},409);rows.push({...op.key,...op.changes});}
    else{
     if(!row)return response({message:'Registro ausente'},403);
