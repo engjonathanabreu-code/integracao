@@ -50,9 +50,9 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
       {resultados.map((p,i) => <button type="button" key={p.id} id={`${id}-${i}`} className={`item-busca${ativo === i ? ' ativo' : ''}`} role="option" aria-selected={ativo === i} disabled={abrindo} onMouseDown={e => e.preventDefault()} onClick={() => escolher(p)}>
         <span><strong>{p.requerente?.nome || 'Cliente sem nome'}</strong><span className="ajuda" style={{display:'block', margin:0}}>{p.codigo || 'Sem código'} · {p.requerente?.tipoPessoa === 'juridica' ? 'PJ' : 'PF'} · {db.municipios.find(m => m.id === p.municipioId)?.nome || 'Sem município'}{!p.remessaId ? ' · Sem remessa' : ''}</span></span>
       </button>)}
-      {!resultados.length && <div className="ajuda" style={{padding:10}}>{indice ? 'Nenhum cliente encontrado.' : erro ? 'Busca indisponível.' : 'Carregando clientes…'}</div>}
+      {!resultados.length && <div className="ajuda" style={{padding:10}}>{erro ? 'Busca indisponível.' : indice ? 'Nenhum cliente encontrado.' : 'Carregando clientes…'}</div>}
     </div>}
-    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : !indice && !erro ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : incluirConjuge?'Pesquise PF ou PJ por nome, cônjuge, prefixo ou código.':'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
+    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : erro ? 'Não foi possível concluir a busca.' : !indice ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : incluirConjuge?'Pesquise PF ou PJ por nome, cônjuge, prefixo ou código.':'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
     {erro && <div role="alert" className="msg-erro">{erro} <button className="btn btn-sm" onClick={() => setTentativa(v => v+1)}>Tentar novamente</button></div>}
   </div>;
 }

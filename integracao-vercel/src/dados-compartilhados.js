@@ -11,13 +11,13 @@ export const configERP = {
   chave: import.meta.env?.VITE_ERP_SUPABASE_KEY || 'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4',
 };
 let session = null, refreshing = null;
-let indiceClientes = null, indiceJob = null, indiceGeracao = 0, indiceCarregadoEm = 0;
+let indiceClientes = null, indiceJob = null, indiceGeracao = 0, indiceCarregadoEm = 0, indiceSessao = 0;
 const VALIDADE_INDICE_MS = 5 * 60 * 1000;
-export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceJob = null; indiceCarregadoEm = 0; }
+export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceCarregadoEm = 0; }
 export function obterIndiceClientes() { return session ? indiceClientes : null; }
 export function definirSessao(dados) {
   if (!dados || dados.user?.id !== session?.user?.id) limparContratos();
-  if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) invalidarIndiceClientes();
+  if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) { indiceSessao++; indiceJob = null; invalidarIndiceClientes(); }
   session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
 export async function requisicao(path, options = {}) {
@@ -554,12 +554,23 @@ export function lerIndiceClientes() {
   if (!session) return Promise.reject(new Error('Entre novamente para buscar clientes.'));
   if (indiceClientes && Date.now() - indiceCarregadoEm < VALIDADE_INDICE_MS) return Promise.resolve(indiceClientes);
   if (indiceJob) return indiceJob;
-  const geracao = indiceGeracao;
-  const job = carregarIndiceClientes().then(result => {
-    if (geracao !== indiceGeracao) throw new Error('Os dados da busca mudaram. Tente novamente.');
-    indiceClientes = result; indiceCarregadoEm = Date.now();
-    return result;
-  }).finally(() => { if (indiceJob === job) indiceJob = null; });
+  const sessaoDaBusca = indiceSessao;
+  const job = (async () => {
+    // Realtime updates invalidate data, not the caller's session. Share one job
+    // and reload automatically rather than rejecting an otherwise valid search.
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const geracao = indiceGeracao;
+      const result = await carregarIndiceClientes();
+      if (!session || sessaoDaBusca !== indiceSessao) throw new Error('A sessão da busca mudou. Entre novamente para buscar clientes.');
+      if (geracao === indiceGeracao) {
+        indiceClientes = result; indiceCarregadoEm = Date.now();
+        return result;
+      }
+      // Continuous edits must not starve the search. Return the completed read
+      // without caching it; the next lookup will fetch again.
+      if (tentativa === 2) return result;
+    }
+  })().finally(() => { if (indiceJob === job) indiceJob = null; });
   indiceJob = job;
   return job;
 }
