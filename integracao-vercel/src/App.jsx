@@ -1548,9 +1548,9 @@ function migrarParaV5(n) {
   n.municipios.forEach((m) => { if (!m.prefixo) { m.prefixo = gerarPrefixo(m.nome, usados); usados.add(m.prefixo); } });
   const porRemessa = {};
   n.processos.forEach((p) => { (porRemessa[p.remessaId] = porRemessa[p.remessaId] || []).push(p); });
-  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => compararTextos(a.codigo, b.codigo)).forEach((p, i) => { p.numeroCliente = i + 1; }));
+  Object.values(porRemessa).forEach((lista) => lista.sort((a, b) => compararTextos(a.codigo, b.codigo)).forEach((p, i) => { p.numeroCliente = numeroClienteDe(p) || i + 1; }));
   n.processos.forEach((p) => {
-    p.codigo = codigoCliente(n, p.remessaId, p.numeroCliente);
+    if (!p.codigo) p.codigo = codigoCliente(n, p.remessaId, p.numeroCliente);
     if (!Array.isArray(p.unidades) || !p.unidades.length) p.unidades = [{ id: `${p.id}_u1`, area: p.imovel?.area || "", memorial: "", loteQuadra: p.campos?.loteQuadra || "" }];
   });
   n.versao = 5;
@@ -4470,7 +4470,7 @@ function AbaQualificacao({ p, usuario, perm, mutar, setToast }) {
   const salvo = q?.textos?.[modo];
   const origem = q?.origem?.[modo] || "";
   const gerado = ["simples", "completa"].includes(modo) ? gerarQualificacao(p, modo) : null;
-  const texto = salvo !== undefined && salvo !== null && salvo !== "" ? salvo : gerado ? gerado.texto : "";
+  const texto = origem === "gerada" && gerado ? gerado.texto : salvo !== undefined && salvo !== null && salvo !== "" ? salvo : gerado ? gerado.texto : "";
   const faltas = gerado && (origem === "gerada" || !salvo) ? gerado.faltas : q?.faltas?.[modo] || [];
   const modosDisponiveis = MODOS_QUALIFICACAO.filter(([k]) => ["simples", "completa"].includes(k) || preenchido(q?.textos?.[k]));
   const podeEditar = perm.diretor || perm.setor === "comercial" || perm.setor === "juridico" || perm.setor === "posprotocolo";

@@ -73,3 +73,16 @@ test('qualificação de posse inclui somente cônjuge com Sim explícito',()=>{
     assert.equal(ctx.gerarQualificacao(p,'simples').texto.includes('Cônjuge Sintético'),valor==='sim');
   }
 });
+
+test('reabrir backup v4 preserva códigos legados e seus números de sequência',()=>{
+  const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
+  const ctx=vm.createContext({so:s=>s.replace(/\D/g,''),compararTextos:(a,b)=>a.localeCompare(b),codigoCliente:()=>{throw Error('Não deve renumerar');}});
+  for(const name of ['numeroClienteDe','migrarParaV5']){
+    const start=source.indexOf(`function ${name}(`),end=name==='numeroClienteDe'?source.indexOf('\n',start):source.indexOf('\n}',start)+2;
+    vm.runInContext(source.slice(start,end),ctx);
+  }
+  const n={versao:4,municipios:[{prefixo:'ABC'}],processos:[{id:'1',remessaId:'r',codigo:'ABC_001'},{id:'2',remessaId:'r',codigo:'ABC_10000'}]};
+  ctx.migrarParaV5(n);
+  assert.deepEqual(n.processos.map(p=>p.codigo),['ABC_001','ABC_10000']);
+  assert.deepEqual(n.processos.map(p=>p.numeroCliente),[1,10000]);
+});
