@@ -8,6 +8,7 @@ test('migração da entrada preserva registros legados, valida reais e mantém v
  await db.exec(`insert into integracao_crm_cards(id,lead_nome,lead_municipio_id,responsavel_id,valor_total,forma_negociacao,parcelas,entrada_percentual) values('${id(80)}','Lead antigo','${id(30)}','${id(2)}',9000,'entrada_parcelas',6,30);`);
  const before=(await db.query('select to_jsonb(c) as r from integracao_crm_cards c')).rows;
  await db.exec(sql('migrations/20261008120000_crm_entrada_valor.sql'));
+ await db.exec(sql('migrations/20261019235636_moradores_codigo_quatro_digitos.sql'));
  assert.deepEqual((await db.query("select to_jsonb(c)-'entrada_valor' as r from integracao_crm_cards c")).rows,before);
  await db.exec(`set role authenticated;set request.jwt.claim.sub='${id(2)}';update integracao_crm_cards set valor_total=1234.56,entrada_percentual=null,entrada_valor=123.45 where id='${id(80)}';reset role;`);
  assert.equal((await db.query(`select entrada_valor::text from integracao_crm_funil where id='${id(80)}'`)).rows[0].entrada_valor,'123.45');
@@ -17,7 +18,7 @@ test('migração da entrada preserva registros legados, valida reais e mantém v
  const c=(await db.query(`select to_jsonb(c) as r from integracao_crm_cards c where id='${id(80)}'`)).rows[0].r;
  const fields=['status','valor_total','forma_negociacao','parcelas','desconto_percentual','entrada_percentual','entrada_valor'],prev=Object.fromEntries(fields.map(k=>[k,c[k]])),next={...prev,status:'Contrato'};
  await db.query('select integracao_crm_converter_lead($1,$2,$3,$4::jsonb,$5::jsonb)',[id(80),id(30),id(31),JSON.stringify(next),JSON.stringify(prev)]);
- await db.exec('reset role');assert.equal((await db.query(`select entrada_valor::text from integracao_crm_cards where id='${id(80)}'`)).rows[0].entrada_valor,'123.45');
+ await db.exec('reset role');assert.equal((await db.query("select codigo from fin_receb_clientes where remessa_id='"+id(31)+"'")).rows[0].codigo,'TAI01_0001');assert.equal((await db.query(`select entrada_valor::text from integracao_crm_cards where id='${id(80)}'`)).rows[0].entrada_valor,'123.45');
  // An older client still writes its percentage without keeping a stale currency amount.
  await db.exec(`update integracao_crm_cards set entrada_percentual=20 where id='${id(80)}'`);assert.equal((await db.query(`select entrada_valor from integracao_crm_cards where id='${id(80)}'`)).rows[0].entrada_valor,null);
  }finally{await db.close();}});

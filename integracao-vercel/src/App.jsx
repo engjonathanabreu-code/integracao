@@ -1,3 +1,5 @@
+import SoltarDocumentos from "./SoltarDocumentos.jsx";
+import { selecionarDocumentos } from "./documentos-upload.js";
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
 import {acaoPermitida} from './permissoes-contrato.js';
@@ -345,7 +347,7 @@ function limparHtml(html) {
 const pessoaVazia = () => ({
   nome: "", statusCRM: "", statusFinanceiro: "", sexo: "", nacionalidade: "Brasileira", naturalidade: "", rg: "", rgOrgao: "", rgUf: "", cpf: "", nascimento: "", mae: "", pai: "",
   estadoCivil: "", regimeBens: "", dataUniao: "", dataSeparacao: "", profissao: "", empregador: "", renda: "", telefone: "", whatsapp: "", email: "", deficiencia: "",
-  tipoPessoa: "fisica", cnpj: "", representante: "", beneficiario: "sim",
+  tipoPessoa: "fisica", cnpj: "", representante: "", beneficiario: "sim", beneficiarioTitulo: "",
 });
 const enderecoVazio = () => ({ logradouro: "", numero: "", complemento: "", bairro: "", localidade: "", municipio: "", uf: "", cep: "" });
 const processoVazio = (municipioId, remessaId, codigo) => ({
@@ -1462,8 +1464,8 @@ function montarMorador(db, municipioId, dados) {
   return np;
 }
 /* ---------------- códigos de cliente e unidades ---------------- */
-// Padrão: IBI01_001A = prefixo do município (IBI) + remessa (01) + _ + número do cliente (001) + letra da unidade (só quando há mais de uma)
-const pad3 = (n) => String(n).padStart(3, "0");
+// Padrão: IBI01_0001A = prefixo do município (IBI) + remessa (01) + _ + número do cliente (0001) + letra da unidade (só quando há mais de uma)
+const pad3 = (n) => String(n).padStart(4, "0");
 
 
 
@@ -2599,11 +2601,11 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     setPasso(2);
   };
   const escolherArquivos = (lista) => {
-    setErroArquivo("");
+    if (processando) return;
+    const { aceitos, erro } = selecionarDocumentos(lista, MAX_LOTE - filaRef.current.length);
+    setErroArquivo(erro);
     const novos = [];
-    Array.from(lista || []).forEach((f) => {
-      if (!TIPOS_ACEITOS.includes(f.type)) { setErroArquivo(`"${f.name}" não foi aceito. Envie PDF, JPG, PNG ou WEBP.`); return; }
-      if (f.size > LIMITE_DOCUMENTO_IA) { setErroArquivo(`"${f.name}" passa de 20 MB.`); return; }
+    aceitos.forEach((f) => {
       const id = uid("arq");
       arquivosRef.current[id] = f;
       novos.push({ id, nome: f.name, tamanho: f.size, tipoEsperado: "auto", estado: "fila", erro: "", resumo: "" });
@@ -2766,12 +2768,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       </div>
 
       <input ref={inputRef} type="file" multiple accept=".pdf,image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => escolherArquivos(e.target.files)} />
-      <div className="soltar-docs" role="button" tabIndex={0} onClick={() => !processando && inputRef.current?.click()} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !processando) { e.preventDefault(); inputRef.current?.click(); } }}
-        onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (!processando) escolherArquivos(e.dataTransfer.files); }}>
-        <Upload size={24} />
-        <strong>Adicionar documentos</strong>
-        <span className="ajuda" style={{ margin: 0 }}>Clique ou arraste. RG, CNH, certidões, comprovantes e contrato de posse. PDF ou foto, até 20 MB cada.</span>
-      </div>
+      <SoltarDocumentos bloqueado={processando} escolher={escolherArquivos} abrir={() => inputRef.current?.click()}><Upload size={24} /><strong>Adicionar documentos</strong></SoltarDocumentos>
       {erroArquivo && <div className="msg-erro" role="alert">{erroArquivo}</div>}
 
       {fila.length > 0 && (
@@ -3860,6 +3857,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
     ),
     conjuge: mostraConj ? (
       <Secao titulo="Cônjuge ou companheiro(a)">
+        <Campo form={form} rot="Cônjuge é beneficiário do título?" path="conjuge.beneficiarioTitulo" opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} dis={disCad} />
         <BlocoPessoa form={form} base="conjuge" papel="conjuge" dis={disCad} perm={perm} />
         <ExtrasSecao defs={defs} secaoId="conjuge" form={form} dis={disCad} />
       </Secao>
@@ -3887,6 +3885,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
                   {conj && (
                     <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
                       <div className="rot" style={{ marginBottom: 8 }}>Cônjuge ou companheiro(a) de {c.pessoa.nome || "requerente"}</div>
+                      <Campo form={form} rot="Cônjuge é beneficiário do título?" path={`${B}.conjuge.beneficiarioTitulo`} opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} dis={disCad} />
                       <BlocoPessoa form={form} base={`${B}.conjuge`} papel="conjuge" dis={disCad} perm={perm} />
                     </div>
                   )}
@@ -4012,7 +4011,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
   );
 }
 
-function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado }) {
+function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado, setRascunho }) {
   const regrasMun = regrasDoMunicipio(db, p.municipioId);
   const [tipoEsperado, setTipoEsperado] = useState("auto");
   const [pessoaEscolhida, setPessoaEscolhida] = useState("");
@@ -4043,20 +4042,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   const arquivo = arquivos[0] || null;
   const descartarArquivo = () => { if (processandoRef.current) return; sessaoIA.current.limpar(); setArquivos([]); if (inputRef.current) inputRef.current.value = ""; };
   const escolher = (lista) => {
-    if (processandoRef.current) return;
+    if (processandoRef.current || !podeEnviar) return;
     setErro(""); setResultado(null); setEstado("ocioso");
-    const escolhidos = Array.from(lista || []);
-    if (!escolhidos.length) { setArquivos([]); return; }
-    const recusados = [];
-    const aceitos = escolhidos.filter((f) => {
-      const extensaoOk = /\.(pdf|jpe?g|png|webp|gif|heic|heif|tiff?|bmp|avif)$/i.test(f.name);
-      if (!TIPOS_ACEITOS.includes(f.type) && !extensaoOk) { recusados.push(`${f.name}: formato não aceito`); return false; }
-      if (f.size > LIMITE_DOCUMENTO_IA) { recusados.push(`${f.name}: ${(f.size / 1048576).toFixed(1)} MB, acima de 20 MB`); return false; }
-      return true;
-    }).slice(0, MAX_LOTE);
-    if (escolhidos.length > MAX_LOTE) recusados.push(`só os primeiros ${MAX_LOTE} arquivos entram de uma vez`);
+    const { aceitos, erro } = selecionarDocumentos(lista);
     setArquivos(aceitos);
-    if (recusados.length) setErro(`${recusados.join(". ")}.`);
+    setErro(erro);
     if (inputRef.current) inputRef.current.value = "";
   };
   const tirarDaLista = (k) => { if (!processandoRef.current) setArquivos((x) => x.filter((y, j) => j !== k)); };
@@ -4236,6 +4226,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
 
   return (
     <div className="flex flex-col gap-3">
+      <Secao titulo="Documental">
+        <label className="rot" htmlFor="observacoes-documental">Observações Documental</label>
+        <textarea id="observacoes-documental" className="inp" rows={4} value={rascunho.extras?.observacoesDocumental || ""} disabled={!podeEnviar} onChange={e => { const texto = e.target.value; setRascunho(r => ({ ...r, extras: { ...r.extras, observacoesDocumental: texto } })); }} />
+        <div className="ajuda">Salve o cadastro para gravar as observações.</div>
+      </Secao>
       <Secao titulo="Analisar documento" nota="A IA lê o documento, confere as regras da Integral e compara com o cadastro. Depois da análise o arquivo é descartado: fica só o resultado.">
         {!podeEnviar ? <p style={{ margin: 0, color: "var(--muted)" }}>Seu perfil não envia documentos.</p> : (
           <>
@@ -4261,10 +4256,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
               <div style={{ gridColumn: "span 2" }}>
                 <span className="rot">Arquivos (PDF, JPG, PNG, WEBP, GIF, HEIC, TIFF ou BMP, até 20 MB cada, {MAX_LOTE} por vez)</span>
                 <input ref={inputRef} type="file" disabled={estado === "analisando"} multiple accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={(e) => escolher(e.target.files)} />
-                <div className="flex gap-2">
-                  <button className="btn" disabled={estado === "analisando"} style={{ flex: 1, justifyContent: "flex-start" }} onClick={() => inputRef.current?.click()}><Upload size={16} />{arquivos.length ? `${arquivos.length} arquivo(s) escolhido(s)` : "Escolher arquivos"}</button>
-                  {arquivos.length > 0 && <button className="btn-icone" disabled={estado === "analisando"} style={{ height: 38, width: 38 }} onClick={descartarArquivo} aria-label="Limpar lista"><X size={16} /></button>}
-                </div>
+                <SoltarDocumentos bloqueado={!podeEnviar || estado === "analisando"} escolher={escolher} abrir={() => inputRef.current?.click()}>
+                  <Upload size={24} />
+                  <span>{arquivos.length ? `${arquivos.length} arquivo(s) escolhido(s)` : "Arraste os documentos aqui"}</span>
+                </SoltarDocumentos>
+                {arquivos.length > 0 && <button className="btn" disabled={estado === "analisando"} onClick={descartarArquivo}>Limpar lista</button>}
                 {arquivos.length > 0 && (
                   <div className="lista-arquivos">
                     {arquivos.map((f, i) => (
@@ -4426,8 +4422,8 @@ function gerarQualificacao(p, modo) {
   if (modo === "simples") {
     const cods = codigosUnidades(p);
     let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, ${docCurto(r, "requerente")}`;
-    if (casal) t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
-    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
+    if (casal && c.beneficiarioTitulo === "sim") t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
+    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && o.conjuge.beneficiarioTitulo === "sim" && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
     return { texto: `${t}.`, faltas };
   }
   const nac = (v) => (normalizar(v).startsWith("brasil") ? "brasileiro(a)" : minus(token(v, "nacionalidade")));
@@ -4701,7 +4697,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             ))}
           </div>
           {aba === "cadastro" && <AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} />}
-          {aba === "documentos" && <AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} />}
+          {aba === "documentos" && <AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} setRascunho={setRascunho} />}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
               <span className="flex flex-wrap items-center gap-2">
