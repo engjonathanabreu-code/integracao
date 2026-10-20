@@ -1,3 +1,4 @@
+import {beneficiarioConjuge} from '../src/beneficiario-conjuge.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -65,7 +66,7 @@ test('soltar arquivo usa o mesmo seletor, bloqueia durante análise e oferece bo
 
 test('qualificação de posse inclui somente cônjuge com Sim explícito',()=>{
   const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8'),start=source.indexOf('function gerarQualificacao(');
-  const ctx=vm.createContext({preenchido: Boolean,cpfValido:()=>true,fmtCPF:v=>v,ehPJ:()=>false,cpfDispensado:()=>false,temConjuge:()=>true,codigosUnidades:()=>['ABC_0001']});
+  const ctx=vm.createContext({beneficiarioConjuge,preenchido: Boolean,cpfValido:()=>true,fmtCPF:v=>v,ehPJ:()=>false,cpfDispensado:()=>false,temConjuge:()=>true,codigosUnidades:()=>['ABC_0001']});
   vm.runInContext(source.slice(start,source.indexOf('\n}',start)+2),ctx);
   const p={requerente:{nome:'Pessoa Sintética',cpf:'111'},conjuge:{nome:'Cônjuge Sintético',cpf:'222',beneficiario:'sim'},corequerentes:[]};
   for(const valor of [undefined,'','nao','sim']){
@@ -85,4 +86,13 @@ test('reabrir backup v4 preserva códigos legados e seus números de sequência'
   ctx.migrarParaV5(n);
   assert.deepEqual(n.processos.map(p=>p.codigo),['ABC_001','ABC_10000']);
   assert.deepEqual(n.processos.map(p=>p.numeroCliente),[1,10000]);
+});
+
+test('legados preservam Não válido e não inventam proveniência para Sim automático',()=>{
+  const legado={beneficiario:'sim',nome:'Legado'};
+  assert.equal(beneficiarioConjuge(legado),'');assert.equal(legado.beneficiario,'sim');
+  assert.equal(beneficiarioConjuge({beneficiario:'nao'}),'nao');
+  assert.equal(beneficiarioConjuge({beneficiario:'nao',beneficiarioTitulo:'sim'}),'sim');
+  assert.equal(beneficiarioConjuge({beneficiario:'sim',beneficiarioTitulo:'nao'}),'nao');
+  assert.equal(beneficiarioConjuge({beneficiario:'nao',beneficiarioTitulo:''}),'');
 });

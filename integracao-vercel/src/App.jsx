@@ -1,4 +1,5 @@
 import SoltarDocumentos from "./SoltarDocumentos.jsx";
+import { beneficiarioConjuge } from "./beneficiario-conjuge.js";
 import { selecionarDocumentos } from "./documentos-upload.js";
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
@@ -347,7 +348,7 @@ function limparHtml(html) {
 const pessoaVazia = () => ({
   nome: "", statusCRM: "", statusFinanceiro: "", sexo: "", nacionalidade: "Brasileira", naturalidade: "", rg: "", rgOrgao: "", rgUf: "", cpf: "", nascimento: "", mae: "", pai: "",
   estadoCivil: "", regimeBens: "", dataUniao: "", dataSeparacao: "", profissao: "", empregador: "", renda: "", telefone: "", whatsapp: "", email: "", deficiencia: "",
-  tipoPessoa: "fisica", cnpj: "", representante: "", beneficiario: "sim", beneficiarioTitulo: "",
+  tipoPessoa: "fisica", cnpj: "", representante: "", beneficiario: "sim",
 });
 const enderecoVazio = () => ({ logradouro: "", numero: "", complemento: "", bairro: "", localidade: "", municipio: "", uf: "", cep: "" });
 const processoVazio = (municipioId, remessaId, codigo) => ({
@@ -2338,7 +2339,7 @@ function ModalConfirmar({ titulo, texto, rotuloBotao, onConfirmar, onFechar }) {
 }
 
 function Campo({ form, rot, path, span = 1, dis, opcoes, tipo = "text", fmt, erro, ph, im, vazio = "Não informado", ajuda }) {
-  const v = getPath(form.rascunho, path) ?? "";
+  const v = path.endsWith(".beneficiarioTitulo") ? beneficiarioConjuge(getPath(form.rascunho, path.replace(/\.beneficiarioTitulo$/, ""))) : getPath(form.rascunho, path) ?? "";
   const ia = form.ia.includes(path);
   const cls = `inp${erro ? " erro" : ""}${ia ? " ia" : ""}`;
   const mudar = (e) => form.set(path, fmt ? fmt(e.target.value) : e.target.value);
@@ -4422,8 +4423,8 @@ function gerarQualificacao(p, modo) {
   if (modo === "simples") {
     const cods = codigosUnidades(p);
     let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, ${docCurto(r, "requerente")}`;
-    if (casal && c.beneficiarioTitulo === "sim") t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
-    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && o.conjuge.beneficiarioTitulo === "sim" && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
+    if (casal && beneficiarioConjuge(c) === "sim") t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
+    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && beneficiarioConjuge(o.conjuge) === "sim" && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
     return { texto: `${t}.`, faltas };
   }
   const nac = (v) => (normalizar(v).startsWith("brasil") ? "brasileiro(a)" : minus(token(v, "nacionalidade")));
