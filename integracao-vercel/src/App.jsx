@@ -433,7 +433,7 @@ function requisitosPadraoNucleo(db, n, etapaId) {
   }
   switch (etapaId) {
     case "documental":
-      auto("teto", "Teto de renda para REURB-S definido", !!criterioNucleo(n, db).teto, "Defina no cadastro do núcleo");
+      auto("teto", "Teto de renda para REURB-S definido", !!criterioNucleo(n, db).teto, "Use “Critério REURB-S” no cabeçalho do núcleo; a definição vale para o município");
       break;
     case "projeto":
       campo("artPrf", "ART do PRF", "Número da ART");
@@ -2526,7 +2526,7 @@ function ModalNucleo({ db, municipio, inicial, remessaPadrao, perm, onSalvar, on
         <div><label className="rot" htmlFor="nnome">Nome (opcional)</label><input id="nnome" className="inp" value={nome} disabled={disEstr} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Ponto Chic" /></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nresp">Responsável</label><input id="nresp" className="inp" value={responsavel} disabled={disEstr} onChange={(e) => setResponsavel(e.target.value)} /></div>
       </div>
-      <p className="ajuda">O critério de renda para REURB-S é definido em Município → Regras → Critério REURB. O valor legado deste núcleo é preservado enquanto não houver definição municipal.</p>
+      <p className="ajuda">O critério de renda para REURB-S é municipal. {inicial ? "Use o botão “Critério REURB-S” no cabeçalho da página do núcleo, ou acesse Município → Regras → Critério REURB." : "Acesse Município → Regras → Critério REURB."} O valor legado deste núcleo é preservado enquanto não houver definição municipal.</p>
       <h3 style={{ fontSize: 15, margin: "18px 0 4px" }}>Localização do núcleo</h3>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="nlog">Logradouro ou referência</label><input id="nlog" className="inp" value={end.logradouro} disabled={disEstr} onChange={(e) => setE("logradouro", e.target.value)} /></div>
@@ -2923,6 +2923,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
   const elemento = !modal ? null
     : modal.tipo === "municipio" ? <ModalMunicipio db={db} inicial={modal.inicial} onSalvar={salvarMunicipio(modal.inicial)} onFechar={fechar} />
     : modal.tipo === "remessa" ? <ModalRemessa db={db} municipio={modal.municipio} inicial={modal.inicial} onSalvar={salvarRemessa(modal.municipio, modal.inicial)} onFechar={fechar} />
+    : modal.tipo === "criterio" ? <Modal titulo={`Critério REURB-S — ${modal.municipio.nome}`} largura={900} onFechar={fechar}><AbaRegrasMunicipio db={db} municipio={modal.municipio} usuario={usuario} mutar={mutar} setToast={setToast} abaInicial="criterio" /></Modal>
     : modal.tipo === "nucleo" ? <ModalNucleo db={db} municipio={modal.municipio} inicial={modal.inicial} remessaPadrao={modal.remessaId} perm={perm} onSalvar={salvarNucleo(modal.municipio, modal.inicial)} onFechar={fechar} />
     : modal.tipo === "morador" ? <ModalMorador db={db} usuario={usuario} municipio={modal.municipio} remessaPadrao={modal.remessaId} nucleoPadrao={modal.nucleoId} onSalvar={salvarMorador(modal.municipio)} onFechar={fechar} onAdicionarUnidade={adicionarUnidade} />
     : modal.tipo === "vincular" ? <ModalVincular db={db} nucleo={modal.nucleo} onSalvar={vincular(modal.nucleo)} onFechar={fechar} />
@@ -4810,6 +4811,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         </div>
         <div className="flex flex-wrap gap-2">
           {n && <BotaoArquivo nucleoId={n.id} />}
+          {n && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "criterio", municipio: m })}>Critério REURB-S</button>}
           {n && perm.editarEstrutura && <button className="btn btn-sm" onClick={() => cad.abrir({ tipo: "nucleo", municipio: m, inicial: n })}><Pencil size={14} />Editar núcleo</button>}
           {perm.criarMoradores && r && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "morador", municipio: m, remessaId: r.id, nucleoId: n?.id || "" })}><UserPlus size={15} />Novo morador</button>}
           {n && <BotaoArquivar colecao="nucleos" registro={n} />}
@@ -7351,8 +7353,8 @@ const regrasDoMunicipio = (db, municipioId) => ajustesDoMunicipio(db, municipioI
 const temAjustePRF = (db, municipioId) => !!ajustesDoMunicipio(db, municipioId)?.prf;
 const municipioDoProcesso = (db, p) => p?.municipioId || null;
 
-function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast }) {
-  const [aba, setAba] = useState("ia");
+function AbaRegrasMunicipio({ db, municipio, usuario, mutar, setToast, abaInicial = "ia" }) {
+  const [aba, setAba] = useState(abaInicial);
   const [criterioDraft, setCriterioDraft] = useState(() => db.ajustesMunicipio?.[municipio.id]?.criterioREURB || {salarioMinimo:"", rendaMaxima:""});
   const [empresaCodigo, setEmpresaCodigo] = useState(() => db.ajustesMunicipio?.[municipio.id]?.empresaDocumento?.codigo || "integral");
   const [empresaDraft, setEmpresaDraft] = useState(() => ({...empresaDoMunicipio(db, municipio.id)}));
