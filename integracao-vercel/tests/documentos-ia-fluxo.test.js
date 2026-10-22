@@ -1,4 +1,5 @@
 import {pessoasDocumentais, destinoDocumento} from '../src/documentos-pessoas.js';
+import {selecionarDocumentos} from '../src/documentos-upload.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -18,7 +19,7 @@ function tela({ responder = async () => ({ tipo: 'outro', campos: {}, regras: []
     useState(inicial) { const n = index++; hooks[n] ||= { valor: inicial }; return [hooks[n].valor, v => { hooks[n].valor = typeof v === 'function' ? v(hooks[n].valor) : v; }]; },
     useRef(inicial) { const n = index++; hooks[n] ||= { current: inicial }; return hooks[n]; },
     useEffect(fn, deps) { const n = index++, anterior = hooks[n]; if (!anterior || deps.some((v, i) => v !== anterior.deps[i])) efeitos.push(() => { anterior?.cleanup?.(); hooks[n] = { deps, cleanup: fn() }; }); },
-    criarSessaoDocumentosIA, regrasDocumentoCliente, pessoasDocumentais, destinoDocumento,
+    criarSessaoDocumentosIA, regrasDocumentoCliente, pessoasDocumentais, destinoDocumento, selecionarDocumentos,
     regrasDoMunicipio: () => [], nucleoDe: () => null, municipioDe: () => null, cpfValido: () => false,
     DOC_TIPOS: { outro: 'Outro' }, montarLinhas: () => [], uid: () => `d${p.docs.length}`,
     TIPOS_ACEITOS: ['application/pdf'], LIMITE_DOCUMENTO_IA: 20 * 1024 * 1024, MAX_LOTE: 10,
