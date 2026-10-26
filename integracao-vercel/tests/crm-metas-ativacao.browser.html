@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CRM e metas — teste isolado</title></head>
+<body><div id="root" class="rb"></div><script type="module">
+import React,{useState,useEffect} from 'react';
+import {createRoot} from 'react-dom/client';
+import '../src/index.css';
+import '../src/crm.css';
+import NegociacaoCRM from '../src/NegociacaoCRM.jsx';
+import MetasVendas from '../src/MetasVendas.jsx';
+import {definirSessao} from '../src/dados-compartilhados.js';
+import {listarCRM,salvarNegociacaoCRM} from '../src/crm-api.js';
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const usuario={id:id(2),erpRef:id(2),nome:'Vendedor fictício',tipoERP:'Comercial',ativo:true};
+definirSessao({user:{id:id(2)},access_token:'fixture',expires_in:3600});
+function App(){
+ const [card,setCard]=useState(null),[erro,setErro]=useState('');
+ useEffect(()=>{listarCRM('integracao_crm_cards').then(r=>setCard(r[0])).catch(e=>setErro(e.message));},[]);
+ return React.createElement(React.Fragment,null,
+  erro&&React.createElement('p',{role:'alert'},erro),
+  card&&React.createElement(NegociacaoCRM,{card,ocupado:false,onSalvar:async(dados,anterior,concluir)=>{
+   try{const [salvo]=await salvarNegociacaoCRM(card.id,dados,anterior);setCard(salvo);concluir(salvo);window.dispatchEvent(new CustomEvent('integracao:atualizacao',{detail:{modulo:'crm'}}));}catch(e){setErro(e.message);}
+  }}),
+  React.createElement(MetasVendas,{usuario,db:{usuarios:[usuario]}}));
+}
+createRoot(document.getElementById('root')).render(React.createElement(App));
+</script></body></html>
