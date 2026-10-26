@@ -1,10 +1,15 @@
 import {configERP,tokenTempoReal,requisicao} from './dados-compartilhados.js';
 import {validarOficio} from './oficios-regras.js';
+import {oficioAtual} from './oficios-versoes.js';
 export const registrarOficio=dados=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'registrar',p_dados:dados})});
-export const salvarResumoOficio=(id,resumo)=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'resumo',p_dados:{id,resumo,resumo_status:'ia'}})});
+export const atualizarOficio=dados=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'atualizar',p_dados:dados})});
+export async function historicoOficio(id){
+ const itens=[];
+ for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios_versoes?oficio_id=eq.${encodeURIComponent(id)}&order=versao.desc&limit=500&offset=${inicio}`);itens.push(...parte);if(parte.length<500)return itens;}
+}
 export async function listarOficios(ano){
  const seq=await requisicao(`integracao_oficios_sequencias?ano=eq.${ano}`),itens=[];
- for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios?ano=eq.${ano}&order=numero.desc&limit=500&offset=${inicio}`);itens.push(...parte);if(parte.length<500)break;}
+ for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios?ano=eq.${ano}&select=*,versoes:integracao_oficios_versoes(*)&versoes.order=versao.desc&versoes.limit=1&order=numero.desc&limit=500&offset=${inicio}`);itens.push(...parte.map(oficioAtual));if(parte.length<500)break;}
  return {itens,ultimo:seq[0]?.ultimo||null};
 }
 async function token(){const t=await tokenTempoReal();if(!t)throw Error('Entre novamente na sua conta.');return t;}
