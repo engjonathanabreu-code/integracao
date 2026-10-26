@@ -11303,10 +11303,10 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
         if (outros.length) novaNotificacao(d, { titulo: `Convite: ${ev.titulo}`, texto: `${dataBR(f.dia)} às ${f.inicio}, criado por ${usuario.nome}.`, rota: { pag: "calendario" }, usuarios: outros });
         return d;
       }, "Evento criado", { detalhe: `${ev.titulo}, ${dataBR(f.dia)} ${f.inicio} às ${f.fim}${agenda ? `, ${agenda.nome}` : ""}` });
-      setToast("Evento criado.");
+      setToast("Evento criado neste aparelho; aguardando confirmação do salvamento.");
     } else {
       mutar((d) => { Object.assign(d.eventos.find((e) => e.id === inicial.id), dados); return d; }, "Evento alterado", { detalhe: `${dados.titulo}, ${dataBR(f.dia)}` });
-      setToast("Evento salvo.");
+      setToast("Alterações do evento aguardando confirmação do salvamento.");
     }
     onFechar();
   };
@@ -11335,7 +11335,7 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="evt">Título</label><input id="evt" className="inp" value={f.titulo} disabled={!podeEditar} onChange={(e) => set("titulo", e.target.value)} /></div>
         <div><label className="rot" htmlFor="evd">Dia</label><input id="evd" type="date" className="inp" value={f.dia} disabled={!podeEditar} onChange={(e) => set("dia", e.target.value)} /></div>
-        <div><label className="rot" htmlFor="eva">Agenda</label><select id="eva" className="inp" value={f.agendaId} disabled={!podeEditar} onChange={(e) => { const a = (db.agendas || []).find((x) => x.id === e.target.value); set("agendaId", e.target.value); if (a) set("cor", a.cor); }}><option value="">Sem agenda</option>{(db.agendas || []).map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></div>
+        <div><label className="rot" htmlFor="eva">Agenda</label><select id="eva" className="inp" value={f.agendaId} disabled={!podeEditar} onChange={(e) => set("agendaId", e.target.value)}><option value="">Sem agenda</option>{(db.agendas || []).map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></div>
         <div><label className="rot" htmlFor="evi">Início</label><input id="evi" type="time" className="inp" value={f.inicio} disabled={!podeEditar} onChange={(e) => set("inicio", e.target.value)} /></div>
         <div><label className="rot" htmlFor="evf">Fim</label><input id="evf" type="time" className="inp" value={f.fim} disabled={!podeEditar} onChange={(e) => set("fim", e.target.value)} /></div>
         <div><label className="rot" htmlFor="evr">Repetir</label><select id="evr" className="inp" value={f.recorrencia} disabled={!podeEditar} onChange={(e) => set("recorrencia", e.target.value)}>{[["nenhuma", "Não repete"], ["semanal", "Toda semana"], ["quinzenal", "A cada 15 dias"], ["mensal", "Todo mês"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></div>
