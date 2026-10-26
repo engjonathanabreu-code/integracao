@@ -3,3 +3,5 @@
 .rb .ponto-form .oficio-confirmacao{display:flex;align-items:flex-start;gap:10px}
 
 .rb .oficio-cadastro label{display:block;margin-bottom:12px}.rb .oficio-cadastro label>.inp{display:block;margin-top:6px;width:100%}.rb .oficio-cadastro summary{cursor:pointer;margin:12px 0}
+
+.rb .oficio-texto{white-space:pre-wrap}.rb .oficio-historico{overflow-wrap:anywhere}.rb .oficio-historico>.btn{margin:8px 8px 0 0}

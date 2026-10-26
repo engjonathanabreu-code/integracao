@@ -1,0 +1,12 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ofícios — teste isolado</title></head>
+<body><div id="root" class="rb" data-ui-guide></div><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';
+import '../src/index.css';import '../src/crm.css';
+import '../src/folha-ponto.css';import appSource from '../src/App.jsx?raw';import guia from '../src/ui-guide.css?raw';
+const style=document.createElement('style');style.textContent=appSource.split('const CSS = `')[1].split('`;')[0].replace(/@import[^;]+;/g,'')+guia;document.head.append(style);
+import Oficios from '../src/Oficios.jsx';import {definirSessao} from '../src/dados-compartilhados.js';
+const id='00000000-0000-4000-8000-000000000001';
+const usuario={id,erpRef:id,nome:'Autor fictício',tipoERP:new URLSearchParams(location.search).has('leitor')?'Comercial':'Jurídico',ativo:true};
+definirSessao({user:{id},access_token:'fixture',expires_in:3600});
+createRoot(document.getElementById('root')).render(React.createElement(Oficios,{usuario,municipios:[]}));
+</script></body></html>
