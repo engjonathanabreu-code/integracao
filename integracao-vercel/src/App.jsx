@@ -3753,6 +3753,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
       ) : (
         <>
           <Campo form={form} rot="Nome completo" path={P("nome")} span={2} dis={dis} />
+          {papel === "conjuge" && <Campo form={form} rot="Cônjuge é beneficiário?" path={P("beneficiario")} opcoes={[{ v: "sim", t: "Sim" }, { v: "nao", t: "Não" }]} vazio="Sim (padrão do cadastro)" dis={dis} ajuda="Ao marcar Não, o cônjuge permanece cadastrado, mas sai da qualificação automática de beneficiários e das assinaturas de contrato e procuração. Confira anuência com o Jurídico e revise textos manuais ou modelos personalizados. Documentos já emitidos não são alterados." />}
           <Campo form={form} rot="Sexo" path={P("sexo")} opcoes={["Feminino", "Masculino"]} dis={dis} />
           <Campo form={form} rot="Nacionalidade" path={P("nacionalidade")} dis={dis} />
           <Campo form={form} rot="Naturalidade" path={P("naturalidade")} dis={dis} ph="Cidade/UF" />
@@ -4421,14 +4422,14 @@ function gerarQualificacao(p, modo) {
   const minus = (t) => (String(t).startsWith("[") ? t : String(t).toLowerCase());
   const cpfTxt = (c, nome) => { if (!cpfValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCPF(c); };
   const cnpjTxt = (c, nome) => { if (!cnpjValido(c)) { faltas.push(nome); return `[${nome}]`; } return fmtCNPJ(c); };
-  const r = p.requerente; const c = p.conjuge; const casal = temConjuge(p) && c.nome;
+  const r = p.requerente; const c = p.conjuge; const casal = temConjuge(p) && c.nome && c.beneficiario !== "nao";
   const outros = (p.corequerentes || []).filter((x) => x.beneficiario !== "nao");
   const docCurto = (x, rotulo) => (cpfDispensado(x) && !ehPJ(x) ? "menor de idade, CPF não informado" : ehPJ(x) ? `inscrita no CNPJ nº ${cnpjTxt(x.cnpj, `CNPJ de ${rotulo}`)}` : `portador(a) do CPF nº ${cpfTxt(x.cpf, `CPF de ${rotulo}`)}`);
   if (modo === "simples") {
     const cods = codigosUnidades(p);
     let t = `${cods.length > 1 ? `Unidades imobiliárias de códigos ${cods.slice(0, -1).join(", ")} e ${cods[cods.length - 1]}` : `Unidade imobiliária de código ${cods[0]}`}, com posse em nome de ${token(r.nome, "nome do requerente")}, ${docCurto(r, "requerente")}`;
     if (casal) t += `, e ${token(c.nome, "nome do cônjuge")}, portador(a) do CPF nº ${cpfTxt(c.cpf, "CPF do cônjuge")}`;
-    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
+    outros.forEach((o, i) => { t += `, e ${token(o.pessoa.nome, `nome do requerente ${i + 2}`)}, ${docCurto(o.pessoa, o.pessoa.nome || `requerente ${i + 2}`)}`; if (o.conjuge?.nome && o.conjuge.beneficiario !== "nao" && !ehPJ(o.pessoa)) t += `, e ${o.conjuge.nome}, portador(a) do CPF nº ${cpfTxt(o.conjuge.cpf, `CPF do cônjuge de ${o.pessoa.nome || `requerente ${i + 2}`}`)}`; });
     return { texto: `${t}.`, faltas };
   }
   const nac = (v) => (normalizar(v).startsWith("brasil") ? "brasileiro(a)" : minus(token(v, "nacionalidade")));
@@ -4443,7 +4444,7 @@ function gerarQualificacao(p, modo) {
   t += `, ${endTxt(p.endereco, !!casal)}`;
   outros.forEach((o, i) => {
     const rot = o.pessoa.nome || `requerente ${i + 2}`;
-    const conj = !ehPJ(o.pessoa) && COM_CONJUGE.includes(o.pessoa.estadoCivil) && o.conjuge?.nome;
+    const conj = !ehPJ(o.pessoa) && COM_CONJUGE.includes(o.pessoa.estadoCivil) && o.conjuge?.nome && o.conjuge.beneficiario !== "nao";
     t += `; e ${pessoa(o.pessoa, rot, true)}`;
     if (conj) t += `, e ${pessoa(o.conjuge, `cônjuge de ${rot}`, false)}${regime(o.pessoa)}`;
     if (o.tipo === "menor" || o.tipo === "representado") { const rep = o.representanteId === "principal" ? r.nome : (p.corequerentes || []).find((k) => k.id === o.representanteId)?.pessoa?.nome; t += `, neste ato representado(a) por ${token(rep, `representante de ${rot}`)}`; }
@@ -8640,14 +8641,15 @@ function dadosDocumento(db, p, usuario) {
     rg: p.requerente.rg || "____________", nacionalidade: p.requerente.nacionalidade || "brasileiro(a)",
     estadoCivil: p.social?.estadoCivil || p.requerente?.estadoCivil || "____________",
     profissao: p.requerente.profissao || "____________", telefone: p.requerente.telefone || "____________",
+    conjugeBeneficiario: p.conjuge?.beneficiario !== "nao",
     conjuge: p.conjuge?.nome || "", cpfConjuge: fmtCPF(p.conjuge?.cpf || "") || "",
     endereco: enderecoLinha(p.endereco),
     enderecoImovel: temValor(p.enderecoImovel) ? enderecoLinha(p.enderecoImovel) : enderecoLinha(p.endereco),
     historicoPosse: p.imovel?.historicoPosse || "____________",
     qualificacaoCompleta: gerarQualificacao(p, "completa", true).texto,
-    requerentes: [p.requerente.nome, ...(p.corequerentes || []).map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
-    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
-      ...(p.corequerentes || []).flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
+    requerentes: [p.requerente.nome, ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
+    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome && p.conjuge.beneficiario !== "nao" ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
+      ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome && c.conjuge.beneficiario !== "nao" ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
     qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
@@ -8787,7 +8789,7 @@ function blocoAssinatura(d, comConjuge) {
 <p style="margin:36px 0 6px;text-align:center">${escaparHtml(d.dataExtenso)}.</p>
 <table data-assinaturas="true" style="width:100%;margin-top:40px"><tr>
 <td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.nome)}<br/>${d.tipoDocumento || "CPF"} ${escaparHtml(d.cpf)}</div></td>
-${comConjuge && d.conjuge ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.conjuge)}<br/>CPF ${escaparHtml(d.cpfConjuge || "____________")}</div></td>` : ""}
+${comConjuge && d.conjuge && d.conjugeBeneficiario !== false ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.conjuge)}<br/>CPF ${escaparHtml(d.cpfConjuge || "____________")}</div></td>` : ""}
 </tr></table>`;
 }
 function blocoAssinaturaTodos(d) {
@@ -8826,6 +8828,9 @@ function preencherModelo(corpo, valores) {
 }
 const corpoDoModelo = (db, tipo) => (db?.modelosDoc || {})[tipo] || MODELOS_DOC[tipo]?.corpo || "";
 function montarDocumentoComercial(tipo, d, db, extras) {
+  // Preserve civil information for declarations, but never expose a non-beneficiary
+  // spouse as a party through spouse placeholders in a new contract or power of attorney.
+  if (["contrato", "procuracao"].includes(tipo) && d.conjugeBeneficiario === false) d = { ...d, conjuge: "", cpfConjuge: "" };
   const dados = { ...d, ...extras };
   if (tipo === "termo_compromisso") dados.qualificacao = d.qualificacaoCompromisso || "{{qualificacao}}";
   const condicional = aplicarCondicionais(corpoDoModelo(db, tipo), dados);
