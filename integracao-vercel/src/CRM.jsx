@@ -18,6 +18,7 @@ import {listarCRM,criarCRM,editarCRM,rpcCRM} from './crm-api.js';
 import {acessoCRM} from './crm-regras.js';
 import {montarCarteira,filtrarItens,opcoesResponsavel,resumoDoDia,decidirMovimento,dadosMovimento,agruparTarefas,normalizarVisao,ETAPAS_ABERTAS,SEM_RESPONSAVEL} from './crm-hoje.js';
 import {diaFollowup} from './crm-followup.js';
+import {carregarResumosChatwoot} from './crm-chatwoot-carga.js';
 import './crm.css';
 import {BuscaClientes} from './BuscaClientes.jsx';
 import AgentesChatwoot from './AgentesChatwoot.jsx';
@@ -80,9 +81,19 @@ export default function CRM({usuario,db,ir,mutar,abrirCliente,pedidoAgente,onReg
   const acesso=acessoCRM(usuario),[aba,setAba]=useState('hoje'),[busca,setBusca]=useState(''),[responsavel,setResponsavel]=useState(''),[form,setForm]=useState(null),[historico,setHistorico]=useState(null),[transferencia,setTransferencia]=useState(null);
   const m=useModulo(async()=>{
     if(!acesso.comercial)return {cards:[],tarefas:[]};
-    const [cards,tarefas,followups,chatwoot]=await Promise.all([listarCRM('integracao_crm_funil'),listarCRM('integracao_crm_tarefas','&concluida=eq.false'),listarCRM('integracao_crm_followups','&status=eq.pendente'),listarCRM('integracao_crm_chatwoot_resumo')]);
-    return {cards,tarefas,followups,chatwoot};
+    const [cards,tarefas,followups]=await Promise.all([listarCRM('integracao_crm_funil'),listarCRM('integracao_crm_tarefas','&concluida=eq.false'),listarCRM('integracao_crm_followups','&status=eq.pendente')]);
+    return {cards,tarefas,followups};
   },[usuario?.id],['crm','clientes','usuarios']);
+  const [chatwoot,setChatwoot]=useState(null),[tentativaChatwoot,setTentativaChatwoot]=useState(0);
+  useEffect(()=>{
+    let ativo=true;
+    setChatwoot(null);
+    if(acesso.comercial&&m.dados)carregarResumosChatwoot(m.dados.cards,listarCRM,()=>ativo)
+      .then(linhas=>{if(ativo)setChatwoot({base:m.dados,usuario:usuario?.id,linhas,erro:false});})
+      .catch(()=>{if(ativo)setChatwoot({base:m.dados,usuario:usuario?.id,linhas:null,erro:true});});
+    return()=>{ativo=false;};
+  },[m.dados,usuario?.id,acesso.comercial,tentativaChatwoot]);
+  const resumoAtual=chatwoot?.base===m.dados&&chatwoot?.usuario===usuario?.id?chatwoot:null;
   const pedidoAplicado=useRef(false);
   useEffect(()=>{if(!pedidoAgente?.id||!m.dados||pedidoAplicado.current||!acesso.comercial)return;pedidoAplicado.current=true;const c=m.dados.cards.find(c=>c.id===pedidoAgente.id);if(!c){setAvisoLead('Card indisponível ou sem permissão. Nenhum dado foi alterado.');return;}if(pedidoAgente.modo==='editar')setEdicao(c);else{setSelecionado(c);setForm(pedidoAgente.modo?{tipo:pedidoAgente.modo,card:c}:null);}},[m.dados,pedidoAgente]);
   const [carteira,setCarteira]=useState('reurb'),[cadastros,setCadastros]=useState({estado:'oculto',linhas:null,clientes:null}),[tentativaCadastros,setTentativaCadastros]=useState(0);
@@ -112,7 +123,7 @@ export default function CRM({usuario,db,ir,mutar,abrirCliente,pedidoAgente,onReg
   const fecharFicha=()=>{setSelecionado(null);setForm(null);setSugestao(null);setAvisoFicha('');};
   const atual=selecionado&&(m.dados?.cards.find(c=>c.id===selecionado.id)||selecionado);
   const followupCard=c=><ResumoFollowUp pendente={m.dados?.followups.find(f=>f.card_id===c.id)} abrir={()=>abrirFicha(c,'followup')}/>;
-  const chatwootCard=c=><ResumoChatwoot resumo={m.dados?.chatwoot.find(r=>r.card_id===c.id)}/>;
+  const chatwootCard=c=>!resumoAtual?<p className="crm-chatwoot-resumo">Carregando resumo do Chatwoot…</p>:resumoAtual.erro?<p className="crm-chatwoot-resumo">Resumo do Chatwoot indisponível.</p>:<ResumoChatwoot resumo={resumoAtual.linhas.find(r=>r.card_id===c.id)}/>;
   const ativado=(c,status,ok)=>{if(ok&&status==='Cliente ativo'){setSelecionado(null);setForm(null);setAvisoLead(`${nomeCard(c)} passou a Cliente ativo e saiu do funil. O registro fica nos relatórios de clientes ativados.`);}return ok;};
   const statusCard=(c,ficha=false)=>{const sug=ficha&&sugestao?.id===c.id?sugestao.etapa:null;return <NegociacaoCRM key={c.id+(sug||'')} statusSugerido={sug} card={c} ocupado={m.ocupado} onSalvar={async(dados,anterior,concluir)=>m.executar(()=>salvarNegociacaoCRM(c.id,dados,anterior),resultado=>{const salvo=Array.isArray(resultado)?resultado[0]:resultado;concluir?.(salvo);ativado(c,salvo.status,true);})} onConverter={async(fn,status)=>ativado(c,status,await m.executar(fn))}/>;};
   // Único código novo que grava ao mover etapa (arrastar ou Avançar): mesma função, mesmo m.executar e mesma validação da ficha. Sem atualização otimista.
@@ -145,6 +156,7 @@ export default function CRM({usuario,db,ir,mutar,abrirCliente,pedidoAgente,onReg
     {reurb&&aba==='funil'&&<div className="crm-visoes" role="group" aria-label="Visualização do funil"><span>Visualização</span>{visoesFunil.map(([id,nome])=><button key={id} className={`btn btn-sm${visao===id?' btn-primario':''}`} aria-pressed={visao===id} onClick={()=>escolherVisao(id)}>{nome}</button>)}</div>}
     {reurb&&aba==='funil'&&<p className="ajuda">Clientes marcados como Cliente ativo saem das colunas do funil e ficam na lista Clientes ativos, abaixo delas. A ativação fica registrada{acesso.admin?' no relatório Clientes ativados do Dashboard comercial':' para os relatórios de desempenho'}.</p>}
     <EstadoModulo modulo={m}/>
+    {m.dados&&resumoAtual?.erro&&<div role="status" className="crm-erro">Não foi possível carregar o resumo do Chatwoot. Os dados do CRM continuam disponíveis.<button className="btn btn-sm" onClick={()=>{setChatwoot(null);setTentativaChatwoot(v=>v+1);}}>Tentar resumo novamente</button></div>}
     {avisoLead&&<p role="status" className="ajuda">{avisoLead}</p>}
     {comerciaisLead&&<FichaCliente titulo="Comerciais do lead" compacta ocupado={m.ocupado} fechar={()=>setComerciaisLead(null)}><EditarComerciaisLead card={comerciaisLead} comerciais={comerciais} ocupado={m.ocupado} erro={erroComerciais} cancelar={()=>setComerciaisLead(null)} salvar={async(novos,anteriores)=>{setErroComerciais('');if(await m.executar(async()=>{try{await rpcCRM('integracao_crm_definir_comerciais',{p_card:comerciaisLead.id,p_responsaveis:novos,p_anteriores:anteriores});}catch(e){setErroComerciais(e.message);m.atualizar();throw e;}})){setComerciaisLead(null);setAvisoLead('Responsáveis do lead atualizados.');}}}/></FichaCliente>}
     {edicao&&<FichaCliente titulo={`Editar ${nomeCard(edicao)}`} compacta ocupado={m.ocupado} fechar={()=>setEdicao(null)}><EditarCardCRM ajustesAgente={pedidoAgente?.id===edicao?.id?pedidoAgente.ajustes:null} card={edicao} nucleos={db.nucleos||[]} ocupado={m.ocupado} erro={erroEdicao} cancelar={()=>setEdicao(null)} salvar={async dados=>{setErroEdicao('');if(await m.executar(async()=>{try{await rpcCRM('integracao_crm_editar_card',dados);if(edicao.cliente_id)invalidarIndiceClientes();}catch(e){setErroEdicao(e.message);throw e;}})){if(pedidoAgente?.id===edicao.id)onRegistroAgente?.('Atualizou dados do CRM',edicao,dados);setEdicao(null);setAvisoLead(`Dados de ${dados.p_nome} atualizados.`);}}}/></FichaCliente>}
