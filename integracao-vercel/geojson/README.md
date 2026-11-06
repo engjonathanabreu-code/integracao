@@ -1,28 +1,32 @@
-# GeoJSON de lotes e áreas
+# Mapas, GeoJSON e perímetro do núcleo
 
-Em Clientes → município → núcleo → Mapa, **Importar GeoJSON** lê o arquivo local e pede o campo de código das feições. A prévia não grava dados. Após confirmar, o levantamento fica no JSONB do núcleo (`levantamentoGeoJSON`), com autor, data, EPSG, vértices e códigos. Cada vínculo exige uma segunda revisão explícita.
+A importação é autorizada pela capacidade `importacaoGeografica`, separada da etapa do processo. A gravação usa `mutar.confirmado` e o mecanismo existente de persistência e concorrência. A autorização efetiva e o escopo continuam validados no banco.
 
-O agente escolhe uma unidade ativa do núcleo, o contorno do núcleo, uma via, APP, risco, área pública ou servidão. O código da feição não é presumido como prova de titularidade. Vínculos preenchem os campos existentes de memoriais; as medidas passam pelo caminho atual do PRF. O mapa desenha contornos, códigos e vértices (estes a partir do zoom 18).
+## GeoJSON
 
-## Limites explícitos
+O importador mantém o fluxo existente SIRGAS 2000 / UTM Sul (EPSG 31978 a 31985 com SRC declarado). As medidas dos memoriais continuam calculadas pelas coordenadas UTM originais. A inversa UTM GRS80 serve somente à visualização.
 
-- SIRGAS 2000 / UTM Sul, EPSG 31978–31985, com SRC declarado. Outros SRC, inclusive GeoJSON em graus, exigem reprojeção no QGIS nesta versão.
-- Polygon simples ou MultiPolygon de uma única parte, sem anéis internos. Partes, furos, códigos repetidos/vazios, contornos abertos ou cruzados são rejeitados; nenhuma parte é descartada silenciosamente.
-- Até 10 MB, 2.000 feições, 2.000 vértices por contorno e 10.000 vértices no total.
-- Não substitui levantamento importado nem permite desvincular/reimportar automaticamente. Revisão de vínculos fica para um fluxo próprio. Memoriais existentes no destino só são substituídos após aviso explícito.
-- Não deduz confrontantes, titularidade ou lote/quadra a partir de texto arbitrário. Vértices coincidentes exatos compartilham nome; próximos não são arredondados/fundidos.
-- Medidas e azimutes usam as coordenadas UTM originais. A inversa UTM GRS80 serve à visualização/longitude/latitude; não altera os valores métricos. Referência: https://proj.org/en/stable/operations/projections/tmerc.html
-- O profissional deve manter as configurações de emissão (responsável, meridiano e sistema) coerentes com o levantamento na aba Memoriais.
+Também aceita Polygon e MultiPolygon conforme RFC 7946 em longitude/latitude WGS84, sem membro `crs`. Não presume um SRC quando há declaração incompatível. Anéis internos, partes, altitude e coordenadas são preservados. As feições geográficas servem ao mapa; não preenchem área, perímetro ou memorial técnico. Podem complementar um levantamento UTM sem converter ou modificar suas feições antigas. Dois fusos UTM diferentes continuam exigindo uma revisão externa.
 
-## Persistência e proteção
+A importação exige prévia e confirmação e é aditiva. Códigos/IDs duplicados são bloqueados; nenhum lote ou vínculo antigo é substituído. As feições ficam em `n.levantamentoGeoJSON.feicoes`; as novas geometrias geográficas usam `geometria`, além do exterior de compatibilidade em `poligono`. Os helpers `geometriaDaFeicao` e `poligonosDaGeometria` são a fonte completa para desenhar.
 
-Usa `mutar` e a RPC existente, com merge nos campos do levantamento/unidade e detecção de revisão concorrente do memorial. Não há migração, dependência, service role ou escrita em tabelas canônicas. Importação/vínculo só na etapa Topografia com a permissão existente de Topografia/Diretoria; leitura posterior permanece.
+Projetos pode importar e, quando autorizado para memorial do núcleo, vincular uma feição UTM ao próprio núcleo. O vínculo que preenche memorial individual de unidade, vias ou outras áreas continua restrito aos perfis anteriores. Código de feição não é prova de titularidade; vínculos exigem revisão explícita. Alterações concorrentes do memorial são bloqueadas.
 
-## Validação
+## KML e KMZ
 
-`node --test integracao-vercel/tests/*.test.js`: 114 testes, 114 passaram.
-`npm run build --prefix integracao-vercel`: passou.
+`ImportadorPerimetro` lê KML; para KMZ recebe `extrairKMZ`, reutilizando o extrator da aplicação. Arquivos compactados e o texto extraído devem ter até 10 MB. Polígonos com anéis internos e MultiGeometry são preservados; quando há várias feições, o usuário seleciona as pertinentes antes de gravar.
 
-No navegador, usando `tests/memoriais.browser.html?etapa=1` e dois retângulos inteiramente fictícios: seleção do campo, prévia (200 m², 60 m), confirmação, vínculo a unidade e APP, desenho de 2 polígonos, nomes de vértices compartilhados e conferência na aba Memoriais. O simulador intercepta a RPC e bloqueia escritas canônicas. Sem erros de console.
+O parser rejeita entidades/DOCTYPE, links de rede, referências externas e conteúdo ativo. Não busca URLs nem executa HTML. Pontos/linhas não são transformados silenciosamente em perímetros.
 
-O arquivo fornecido pelo usuário foi apenas lido localmente para validar o formato (14 feições, 107 vértices de contorno). Não foi incluído no código, enviado ao GitHub, importado no navegador nem aplicado em qualquer cadastro. Todos os testes versionados usam dados sintéticos.
+A geometria completa é persistida em `n.geo.geojson`; `n.geo.poligonos` mantém os exteriores compatíveis. A substituição exige confirmação específica e comparação com o `geo` anterior. Nenhuma área numérica ou memorial é recalculado. `poligonosParaMapa` retorna todos os anéis; renderizar com `caminhoPoligonoSVG` e `fillRule="evenodd"`. `gerarKMLGeografico` gera o download a partir do dado persistido, inclusive em outra sessão, sem depender de localStorage.
+
+## Limites e validação
+
+Até 10 MB, 2.000 feições, 2.000 vértices por anel e 10.000 vértices por arquivo. Contornos abertos, cruzados ou degenerados e furos inválidos são rejeitados. Contornos que cruzam o antimeridiano precisam ser divididos antes da importação. O fluxo UTM anterior preserva seu limite de polígonos simples sem furos; o novo fluxo geográfico preserva furos e multipartes.
+
+Verificação isolada em 06/11/2026: `node --test tests/geojson.test.js tests/geometria-geografica.test.js tests/memorial-nucleo.test.js` — 34 testes passaram. Todos os casos usam dados fictícios. A validação integrada de UI, permissões do banco e persistência real pertence à suíte geral desta entrega.
+
+Referências verificadas:
+- https://www.rfc-editor.org/rfc/rfc7946
+- https://www.ogc.org/standards/kml/
+- https://proj.org/en/stable/operations/projections/tmerc.html

@@ -1,0 +1,762 @@
+{
+  "capturadoEm": "2026-11-06",
+  "project": "ycdsyilyvaxslkwbkxyo",
+  "sourceCommit": "a858e5e82fa41b89b2066fa32d4ae6dc80581520",
+  "purpose": "Snapshot somente leitura de definições e políticas; não é migração nem instrução de aplicação.",
+  "policies": [
+    {
+      "cmd": "DELETE",
+      "qual": "integracao_atribuicoes_privado.permitido('clientes'::text, 'excluir'::text)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "RESTRICTIVE",
+      "policyname": "atribuicoes_excluir",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "fin_receb_clientes_admin_financeiro",
+      "schemaname": "public",
+      "with_check": "( SELECT can_access_fin_recebimentos() AS can_access_fin_recebimentos)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT is_comercial() AS is_comercial)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_comercial_moradores_editar",
+      "schemaname": "public",
+      "with_check": "( SELECT is_comercial() AS is_comercial)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT ( SELECT is_comercial() AS is_comercial) AS is_comercial)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_comercial_moradores_ler",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_crm_clientes_criar",
+      "schemaname": "public",
+      "with_check": "( SELECT integracao_crm_privado.permite('crm'::text) AS permite)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_crm_clientes_editar",
+      "schemaname": "public",
+      "with_check": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(( SELECT integracao_crm_privado.permite('admin'::text) AS permite) OR (EXISTS ( SELECT 1\n   FROM integracao_crm_cards c\n  WHERE (c.cliente_id = fin_receb_clientes.id))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_crm_clientes_ler",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_financeiro_consulta",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_setores_cadastro_editar",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "fin_receb_clientes",
+      "permissive": "PERMISSIVE",
+      "policyname": "integracao_setores_moradores_criar",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = ( SELECT auth.uid() AS uid)) AND profiles.ativo)))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "integracao_atribuicoes_privado.permitido('clientes'::text, 'excluir'::text)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_moradores",
+      "permissive": "RESTRICTIVE",
+      "policyname": "atribuicoes_excluir",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_moradores",
+      "permissive": "PERMISSIVE",
+      "policyname": "criar",
+      "schemaname": "public",
+      "with_check": "((criado_por = ( SELECT auth.uid() AS uid)) AND integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_moradores",
+      "permissive": "PERMISSIVE",
+      "policyname": "editar",
+      "schemaname": "public",
+      "with_check": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((EXISTS ( SELECT 1\n   FROM profiles perfil\n  WHERE ((perfil.id = ( SELECT auth.uid() AS uid)) AND perfil.ativo))) AND\nCASE\n    WHEN (referencia_tabela = 'integracao_config'::text) THEN true\n    WHEN (referencia_tabela IS NULL) THEN ((criado_por = ( SELECT auth.uid() AS uid)) OR ( SELECT is_erp_admin() AS is_erp_admin))\n    WHEN (referencia_tabela = 'processos_kanban'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM processos_kanban origem))\n    WHEN (referencia_tabela = 'metas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM metas origem))\n    WHEN (referencia_tabela = 'ordens_servico'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM ordens_servico origem))\n    WHEN (referencia_tabela = 'planos_trabalho'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM planos_trabalho origem))\n    WHEN (referencia_tabela = 'erp_eventos'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_eventos origem))\n    WHEN (referencia_tabela = 'erp_conversas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_conversas origem))\n    WHEN (referencia_tabela = 'profiles'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM profiles origem))\n    WHEN (referencia_tabela = 'fin_receb_municipios'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_municipios origem))\n    WHEN (referencia_tabela = 'fin_receb_remessas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_remessas origem))\n    WHEN (referencia_tabela = 'fin_receb_clientes'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_clientes origem))\n    WHEN (referencia_tabela = 'meta_setores'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM meta_setores origem))\n    WHEN (referencia_tabela = 'erp_agendas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_agendas origem))\n    ELSE false\nEND)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_moradores",
+      "permissive": "PERMISSIVE",
+      "policyname": "ler",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_moradores",
+      "permissive": "PERMISSIVE",
+      "policyname": "remover",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "integracao_atribuicoes_privado.permitido('nucleos'::text, 'excluir'::text)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_nucleos",
+      "permissive": "RESTRICTIVE",
+      "policyname": "atribuicoes_excluir",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_nucleos",
+      "permissive": "PERMISSIVE",
+      "policyname": "criar",
+      "schemaname": "public",
+      "with_check": "((criado_por = ( SELECT auth.uid() AS uid)) AND integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_nucleos",
+      "permissive": "PERMISSIVE",
+      "policyname": "editar",
+      "schemaname": "public",
+      "with_check": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((EXISTS ( SELECT 1\n   FROM profiles perfil\n  WHERE ((perfil.id = ( SELECT auth.uid() AS uid)) AND perfil.ativo))) AND\nCASE\n    WHEN (referencia_tabela = 'integracao_config'::text) THEN true\n    WHEN (referencia_tabela IS NULL) THEN ((criado_por = ( SELECT auth.uid() AS uid)) OR ( SELECT is_erp_admin() AS is_erp_admin))\n    WHEN (referencia_tabela = 'processos_kanban'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM processos_kanban origem))\n    WHEN (referencia_tabela = 'metas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM metas origem))\n    WHEN (referencia_tabela = 'ordens_servico'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM ordens_servico origem))\n    WHEN (referencia_tabela = 'planos_trabalho'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM planos_trabalho origem))\n    WHEN (referencia_tabela = 'erp_eventos'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_eventos origem))\n    WHEN (referencia_tabela = 'erp_conversas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_conversas origem))\n    WHEN (referencia_tabela = 'profiles'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM profiles origem))\n    WHEN (referencia_tabela = 'fin_receb_municipios'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_municipios origem))\n    WHEN (referencia_tabela = 'fin_receb_remessas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_remessas origem))\n    WHEN (referencia_tabela = 'fin_receb_clientes'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM fin_receb_clientes origem))\n    WHEN (referencia_tabela = 'meta_setores'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM meta_setores origem))\n    WHEN (referencia_tabela = 'erp_agendas'::text) THEN (referencia_id IN ( SELECT origem.id\n       FROM erp_agendas origem))\n    ELSE false\nEND)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_nucleos",
+      "permissive": "PERMISSIVE",
+      "policyname": "ler",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(integracao_acesso(referencia_tabela, referencia_id, criado_por) AND ((referencia_tabela IS DISTINCT FROM 'integracao_config'::text) OR can_manage_core()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_nucleos",
+      "permissive": "PERMISSIVE",
+      "policyname": "remover",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND profiles.ativo)))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "integracao_oficios",
+      "permissive": "PERMISSIVE",
+      "policyname": "oficios_leitura",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "integracao_atribuicoes_privado.permitido('nucleos'::text, 'excluir'::text)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "processos_kanban",
+      "permissive": "RESTRICTIVE",
+      "policyname": "atribuicoes_excluir",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "processos_kanban",
+      "permissive": "PERMISSIVE",
+      "policyname": "processos_kanban_insert",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "processos_kanban",
+      "permissive": "PERMISSIVE",
+      "policyname": "processos_kanban_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "processos_kanban",
+      "permissive": "PERMISSIVE",
+      "policyname": "processos_kanban_update",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = ( SELECT auth.uid() AS uid)) AND (p.ativo = true))))"
+    }
+  ],
+  "functions": [
+    {
+      "name": "oficio_preservar",
+      "schema": "integracao_crm_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.oficio_preservar()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin raise exception 'Versões de ofícios são imutáveis. Crie uma nova versão';end $function$\n"
+    },
+    {
+      "name": "oficio_v1",
+      "schema": "integracao_crm_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.oficio_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n insert into public.integracao_oficios_versoes\n (id,oficio_id,versao,prefeitura,assunto,data_envio,caminho,nome_arquivo,mime,tamanho,sha256,resumo,resumo_status,autor,criado_em,atualizado_em)\n values(new.id,new.id,1,new.prefeitura,new.assunto,new.data_envio,new.caminho,new.nome_arquivo,new.mime,new.tamanho,new.sha256,new.resumo,new.resumo_status,new.autor,new.criado_em,new.atualizado_em);\n return new;\nend $function$\n"
+    },
+    {
+      "name": "oficio_registrar_v1",
+      "schema": "integracao_crm_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.oficio_registrar_v1(p_acao text, p_dados jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare u uuid:=auth.uid();r public.integracao_oficios;ano_v integer;numero_v integer;ultimo_v integer;pedido uuid;dia date;caminho_v text;\nbegin\n if u is null or not exists(select 1 from public.profiles where id=u and ativo) then raise exception 'Sessão ativa obrigatória';end if;\n if not integracao_crm_privado.pode_editar_oficios() then raise exception 'Sem permissão para cadastrar ofícios';end if;\n if p_acao='resumo' then\n update public.integracao_oficios set resumo=p_dados->>'resumo',resumo_status=p_dados->>'resumo_status',atualizado_em=clock_timestamp() where id=(p_dados->>'id')::uuid returning * into r;\n if not found then raise exception 'Ofício não encontrado';end if;return to_jsonb(r);\n elsif p_acao<>'registrar' then raise exception 'Ação inválida';end if;\n pedido:=(p_dados->>'pedido')::uuid;\n if pedido is null then raise exception 'Identificador obrigatório';end if;\n -- Idempotência por pedido, inclusive quando o retorno anterior não chegou ao aparelho.\n perform pg_advisory_xact_lock(hashtextextended('oficio-pedido:'||pedido::text,0));\n select * into r from public.integracao_oficios where id=pedido;\n if found then if r.autor<>u then raise exception 'Pedido inválido';end if;return to_jsonb(r);end if;\n dia:=(p_dados->>'data_envio')::date;ano_v:=extract(year from dia)::integer;\n if dia is null or ano_v not between 2000 and 2199 or dia>(clock_timestamp() at time zone 'America/Sao_Paulo')::date then raise exception 'Informe a data em que o ofício foi enviado';end if;\n caminho_v:=p_dados->>'caminho';\n if split_part(caminho_v,'/',1)<>u::text or split_part(caminho_v,'/',2)<>pedido::text or not exists(select 1 from storage.objects where bucket_id='integracao-oficios' and name=caminho_v) then raise exception 'Envie o arquivo antes de registrar o ofício';end if;\n if exists(select 1 from public.integracao_oficios where sha256=p_dados->>'sha256') then raise exception 'Este arquivo já está cadastrado no controle de ofícios';end if;\n perform pg_advisory_xact_lock(hashtextextended('oficios-ano:'||ano_v::text,0));\n select ultimo into ultimo_v from public.integracao_oficios_sequencias where ano=ano_v;\n numero_v:=(p_dados->>'numero')::integer;\n if ultimo_v is null then\n if numero_v is null or numero_v not between 1 and 999999 then raise exception 'Confirme o número do primeiro ofício deste ano';end if;\n insert into public.integracao_oficios_sequencias values(ano_v,numero_v);\n else\n if numero_v is distinct from ultimo_v+1 then raise exception 'A sequência foi atualizada. Confira o próximo número antes de salvar';end if;\n update public.integracao_oficios_sequencias set ultimo=numero_v where ano=ano_v;\n end if;\n insert into public.integracao_oficios(id,ano,numero,prefeitura,assunto,data_envio,caminho,nome_arquivo,mime,tamanho,sha256,resumo,resumo_status,autor)\n values(pedido,ano_v,numero_v,p_dados->>'prefeitura',p_dados->>'assunto',dia,caminho_v,p_dados->>'nome_arquivo',p_dados->>'mime',(p_dados->>'tamanho')::integer,p_dados->>'sha256',coalesce(p_dados->>'resumo',''),coalesce(p_dados->>'resumo_status','pendente'),u) returning * into r;\n return to_jsonb(r);\nend $function$\n"
+    },
+    {
+      "name": "oficio_operar",
+      "schema": "integracao_crm_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.oficio_operar(p_acao text, p_dados jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare u uuid:=auth.uid();o public.integracao_oficios;v public.integracao_oficios_versoes;\n atual public.integracao_oficios_versoes;pedido uuid;oficio uuid;\nbegin\n if u is null or not exists(select 1 from public.profiles where id=u and ativo) then raise exception 'Sessão ativa obrigatória';end if;\n if not integracao_crm_privado.pode_editar_oficios() then raise exception 'Sem permissão para cadastrar ofícios';end if;\n if p_acao='registrar' then return integracao_crm_privado.oficio_registrar_v1(p_acao,p_dados);\n elsif p_acao='resumo' then raise exception 'Crie uma nova versão para atualizar o resumo sem perder o histórico';\n elsif p_acao is distinct from 'atualizar' then raise exception 'Ação inválida';end if;\n pedido:=(p_dados->>'pedido')::uuid;oficio:=(p_dados->>'oficio_id')::uuid;\n if pedido is null or oficio is null then raise exception 'Identificadores obrigatórios';end if;\n perform pg_advisory_xact_lock(hashtextextended('oficio-pedido:'||pedido::text,0));\n select * into v from public.integracao_oficios_versoes where id=pedido;\n if found then\n  if v.autor<>u or v.oficio_id<>oficio or v.versao=1 then raise exception 'Pedido inválido';end if;\n  return to_jsonb(v);\n end if;\n -- Serializa todas as versões de um ofício; UNIQUE é uma segunda proteção.\n select * into o from public.integracao_oficios where id=oficio for update;\n if not found then raise exception 'Ofício não encontrado';end if;\n select * into atual from public.integracao_oficios_versoes where oficio_id=oficio order by versao desc limit 1;\n if atual.id is distinct from (p_dados->>'base_id')::uuid then\n  raise exception 'O ofício recebeu outra versão. Consulte a mais recente e revise sua atualização';\n end if;\n if p_dados->>'data_envio' is not null then raise exception 'Atualizar não registra envio externo';end if;\n if p_dados->>'caminho' is distinct from atual.caminho then\n  if split_part(coalesce(p_dados->>'caminho',''), '/',1)<>u::text\n   or split_part(p_dados->>'caminho','/',2)<>pedido::text\n   or not exists(select 1 from storage.objects where bucket_id='integracao-oficios' and name=p_dados->>'caminho') then\n   raise exception 'Anexe o novo arquivo antes de salvar a versão';\n  end if;\n else\n  if (p_dados->>'nome_arquivo',p_dados->>'mime',(p_dados->>'tamanho')::integer,p_dados->>'sha256')\n    is distinct from (atual.nome_arquivo,atual.mime,atual.tamanho,atual.sha256) then\n   raise exception 'Os metadados do arquivo anterior devem ser preservados';\n  end if;\n end if;\n insert into public.integracao_oficios_versoes\n (id,oficio_id,versao,prefeitura,assunto,data_envio,caminho,nome_arquivo,mime,tamanho,sha256,resumo,resumo_status,autor)\n values(pedido,oficio,atual.versao+1,p_dados->>'prefeitura',p_dados->>'assunto',null,p_dados->>'caminho',p_dados->>'nome_arquivo',p_dados->>'mime',(p_dados->>'tamanho')::integer,p_dados->>'sha256',coalesce(p_dados->>'resumo',''),coalesce(p_dados->>'resumo_status','pendente'),u)\n returning * into v;\n return to_jsonb(v);\nend $function$\n"
+    }
+  ],
+  "constraints": [
+    {
+      "def": "CHECK (((dia_vencimento >= 1) AND (dia_vencimento <= 31)))",
+      "name": "fin_receb_clientes_dia_vencimento_check",
+      "table": "fin_receb_clientes"
+    },
+    {
+      "def": "FOREIGN KEY (municipio_id) REFERENCES fin_receb_municipios(id) ON DELETE RESTRICT",
+      "name": "fin_receb_clientes_municipio_id_fkey",
+      "table": "fin_receb_clientes"
+    },
+    {
+      "def": "CHECK (((numero_parcelas IS NULL) OR (numero_parcelas > 0)))",
+      "name": "fin_receb_clientes_numero_parcelas_check",
+      "table": "fin_receb_clientes"
+    },
+    {
+      "def": "PRIMARY KEY (id)",
+      "name": "fin_receb_clientes_pkey",
+      "table": "fin_receb_clientes"
+    },
+    {
+      "def": "FOREIGN KEY (remessa_id) REFERENCES fin_receb_remessas(id) ON DELETE SET NULL",
+      "name": "fin_receb_clientes_remessa_id_fkey",
+      "table": "fin_receb_clientes"
+    },
+    {
+      "def": "CHECK ((colecao = 'processos'::text))",
+      "name": "integracao_moradores_colecao_check",
+      "table": "integracao_moradores"
+    },
+    {
+      "def": "FOREIGN KEY (criado_por) REFERENCES auth.users(id)",
+      "name": "integracao_moradores_criado_por_fkey",
+      "table": "integracao_moradores"
+    },
+    {
+      "def": "CHECK ((jsonb_typeof(dados) = 'object'::text))",
+      "name": "integracao_moradores_dados_check",
+      "table": "integracao_moradores"
+    },
+    {
+      "def": "PRIMARY KEY (colecao, registro_id)",
+      "name": "integracao_moradores_pkey",
+      "table": "integracao_moradores"
+    }
+  ],
+  "columns": [
+    {
+      "type": "uuid",
+      "table": "fin_receb_clientes",
+      "column": "id"
+    },
+    {
+      "type": "uuid",
+      "table": "fin_receb_clientes",
+      "column": "municipio_id"
+    },
+    {
+      "type": "uuid",
+      "table": "fin_receb_clientes",
+      "column": "remessa_id"
+    },
+    {
+      "type": "text",
+      "table": "fin_receb_clientes",
+      "column": "codigo"
+    },
+    {
+      "type": "text",
+      "table": "fin_receb_clientes",
+      "column": "nome"
+    },
+    {
+      "type": "text",
+      "table": "fin_receb_clientes",
+      "column": "cpf_cnpj"
+    },
+    {
+      "type": "numeric",
+      "table": "fin_receb_clientes",
+      "column": "valor_global"
+    },
+    {
+      "type": "numeric",
+      "table": "fin_receb_clientes",
+      "column": "valor_entrada"
+    },
+    {
+      "type": "integer",
+      "table": "fin_receb_clientes",
+      "column": "numero_parcelas"
+    },
+    {
+      "type": "numeric",
+      "table": "fin_receb_clientes",
+      "column": "valor_parcela"
+    },
+    {
+      "type": "date",
+      "table": "fin_receb_clientes",
+      "column": "primeiro_vencimento"
+    },
+    {
+      "type": "integer",
+      "table": "fin_receb_clientes",
+      "column": "dia_vencimento"
+    },
+    {
+      "type": "boolean",
+      "table": "fin_receb_clientes",
+      "column": "ativo"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "fin_receb_clientes",
+      "column": "created_at"
+    },
+    {
+      "type": "text",
+      "table": "integracao_moradores",
+      "column": "colecao"
+    },
+    {
+      "type": "text",
+      "table": "integracao_moradores",
+      "column": "registro_id"
+    },
+    {
+      "type": "jsonb",
+      "table": "integracao_moradores",
+      "column": "dados"
+    },
+    {
+      "type": "uuid",
+      "table": "integracao_moradores",
+      "column": "criado_por"
+    },
+    {
+      "type": "text",
+      "table": "integracao_moradores",
+      "column": "referencia_tabela"
+    },
+    {
+      "type": "uuid",
+      "table": "integracao_moradores",
+      "column": "referencia_id"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "integracao_moradores",
+      "column": "updated_at"
+    },
+    {
+      "type": "text",
+      "table": "integracao_nucleos",
+      "column": "colecao"
+    },
+    {
+      "type": "text",
+      "table": "integracao_nucleos",
+      "column": "registro_id"
+    },
+    {
+      "type": "jsonb",
+      "table": "integracao_nucleos",
+      "column": "dados"
+    },
+    {
+      "type": "uuid",
+      "table": "integracao_nucleos",
+      "column": "criado_por"
+    },
+    {
+      "type": "text",
+      "table": "integracao_nucleos",
+      "column": "referencia_tabela"
+    },
+    {
+      "type": "uuid",
+      "table": "integracao_nucleos",
+      "column": "referencia_id"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "integracao_nucleos",
+      "column": "updated_at"
+    },
+    {
+      "type": "uuid",
+      "table": "processos_kanban",
+      "column": "id"
+    },
+    {
+      "type": "uuid",
+      "table": "processos_kanban",
+      "column": "crm_projeto_id"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "municipio"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "estado"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "nucleo"
+    },
+    {
+      "type": "boolean",
+      "table": "processos_kanban",
+      "column": "ativo"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "etapa_atual"
+    },
+    {
+      "type": "uuid",
+      "table": "processos_kanban",
+      "column": "responsavel_id"
+    },
+    {
+      "type": "date",
+      "table": "processos_kanban",
+      "column": "prazo"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "prioridade"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "pendencia"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "origem"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "processos_kanban",
+      "column": "crm_updated_at"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "processos_kanban",
+      "column": "etapa_iniciada_em"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "processos_kanban",
+      "column": "created_at"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "processos_kanban",
+      "column": "updated_at"
+    },
+    {
+      "type": "boolean",
+      "table": "processos_kanban",
+      "column": "excluido_erp"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "observacao_interna"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "responsavel_setor"
+    },
+    {
+      "type": "date",
+      "table": "processos_kanban",
+      "column": "sla_prazo"
+    },
+    {
+      "type": "text",
+      "table": "processos_kanban",
+      "column": "etapa_prefeitura"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "processos_kanban",
+      "column": "etapa_prefeitura_iniciada_em"
+    }
+  ],
+  "indexes": [
+    {
+      "indexdef": "CREATE UNIQUE INDEX fin_receb_clientes_pkey ON public.fin_receb_clientes USING btree (id)",
+      "indexname": "fin_receb_clientes_pkey",
+      "tablename": "fin_receb_clientes",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX fin_receb_clientes_municipio_idx ON public.fin_receb_clientes USING btree (municipio_id)",
+      "indexname": "fin_receb_clientes_municipio_idx",
+      "tablename": "fin_receb_clientes",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX fin_receb_clientes_remessa_idx ON public.fin_receb_clientes USING btree (remessa_id)",
+      "indexname": "fin_receb_clientes_remessa_idx",
+      "tablename": "fin_receb_clientes",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX fin_receb_clientes_cpf_idx ON public.fin_receb_clientes USING btree (cpf_cnpj)",
+      "indexname": "fin_receb_clientes_cpf_idx",
+      "tablename": "fin_receb_clientes",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX integracao_moradores_pkey ON public.integracao_moradores USING btree (colecao, registro_id)",
+      "indexname": "integracao_moradores_pkey",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_moradores_referencia_idx ON public.integracao_moradores USING btree (referencia_tabela, referencia_id)",
+      "indexname": "integracao_moradores_referencia_idx",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_moradores_autor_idx ON public.integracao_moradores USING btree (criado_por)",
+      "indexname": "integracao_moradores_autor_idx",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_moradores_nucleo_idx ON public.integracao_moradores USING btree (((dados ->> 'nucleoId'::text)))",
+      "indexname": "integracao_moradores_nucleo_idx",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_moradores_atualizado_idx ON public.integracao_moradores USING btree (updated_at DESC)",
+      "indexname": "integracao_moradores_atualizado_idx",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_financeiro_cliente_idx ON public.integracao_moradores USING btree (referencia_id, registro_id) WHERE (colecao = 'processos'::text)",
+      "indexname": "integracao_financeiro_cliente_idx",
+      "tablename": "integracao_moradores",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_nucleos_referencia_idx ON public.integracao_nucleos USING btree (referencia_tabela, referencia_id)",
+      "indexname": "integracao_nucleos_referencia_idx",
+      "tablename": "integracao_nucleos",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_nucleos_autor_idx ON public.integracao_nucleos USING btree (criado_por)",
+      "indexname": "integracao_nucleos_autor_idx",
+      "tablename": "integracao_nucleos",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX integracao_nucleos_pkey ON public.integracao_nucleos USING btree (colecao, registro_id)",
+      "indexname": "integracao_nucleos_pkey",
+      "tablename": "integracao_nucleos",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_nucleos_codigo_idx ON public.integracao_nucleos USING btree (((dados ->> 'codigo'::text)))",
+      "indexname": "integracao_nucleos_codigo_idx",
+      "tablename": "integracao_nucleos",
+      "schemaname": "public",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX integracao_nucleos_remessa_idx ON public.integracao_nucleos USING btree (((dados ->> 'remessaId'::text)))",
+      "indexname": "integracao_nucleos_remessa_idx",
+      "tablename": "integracao_nucleos",
+      "schemaname": "public",
+      "tablespace": null
+    }
+  ],
+  "privateFunctions": [
+    {
+      "name": "permitido",
+      "schema": "integracao_atribuicoes_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_atribuicoes_privado.permitido(recurso text, acao text, herdado boolean DEFAULT true)\n RETURNS boolean\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$select coalesce(integracao_atribuicoes_privado.escolha(recurso,acao),herdado)$function$\n"
+    },
+    {
+      "name": "pode_editar_oficios",
+      "schema": "integracao_crm_privado",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.pode_editar_oficios()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select exists(select 1 from public.profiles where id=auth.uid() and ativo and (\n tipo in ('Administrador','Diretor Técnico','Diretor de Projetos','Projeto','Projetos','Jurídico') or tipo like 'Diretor %' or setor in ('Projeto','Projetos','Jurídico')\n ));\n$function$\n"
+    }
+  ],
+  "guards": [
+    {
+      "proname": "escolha",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_atribuicoes_privado.escolha(recurso text, acao text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare c integracao_atribuicoes_privado.contratos;p public.profiles;\nbegin\n select * into c from integracao_atribuicoes_privado.contratos where usuario_id=auth.uid();\n if not found then return null;end if;\n select * into p from public.profiles where id=auth.uid();\n if not found or p.ativo is not true then return false;end if;\n if md5(row(p.id,p.tipo,p.setor,p.ativo,p.updated_at)::text)<>c.revisao_perfil then return false;end if;\n return (c.regras#>>array[recurso,acao])::boolean;\nend $function$\n"
+    },
+    {
+      "proname": "sincronizar_status",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_crm_privado.sincronizar_status()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare card uuid; etapa text; begin\n if tg_table_name='integracao_crm_cards' then\n   if new.status is distinct from old.status and new.cliente_id is not null then\n     update public.integracao_moradores set dados=jsonb_set(dados,'{requerente}',coalesce(dados->'requerente','{}'::jsonb)||jsonb_build_object('statusCRM',new.status))\n     where referencia_id=new.cliente_id and colecao='processos' and dados->'requerente'->>'statusCRM' is distinct from new.status;\n   end if;\n else\n   etapa=new.dados->'requerente'->>'statusCRM';\n   if etapa is distinct from old.dados->'requerente'->>'statusCRM' then\n     select id into card from public.integracao_crm_cards where cliente_id=new.referencia_id and status is distinct from etapa;\n     if card is not null then\n       if not integracao_crm_privado.card_permitido(card) then raise exception 'Status comercial só pode ser alterado pelo responsável ou administrador';end if;\n       update public.integracao_crm_cards set status=etapa where id=card;\n     end if;\n   end if;\n end if;\n return new;\nend $function$\n"
+    },
+    {
+      "proname": "proteger_mutacao",
+      "definition": "CREATE OR REPLACE FUNCTION integracao_atribuicoes_privado.proteger_mutacao()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare antes jsonb;depois jsonb;recurso text:=tg_argv[0];p public.profiles;setor text;etapa integer;doc jsonb;anterior jsonb;municipio text;morador_ativo boolean;\nbegin\n if not integracao_atribuicoes_privado.contratado() then if tg_op='DELETE' then return old;else return new;end if;end if;\n antes:=case when tg_op='INSERT' then '{}'::jsonb else to_jsonb(old) end;\n depois:=case when tg_op='DELETE' then '{}'::jsonb else to_jsonb(new) end;\n if tg_table_name='integracao_complementos' then\n  if tg_op='UPDATE' and antes->'colecao' is distinct from depois->'colecao' and (antes->>'colecao' in ('processos','nucleos','remessas','metas','ordensServico','planos','conversas','mensagens') or depois->>'colecao' in ('processos','nucleos','remessas','metas','ordensServico','planos','conversas','mensagens')) then raise exception 'Colecao do complemento nao pode ser transferida' using errcode='42501';end if;\n  recurso:=case coalesce(depois->>'colecao',antes->>'colecao') when 'processos' then 'clientes' when 'nucleos' then 'nucleos' when 'remessas' then 'remessas' when 'metas' then 'metas' when 'ordensServico' then 'ordens_servico' when 'planos' then 'planos' when 'conversas' then 'chat' when 'mensagens' then 'chat' else null end;\n  if recurso is null then if tg_op='DELETE' then return old;else return new;end if;end if;\n end if;\n if not integracao_atribuicoes_privado.permitido(recurso,case tg_op when 'INSERT' then 'criar' when 'DELETE' then 'excluir' else 'editar' end) then raise exception 'Ação não autorizada pelo contrato' using errcode='42501';end if;\n if tg_table_name='planos_trabalho' and tg_op='UPDATE' and antes->'created_by' is distinct from depois->'created_by' then raise exception 'Autoria do plano nao pode ser transferida por editar' using errcode='42501';end if;\n if tg_table_name='processos_kanban' and tg_op='UPDATE' and coalesce((depois->>'excluido_erp')::boolean,false) and not coalesce((antes->>'excluido_erp')::boolean,false) and not integracao_atribuicoes_privado.permitido('nucleos','excluir') then raise exception 'Exclusão de núcleo não autorizada' using errcode='42501';end if;\n if tg_table_name='metas' and tg_op in ('INSERT','UPDATE') and depois->>'status'='Concluído' and antes->>'status' is distinct from 'Concluído' and not integracao_atribuicoes_privado.permitido('metas','aprovar') then raise exception 'Aprovação de meta não autorizada' using errcode='42501';end if;\n if recurso='metas' and tg_table_name<>'metas' and tg_op in ('INSERT','UPDATE') and depois#>>'{dados,status}'='Concluído' and antes#>>'{dados,status}' is distinct from 'Concluído' and not integracao_atribuicoes_privado.permitido('metas','aprovar') then raise exception 'Aprovacao de meta nao autorizada' using errcode='42501';end if;\n if tg_table_name='fin_receb_clientes' and tg_op='UPDATE' and antes->'ativo' is distinct from depois->'ativo' then raise exception 'Situação do morador é uma ação separada do cadastro' using errcode='42501';end if;\n if (tg_table_name='integracao_moradores' or (tg_table_name='integracao_complementos' and recurso='clientes')) and tg_op in ('INSERT','UPDATE') then\n  select * into p from public.profiles where id=auth.uid();\n  setor:=case p.tipo when 'Topografia' then 'topografia' when 'Projetos' then 'projeto' else 'consulta' end;\n  antes:=coalesce(antes->'dados','{}');depois:=coalesce(depois->'dados','{}');\n  select municipio_id::text,ativo into municipio,morador_ativo from public.fin_receb_clientes where id=new.referencia_id;\n  municipio:=coalesce(municipio,antes->>'municipioId',depois->>'municipioId');\n  if (antes->'situacao' is distinct from depois->'situacao' and tg_op<>'INSERT') or (tg_op='INSERT' and coalesce(depois->>'situacao','Ativo')<>'Ativo') then raise exception 'Situação do morador não é permissão de editar cadastro' using errcode='42501';end if;\n  etapa:=coalesce((antes->>'etapa')::integer,0);\n  if (coalesce(antes->'etapa','0') is distinct from coalesce(depois->'etapa','0') or coalesce(antes->'checks','{}') is distinct from coalesce(depois->'checks','{}') or coalesce(antes->'campos','{}') is distinct from coalesce(depois->'campos','{}')) then\n   if depois ? 'etapa' and (jsonb_typeof(depois->'etapa')<>'number' or (depois->>'etapa')::numeric<>trunc((depois->>'etapa')::numeric)) then raise exception 'Etapa deve ser um numero inteiro' using errcode='42501';end if;\n   if not ((etapa=3 and setor='topografia') or (etapa=4 and setor='projeto')) then\n    if not(tg_op='INSERT' and coalesce((depois->>'etapa')::integer,0)=0 and coalesce(depois->'checks','{}')='{}'::jsonb and coalesce(depois->'campos','{}')='{}'::jsonb) then raise exception 'Fluxo setorial preservado: cadastro não altera etapas ou requisitos de outro setor' using errcode='42501';end if;\n   end if;\n   if abs(coalesce((depois->>'etapa')::integer,0)-etapa)>1 then raise exception 'Não é permitido pular etapas' using errcode='42501';end if;\n   perform integracao_atribuicoes_privado.travar_fluxo(antes->>'nucleoId');\n   perform integracao_atribuicoes_privado.travar_fluxo(depois->>'nucleoId');\n   if coalesce((depois->>'etapa')::integer,0)<etapa and\n     (length(trim(coalesce(depois#>>'{reaberturaFluxo,motivo}','')))<3 or\n      depois#>>'{reaberturaFluxo,de}' is distinct from etapa::text or\n      depois#>>'{reaberturaFluxo,para}' is distinct from depois->>'etapa' or\n      antes->'reaberturaFluxo' is not distinct from depois->'reaberturaFluxo') then\n     raise exception 'Retrocesso exige motivo novo para esta transicao' using errcode='42501';\n   end if;\n   perform integracao_atribuicoes_privado.validar_chaves_fluxo(antes,depois,etapa,municipio);\n   if coalesce((depois->>'etapa')::integer,0)>etapa then\n    perform integracao_atribuicoes_privado.validar_avanco(depois,etapa,municipio,coalesce(morador_ativo,true));\n   end if;\n  end if;\n  for doc in select value from jsonb_array_elements(coalesce(depois->'docs','[]')) loop\n   select value into anterior from jsonb_array_elements(coalesce(antes->'docs','[]')) where value->>'id'=doc->>'id';\n   if anterior->>'status' in ('validado','rejeitado') and doc is distinct from anterior then raise exception 'Resultado documental validado não é alterado por editar cadastro' using errcode='42501';end if;\n   if doc->>'status' in ('validado','rejeitado') and (anterior is null or anterior->'status' is distinct from doc->'status') then raise exception 'Validação documental é ação do fluxo, não de editar cadastro' using errcode='42501';end if;\n  end loop;\n  if exists(select 1 from jsonb_array_elements(coalesce(antes->'docs','[]')) a where not exists(select 1 from jsonb_array_elements(coalesce(depois->'docs','[]')) n where n->>'id'=a->>'id')) and not integracao_atribuicoes_privado.permitido('documentos','excluir',false) then raise exception 'Remoção de documento não autorizada' using errcode='42501';end if;\n end if;\n if (tg_table_name='integracao_nucleos' or (tg_table_name='integracao_complementos' and recurso='nucleos')) and tg_op in ('INSERT','UPDATE') and\n  (coalesce(antes#>'{dados,etapa}','0') is distinct from coalesce(depois#>'{dados,etapa}','0') or coalesce(antes#>'{dados,checks}','{}') is distinct from coalesce(depois#>'{dados,checks}','{}') or coalesce(antes#>'{dados,campos}','{}') is distinct from coalesce(depois#>'{dados,campos}','{}')) then\n  if depois#>'{dados,etapa}' is not null and (jsonb_typeof(depois#>'{dados,etapa}')<>'number' or (depois#>>'{dados,etapa}')::numeric<>trunc((depois#>>'{dados,etapa}')::numeric)) then raise exception 'Etapa do nucleo deve ser inteira' using errcode='42501';end if;\n  select * into p from public.profiles where id=auth.uid();\n  perform integracao_atribuicoes_privado.validar_nucleo(coalesce(antes->'dados','{}'),coalesce(depois->'dados','{}'),new.registro_id,new.referencia_id,p.tipo,tg_op);\n end if;\n if tg_op='UPDATE' and tg_table_name like 'integracao_%' and tg_table_name<>'integracao_moradores' and recurso<>'clientes' then\n  antes:=coalesce(antes->'dados','{}');depois:=coalesce(depois->'dados','{}');\n  if ((coalesce((depois->>'excluida')::boolean,false) and not coalesce((antes->>'excluida')::boolean,false)) or (depois->'excluidaEm' is not null and antes->'excluidaEm' is distinct from depois->'excluidaEm') or (depois#>'{extras,arquivamento,ativo}'='true'::jsonb and antes#>'{extras,arquivamento,ativo}' is distinct from 'true'::jsonb)) and integracao_atribuicoes_privado.escolha(recurso,'excluir') is false then raise exception 'Exclusão não autorizada pelo contrato' using errcode='42501';end if;\n end if;\n if tg_op='DELETE' then return old;else return new;end if;\nend $function$\n"
+    }
+  ]
+}

@@ -10,10 +10,10 @@ test('GeoJSON reconhece códigos alternativos, remove só fechamento e calcula r
 });
 test('inversa UTM mantém meridiano central e hemisfério',()=>{const [lng,lat]=utmParaMapa(500000,7000000,22);assert.ok(Math.abs(lng+51)<1e-10);assert.ok(lat<-27&&lat>-28);});
 test('pontos comuns compartilham nome, sem fundir pontos apenas próximos',()=>{const a=arquivo();a.features.push(structuredClone(a.features[0]));a.features[1].properties.Lote='Outro';const fs=preparar(a).feicoes;assert.equal(fs[0].vertices[0].nome,fs[1].vertices[0].nome);});
-test('códigos vazios ou duplicados, SRC ausente e graus não são importados',()=>{
+test('códigos vazios/duplicados e UTM com SRC ausente ou incorreto são rejeitados',()=>{
  const a=arquivo();a.features[0].properties.Lote='';assert.throws(()=>preparar(a),/vazio/);
  const b=arquivo();b.features.push(structuredClone(b.features[0]));assert.throws(()=>preparar(b),/repetido/);
- const c=arquivo();delete c.crs;assert.throws(()=>preparar(c),/SRC/);
+ const c=arquivo();delete c.crs;assert.throws(()=>preparar(c),/coordenadas/);
  const d=arquivo();d.crs.properties.name='EPSG:4326';assert.throws(()=>preparar(d),/graus/);
 });
 test('furos, multipartes, autointerseção e anel aberto não perdem geometria silenciosamente',()=>{
@@ -63,7 +63,7 @@ test('revogar via não remove o contorno do núcleo ou outras vias',async()=>{
  const anterior=structuredClone(db.nucleos[0].memorial.vias[0]);db.nucleos[0].memorial.vias.push({id:'outra',texto:'Preservado'});
  revogarMemorial(db,'n',{tipo:'via',viaId:f.id},anterior,'Revisão','A');assert.equal(db.nucleos[0].memorial.chave,'preservar');assert.equal(db.nucleos[0].memorial.vias[0].texto,'Preservado');
 });
-test('antes da Topografia não importa',()=>{for(const etapa of [0]){const db=banco();db.nucleos[0].etapa=etapa;assert.throws(()=>salvarImportacao(db,'n',preparar(),'A'),/Topografia/);}});
+test('importação autorizada não depende da etapa e preserva etapa e moradores',()=>{const db=banco();db.nucleos[0].etapa=0;const moradores=structuredClone(db.processos);salvarImportacao(db,'n',preparar(),'A');assert.equal(db.nucleos[0].etapa,0);assert.equal(db.nucleos[0].levantamentoGeoJSON.feicoes.length,1);assert.deepEqual(db.processos,moradores);});
 
 test('arquivos complementares preservam vínculos e reutilizam vértices comuns',()=>{
  const db=banco();salvarImportacao(db,'n',preparar(),'A');

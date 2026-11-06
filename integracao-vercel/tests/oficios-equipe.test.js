@@ -26,8 +26,8 @@ test('endpoints verificam sessão e perfil antes da IA e não aceitam respostas 
  const body={assunto:'Solicitação',orientacao:'Solicitar documentos.'};
  assert.equal((await invoke(gerar,body,'')).code,401);
  assert.equal((await invoke(gerar,body)).code,200);assert.equal(calls,1);
- for(const p of [{tipo:'Comercial',ativo:true},{tipo:'Projetos',ativo:false}]){perfil=p;assert.equal((await invoke(gerar,body)).code,403);assert.equal((await invoke(analisar,{caminho:'00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-000000000002/oficio.txt'})).code,403);}
- assert.equal(calls,1);perfil={tipo:'Jurídico',ativo:true};stop='max_tokens';assert.equal((await invoke(gerar,body)).code,422);
+ for(const p of [{tipo:'Comercial',ativo:true},{tipo:'Projetos',ativo:false}]){perfil=p;assert.equal((await invoke(gerar,body)).code,p.ativo?200:403);assert.equal((await invoke(analisar,{caminho:'00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-000000000002/oficio.txt'})).code,403);}
+ assert.equal(calls,2);perfil={tipo:'Jurídico',ativo:true};stop='max_tokens';assert.equal((await invoke(gerar,body)).code,422);
  assert.equal((await invoke(gerar,{...body,orientacao:'x'.repeat(10001)})).code,400);
  }finally{global.fetch=original;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key;}
 });

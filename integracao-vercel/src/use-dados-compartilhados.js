@@ -1,5 +1,6 @@
 import {separarCriacoesPendentes,recuperarCorDeAgenda,mensagemRejeicao} from './recuperacao-sincronizacao.js';
 import {temConexao} from './conexao-rede.js';
+import {criarConfirmacoesMutacoes,erroConfirmacao} from './confirmacao-mutacoes.js';
 import {erroConcorrencia} from './concorrencia.js';
 import {conciliarMaisRecentes as conciliarEdicoes,atualizarAutomaticamente as atualizarComRascunho,preservarRegistrosAusentes,separarReservasConflitantes} from './conciliacao-automatica.js';
 import {rejeicaoDefinitiva} from './atualizacao-rascunho.js';
@@ -23,6 +24,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   const [summaryReady,setSummaryReady]=useState(false),[summaryError,setSummaryError]=useState('');
   const summaryJob=useRef(null);
   const attempt=useRef(null),lastRefresh=useRef(0);
+  const confirmacoes=useRef(null);
+  if(!confirmacoes.current)confirmacoes.current=criarConfirmacoesMutacoes();
+  const rejeitarConfirmacoes=(mensagem,codigo,causa)=>confirmacoes.current.falhar(erroConfirmacao(mensagem,codigo,causa));
   const municipioAtivo=useRef(null),desatualizados=useRef(new Set());
   const municipios=useRef(new Set()), opening=useRef(false), municipalityLoads=useRef(new Map());
   const restaurarMunicipios=ids=>{
@@ -135,9 +139,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     try{await conciliar(escolhas);}catch(e){setError(e.message);}finally{busy.current=false;}
   };
   const flush=async()=>{
-    if(busy.current || !pending.current || !server.current || !temSessao()) return;
-    if(revisao.current&&(!attempt.current||attempt.current.rejeitada)&&!attempt.current?.confirmacao)return;
-    if(!temConexao()) {setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
+    if(!temSessao()){rejeitarConfirmacoes('A sessão terminou antes da confirmação. As alterações continuam no rascunho.','SESSAO_ENCERRADA');return;}
+    if(busy.current || !pending.current || !server.current) return;
+    if(revisao.current&&(!attempt.current||attempt.current.rejeitada)&&!attempt.current?.confirmacao){rejeitarConfirmacoes('Há alterações concorrentes. Revise as diferenças antes de continuar.','CONFLITO_EDICAO');return;}
+    if(!temConexao()) {rejeitarConfirmacoes('Sem conexão para confirmar a gravação. As alterações continuam no rascunho.','SEM_CONEXAO');setStatus('Alterações guardadas neste aparelho; aguardando conexão.');await saveDraft();return;}
     busy.current=true;const gen=generation.current;
     const who=actor.current;
     setStatus('Salvando alterações no Supabase…');setError('');
@@ -154,7 +159,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
         await saveDraft();
       }
       const {after,operations,id,sent}=attempt.current;
-      if(!operations.length){server.current={...server.current,db:copy(after)};attempt.current=null;pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(after);setStatus('Dados atualizados');await saveDraft();if(pending.current)timer.current=setTimeout(flush,500);return;}
+      if(!operations.length){const remoto=server.current.db;server.current={...server.current,db:copy(after)};attempt.current=null;pending.current=arquivosPendentes()||JSON.stringify(current.current)!==JSON.stringify(after);setStatus('Dados atualizados');await saveDraft();confirmacoes.current.confirmar(after,remoto,{semAlteracoes:true});if(pending.current)timer.current=setTimeout(flush,500);return;}
       let result=attempt.current.confirmacao;
       if(!result){
         result=await gravarOperacoes(operations,id,after);
@@ -186,10 +191,13 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       }else{revisao.current=null;setConflitos([]);setStatus(pending.current?'Salvando próximas alterações…':'Dados compartilhados no Supabase');}
       await saveDraft();
       retentativas.current=0;
+      if(resultado.conflitos.length)rejeitarConfirmacoes('A gravação foi recebida, mas há alterações concorrentes para revisar.','CONFLITO_EDICAO');
+      else confirmacoes.current.confirmar(after,state.db,result);
 
       if(pending.current&&!revisao.current) timer.current=setTimeout(flush,500);
     } catch(e) {
       if(gen!==generation.current)return;
+      rejeitarConfirmacoes(attempt.current?.confirmacao?'A gravação foi recebida pelo servidor, mas a leitura de confirmação falhou. As alterações continuam preservadas.':`Não foi possível confirmar a gravação: ${e.message}. As alterações continuam no rascunho.`,attempt.current?.confirmacao?'LEITURA_PENDENTE':'CONFIRMACAO_FALHOU',e);
       if(attempt.current&&!attempt.current.confirmacao&&rejeicaoDefinitiva(e)){attempt.current.rejeitada=true;attempt.current.erro=e.message;}
       if((erroConcorrencia(e)||rejeicaoDefinitiva(e))&&attempt.current&&!attempt.current.confirmacao){
         try {
@@ -203,6 +211,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     } finally {busy.current=false;}
   };
   const open=async (user,legacy)=>{
+    rejeitarConfirmacoes('A sessão foi reaberta antes da confirmação. Confira a sincronização do rascunho.','SESSAO_ALTERADA');
     vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
     actor.current=user;generation.current++;server.current=null;municipioAtivo.current=null;desatualizados.current.clear();municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');
     try {
@@ -306,6 +315,34 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     publish(next);pending.current=true;setStatus('Alterações pendentes');saveDraft().catch(e=>setError(e.message));
     clearTimeout(timer.current);timer.current=setTimeout(flush,250);
   };
+  const mutateConfirmed=async(fn,entry)=>{
+    if(!current.current||!server.current||!actor.current||!temSessao())throw erroConfirmacao('Entre em uma sessão conectada para salvar.','SESSAO_ENCERRADA');
+    if(!temConexao())throw erroConfirmacao('Conecte-se para salvar. O texto digitado deve permanecer aberto para tentar novamente.','SEM_CONEXAO');
+    if(revisao.current)throw erroConfirmacao('Revise as alterações concorrentes antes de salvar.','CONFLITO_EDICAO');
+    const antes=copy(current.current);
+    const identificada={...(entry||{}),id:entry?.id||crypto.randomUUID()};
+    mutate(fn,identificada);
+    const gen=generation.current;
+    const primeira=confirmacoes.current.aguardar(identificada.id,antes,current.current);
+    const acompanhar=async(repetir=false)=>{
+      try{
+        if(gen!==generation.current||!actor.current||!temSessao())throw erroConfirmacao('A sessão mudou. Reabra o registro para conferir a gravação.','SESSAO_ALTERADA');
+        if(repetir&&!confirmacoes.current.confirmada(identificada.id)){
+          if(!temConexao())throw erroConfirmacao('Sem conexão para confirmar a tentativa anterior. O rascunho continua preservado.','SEM_CONEXAO');
+          if(!pending.current&&!attempt.current)throw erroConfirmacao('A tentativa anterior exige revisão. Confira os dados atuais antes de salvar uma nova alteração.','REVISAO_NECESSARIA');
+          clearTimeout(timer.current);timer.current=setTimeout(flush,0);
+        }
+        return await (repetir?confirmacoes.current.retentar(identificada.id):primeira);
+      }catch(e){
+        // Retomar a intenção existente nunca reexecuta fn sobre o próprio estado
+        // otimista, o que produziria um falso conflito nos editores com CAS.
+        const falha=erroConfirmacao(e.message,e.code||'CONFIRMACAO_FALHOU',e);
+        falha.retentarConfirmacao=()=>acompanhar(true);
+        throw falha;
+      }
+    };
+    return acompanhar();
+  };
   const refresh=async({force=false,manual=false,grupos=null}={})=>{
     if(!force&&Date.now()-lastRefresh.current<120000)return;
     if(manual) {
@@ -345,7 +382,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     if(manual)invalidarIndiceClientes();
     return true;
   };
-  const close=()=>{vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
+  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
     if(busy.current)return;
     try {
@@ -365,7 +402,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     window.addEventListener('beforeunload',protegerSaida);
     window.addEventListener('integracao:arquivo-pendente',filePending);
     window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
-    return()=>{vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
+    return()=>{rejeitarConfirmacoes('A tela de sincronização foi encerrada antes da confirmação.','TELA_ENCERRADA');vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
-  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,close,flush:()=>{retentativas.current=0;return flush();},refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  return {definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:()=>{retentativas.current=0;return flush();},refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }

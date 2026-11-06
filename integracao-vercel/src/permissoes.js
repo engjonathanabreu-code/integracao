@@ -21,6 +21,9 @@ export const SETOR_DA_ETAPA = { mobilizacao: "comercial", contrato: "comercial",
 export function permissoes(u) {
   const s = u?.setor || "consulta";
   const dir = s === "diretoria";
+  // O setor canônico pode diferir do tipo ERP. Só estas novas capacidades usam
+  // o setor Projetos adicional; isso não amplia etapas ou memorial individual.
+  const projetos = s === "projeto" || [u?.tipoERP,u?.setorERP].some(v => ['projeto','projetos'].includes(String(v || '').trim().toLowerCase()));
   return {
     setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
     editarClientes: !!u && u.ativo !== false,
@@ -43,6 +46,11 @@ export function permissoes(u) {
     criterio: dir || s === "comercial",
     nucleos: dir,
     campo: dir || s === "topografia",
+    mapaNucleo: acaoPermitida(u,"nucleos","editar",dir || ["comercial","topografia"].includes(s) || projetos),
+    importacaoGeografica: acaoPermitida(u,"nucleos","editar",dir || s === "topografia" || projetos),
+    memorialNucleo: acaoPermitida(u,"nucleos","editar",dir || s === "topografia" || projetos),
+    areaUnidade: acaoPermitida(u,"clientes","editar",dir || s === "topografia" || projetos),
+    loteQuadraUnidade: acaoPermitida(u,"clientes","editar",dir || projetos),
     campoOffline: !!u,
     prf: dir || s === "projeto",
     modeloPRF: dir || s === "projeto",

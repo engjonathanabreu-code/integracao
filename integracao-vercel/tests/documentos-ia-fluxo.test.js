@@ -19,6 +19,7 @@ function tela({ responder = async () => ({ tipo: 'outro', campos: {}, regras: []
     useRef(inicial) { const n = index++; hooks[n] ||= { current: inicial }; return hooks[n]; },
     useEffect(fn, deps) { const n = index++, anterior = hooks[n]; if (!anterior || deps.some((v, i) => v !== anterior.deps[i])) efeitos.push(() => { anterior?.cleanup?.(); hooks[n] = { deps, cleanup: fn() }; }); },
     criarSessaoDocumentosIA, regrasDocumentoCliente, pessoasDocumentais, destinoDocumento,
+    useTimbrado: () => null,
     regrasDoMunicipio: () => [], nucleoDe: () => null, municipioDe: () => null, cpfValido: () => false,
     DOC_TIPOS: { outro: 'Outro' }, montarLinhas: () => [], uid: () => `d${p.docs.length}`,
     TIPOS_ACEITOS: ['application/pdf'], LIMITE_DOCUMENTO_IA: 20 * 1024 * 1024, MAX_LOTE: 10,

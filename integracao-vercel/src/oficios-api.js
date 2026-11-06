@@ -3,6 +3,7 @@ import {validarOficio} from './oficios-regras.js';
 import {oficioAtual} from './oficios-versoes.js';
 export const registrarOficio=dados=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'registrar',p_dados:dados})});
 export const atualizarOficio=dados=>requisicao('rpc/integracao_oficios_operar',{method:'POST',body:JSON.stringify({p_acao:'atualizar',p_dados:dados})});
+export const reservarNumeroOficio=(pedido,ano,inicial)=>requisicao('rpc/integracao_oficio_reservar_numero',{method:'POST',body:JSON.stringify({p_pedido:pedido,p_ano:ano,p_inicial:inicial})});
 export async function historicoOficio(id){
  const itens=[];
  for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios_versoes?oficio_id=eq.${encodeURIComponent(id)}&order=versao.desc&limit=500&offset=${inicio}`);itens.push(...parte);if(parte.length<500)return itens;}
@@ -10,7 +11,9 @@ export async function historicoOficio(id){
 export async function listarOficios(ano){
  const seq=await requisicao(`integracao_oficios_sequencias?ano=eq.${ano}`),itens=[];
  for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios?ano=eq.${ano}&select=*,versoes:integracao_oficios_versoes(*)&versoes.order=versao.desc&versoes.limit=1&order=numero.desc&limit=500&offset=${inicio}`);itens.push(...parte.map(oficioAtual));if(parte.length<500)break;}
- return {itens,ultimo:seq[0]?.ultimo||null};
+  const reservas=[];
+  for(let inicio=0;;inicio+=500){const parte=await requisicao(`integracao_oficios_reservas?ano=eq.${ano}&oficio_id=is.null&order=numero.asc&limit=500&offset=${inicio}`);reservas.push(...parte);if(parte.length<500)break;}
+  return {itens,ultimo:seq[0]?.ultimo||null,reservas};
 }
 async function token(){const t=await tokenTempoReal();if(!t)throw Error('Entre novamente na sua conta.');return t;}
 export async function prepararOficio(arquivo,usuario,pedido){const {ext,mime}=validarOficio(arquivo),hash=await crypto.subtle.digest('SHA-256',await arquivo.arrayBuffer());return {pedido,caminho:`${usuario}/${pedido}/oficio.${ext}`,nome_arquivo:arquivo.name,mime,tamanho:arquivo.size,sha256:Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('')};}

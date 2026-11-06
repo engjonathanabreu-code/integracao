@@ -2,6 +2,7 @@ import { processarVertices } from '../memoriais/memoriaisCalculos.js';
 import { montarMemorial } from '../memoriais/memoriaisTexto.js';
 import { salvarUnidadeMemorial } from '../memoriais/integracaoMemoriais.js';
 import { salvarMemorialNucleo } from '../memoriais/memorialNucleo.js';
+import { lerGeoJSONGeografico, poligonosDaGeometria, validarGeometriaGeografica } from './geometria-geografica.js';
 
 // Inversa UTM (Snyder), GRS80. Só usada para exibir o mapa; medidas usam E/N originais.
 // Parâmetros EPSG 31978–31985: SIRGAS 2000, fusos 18–25S, k0=.9996.
@@ -20,11 +21,18 @@ export function utmParaMapa(e, n, fuso) {
 export const coordenadaGMS=(v,latitude=false)=>{const ms=Math.round(Math.abs(v)*3600000),g=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),seg=(ms%60000/1000).toFixed(3).replace('.',',');return `${g}°${String(m).padStart(2,'0')}'${seg}" ${latitude?(v<0?'S':'N'):(v<0?'O':'L')}`;};
 const normalizar=v=>String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
 export function lerGeoJSON(texto) {
-  const dados=JSON.parse(texto);
+  let dados;try{dados=JSON.parse(texto);}catch{throw new Error('O GeoJSON não contém um JSON válido.');}
+  if(!dados || typeof dados!=='object')throw new Error('O arquivo não contém um objeto GeoJSON.');
+  if(!Object.hasOwn(dados,'crs')){
+    const geografico=lerGeoJSONGeografico(texto);
+    const campos=[...new Set(geografico.features.flatMap(f=>Object.keys(f.properties)))];
+    if(!campos.length)campos.push('__sequencia__');
+    return {dados:geografico,epsg:4326,campos,geografico:true};
+  }
   if(dados.type!=='FeatureCollection' || !Array.isArray(dados.features) || !dados.features.length)throw new Error('Envie uma coleção de feições GeoJSON não vazia.');
   if(dados.features.length>2000)throw new Error('Importe até 2.000 feições por arquivo.');
   const epsg=Number(String(dados.crs?.properties?.name || '').match(/EPSG(?::|\/)+(\d+)$/i)?.[1]);
-  if(epsg<31978 || epsg>31985 || !epsg)throw new Error('Exporte no QGIS como SIRGAS 2000 / UTM Sul (EPSG 31978 a 31985), incluindo o SRC no GeoJSON. Coordenadas em graus não serão tratadas como metros.');
+  if(epsg<31978 || epsg>31985 || !epsg)throw new Error('O SRC declarado não é suportado neste fluxo UTM. Exporte como SIRGAS 2000 / UTM Sul (EPSG 31978 a 31985), ou como GeoJSON RFC 7946 em graus WGS84 sem campo crs.');
   const campos=[...new Set(dados.features.flatMap(f=>Object.keys(f.properties || {})))].filter(k=>!['__proto__','constructor','prototype'].includes(k));
   return {dados,epsg,campos};
 }
@@ -48,12 +56,16 @@ export function prepararFeicoes(lido,campo) {
   const codigos=new Set(), nomes=new Map();
   let totalVertices=0;
   const feicoes=lido.dados.features.map((f,i)=>{
-    const valor=f.properties?.[campo];
+    const valor=lido.geografico&&campo==='__sequencia__'?`Feição ${i+1}`:f.properties?.[campo];
     if(!['string','number'].includes(typeof valor)||!normalizar(valor))throw new Error(`Feição ${i+1}: código vazio ou inválido.`);
     const codigo=String(valor).trim();
     if(codigos.has(normalizar(codigo)))throw new Error(`Código repetido: ${codigo}. Escolha um campo único por lote.`);
     codigos.add(normalizar(codigo));
     const g=f.geometry;
+    if(lido.geografico){
+      const geometria=validarGeometriaGeografica(g,{get vertices(){return totalVertices;},set vertices(v){totalVertices=v;}});
+      return {id:crypto.randomUUID(),codigo,codigoMorador:'',geometria,poligono:poligonosDaGeometria(geometria)[0][0].slice(0,-1),vertices:[],coordenadasGeograficas:true};
+    }
     const aneis=g?.type==='Polygon'?g.coordinates:g?.type==='MultiPolygon'&&g.coordinates.length===1?g.coordinates[0]:null;
     if(!aneis || aneis.length!==1)throw new Error(`${codigo}: use um polígono simples, sem ilhas, furos ou partes separadas. Nenhuma parte será descartada.`);
     totalVertices+=aneis[0]?.length||0;
@@ -73,36 +85,43 @@ export function prepararFeicoes(lido,campo) {
 }
 export function salvarImportacao(db,nucleoId,pacote,por) {
   const n=db.nucleos.find(n=>n.id===nucleoId);
-  if(!n || !Number.isInteger(n.etapa) || n.etapa<1)throw new Error('A importação é liberada a partir da etapa Topografia.');
+  if(!n)throw new Error('Núcleo não encontrado. Reabra o cadastro.');
   const existente=n.levantamentoGeoJSON;
   const anteriores=existente?.feicoes || [];
-  if(anteriores.length && existente.epsg!==pacote.epsg)throw new Error('Use o mesmo SRC do levantamento existente.');
+  if(anteriores.length && existente.epsg!==pacote.epsg && existente.epsg!==4326 && pacote.epsg!==4326)throw new Error('Use o mesmo SRC do levantamento UTM existente.');
   if(!pacote.feicoes?.length || anteriores.length+pacote.feicoes.length>2000)throw new Error('O núcleo deve conter de 1 a 2.000 feições.');
   const codigos=new Set(anteriores.map(f=>normalizar(f.codigo))), ids=new Set(anteriores.map(f=>f.id));
   const nomes=new Map(), usados=new Set();
-  for(const f of anteriores)for(const v of f.vertices){nomes.set(v.e+','+v.n,v.nome);usados.add(v.nome);}
+  for(const f of anteriores)for(const v of f.vertices||[]){nomes.set(v.e+','+v.n,v.nome);usados.add(v.nome);}
   let proximo=1;
   const novas=structuredClone(pacote.feicoes).map(f=>{
     if(codigos.has(normalizar(f.codigo)) || ids.has(f.id))throw new Error('Código repetido no núcleo: '+f.codigo+'. A importação existente foi preservada.');
     codigos.add(normalizar(f.codigo));ids.add(f.id);
     if(f.vinculo)throw new Error('Importe as feições sem vínculos prévios.');
+    if(f.coordenadasGeograficas){
+      if(pacote.epsg!==4326)throw new Error('Confira o sistema de coordenadas da importação.');
+      const geometria=validarGeometriaGeografica(f.geometria);
+      return {id:f.id,codigo:f.codigo,codigoMorador:f.codigoMorador||'',geometria,poligono:poligonosDaGeometria(geometria)[0][0].slice(0,-1),vertices:[],coordenadasGeograficas:true,epsg:4326,arquivo:pacote.arquivo};
+    }
     const vertices=f.vertices.map(v=>{
       const chave=v.e+','+v.n;
       if(!nomes.has(chave)){while(usados.has('V'+proximo))proximo++;const nome='V'+proximo++;nomes.set(chave,nome);usados.add(nome);}
       return {...v,nome:nomes.get(chave)};
     });
-    return {...f,...processarVertices(vertices),arquivo:pacote.arquivo};
+    return {...f,...processarVertices(vertices),epsg:pacote.epsg,arquivo:pacote.arquivo};
   });
   const importadoEm=new Date().toISOString();
   const importacoes=existente?.importacoes || (anteriores.length?[{arquivo:existente.arquivo,por:existente.por,importadoEm:existente.importadoEm}]:[]);
-  n.levantamentoGeoJSON={...existente,...structuredClone(pacote),feicoes:[...anteriores,...novas],por,importadoEm,importacoes:[...importacoes,{arquivo:pacote.arquivo,por,importadoEm,quantidade:novas.length}]};
+  const epsgBase=anteriores.length&&existente.epsg!==4326?existente.epsg:pacote.epsg;
+  n.levantamentoGeoJSON={...existente,...structuredClone(pacote),epsg:epsgBase,feicoes:[...anteriores,...novas],por,importadoEm,importacoes:[...importacoes,{arquivo:pacote.arquivo,epsg:pacote.epsg,por,importadoEm,quantidade:novas.length}]};
   return db;
 }
 export function vincularFeicao(db,nucleoId,feicao,alvo,anterior,por) {
   const n=db.nucleos.find(n=>n.id===nucleoId);
   const atual=n?.levantamentoGeoJSON?.feicoes?.find(f=>f.id===feicao.id);
-  if(!n || !Number.isInteger(n.etapa) || n.etapa<1 || !atual)throw new Error('Reabra o levantamento na etapa Topografia.');
+  if(!n || !atual)throw new Error('Reabra o levantamento do núcleo.');
   if(atual.vinculo || JSON.stringify(atual)!==JSON.stringify(feicao))throw new Error('Esta feição foi alterada ou já vinculada. Reabra o levantamento.');
+  if(atual.coordenadasGeograficas)throw new Error('Este arquivo contém coordenadas geográficas para o mapa. Para preencher medidas e memoriais, utilize o levantamento UTM validado pelo responsável técnico.');
   const texto=memorialDaFeicao(atual,n.levantamentoGeoJSON.epsg);
   if(alvo.tipo==='unidade'){
     const p=db.processos.find(p=>p.id===alvo.moradorId && p.nucleoId===nucleoId && !p._resumo);
@@ -121,7 +140,7 @@ export function vincularFeicao(db,nucleoId,feicao,alvo,anterior,por) {
 // Códigos completos, sem aproximação por nome. Zeros à esquerda no número não alteram a identidade.
 export const normalizarCodigoMorador=v=>normalizar(v).replace(/_(0+)(\d+)([a-z]?)$/,(_,zeros,n,s)=>'_'+Number(n)+s);
 export function sugerirVinculos(feicoes,unidades) {
- const sugestoes=feicoes.filter(f=>!f.vinculo).map(f=>{
+ const sugestoes=feicoes.filter(f=>!f.vinculo&&!f.coordenadasGeograficas).map(f=>{
   const codigo=f.codigoMorador||f.codigo;
   const candidatos=unidades.filter(u=>normalizarCodigoMorador(u.codigo)===normalizarCodigoMorador(codigo));
   const unidade=candidatos.length===1?candidatos[0]:null;
@@ -139,6 +158,8 @@ export function confirmarSugestoes(db,nucleoId,sugestoes,por) {
 }
 
 export function memorialDaFeicao(feicao,epsg) {
+  if(feicao.coordenadasGeograficas)return 'Geometria geográfica de referência. Não altera medidas ou memoriais existentes.';
+  epsg=feicao.epsg||epsg;
   const meridiano=Math.abs((epsg-31960)*6-183)+'° O';
   return montarMemorial(feicao.vertices,{sistema:'UTM',meridiano});
 }

@@ -24,7 +24,13 @@ import {useMemoriaAgente,podeSupervisionarAgentes} from './agente-memoria-teste.
 import AjustesPRFTeste from './AjustesPRFTeste.jsx';
 import {registrarAcaoNativa,registrarArquivoNativo} from './agente-memoria-teste.js';
 import GeradorOficio from './GeradorOficio.jsx';
-import {podeEditarOficios} from './oficios-permissoes.js';
+import {podeEditarOficios,podeGerarOficios} from './oficios-permissoes.js';
+import ObservacoesDocumentos from './ObservacoesDocumentos.jsx';
+import QualificacoesNucleo from './QualificacoesNucleo.jsx';
+import {resolverQualificacaoCadastro} from './qualificacoes-nucleo.js';
+import {carregarQualificacoesNucleo} from './qualificacoes-nucleo-api.js';
+import {ModelosTermosMunicipais,TermosCompromissoMunicipais} from './TermosMunicipais.jsx';
+import {podeGerarTermosMunicipais} from './termos-municipais.js';
 import {listarOficios} from './oficios-api.js';
 import AgentePessoalTeste,{RestritoTeste,AgenteFlutuanteTeste,BibliotecaTeste,AvatarLateralTeste} from './AgentePessoalTeste.jsx';
 import UI_GUIDE_CSS from './ui-guide.css?raw';
@@ -68,6 +74,8 @@ import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
+import ImportadorPerimetro from "../geojson/ImportadorPerimetro.jsx";
+import {LIMITES_GEOGRAFIA,poligonosParaMapa,poligonosDaGeometria,geometriaDaFeicao,caminhoPoligonoSVG,gerarKMLGeografico} from "../geojson/geometria-geografica.js";
 import { CronogramaFisico } from "./FormulariosNucleoPRF.jsx";
 import { complementoNucleoPRF, INFRA_PRF } from "./cadastros-prf.js";
 import { separarQuadraLote } from "../municipio-prf/marcadoresPRF.js";
@@ -1406,10 +1414,10 @@ async function baixarDocumentoCliente(html,titulo,timbrado,nome,formato) {
     await baixarDocx(html,titulo,timbrado,nome);
   }
 }
-async function baixarMemorialNucleo(html,titulo,timbrado,nome) {
+async function baixarMemorialNucleo(html,titulo,timbrado,nome,formato="docx") {
   await exigirAcao("nucleos","exportar");
   await exigirAcao("documentos","exportar");
-  return documentoDocx.baixarDocx(html,titulo,timbrado,nome);
+  return formato==="pdf" ? documentoPdf.baixarPdf(html,titulo,timbrado,nome) : documentoDocx.baixarDocx(html,titulo,timbrado,nome);
 }
 
 function baixarArquivo(nome, conteudo, tipo) {
@@ -3856,7 +3864,7 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
     [SECAO_CONFRONTANTES.id]: <FormConfrontantes valores={confrontantesDe(pd)} pode={pode("imovel")} onChange={(lado, valor) => form.set(`extras.${CONFRONTANTES.find((c) => c.lado === lado).id}`, valor)}><ExtrasSecao defs={defs} secaoId={SECAO_CONFRONTANTES.id} form={form} dis={disImovel} /></FormConfrontantes>,
     requerente: (
       <Secao titulo="Requerente" nota={ehPJ(req) ? "Pessoa jurídica: o contrato e a procuração saem em nome da empresa, assinados pelo representante legal." : ""}>
-        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} perm={perm} permitirPJ representantes={representantes.slice(1)} campoCodigoMorador={<Campo form={form} rot="Código do morador" path="codigo" dis={disCad} fmt={normalizarCodigoMorador} erro={rascunho.codigo !== p.codigo ? erroCodigoMorador(rascunho.codigo, (db._baseArquivo || db).processos, p.id) : ""} ajuda="A alteração será aplicada ao salvar o cadastro." />} />
+        <BlocoPessoa form={form} base="requerente" papel="requerente" dis={disCad} perm={perm} permitirPJ representantes={representantes.slice(1)} campoCodigoMorador={<Campo form={form} rot="Código do morador" path="codigo" dis={disCad} fmt={normalizarCodigoMorador} erro={rascunho.codigo !== p.codigo ? erroCodigoMorador(rascunho.codigo, (db._baseArquivo || db).processos, p) : ""} ajuda="A alteração será aplicada ao salvar o cadastro." />} />
         <ExtrasSecao defs={defs} secaoId="requerente" form={form} dis={disCad} />
       </Secao>
     ),
@@ -4014,7 +4022,8 @@ function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado })
   );
 }
 
-function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado }) {
+function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplicarIA, cancelado, onEdicaoPendente, recarregar }) {
+  const timbradoTermo = useTimbrado(db, p.municipioId);
   const regrasMun = regrasDoMunicipio(db, p.municipioId);
   const [tipoEsperado, setTipoEsperado] = useState("auto");
   const [pessoaEscolhida, setPessoaEscolhida] = useState("");
@@ -4410,6 +4419,8 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
           </table>
         </div>
       </Secao>
+      <ObservacoesDocumentos key={p.id} processoId={p.id} usuario={usuario} podeCriar={!cancelado && usuario.ativo !== false && perm.setor !== "consulta" && perm.acao("clientes","editar",true)} podeGerenciar={perm.diretor} onEdicaoPendente={onEdicaoPendente} />
+      <TermosCompromissoMunicipais key={`termos-${p.id}`} p={p} municipio={municipioDe(db,p.municipioId)} unidades={unidadesDe(p)} identificarUnidade={u=>codigoUnidade(p,unidadesDe(p).findIndex(x=>x.id===u.id))} podeGerar={!cancelado && podeGerarTermosMunicipais(usuario) && perm.acao("clientes","editar",true)} onEmitida={()=>recarregar?.({force:true})} ui={{Secao,Modal,PreviaDocumento}} timbrado={timbradoTermo} onExportar={({html,titulo,nome,formato})=>baixarDocumentoCliente(html,titulo,timbradoTermo,nome,formato)} />
       {verificarHumano && <ModalMotivo titulo="Registrar verificação humana" texto={`Confirme que você conferiu pessoalmente o documento “${DOC_TIPOS[verificarHumano]}” e as exigências aplicáveis. Descreva a conferência e eventual justificativa. Este registro não executa análise por IA.`} rotuloBotao="Confirmar documento verificado" onFechar={() => setVerificarHumano(null)} onConfirmar={m => verificarSemIA(verificarHumano, m)} />}
       {forcar && <ModalMotivo titulo="Validar com justificativa" texto={`Uma regra obrigatória não foi atendida em "${DOC_TIPOS[forcar.tipo]}". Explique por que o documento pode ser aceito.`} rotuloBotao="Validar documento" onFechar={() => setForcar(null)} onConfirmar={(m) => { validar(forcar, "validado", m); setForcar(null); setToast("Documento validado com justificativa."); }} />}
     </div>
@@ -4476,8 +4487,7 @@ function AbaQualificacao({ p, usuario, perm, mutar, setToast }) {
   const salvo = q?.textos?.[modo];
   const origem = q?.origem?.[modo] || "";
   const gerado = ["simples", "completa"].includes(modo) ? gerarQualificacao(p, modo) : null;
-  const texto = salvo !== undefined && salvo !== null && salvo !== "" ? salvo : gerado ? gerado.texto : "";
-  const faltas = gerado && (origem === "gerada" || !salvo) ? gerado.faltas : q?.faltas?.[modo] || [];
+  const {texto,faltas} = resolverQualificacaoCadastro(p,gerarQualificacao,modo);
   const modosDisponiveis = MODOS_QUALIFICACAO.filter(([k]) => ["simples", "completa"].includes(k) || preenchido(q?.textos?.[k]));
   const podeEditar = perm.diretor || perm.setor === "comercial" || perm.setor === "juridico" || perm.setor === "posprotocolo";
   const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
@@ -4572,10 +4582,11 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado, pedido
   );
 }
 
-function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial, pedidoAgente }) {
+function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInicial, pedidoAgente, recarregar }) {
   const p = db.processos.find((x) => x.id === processoId);
   const perm = permissoes(usuario);
   const [aba, setAba] = useState(abaInicial || "cadastro");
+  const [observacaoPendente,setObservacaoPendente] = useState(false);
   const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=({ ...extrair(p), codigo: p.codigo });if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
   const baseFormulario=useRef(p?({ ...extrair(p), codigo: p.codigo }):null);
   useEffect(()=>{const anterior=baseFormulario.current,proximo=p?({ ...extrair(p), codigo: p.codigo }):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
@@ -4611,9 +4622,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     let alteracaoCodigo;
     try {
       if (rascunho.codigo !== p.codigo && (cancelado || !(perm.editarClientes || perm.cadastro))) throw new Error("Você não tem permissão para editar o código do morador.");
-      const mudouRemessa = rascunho.remessaId !== p.remessaId;
-      const numeroAutomatico = mudouRemessa ? proximoNumeroCliente(db, rascunho.remessaId) : null;
-      alteracaoCodigo = resolverCodigoMorador({ atual: p, rascunho, processos: (db._baseArquivo || db).processos, numeroAutomatico, codigoAutomatico: mudouRemessa ? codigoCliente(db, rascunho.remessaId, numeroAutomatico) : null });
+      alteracaoCodigo = resolverCodigoMorador({ atual: p, rascunho, processos: (db._baseArquivo || db).processos });
     } catch (e) { setToast(e.message); return; }
     const novoCodigo = alteracaoCodigo?.codigo;
     const novoNumero = alteracaoCodigo?.numeroCliente;
@@ -4624,7 +4633,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       const q = d.processos.find((x) => x.id === p.id);
       SECOES.forEach((k) => { q[k] = clone(rascunho[k]); });
       if (novoCodigo) {
-        const erro = erroCodigoMorador(novoCodigo, d.processos, p.id);
+        const erro = erroCodigoMorador(novoCodigo, d.processos, p);
         if (erro) throw new Error(erro);
         q.codigo = novoCodigo; q.numeroCliente = novoNumero;
       }
@@ -4637,6 +4646,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     setToast("Cadastro salvo.");
   };
   const aplicarIA = (linhas) => {
+    if(observacaoPendente&&!window.confirm("Há uma observação não salva. Abrir o cadastro e descartar o texto?"))return;
+    setObservacaoPendente(false);
     setRascunho((rr) => { const c = clone(rr); linhas.forEach((l) => { const atual = linhaDocumentalAtual(l, c); if (atual) setPath(c, atual.path, atual.sugerido); }); return c; });
     setIaPaths((a) => Array.from(new Set([...a, ...linhas.map((l) => l.path)])));
     mutar((d) => d, "Sugestões da IA levadas ao cadastro para revisão", { processoId: p.id, remessaId: p.remessaId, detalhe: `${linhas.length} campo(s)` });
@@ -4694,7 +4705,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["observacoes", "Observações", MessageSquare, (p.observacoes || []).length],
               ["historico", "Histórico", History, 0],
             ].map(([id, nome, Icone, contador, nota]) => (
-              <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => setAba(id)} title={nome}>
+              <button key={id} role="tab" className="aba" aria-selected={aba === id} onClick={() => { if(id===aba)return; if (observacaoPendente && !window.confirm("Há uma observação não salva. Trocar de aba e descartar?")) return; setObservacaoPendente(false); setAba(id); }} title={nome}>
                 {Icone ? <Icone size={15} /> : null}
                 <span>{nome}</span>
                 {contador > 0 && <span className="conta-aba">{contador}</span>}
@@ -4703,7 +4714,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             ))}
           </div>
           {aba === "cadastro" && <AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} />}
-          {aba === "documentos" && <AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} />}
+          {aba === "documentos" && <div data-observacao-pendente={observacaoPendente ? "true" : undefined}><AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} onEdicaoPendente={setObservacaoPendente} recarregar={recarregar} /></div>}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
               <span className="flex flex-wrap items-center gap-2">
@@ -4723,7 +4734,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
           {aba === "historico" && <Secao titulo="Histórico do processo" nota="Registro de quem fez o quê. Valores de CPF não são gravados no histórico."><ListaHistorico itens={db.auditoria.filter((a) => a.processoId === p.id)} vazio="Nenhuma ação registrada ainda." /></Secao>}
         </div>
         <aside className="lateral">
-          <PainelEtapa db={db} p={p} ctx={ctx} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} onAbrirAba={setAba} />
+          <PainelEtapa db={db} p={p} ctx={ctx} usuario={usuario} mutar={mutar} setToast={setToast} setModal={setModal} onAbrirAba={id=>{if(id===aba)return;if(observacaoPendente&&!window.confirm("Há uma observação não salva. Trocar de aba e descartar?"))return;setObservacaoPendente(false);setAba(id);}} />
         </aside>
       </div>
 
@@ -4773,7 +4784,8 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
       ["mapa", "Mapa", MapPin, 0, !(n.geo?.poligonos?.length || n.levantamentoGeoJSON?.feicoes?.length) && "sem área"],
       ["comercial", "Comercial", Wallet, 0, n.comercial ? "" : "a definir", n.comercial ? resumoCondicoes(n.comercial) : ""],
       ["memorial", "Memorial", ScrollText, 0, n.memorial?.texto ? "" : "vazio"],
-      ["memoriais", "Memoriais", FileText, 0, n.etapa < 1 ? "libera na Topografia" : ""],
+      ["memoriais", "Memoriais", FileText, 0, n.etapa < 1 && !perm.memorialNucleo ? "libera na Topografia" : ""],
+      ["qualificacoes", "Qualificações", ScrollText, 0],
       ["metas", "Metas", Target, metasAbertas],
       ["dadosNui", "Dados NUI", ClipboardList, 0],
       ["historico", "Histórico", History, 0],
@@ -4867,7 +4879,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
         <div>
           <div className="abas abas-destaque" role="tablist">
             {ABAS.map(([id, nome, Icone, contador, nota, detalhe]) => (
-              <button key={id} role="tab" className="aba" aria-selected={abaAtual === id} disabled={id === "memoriais" && n?.etapa < 1} onClick={() => setAba(id)} title={detalhe || (nota ? `${nome}: ${nota}` : nome)}>
+              <button key={id} role="tab" className="aba" aria-selected={abaAtual === id} disabled={id === "memoriais" && n?.etapa < 1 && !perm.memorialNucleo} onClick={() => setAba(id)} title={detalhe || (nota ? `${nome}: ${nota}` : nome)}>
                 {Icone ? <Icone size={15} /> : null}
                 <span>{nome}</span>
                 {contador > 0 && <span className="conta-aba">{contador}</span>}
@@ -4877,6 +4889,7 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
           </div>
           <div style={{ marginTop: 16 }}>
             {abaAtual === "moradores" && <TabProcessos db={db} ps={ps} ir={ir} mostrarNucleo={false} />}
+            {abaAtual === "qualificacoes" && n && <QualificacoesNucleo key={n.id} nucleoId={n.id} carregarPagina={carregarQualificacoesNucleo} resolverQualificacao={p=>resolverQualificacaoCadastro(p,gerarQualificacao,"completa")} identificarUnidades={p=>unidadesDe(p).map((u,i)=>[codigoUnidade(p,i),u.loteQuadra].filter(Boolean).join(" — ")).join("; ")} onAbrir={p=>ir({pag:"processo",id:p.id,aba:"qualificacao"})} />}
             {abaAtual === "quadro" && <TabQuadro db={db} ps={at} ir={ir} nucleoId={n?.id} remessaId={n ? undefined : r?.id} />}
             {abaAtual === "pendencias" && <TabPendencias usuario={usuario} db={db} ps={at} ir={ir} mutar={mutar} setToast={setToast} arquivo={`${r ? nomeRemessa(db, r) : m.nome} ${n ? n.codigo : "sem nucleo"}`} log={{ municipioId: m.id, remessaId: r?.id, nucleoId: n?.id }} />}
             {abaAtual === "andamentos" && n && <AbaAndamentos db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
@@ -4888,13 +4901,13 @@ function PaginaNucleo({ db, usuario, nucleoId, semNucleo, aba, ir, mutar, setToa
               </div>
             )}
             {abaAtual === "mapa" && n && <AbaMapaNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
-            {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} por={usuario.nome}
+            {abaAtual === "memoriais" && n && <><MemoriaisNucleo db={db} n={n} municipio={m} perm={perm} mutar={mutar.confirmado} setToast={setToast} Modal={Modal} por={usuario.nome}
               montarDocumento={(dados) => montarDocumentoComercial("memorialNucleoVias", dados, db, dados)}
               baixarDocumento={(item, html) => baixarMemorialNucleo(html, `Memorial descritivo ${item.codigo}`,timbradoMemoriais,`${item.codigo}-memorial.docx`)} />
               <IntegracaoMemoriais por={usuario.nome} key={n.id} db={db} n={n} municipio={m} perm={perm} mutar={mutar} setToast={setToast} Modal={Modal} ListaHistorico={ListaHistorico}
               montarDocumento={(dados) => montarDocumentoComercial("memorialDescritivo", dados, db, dados)}
               baixarDocumento={(unidade, html) => baixarMemorialNucleo(html, `Memorial descritivo ${unidade.codigo}`,timbradoMemoriais,`${unidade.codigo}-memorial-descritivo.docx`)} /></>}
-            {abaAtual === "memorial" && n && <AbaMemorialNucleo n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
+            {abaAtual === "memorial" && n && <AbaMemorialNucleo db={db} n={n} usuario={usuario} mutar={mutar} setToast={setToast} />}
             {abaAtual === "metas" && n && <AbaMetasNucleo db={db} n={n} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} />}
             {abaAtual === "dadosNui" && n && <DadosNUI usuario={usuario} key={n.id} n={n} municipio={m} unidades={ps.flatMap(p=>unidadesDe(p).map(u=>({id:u.id,nome:`${p.codigo} · ${p.requerente.nome} · ${u.loteQuadra || u.codigo || "Unidade"}`})))} perm={perm} mutar={mutar} setToast={setToast} objetos={OBJETOS_REURB} instrumentos={INSTRUMENTOS_REURB}/>}
             {abaAtual === "historico" && n && <Secao titulo="Histórico do núcleo" nota="Inclui as ações nos moradores deste núcleo."><ListaHistorico itens={db.auditoria.filter((a) => a.nucleoId === n.id || ps.some((p) => p.id === a.processoId))} vazio="Nenhuma ação registrada." /></Secao>}
@@ -5839,7 +5852,7 @@ async function entrarPeloERP(email, senha) {
   if (p.ativo === false) throw new Error("Este usuário está inativo no ERP");
   return {
     id: `erp_${p.id}`, erpRef: p.id, nome: p.nome || email, email: p.email || email,
-    setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP), funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista",
+    setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP), setorERP: p.setor || "", funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista",
     tipoERP: p.tipo, ativo: true, origem: "ERP", online: true, ultimaAtividade: new Date().toISOString(),
     agendaPessoal: [], calendarioOculto: [],
   };
@@ -7836,32 +7849,62 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
   const perm = permissoes(usuario);
   const inativo = !ativo(p);
   const podeTopo = !inativo && perm.etapa("topografia");
-  const podeProjeto = !inativo && perm.etapa("projeto");
+  const podeArea = !inativo && perm.areaUnidade;
+  const podeProjeto = !inativo && perm.loteQuadraUnidade;
   const podeEstrutura = !inativo && perm.editarClientes;
   const uns = unidadesDe(p);
   const [rasc, setRasc] = useState(() => clone(uns));
+  const baseUnidades = useRef(clone(uns));
   const [remover, setRemover] = useState(false);
+  const [salvando,setSalvando] = useState(false);
+  const salvandoRef = useRef(false);
+  const tentativaUnidades = useRef(null);
+  const [confirmacaoPendente,setConfirmacaoPendente] = useState(false);
+  const [erroSalvar,setErroSalvar] = useState("");
   const ids = uns.map((u) => u.id).join("|");
   useEffect(() => {
+    baseUnidades.current = uns.map(u => baseUnidades.current.find(a=>a.id===u.id) || clone(u));
     setRasc((r) => { const porId = Object.fromEntries(r.map((u) => [u.id, u])); return uns.map((u) => porId[u.id] || clone(u)); });
   }, [ids]); // eslint-disable-line
-  const sujo = JSON.stringify(rasc) !== JSON.stringify(uns);
+  const unidadesRecebidas = JSON.stringify(uns);
+  useEffect(() => {
+    if (!tentativaUnidades.current && JSON.stringify(rasc) === JSON.stringify(baseUnidades.current) && unidadesRecebidas !== JSON.stringify(baseUnidades.current)) {
+      baseUnidades.current=clone(uns);setRasc(clone(uns));
+    }
+  }, [unidadesRecebidas,rasc,salvando,confirmacaoPendente]); // eslint-disable-line
+  const sujo = confirmacaoPendente || JSON.stringify(rasc) !== JSON.stringify(baseUnidades.current);
+  useEffect(() => { if (!sujo) return; const avisar = e => { e.preventDefault(); e.returnValue = ""; }; window.addEventListener("beforeunload", avisar); return () => window.removeEventListener("beforeunload", avisar); }, [sujo]);
   const log = { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined };
   const setCampo = (i, k, v) => setRasc((r) => r.map((u, j) => { if(j !== i)return u; if(k === "lote" || k === "quadra"){const separado=separarQuadraLote(u.loteQuadra);const novo={...u,lote:u.lote ?? separado.lote,quadra:u.quadra ?? separado.quadra,[k]:v};return {...novo,loteQuadra:novo.lote && novo.quadra ? `Lote ${novo.lote}, Quadra ${novo.quadra}` : ""};}return {...u,[k]:v}; }));
   const erroArea = (u) => (u.area && !(parseNum(u.area) > 0) ? "Informe um número maior que zero" : "");
-  const salvar = () => {
-    if (rasc.some(erroArea)) { setToast("Corrija a área antes de salvar."); return; }
+  const salvar = async () => {
+    if (salvandoRef.current) return;
+    if (!tentativaUnidades.current?.retentar && rasc.some(erroArea)) { setToast("Corrija a área antes de salvar."); return; }
+    const tentativa = tentativaUnidades.current?.retentar ? tentativaUnidades.current : { rascunho: clone(rasc), base: clone(baseUnidades.current) };
     const mud = [];
-    rasc.forEach((u, i) => {
-      const antes = uns.find((x) => x.id === u.id) || {};
+    tentativa.rascunho.forEach((u, i) => {
+      const antes = tentativa.base.find((x) => x.id === u.id) || {};
       const partes = [];
       if ((antes.area || "") !== u.area) partes.push(`área ${u.area || "apagada"}`);
       if ((antes.loteQuadra || "") !== u.loteQuadra) partes.push(`lote e quadra ${u.loteQuadra || "apagado"}`);
       if ((antes.memorial || "") !== u.memorial) partes.push(`memorial com ${u.memorial.trim().length} caracteres`);
       if (partes.length) mud.push(`${codigoUnidade(p, i)}: ${partes.join(", ")}`);
     });
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.unidades = q.unidades.map(atual => {const editada=rasc.find(u=>u.id===atual.id), antes=uns.find(u=>u.id===atual.id);if(!editada || !antes)return atual;const novo={...atual};for(const k of Object.keys(editada))if(JSON.stringify(editada[k])!==JSON.stringify(antes[k])){if(JSON.stringify(atual[k])!==JSON.stringify(antes[k]))throw new Error("A unidade foi alterada. Reabra o cadastro antes de salvar.");novo[k]=clone(editada[k]);}return novo;}); return d; }, "Unidades atualizadas", { ...log, detalhe: mud.join(". ") });
+    tentativaUnidades.current=tentativa;
+    salvandoRef.current=true;setSalvando(true);setErroSalvar("");
+    try {
+    if (tentativa.retentar) await tentativa.retentar();
+    else await mutar.confirmado((d) => { const q = d.processos.find((x) => x.id === p.id); if(!q)throw new Error("O cadastro não está mais disponível. Reabra a unidade antes de salvar."); q.unidades = unidadesDe(q).map(atual => {const editada=tentativa.rascunho.find(u=>u.id===atual.id), antes=tentativa.base.find(u=>u.id===atual.id);if(!editada || !antes)return atual;const novo={...atual};for(const k of Object.keys(editada))if(JSON.stringify(editada[k])!==JSON.stringify(antes[k])){if(JSON.stringify(atual[k])!==JSON.stringify(antes[k]))throw new Error("A unidade foi alterada. Reabra o cadastro antes de salvar.");novo[k]=clone(editada[k]);}return novo;}); return d; }, "Unidades atualizadas", { ...log, detalhe: mud.join(". ") });
+    baseUnidades.current=clone(tentativa.rascunho);
+    tentativaUnidades.current=null;setConfirmacaoPendente(false);
     setToast("Unidades salvas.");
+    } catch(e) {
+      const retentar=e.retentarConfirmacao || tentativa.retentar;
+      tentativaUnidades.current=retentar ? {...tentativa,retentar} : null;
+      setConfirmacaoPendente(!!retentar);
+      setErroSalvar(e.message || "Não foi possível confirmar o salvamento. Suas alterações foram preservadas.");
+    }
+    finally {salvandoRef.current=false;setSalvando(false);}
   };
   const adicionar = () => {
     const novo = { id: uid("un"), area: "", memorial: "", loteQuadra: "" };
@@ -7877,11 +7920,11 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
   };
   const completo = (u) => ({ area: (parseNum(u.area) || 0) > 0, memorial: (u.memorial || "").trim().length >= MIN_MEMORIAL, lote: preenchido(u.loteQuadra) });
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" data-edicao-pendente={sujo ? "true" : undefined}>
       <Secao titulo={uns.length > 1 ? `${uns.length} unidades a regularizar` : "Unidade a regularizar"}
         nota={uns.length > 1 ? `Cada unidade recebe uma letra no código: ${codigosUnidades(p).join(", ")}.` : `Código ${p.codigo}. Se o cliente tiver outra unidade, adicione aqui: os códigos passam a ter letras (${p.codigo}A, ${p.codigo}B).`}
         acao={podeEstrutura && <button className="btn btn-sm" onClick={adicionar} disabled={sujo} title={sujo ? "Salve as alterações antes" : ""}><Plus size={14} />Adicionar unidade</button>}>
-        <p className="ajuda" style={{ margin: 0 }}>Área medida e memorial descritivo são preenchidos pela Topografia e exigidos para concluir a etapa. Lote e quadra são preenchidos pelo Projeto. Tudo entra no PRF.</p>
+        <p className="ajuda" style={{ margin: 0 }}>A área medida pode ser preenchida pela Topografia ou por Projetos. O memorial da unidade mantém a elaboração pela Topografia; lote e quadra, por Projetos. Os dados entram no PRF.</p>
         {preenchido(p.imovel?.area) && <p className="ajuda" style={{ margin: "4px 0 0" }}>Área declarada no documento de posse: {p.imovel.area} m².</p>}
       </Secao>
       {rasc.map((u, i) => {
@@ -7900,8 +7943,8 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
             <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
               <div>
                 <label className="rot" htmlFor={`area-${u.id}`}>Área medida (m²)</label>
-                <input id={`area-${u.id}`} className={`inp${erroArea(u) ? " erro" : ""}`} inputMode="decimal" value={u.area} disabled={!podeTopo} onChange={(e) => setCampo(i, "area", e.target.value)} />
-                {erroArea(u) ? <div className="msg-erro">{erroArea(u)}</div> : !podeTopo && <div className="ajuda">Preenchido pela Topografia</div>}
+                <input id={`area-${u.id}`} className={`inp${erroArea(u) ? " erro" : ""}`} inputMode="decimal" value={u.area} disabled={!podeArea} onChange={(e) => setCampo(i, "area", e.target.value)} />
+                {erroArea(u) ? <div className="msg-erro">{erroArea(u)}</div> : !podeArea && <div className="ajuda">Preenchido pela Topografia ou por Projetos</div>}
               </div>
               <div>
                 <label className="rot" htmlFor={`lote-${u.id}`}>Lote no projeto</label>
@@ -7919,50 +7962,71 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
           </section>
         );
       })}
-      {(podeTopo || podeProjeto) && (
+      {(podeTopo || podeProjeto || podeArea) && (
         <div className="salvar-flutuante">
-          <span>{sujo ? "Há alterações não salvas nas unidades." : "Unidades salvas."}</span>
+          <span>{confirmacaoPendente ? "O salvamento aguarda confirmação. Suas alterações estão preservadas." : sujo ? "Há alterações não salvas nas unidades." : "Unidades salvas."}</span>
           <span className="flex gap-2">
-            {sujo && <button className="btn" onClick={() => setRasc(clone(uns))}>Descartar</button>}
-            <button className="btn btn-primario" disabled={!sujo} onClick={salvar}><Check size={16} />Salvar unidades</button>
+            {sujo && <button className="btn" disabled={salvando || confirmacaoPendente} onClick={() => { baseUnidades.current=clone(uns);setRasc(clone(uns));setErroSalvar(""); }}>Descartar</button>}
+            <button className="btn btn-primario" disabled={!sujo || salvando} onClick={salvar}><Check size={16} />{salvando ? "Salvando..." : confirmacaoPendente ? "Confirmar salvamento" : "Salvar unidades"}</button>
           </span>
         </div>
       )}
+      {erroSalvar && <p className="msg-erro" role="alert">{erroSalvar}{confirmacaoPendente ? " Confirme a tentativa anterior antes de salvar novas alterações." : ""}</p>}
       {podeEstrutura && uns.length > 1 && <button className="btn-link" style={{ color: "var(--danger)", alignSelf: "flex-start" }} disabled={sujo} onClick={() => setRemover(true)}><Trash2 size={14} />Remover a unidade {codigoUnidade(p, uns.length - 1)}</button>}
       {remover && <ModalConfirmar titulo={`Remover ${codigoUnidade(p, uns.length - 1)}?`} texto={`A última unidade sai do cliente${uns[uns.length - 1].memorial ? " e o memorial dela é descartado" : ""}.${uns.length === 2 ? ` Com uma unidade só, o código volta a ser ${p.codigo}, sem letra.` : ""}`} rotuloBotao="Remover unidade" onFechar={() => setRemover(false)} onConfirmar={removerUltima} />}
     </div>
   );
 }
 
-function AbaMemorialNucleo({ n, usuario, mutar, setToast }) {
+function AbaMemorialNucleo({ db, n, usuario, mutar, setToast }) {
   const perm = permissoes(usuario);
-  const pode = perm.etapa("topografia");
+  const pode = perm.memorialNucleo;
   const salvo = n.memorial?.texto || "";
-  const [texto, setTexto] = useState(salvo);
-  useEffect(() => { setTexto(n.memorial?.texto || ""); }, [n.memorial?.atualizadoEm]); // eslint-disable-line
-  const sujo = texto !== salvo;
-  const salvar = () => {
-    const t = texto.trim();
-    mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.memorial = { ...q.memorial, texto: t, atualizadoEm: new Date().toISOString(), por: usuario.nome }; return d; },
-      t ? "Memorial descritivo do núcleo atualizado" : "Memorial descritivo do núcleo apagado", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: t ? `${n.codigo}: ${t.length} caracteres` : n.codigo });
-    setToast(t ? "Memorial do núcleo salvo. Ele já pode entrar no PRF." : "Memorial do núcleo apagado.");
+  const [texto,setTexto] = useState(salvo),[salvando,setSalvando] = useState(false),[previa,setPrevia] = useState(false),[erro,setErro] = useState("");
+  const base = useRef(salvo), emCurso = useRef(false);
+  const tentativaMemorial = useRef(null);
+  const [confirmacaoPendente,setConfirmacaoPendente] = useState(false);
+  const timbrado = useTimbrado(db,n.municipioId);
+  useEffect(()=>{if(!tentativaMemorial.current&&texto===base.current&&texto!==salvo){base.current=salvo;setTexto(salvo);}},[salvo,texto,salvando,confirmacaoPendente]);
+  const sujo=confirmacaoPendente||texto!==base.current;
+  useEffect(()=>{if(!sujo)return;const avisar=e=>{e.preventDefault();e.returnValue="";};window.addEventListener("beforeunload",avisar);return()=>window.removeEventListener("beforeunload",avisar);},[sujo]);
+  const salvar=async()=>{
+    if(!pode||emCurso.current)return;
+    const tentativa=tentativaMemorial.current?.retentar ? tentativaMemorial.current : {texto:texto.trim(),original:texto,anterior:base.current};
+    const t=tentativa.texto,anterior=tentativa.anterior;
+    tentativaMemorial.current=tentativa;
+    emCurso.current=true;setSalvando(true);setErro("");
+    try {
+      if(tentativa.retentar)await tentativa.retentar();
+      else await mutar.confirmado(d=>{
+        const q=d.nucleos.find(x=>x.id===n.id);
+        if(!q||(q.memorial?.texto||"")!==anterior)throw new Error("O memorial foi alterado por outra pessoa. Confira a versão atual antes de salvar.");
+        q.memorial={...q.memorial,texto:t,atualizadoEm:new Date().toISOString(),por:usuario.nome};return d;
+      },t?"Memorial descritivo do núcleo atualizado":"Memorial descritivo do núcleo apagado",{nucleoId:n.id,remessaId:n.remessaId||undefined,municipioId:n.municipioId,detalhe:`${n.codigo}: ${t.length} caracteres`});
+      base.current=t;tentativaMemorial.current=null;setConfirmacaoPendente(false);
+      setTexto(atual=>atual===tentativa.original?t:atual);setToast("Memorial do núcleo salvo.");
+    }catch(e){
+      const retentar=e.retentarConfirmacao || tentativa.retentar;
+      tentativaMemorial.current=retentar ? {...tentativa,retentar} : null;
+      setConfirmacaoPendente(!!retentar);setErro(e.message||"Não foi possível confirmar o salvamento. O texto foi preservado.");
+    }
+    finally{emCurso.current=false;setSalvando(false);}
   };
-  return (
-    <Secao titulo="Memorial descritivo do núcleo" nota="Cole o memorial do perímetro do núcleo. Ele fica guardado aqui e é usado no PRF.">
-      <textarea className="inp memorial-texto" rows={16} value={texto} disabled={!pode} placeholder="Cole aqui o texto do memorial descritivo do núcleo." onChange={(e) => setTexto(e.target.value)} aria-label={`Memorial descritivo do ${n.codigo}`} />
-      <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginTop: 8 }}>
-        <span className="ajuda" style={{ margin: 0 }}>
-          {texto.trim().length.toLocaleString("pt-BR")} caracteres{n.memorial?.atualizadoEm ? `. Salvo em ${dataHoraBR(n.memorial.atualizadoEm)} por ${n.memorial.por}` : ". Ainda não salvo"}{!pode ? ". Só a Topografia e a Diretoria alteram." : ""}
-        </span>
-        {pode && (
-          <span className="flex gap-2">
-            {sujo && <button className="btn" onClick={() => setTexto(salvo)}>Descartar</button>}
-            <button className="btn btn-primario" disabled={!sujo} onClick={salvar}><Check size={16} />Salvar memorial</button>
-          </span>
-        )}
-      </div>
-    </Secao>
-  );
+  const titulo=`Memorial descritivo do núcleo ${n.codigo}`;
+  const html=`<h1>${escaparHtml(titulo)}</h1>${salvo.split(/\n\s*\n/).map(p=>`<p>${escaparHtml(p).replace(/\n/g,"<br>")}</p>`).join("")}`;
+  const exportar=async formato=>{try{await baixarMemorialNucleo(html,titulo,timbrado,`${n.codigo}-memorial.${formato}`,formato);}catch(e){setErro(e.message);}};
+  return <Secao titulo="Memorial descritivo do núcleo" nota="Cole o memorial do perímetro do núcleo. Ele fica guardado aqui e é usado no PRF.">
+    <textarea className="inp memorial-texto" rows={16} value={texto} disabled={!pode||salvando} placeholder="Cole aqui o texto do memorial descritivo do núcleo." onChange={e=>setTexto(e.target.value)} aria-label={`Memorial descritivo do ${n.codigo}`} data-edicao-pendente={sujo?"true":undefined}/>
+    <div className="flex flex-wrap items-center justify-between gap-2" style={{marginTop:8}}>
+      <span className="ajuda" style={{margin:0}}>{texto.trim().length.toLocaleString("pt-BR")} caracteres{confirmacaoPendente||salvando?". Salvamento ainda não confirmado":n.memorial?.atualizadoEm?`. Salvo em ${dataHoraBR(n.memorial.atualizadoEm)} por ${n.memorial.por}`:". Ainda não salvo"}</span>
+      <span className="flex flex-wrap gap-2">
+        {!!salvo&&!sujo&&<><button className="btn" onClick={()=>setPrevia(true)}><Eye size={15}/>Visualizar</button><button className="btn" onClick={()=>exportar("docx")}><Download size={15}/>DOCX</button><button className="btn" onClick={()=>exportar("pdf")}><Download size={15}/>PDF</button></>}
+        {pode&&<>{sujo&&<button className="btn" disabled={salvando||confirmacaoPendente} onClick={()=>{base.current=salvo;setTexto(salvo);setErro("");}}>Descartar</button>}<button className="btn btn-primario" disabled={!sujo||salvando} onClick={salvar}><Check size={16}/>{salvando?"Salvando...":confirmacaoPendente?"Confirmar salvamento":"Salvar memorial"}</button></>}
+      </span>
+    </div>
+    {erro&&<p className="msg-erro" role="alert">{erro}{confirmacaoPendente?" Confirme a tentativa anterior antes de salvar novas alterações.":""}</p>}
+    {previa&&<Modal titulo={titulo} largura={900} onFechar={()=>setPrevia(false)}><PreviaDocumento html={html} titulo={titulo} timbrado={timbrado}/></Modal>}
+  </Secao>;
 }
 
 /* ---------------- processos (kanban de núcleos) ---------------- */
@@ -9420,7 +9484,7 @@ async function montarPreviaERP(db, usuario) {
     const id = uid("u");
     porPerfil[p.id] = { id, nome: p.nome };
     return {
-      id, nome: p.nome, email: p.email || "", setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP),
+      id, nome: p.nome, email: p.email || "", setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP), setorERP: p.setor || "",
       funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista", ativo: p.ativo !== false, origem: "ERP", tipoERP: p.tipo,
       erpRef: p.id, online: false, ultimaAtividade: "", agendaPessoal: [], calendarioOculto: [],
     };
@@ -9890,6 +9954,7 @@ function ConfigModelos({ db, usuario, mutar, setToast }) {
   };
   return (
     <div className="flex flex-col gap-3">
+      <ModelosTermosMunicipais municipios={db.municipios} podeGerenciar={pode} ui={{Secao,Modal}} />
       <Secao titulo="Modelos dos documentos" nota="O texto é preenchido pelo próprio sistema com os dados do cadastro, sem depender de IA. Use os marcadores entre chaves para indicar onde cada informação entra.">
         {!pode && <Aviso>Só a Diretoria altera os modelos. Você pode conferir o texto aqui.</Aviso>}
         <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
@@ -10001,25 +10066,63 @@ function lerBytes(arquivo) {
 }
 // KMZ é um arquivo zip com um KML dentro. Lemos o zip sem biblioteca, usando o descompactador do navegador.
 async function extrairKMLdoKMZ(arquivo) {
+  const limite = LIMITES_GEOGRAFIA.bytes;
+  const excedido = () => new Error("O KMZ e o KML descompactado devem ter no máximo 10 MB.");
+  if (arquivo.size > limite) throw excedido();
   const buf = new Uint8Array(await lerBytes(arquivo));
-  const ver = (p, n) => { let v = 0; for (let i = n - 1; i >= 0; i--) v = v * 256 + buf[p + i]; return v; };
+  if (buf.byteLength > limite) throw excedido();
+  const invalido = () => new Error("O KMZ está incompleto ou tem uma estrutura inválida. Exporte o KML e tente novamente.");
+  const ver = (p, n) => { if (!Number.isInteger(p) || p < 0 || p + n > buf.length) throw invalido(); let v = 0; for (let i = n - 1; i >= 0; i--) v = v * 256 + buf[p + i]; return v; };
   let fim = -1;
-  for (let i = buf.length - 22; i >= 0 && i > buf.length - 66000; i--) { if (ver(i, 4) === 0x06054b50) { fim = i; break; } }
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 65557; i--) { if (ver(i, 4) === 0x06054b50 && i + 22 + ver(i + 20, 2) === buf.length) { fim = i; break; } }
   if (fim < 0) throw new Error("o arquivo não parece um KMZ");
   const total = ver(fim + 10, 2);
+  if (ver(fim + 4, 2) || ver(fim + 6, 2) || ver(fim + 8, 2) !== total || total === 0xffff) throw invalido();
   let ponteiro = ver(fim + 16, 4);
+  const inicioDiretorio = ponteiro, fimDiretorio = ponteiro + ver(fim + 12, 4);
+  if (fimDiretorio > fim) throw invalido();
   for (let k = 0; k < total; k++) {
+    if (ponteiro + 46 > fimDiretorio || ver(ponteiro, 4) !== 0x02014b50) throw invalido();
     const nomeTam = ver(ponteiro + 28, 2); const extraTam = ver(ponteiro + 30, 2); const comentTam = ver(ponteiro + 32, 2);
-    const metodo = ver(ponteiro + 10, 2); const tamComp = ver(ponteiro + 20, 4);
+    const metodo = ver(ponteiro + 10, 2), flags = ver(ponteiro + 8, 2);
+    const tamComp = ver(ponteiro + 20, 4), tamAberto = ver(ponteiro + 24, 4);
     const inicio = ver(ponteiro + 42, 4);
+    if (ponteiro + 46 + nomeTam + extraTam + comentTam > fimDiretorio) throw invalido();
     const nome = new TextDecoder().decode(buf.slice(ponteiro + 46, ponteiro + 46 + nomeTam));
     if (/\.kml$/i.test(nome)) {
+      if (tamAberto > limite || tamComp > limite) throw excedido();
+      if (flags & 0x41) throw new Error("O KMZ está protegido. Envie uma cópia sem senha ou o KML.");
+      if (metodo !== 0 && metodo !== 8) throw new Error("A compactação deste KMZ não é suportada. Envie o KML.");
+      if (inicio + 30 > inicioDiretorio || ver(inicio, 4) !== 0x04034b50 || ver(inicio + 8, 2) !== metodo || ver(inicio + 6, 2) !== flags) throw invalido();
       const nomeLocal = ver(inicio + 26, 2); const extraLocal = ver(inicio + 28, 2);
-      const dados = buf.slice(inicio + 30 + nomeLocal + extraLocal, inicio + 30 + nomeLocal + extraLocal + tamComp);
-      if (metodo === 0) return new TextDecoder().decode(dados);
+      const dadosInicio = inicio + 30 + nomeLocal + extraLocal;
+      if (dadosInicio + tamComp > inicioDiretorio) throw invalido();
+      const dados = buf.subarray(dadosInicio, dadosInicio + tamComp);
+      if (metodo === 0) {
+        if (dados.byteLength !== tamAberto) throw invalido();
+        return new TextDecoder().decode(dados);
+      }
       if (typeof DecompressionStream === "undefined") throw new Error("este navegador não abre KMZ compactado; envie o KML");
       const fluxo = new Blob([dados]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-      return new TextDecoder().decode(new Uint8Array(await new Response(fluxo).arrayBuffer()));
+      const leitor = fluxo.getReader(), partes = [];
+      let tamanho = 0;
+      try {
+        for (;;) {
+          const {value,done} = await leitor.read();
+          if (done) break;
+          tamanho += value.byteLength;
+          if (tamanho > limite) throw excedido();
+          partes.push(value);
+        }
+        if (tamanho !== tamAberto) throw invalido();
+      } catch (e) {
+        await leitor.cancel().catch(() => {});
+        throw e;
+      } finally { leitor.releaseLock(); }
+      const aberto = new Uint8Array(tamanho);
+      let posicao = 0;
+      for (const parte of partes) { aberto.set(parte, posicao); posicao += parte.byteLength; }
+      return new TextDecoder().decode(aberto);
     }
     ponteiro += 46 + nomeTam + extraTam + comentTam;
   }
@@ -10063,7 +10166,7 @@ function zoomParaLimites(limites, largura, altura) {
   return ZOOM_MIN;
 }
 
-function Mapa({ centro, zoom, camada = "satelite", poligonos = [], feicoes = [], pinos = [], altura = 460, modoPino = false, onMover, onZoom, onClicarMapa, onClicarPino }) {
+function Mapa({ centro, zoom, camada = "satelite", poligonos = [], aneis = null, feicoes = [], pinos = [], altura = 460, modoPino = false, onMover, onZoom, onClicarMapa, onClicarPino }) {
   const caixa = useRef(null);
   const [tamanho, setTamanho] = useState({ largura: 800, altura });
   const arrasto = useRef(null);
@@ -10117,8 +10220,8 @@ function Mapa({ centro, zoom, camada = "satelite", poligonos = [], feicoes = [],
         onPointerDown={inicio} onPointerMove={mover} onPointerUp={soltar} onPointerLeave={soltar} onClick={clicar}>
         {blocos.map((b) => <img key={b.chave} src={b.url} alt="" draggable={false} style={{ position: "absolute", left: b.esq, top: b.topo, width: TAMANHO_BLOCO, height: TAMANHO_BLOCO }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />)}
         <svg width={largura} height={altura} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden="true">
-          {poligonos.map((p, i) => <polygon key={i} points={p.map(paraTela).map(([x, y]) => `${x},${y}`).join(" ")} fill="rgba(26,154,146,.22)" stroke="#5FD3BF" strokeWidth="3" strokeLinejoin="round" />)}
-          {feicoes.map(f => { const pontos=f.poligono.map(paraTela);const x=pontos.reduce((s,p)=>s+p[0],0)/pontos.length,y=pontos.reduce((s,p)=>s+p[1],0)/pontos.length;return <g key={f.id}><polygon points={pontos.map(p=>p.join(',')).join(' ')} fill={f.vinculo?'rgba(26,154,146,.25)':'rgba(240,185,60,.18)'} stroke={f.vinculo?'#0F766E':'#947422'} strokeWidth="2"/><text x={x} y={y} textAnchor="middle" fill="#073b37" stroke="white" strokeWidth="3" paintOrder="stroke" fontSize="12" fontWeight="700">{f.codigo}</text>{zoom>=18&&pontos.map(([vx,vy],i)=><g key={i}><circle cx={vx} cy={vy} r="3" fill="#0f766e"/><text x={vx+5} y={vy-5} fontSize="10" stroke="white" strokeWidth="2" paintOrder="stroke">{f.vertices[i].nome}</text></g>)}</g>;})}
+          {(aneis || poligonos.map(p=>[p])).map((p,i)=><path key={i} d={caminhoPoligonoSVG(p,paraTela)} fillRule="evenodd" fill="rgba(26,154,146,.22)" stroke="#5FD3BF" strokeWidth="3" strokeLinejoin="round" />)}
+          {feicoes.map(f=>{const partes=poligonosDaGeometria(geometriaDaFeicao(f));const pontos=(partes[0]?.[0]||[]).map(paraTela);if(!pontos.length)return null;const x=pontos.reduce((s,p)=>s+p[0],0)/pontos.length,y=pontos.reduce((s,p)=>s+p[1],0)/pontos.length;return <g key={f.id}>{partes.map((p,i)=><path key={i} d={caminhoPoligonoSVG(p,paraTela)} fillRule="evenodd" fill={f.vinculo?'rgba(26,154,146,.25)':'rgba(240,185,60,.18)'} stroke={f.vinculo?'#0F766E':'#947422'} strokeWidth="2"/>)}<text x={x} y={y} textAnchor="middle" fill="#073b37" stroke="white" strokeWidth="3" paintOrder="stroke" fontSize="12" fontWeight="700">{f.codigo}</text>{zoom>=18&&pontos.map(([vx,vy],i)=>f.vertices?.[i]?.nome?<g key={i}><circle cx={vx} cy={vy} r="3" fill="#0f766e"/><text x={vx+5} y={vy-5} fontSize="10" stroke="white" strokeWidth="2" paintOrder="stroke">{f.vertices[i].nome}</text></g>:null)}</g>;})}
         </svg>
         {pinos.map((p) => {
           const [x, y] = paraTela([p.lng, p.lat]);
@@ -10144,6 +10247,7 @@ function Mapa({ centro, zoom, camada = "satelite", poligonos = [], feicoes = [],
 function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const perm = permissoes(usuario);
   const pode = perm.diretor || perm.campo || perm.estrutura;
+  const podeImportar = perm.mapaNucleo;
   const geo = n.geo || null;
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
   const padrao = geo?.centro || { lat: -27.0575, lng: -49.5178 };
@@ -10152,9 +10256,9 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const [camada, setCamada] = useState("satelite");
   const [modoPino, setModoPino] = useState("");
   const [erro, setErro] = useState("");
-  const [lendo, setLendo] = useState(false);
-  const [removerGeo, setRemoverGeo] = useState(false);
-  const entrada = useRef(null);
+  const [removerGeo, setRemoverGeo] = useState(null);
+  const [removendoGeo, setRemovendoGeo] = useState(false);
+  const removendoGeoRef = useRef(false);
   const caixaRef = useRef(null);
   useEffect(() => { if (geo?.centro) { setCentro(geo.centro); setZoom(zoomParaLimites(geo.limites, caixaRef.current?.clientWidth || 900, 460)); } }, [geo?.importadoEm]); // eslint-disable-line
   useEffect(() => {
@@ -10164,30 +10268,10 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
     setCentro({lat:(limites.sul+limites.norte)/2,lng:(limites.oeste+limites.leste)/2});
     setZoom(zoomParaLimites(limites,caixaRef.current?.clientWidth || 900,460));
   }, [n.levantamentoGeoJSON?.importadoEm]); // eslint-disable-line
-  const enviar = async (arq) => {
-    setErro("");
-    if (!arq) return;
-    if (arq.size > MAX_ARQUIVO) { setErro("O arquivo passa do tamanho permitido."); return; }
-    setLendo(true);
-    try {
-      const texto = /\.kmz$/i.test(arq.name) ? await extrairKMLdoKMZ(arq) : await lerTexto(arq);
-      const dados = interpretarKML(texto);
-      const chave = `${CHAVE_KML}${n.id}`;
-      await armazenamento.set(chave, texto);
-      const area = dados.poligonos.reduce((s, p) => s + areaAproximada(p), 0);
-      mutar((d) => {
-        const q = d.nucleos.find((x) => x.id === n.id);
-        q.geo = { arquivo: arq.name, nome: dados.nome, poligonos: dados.poligonos, limites: dados.limites, centro: dados.centro, area, chave, importadoEm: new Date().toISOString(), por: usuario.nome };
-        return d;
-      }, "Delimitação do núcleo importada", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${arq.name}, ${dados.poligonos.length} contorno(s), cerca de ${(area / 10000).toFixed(2).replace(".", ",")} ha` });
-      setToast("Delimitação carregada no mapa.");
-    } catch (e) { setErro(`Não foi possível ler o arquivo: ${e.message}.`); }
-    finally { setLendo(false); if (entrada.current) entrada.current.value = ""; }
-  };
   const baixarKML = async () => {
     try {
       await exigirAcao("nucleos","exportar");
-      const texto = await armazenamento.get(geo.chave);
+      const texto = geo.geojson ? gerarKMLGeografico(geo) : (geo.chave ? await armazenamento.get(geo.chave) : null) || gerarKMLGeografico(geo);
       baixarArquivo(geo.arquivo?.replace(/\.kmz$/i, ".kml") || `${n.codigo}.kml`, texto, "application/vnd.google-earth.kml+xml");
     } catch (e) { setToast(e.message||"O arquivo não está mais guardado neste aparelho."); }
   };
@@ -10208,27 +10292,43 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
     setToast(`${p.codigo} marcado no mapa.`);
   };
   const tirarPino = (p) => mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.geo = null; return d; }, "Pino do morador removido", { processoId: p.id, nucleoId: n.id, detalhe: p.codigo });
+  const fecharRemocao = () => { if (!removendoGeoRef.current) setRemoverGeo(t => t?.retentar ? {...t,aberto:false} : null); };
+  const removerDelimitacao = async () => {
+    if (!podeImportar || !removerGeo || removendoGeoRef.current) return;
+    const tentativa = removerGeo;
+    removendoGeoRef.current=true;setRemovendoGeo(true);
+    try {
+      if (tentativa.retentar) await tentativa.retentar();
+      else await mutar.confirmado(d => {
+        const q=d.nucleos.find(x=>x.id===n.id);
+        if(!q || JSON.stringify(q.geo)!==tentativa.anterior) throw new Error("O perímetro mudou. Reabra a confirmação antes de remover.");
+        q.geo=null;return d;
+      },"Delimitação do núcleo removida",{nucleoId:n.id,municipioId:n.municipioId,detalhe:n.codigo+": "+tentativa.arquivo});
+      setRemoverGeo(null);setErro("");setToast("Delimitação removida.");
+    } catch(e) {
+      setRemoverGeo({...tentativa,retentar:e.retentarConfirmacao||tentativa.retentar,erro:e.message||"Não foi possível confirmar a remoção. Tente novamente."});
+    } finally { removendoGeoRef.current=false;setRemovendoGeo(false); }
+  };
   const pinos = ativos.filter((p) => p.geo).map((p) => ({ id: p.id, lat: p.geo.lat, lng: p.geo.lng, rotulo: p.codigo, titulo: `${p.codigo} ${p.requerente.nome || ""}`.trim(), destacado: false, processo: p }));
   const semPino = ativos.filter((p) => !p.geo);
   const alvo = modoPino ? ativos.find((p) => p.id === modoPino) : null;
   return (
     <div className="flex flex-col gap-3" ref={caixaRef}>
-      <ImportadorGeoJSON onMemoriais={()=>ir({pag:"nucleo",id:n.id,aba:"memoriais"})} db={db} n={n} perm={perm} mutar={mutar} por={usuario.nome} setToast={setToast} onVer={f=>{setCentro({lng:f.poligono.reduce((s,p)=>s+p[0],0)/f.poligono.length,lat:f.poligono.reduce((s,p)=>s+p[1],0)/f.poligono.length});setZoom(19);}} />
-      <Secao titulo="Área do núcleo" nota="Envie o KMZ ou KML com a delimitação e marque cada morador dentro dela. As imagens são de satélite."
-        acao={pode && (geo
-          ? <span className="flex gap-2"><button className="btn btn-sm" onClick={baixarKML}><Download size={13} />Baixar KML</button><button className="btn btn-sm" onClick={() => entrada.current?.click()}><Upload size={13} />Trocar arquivo</button></span>
-          : <button className="btn btn-sm btn-primario" disabled={lendo} onClick={() => entrada.current?.click()}>{lendo ? <Loader2 size={13} className="girando" /> : <Upload size={13} />}Enviar KMZ ou KML</button>)}>
-        <input ref={entrada} type="file" accept=".kmz,.kml" style={{ display: "none" }} onChange={(e) => enviar(e.target.files?.[0])} />
+      <ImportadorGeoJSON onMemoriais={()=>ir({pag:"nucleo",id:n.id,aba:"memoriais"})} db={db} n={n} perm={perm} mutar={mutar.confirmado} por={usuario.nome} setToast={setToast} onVer={f=>{setCentro({lng:f.poligono.reduce((s,p)=>s+p[0],0)/f.poligono.length,lat:f.poligono.reduce((s,p)=>s+p[1],0)/f.poligono.length});setZoom(19);}} />
+      <Secao titulo="Área do núcleo" nota="Importe o perímetro e confira os contornos antes de salvar. Os pinos identificam os moradores no mapa."
+        acao={geo&&<button className="btn btn-sm" onClick={baixarKML}><Download size={13} />Baixar KML</button>}>
+        {podeImportar&&<ImportadorPerimetro n={n} podeImportar={podeImportar&&!removendoGeo&&!removerGeo?.retentar} mutar={mutar.confirmado} por={usuario.nome} setToast={setToast} extrairKMZ={extrairKMLdoKMZ} />}
         {geo ? (
           <div className="flex flex-wrap items-center gap-2">
             <Tag tipo="ok"><Check size={12} />{geo.arquivo}</Tag>
             <span className="ajuda" style={{ margin: 0 }}>
-              {geo.poligonos.length} contorno(s), cerca de {(geo.area / 10000).toFixed(2).replace(".", ",")} ha. Centro em {coordBR(geo.centro.lat)}, {coordBR(geo.centro.lng)}. Enviado por {geo.por} em {dataBR(geo.importadoEm)}.
+              {poligonosParaMapa(geo).length} contorno(s){Number.isFinite(geo.area) ? `, área registrada de ${(geo.area / 10000).toFixed(2).replace(".", ",")} ha` : ""}. Centro em {coordBR(geo.centro.lat)}, {coordBR(geo.centro.lng)}. Enviado por {geo.por} em {dataBR(geo.importadoEm)}.
             </span>
-            {pode && <button className="btn-link" style={{ color: "var(--danger)", marginLeft: "auto" }} onClick={() => setRemoverGeo(true)}><Trash2 size={13} />Remover delimitação</button>}
+            {podeImportar && <button className="btn-link" style={{ color: "var(--danger)", marginLeft: "auto" }} disabled={removendoGeo||!!removerGeo?.retentar} onClick={() => setRemoverGeo({aberto:true,anterior:JSON.stringify(geo),arquivo:geo.arquivo||n.codigo})}><Trash2 size={13} />Remover delimitação</button>}
           </div>
         ) : <p className="ajuda" style={{ margin: 0 }}>Nenhuma delimitação carregada. Sem ela o mapa abre na região do município e os pinos podem ser marcados assim mesmo.</p>}
         {erro && <div className="msg-erro" role="alert">{erro}</div>}
+        {removerGeo?.retentar && !removerGeo.aberto && <div className="msg-erro" role="alert">A remoção da delimitação ainda aguarda confirmação. <button className="btn-link" onClick={()=>setRemoverGeo(t=>({...t,aberto:true}))}>Confirmar remoção pendente</button></div>}
       </Secao>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -10241,7 +10341,7 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
 
       {alvo && <Aviso tipo="info">Clique no mapa para marcar onde fica {alvo.codigo}, {alvo.requerente.nome || "sem nome"}. <button className="btn-link" onClick={() => setModoPino("")}>Cancelar</button></Aviso>}
 
-      <Mapa centro={centro} zoom={zoom} camada={camada} poligonos={geo?.poligonos || []} feicoes={n.levantamentoGeoJSON?.feicoes || []} pinos={pinos} modoPino={!!modoPino}
+      <Mapa centro={centro} zoom={zoom} camada={camada} aneis={poligonosParaMapa(geo)} feicoes={n.levantamentoGeoJSON?.feicoes || []} pinos={pinos} modoPino={!!modoPino}
         onMover={setCentro} onZoom={setZoom} onClicarMapa={colocarPino} onClicarPino={(p) => ir({ pag: "processo", id: p.id })} />
 
       <Secao titulo="Moradores no mapa" nota="Clique em Marcar e depois no ponto onde fica a unidade. O pino abre a ficha do morador.">
@@ -10271,11 +10371,11 @@ function AbaMapaNucleo({ db, n, usuario, ir, mutar, setToast }) {
         {semPino.length > 0 && <p className="ajuda">Faltam marcar: {semPino.slice(0, 8).map((p) => p.codigo).join(", ")}{semPino.length > 8 ? ` e mais ${semPino.length - 8}` : ""}.</p>}
       </Secao>
 
-      {removerGeo && <ModalConfirmar titulo="Remover a delimitação?" texto="O contorno sai do mapa. Os pinos dos moradores continuam onde estão." rotuloBotao="Remover" onFechar={() => setRemoverGeo(false)} onConfirmar={() => {
-        armazenamento.del(geo.chave).catch(() => {});
-        mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.geo = null; return d; }, "Delimitação do núcleo removida", { nucleoId: n.id, municipioId: n.municipioId, detalhe: `${n.codigo}: ${geo.arquivo}` });
-        setRemoverGeo(false); setToast("Delimitação removida.");
-      }} />}
+      {removerGeo?.aberto && <Modal titulo="Remover a delimitação?" onFechar={fecharRemocao}
+        rodape={<><button className="btn" disabled={removendoGeo} onClick={fecharRemocao}>Voltar</button><button className="btn btn-perigo" disabled={removendoGeo} onClick={removerDelimitacao}>{removendoGeo?"Confirmando...":removerGeo.retentar?"Confirmar remoção":"Remover"}</button></>}>
+        <p style={{margin:0,color:"var(--muted)"}}>O contorno de {removerGeo.arquivo} sai do mapa. Os pinos dos moradores continuam onde estão.</p>
+        {removerGeo.erro && <p className="msg-erro" role="alert">{removerGeo.erro}{removerGeo.retentar?" A remoção ainda aguarda confirmação; tentar novamente verifica a mesma solicitação.":""}</p>}
+      </Modal>}
     </div>
   );
 }
@@ -12256,8 +12356,14 @@ export default function App() {
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
 
+  mutar.confirmado = (fn,acao,extra={}) => {
+    if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null);
+    return Promise.reject(new Error("Conecte-se ao servidor para confirmar o salvamento."));
+  };
+
   const carregarMunicipio=async(id)=>{if(AMBIENTE.DEMO)return db;return compartilhado.loadMunicipio(id);};
   const ir = async (r, voltando = false) => {
+    if (document.querySelector('[data-observacao-pendente="true"], .obs-doc[data-edicao-pendente="true"]') && !window.confirm("Há uma observação não salva. Sair e descartar o texto?")) return;
     const vez=++navegacao.current;setMenuAberto(false);setAbrindoMunicipio('');
     const municipio=municipioDaRota(db,r);
     try {
@@ -12293,12 +12399,13 @@ export default function App() {
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
-      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
+      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
       else d.usuarios = [...d.usuarios, { ...u, online: true, ultimaAtividade: new Date().toISOString() }];
       return d;
     }, "Entrou no sistema");
   };
   const sair = async () => {
+    if(document.querySelector('.obs-doc[data-edicao-pendente="true"]')&&!window.confirm("Há uma observação não salva. Sair do sistema e descartar o texto?"))return;
     let falhaRegistro=false;
     if(!AMBIENTE.DEMO && temSessao()) {try{await registrarAcesso("logout","manual");}catch{falhaRegistro=true;}}
     const id = usuarioRef.current?.id;
@@ -12357,7 +12464,7 @@ export default function App() {
   const executarAgente=async(task)=>{
     if(!usuario||usuario.ativo===false)throw Error('Usuário inativo');
     if(['CRM','Lead'].includes(task.tipo)){if(!podeUsarAgenteComercial(usuario)){setToast('Seu usuário não tem acesso comercial ao CRM.');return;}await ir({pag:'crm',agente:true,pedido:task.pedido,tipo:task.tipo,id:task.id,modo:task.modo,conteudo:task.conteudo,ajustes:task.ajustes,preenchimento:task.preenchimento,nonce:task.nonce||crypto.randomUUID()});return;}
-    const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeEditarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
+    const denied=task.tipo==='Processo'?perm.setor==='consulta':task.tipo==='Observação'?perm.setor==='consulta':task.tipo==='Cliente'?!(perm.cadastro||perm.social||perm.imovel):task.tipo==='Ofício'?!podeGerarOficios(usuario):task.tipo==='PRF'?!perm.prf:task.tipo==='Devolutiva'?!podeAnalisarDevolutiva(task.id?db.metas.find(m=>m.id===task.id):null,usuario):false;
     if(denied){setToast('Seu usuário não tem permissão para esta ação.');registrarAcaoNativa(usuario,'Ação bloqueada: '+task.tipo,task.tipo,null,null,{status:'bloqueada'});return;}
     if(task.tipo==='Cliente'||task.tipo==='Observação'){await abrirCliente(task.cliente||db.processos.find(p=>p.id===task.id));await ir({pag:'processo',id:task.id,aba:task.tipo==='Observação'?'observacoes':'cadastro',agente:true,pedido:task.pedido,conteudo:task.conteudo,ajustes:task.ajustes});return;}
     if(task.tipo==='PRF'){await ir({pag:'prf',nucleoId:task.id,agente:true,pedido:task.pedido});return;}
@@ -12371,6 +12478,7 @@ export default function App() {
     registrarAcaoNativa(usuario,action,extra.processoId?'Clientes':extra.nucleoId?'Processos / Núcleo':tarefaAgente?.tipo==='Evento'?'Calendário':tarefaAgente?.tipo==='Devolutiva'?'Metas / Devolutivas':'Integração',changes.map(c=>({collection:c.collection,id:c.id,values:c.before})),changes.map(c=>({collection:c.collection,id:c.id,values:c.after})),{status:'solicitada · acompanhe a sincronização oficial'});
     if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
   };
+  mutarAgente.confirmado=(fn,acao,extra={})=>mutar.confirmado(fn,acao + " · " + usuario.nome + "_IA",{...extra,agente:usuario.nome+"_IA",solicitante:usuario.id});
   const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:db.metas.filter(metaOperacional)}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
@@ -12464,7 +12572,7 @@ export default function App() {
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Evento'&&<ModalEvento {...props} pedidoAgente={tarefaAgente.preenchimento} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Processo'&&db.nucleos.some(n=>n.id===tarefaAgente.id)&&<ModalProcesso {...props} n={db.nucleos.find(n=>n.id===tarefaAgente.id)} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
       {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Devolutiva'&&<ModalAnaliseDevolutiva {...props} meta={db.metas.find(m=>m.id===tarefaAgente.id)||null} mutar={mutarAgente} onFechar={()=>setTarefaAgente(null)}/>}
-      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio municipios={db.municipios} resolverTimbrado={id => carregarTimbradoDocumento(db,id)} pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Rascunho, sem reserva de número'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
+      {tarefaAgente?.userId===usuario.id&&tarefaAgente.tipo==='Ofício'&&<div className="ap-overlay"><section className="card ap-dialog"><GeradorOficio municipios={db.municipios} resolverTimbrado={id => carregarTimbradoDocumento(db,id)} pedidoAgente={tarefaAgente.pedido} usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoAgente} proximo={tarefaAgente.proximo} fechar={()=>setTarefaAgente(null)} agente onArquivo={async f=>{await registrarArquivoNativo(usuario,{...f,type:'Ofício',destination:'Metas / Ofícios · Número reservado; envio não registrado'});registrarAcaoNativa(usuario,'Gerou ofício conforme modelo oficial','Metas / Ofícios',null,{numero:f.numero,filename:f.filename},{status:'rascunho'})}}/></section></div>}
       {janela && <JanelaChat db={db} usuario={usuario} conversaId={janela.id} minimizada={janela.minimizada} mutar={mutar}
         onMinimizar={() => setJanela((j) => ({ ...j, minimizada: !j.minimizada }))} onFechar={() => setJanela(null)} onAbrirChat={(id) => { setJanela(null); ir({ pag: "chat", id }); }} />}
       {respirar && <PausaRespirar onFechar={() => setRespirar(false)} />}
@@ -12473,4 +12581,3 @@ export default function App() {
     </div>
   );
 }
-

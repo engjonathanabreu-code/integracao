@@ -16,7 +16,19 @@ test('duplicado, vazio e inválido não podem ser salvos; próprio código é pe
 test('edição de outros campos preserva códigos legados e não renumera',()=>{
  assert.equal(resolver({...atual,requerente:{nome:'Nome corrigido'}}),null);
 });
-test('trocar remessa mantém geração automática, salvo código explicitamente editado',()=>{
- assert.deepEqual(resolver({...atual,remessaId:'r2'}),{codigo:'ITA02_010',numeroCliente:10});
+test('trocar remessa preserva código e sequência, salvo código explicitamente editado',()=>{
+ assert.equal(resolver({...atual,remessaId:'r2'}),null);
  assert.deepEqual(resolver({...atual,remessaId:'r2',codigo:'ITA02_030'}),{codigo:'ITA02_030',numeroCliente:30});
+});
+
+test('vinculação preserva código legado mesmo se o candidato automático estiver ocupado',()=>{
+ const original=structuredClone(atual);
+ assert.equal(resolverCodigoMorador({atual,rascunho:{...atual,nucleoId:'n2',remessaId:'r2'},processos,codigoAutomatico:'ITA01_213',numeroAutomatico:213}),null);
+ assert.deepEqual(atual,original);
+});
+
+test('identidade normalizada e referência canônica não são falsos duplicados',()=>{
+ assert.equal(erroCodigoMorador('A01_001',[{id:' ABC ',codigo:'A01_001'}],'abc'),'');
+ assert.equal(erroCodigoMorador('A01_001',[{id:'alias',financeiroRef:'UUID-A',codigo:'A01_001'}],{id:'uuid-a'}),'');
+ assert.match(erroCodigoMorador('A01_001',[{id:'uuid-b',codigo:'A01_001'}],{id:'uuid-a'}),/outro morador/);
 });

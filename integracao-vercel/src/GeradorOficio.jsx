@@ -1,7 +1,7 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {CampoCRM} from './modulo-ui.jsx';
 import {modeloOficio,htmlOficio,novoOficio,CAMPOS_MODELO_OFICIO,MODELO_OFICIO_PADRAO} from './oficio-modelo.js';
-import {gerarConteudoOficio} from './oficios-api.js';
+import {gerarConteudoOficio,reservarNumeroOficio} from './oficios-api.js';
 import {idPonto,diaPonto} from './ponto-api.js';
 export function ConfigModeloOficio({modelo,pode,salvar}){
  const [rascunho,setRascunho]=useState(null),atual=modeloOficio(modelo),valor=rascunho||atual;
@@ -14,19 +14,37 @@ export default function GeradorOficio({usuario,modelo,timbrado,municipios,resolv
  const [f,setF]=useState(()=>{try{const salvo=JSON.parse(localStorage.getItem(chave));if(salvo&&typeof salvo==='object'&&!Array.isArray(salvo))return {...novoOficio(modelo,diaPonto(),proximo),...salvo};}catch{}return novoOficio(modelo,diaPonto(),proximo);}),[ocupado,setOcupado]=useState(''),[erro,setErro]=useState(''),[sugestao,setSugestao]=useState(''),[aviso,setAviso]=useState('');
  useEffect(()=>{try{localStorage.setItem(chave,JSON.stringify(f));}catch{setAviso('Não foi possível guardar o rascunho neste navegador. Baixe o documento antes de sair.');}},[f,chave]);
  useEffect(()=>{if(pedidoAgente){const assunto=pedidoAgente.match(/sobre\s+(.+)$/i)?.[1];setF(x=>({...x,orientacao:pedidoAgente,...(assunto?{assunto}: {})}));}},[pedidoAgente]);
- const campo=(k,v)=>setF(x=>({...x,[k]:v}));
- const baixar=async tipo=>{if(ocupado)return;setOcupado(tipo);setErro('');try{const timbradoSelecionado=resolverTimbrado?await resolverTimbrado(f.municipioId || ""):timbrado;const html=htmlOficio(f),titulo=`Ofício ${f.numero}/${f.data.slice(0,4)}`,nome=`oficio-${f.numero}-${f.data.slice(0,4)}`;const baixar=tipo==='PDF'?(await import('./documento-pdf.js')).baixarPdf:(await import('./documento-docx.js')).baixarDocx;await baixar(html,titulo,timbradoSelecionado,nome);if(onArquivo){const gerar=tipo==='PDF'?(await import('./documento-pdf.js')).gerarPdf:(await import('./documento-docx.js')).gerarDocx;const blob=await gerar(html,titulo,timbradoSelecionado);await onArquivo({title:titulo,filename:nome+(tipo==='PDF'?'.pdf':'.docx'),numero:f.numero,blob,html,mime:blob.type});setAviso('Arquivo guardado na biblioteca do agente e na aba Ofícios. Não reserva número; registre o envio no fluxo oficial.');}}catch(e){setErro(e.message);}finally{setOcupado('');}};
- return <section className="card oficio-cadastro" data-edicao-pendente="true"><h3>Gerar ofício</h3><p>Revise o texto antes de baixar. O rascunho fica guardado neste navegador. Após enviar o ofício, use “Adicionar ofício” para registrar o arquivo e confirmar a numeração. O download não reserva um número.</p>
+ const emissao=useRef(false);
+ const campo=(k,v)=>setF(x=>({...x,[k]:v,...(k==="data"&&String(v).slice(0,4)!==x.data.slice(0,4)?{pedidoNumero:null,reserva:null}:{})}));
+ const baixar=async tipo=>{
+  if(ocupado||emissao.current)return;emissao.current=true;setOcupado(tipo);setErro('');
+  try{
+   htmlOficio(f); // Valida os campos antes de reservar um número.
+   if(!proximo&&!f.reserva&&!window.confirm(`Se este ano ainda não possui sequência, iniciar pelo número ${f.numero}? Caso já exista sequência, será reservado o próximo número disponível.`))return;
+   const pedido=f.pedidoNumero||crypto.randomUUID(),rascunho={...f,pedidoNumero:pedido};
+   localStorage.setItem(chave,JSON.stringify(rascunho));setF(rascunho);
+   const reserva=await reservarNumeroOficio(pedido,Number(f.data.slice(0,4)),Number(f.numero));
+   const documento={...rascunho,numero:reserva.numero,reserva};
+   localStorage.setItem(chave,JSON.stringify(documento));setF(documento);
+   const timbradoSelecionado=resolverTimbrado?await resolverTimbrado(f.municipioId || ""):timbrado;
+   const html=htmlOficio(documento),titulo=`Ofício ${reserva.numero}/${reserva.ano}`,nome=`oficio-${reserva.numero}-${reserva.ano}`;
+   const baixar=tipo==='PDF'?(await import('./documento-pdf.js')).baixarPdf:(await import('./documento-docx.js')).baixarDocx;
+   await baixar(html,titulo,timbradoSelecionado,nome);
+   setAviso(`Número ${reserva.numero}/${reserva.ano} reservado. Após o envio, selecione esta reserva ao registrar o arquivo.`);
+   if(onArquivo){const gerar=tipo==='PDF'?(await import('./documento-pdf.js')).gerarPdf:(await import('./documento-docx.js')).gerarDocx;const blob=await gerar(html,titulo,timbradoSelecionado);await onArquivo({title:titulo,filename:nome+(tipo==='PDF'?'.pdf':'.docx'),numero:reserva.numero,reserva:reserva.pedido,blob,html,mime:blob.type});}
+  }catch(e){setErro(e.message);}finally{emissao.current=false;setOcupado('');}
+ };
+ return <section className="card oficio-cadastro" data-edicao-pendente="true"><h3>Gerar ofício</h3><p>Revise o texto antes de baixar. O rascunho fica guardado neste navegador. O primeiro download reserva um número; baixar novamente mantém o mesmo. Após enviar, registre o arquivo pelo fluxo de ofícios enviados.</p>
  <fieldset disabled={!!ocupado} style={{border:0,padding:0,minWidth:0}}>
  {municipios?.length > 0 && <CampoCRM nome="Empresa e timbrado do município"><select className="inp" value={f.municipioId || ""} onChange={e => campo("municipioId",e.target.value)}><option value="">Empresa geral — sem município selecionado</option>{municipios.map(m => <option key={m.id} value={m.id}>{m.nome}/{m.uf}</option>)}</select></CampoCRM>}
- <div className="ponto-campos"><CampoCRM nome="Número do novo ofício"><input className="inp" type="number" min="1" max="999999" value={f.numero} onChange={e=>campo('numero',e.target.value)}/></CampoCRM><CampoCRM nome="Data do ofício"><input className="inp" type="date" value={f.data} onChange={e=>campo('data',e.target.value)}/></CampoCRM><CampoCRM nome="Local de emissão"><input className="inp" maxLength={200} value={f.local} onChange={e=>campo('local',e.target.value)}/></CampoCRM></div>
- {proximo&&<p>Próximo número no controle deste ano: {proximo}. Confira novamente antes de enviar.</p>}
+ <div className="ponto-campos"><CampoCRM nome="Número do novo ofício"><input className="inp" type="number" min="1" max="999999" disabled={!!f.reserva} value={f.numero} onChange={e=>campo('numero',e.target.value)}/></CampoCRM><CampoCRM nome="Data do ofício"><input className="inp" type="date" value={f.data} onChange={e=>campo('data',e.target.value)}/></CampoCRM><CampoCRM nome="Local de emissão"><input className="inp" maxLength={200} value={f.local} onChange={e=>campo('local',e.target.value)}/></CampoCRM></div>
+ {f.reserva?<p>Número reservado: {f.reserva.numero}/{f.reserva.ano}.</p>:proximo&&<p>Próximo número disponível: {proximo}. A reserva será confirmada ao baixar.</p>}
  <p>Preencha as referências aplicáveis e substitua as orientações entre colchetes pelo conteúdo do caso.</p>
  <div className="ponto-campos">{[['referencia','Ofício de referência'],['nucleo','Núcleo / código NUI'],['processo','Processo administrativo']].map(([k,n])=><CampoCRM key={k} nome={n}><input aria-label={n} className="inp" maxLength={300} value={f[k]||''} onChange={e=>campo(k,e.target.value)}/></CampoCRM>)}<CampoCRM nome="Data do protocolo"><input aria-label="Data do protocolo" className="inp" type="date" value={f.protocolo||''} onChange={e=>campo('protocolo',e.target.value)}/></CampoCRM></div>
  {[['destinatario','Destinatário / Prefeitura' ,3,1000],['assunto','Assunto do novo ofício',2,300],['introducao','Introdução do ofício',4,10000],['conteudo','Conteúdo do ofício',9,30000],['encerramento','Encerramento do ofício',3,10000],['assinatura','Nome e cargo para assinatura',2,1000]].map(([k,n,rows,max])=><CampoCRM key={k} nome={n}><textarea aria-label={n} className="inp" rows={rows} maxLength={max} value={f[k]} onChange={e=>campo(k,e.target.value)}/></CampoCRM>)}
  <button className="btn" onClick={()=>{if(window.confirm('Aplicar o modelo atual de Configurações ao texto deste rascunho? A numeração, a data e as referências serão mantidas.')){setF(x=>({...x,...modeloOficio(modelo)}));setSugestao('');setAviso('Modelo atual aplicado. Confira o conteúdo antes de baixar.');}}}>Aplicar modelo de Configurações</button>
  <details><summary>Escrever com auxílio da IA</summary><CampoCRM nome="Orientação para a IA"><textarea aria-label="Orientação para a IA" className="inp" rows={4} maxLength={10000} value={f.orientacao} onChange={e=>campo('orientacao',e.target.value)} placeholder="Informe o objetivo, os fatos, o pedido e os prazos que devem constar no ofício."/></CampoCRM><button className="btn" disabled={!f.orientacao.trim()||!f.assunto.trim()} onClick={async()=>{setOcupado('IA');setErro('');try{const r=await gerarConteudoOficio(f);setSugestao(r.conteudo);}catch(e){setErro(e.message);}finally{setOcupado('');}}}>Gerar sugestão de conteúdo</button>
  {sugestao&&<div><CampoCRM nome="Sugestão da IA para revisão"><textarea aria-label="Sugestão da IA para revisão" className="inp" rows={8} value={sugestao} onChange={e=>setSugestao(e.target.value)}/></CampoCRM><button className="btn" onClick={()=>{campo('conteudo',sugestao);setSugestao('');setAviso('Sugestão aplicada ao conteúdo. Confira os fatos antes de baixar.');}}>Usar sugestão no conteúdo</button></div>}</details>
- <div className="flex flex-wrap gap-2" style={{marginTop:16}}><button className="btn btn-primario" onClick={()=>baixar('PDF')}>Baixar ofício em PDF</button><button className="btn" onClick={()=>baixar('Word')}>Baixar ofício em Word</button><button className="btn" onClick={fechar}>Fechar e guardar rascunho</button></div>
+ <div className="flex flex-wrap gap-2" style={{marginTop:16}}><button className="btn btn-primario" onClick={()=>baixar('PDF')}>Baixar ofício em PDF</button><button className="btn" onClick={()=>baixar('Word')}>Baixar ofício em Word</button><button className="btn" onClick={()=>{if(window.confirm("Iniciar outro ofício? Guarde os arquivos deste documento antes de continuar. O número reservado será preservado.")){setF({...novoOficio(modelo,diaPonto(),null),pedidoNumero:crypto.randomUUID()});setSugestao("");setAviso("");}}}>Novo ofício</button><button className="btn" onClick={fechar}>Fechar e guardar rascunho</button></div>
  </fieldset>{ocupado&&<p role="status">{ocupado==='IA'?'Gerando sugestão…':'Preparando documento…'}</p>}{aviso&&<p role="status">{aviso}</p>}{erro&&<p role="alert">{erro}</p>}</section>;
 }

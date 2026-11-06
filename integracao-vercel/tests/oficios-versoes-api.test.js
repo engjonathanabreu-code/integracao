@@ -7,6 +7,7 @@ test('leitura pagina ofícios e histórico, mantém ID original e seleciona maio
  globalThis.fetch=async(input,opts)=>{
   const u=new URL(input);calls.push({u,opts});const offset=Number(u.searchParams.get('offset')||0),table=u.pathname.split('/').at(-1);
   if(table==='integracao_oficios_sequencias')return Response.json([{ano:2026,ultimo:501}]);
+  if(table==='integracao_oficios_reservas')return Response.json([]);
   if(table==='integracao_oficios'){
    assert.equal(u.searchParams.get('versoes.limit'),'1');assert.equal(u.searchParams.get('versoes.order'),'versao.desc');
    return Response.json(Array.from({length:offset===0?500:1},(_,i)=>({id:`raiz-${offset+i}`,ano:2026,numero:offset+i+1,versoes:[{id:'v2',versao:2,resumo:'mais recente',data_envio:null}]})));

@@ -33,6 +33,7 @@ export default function ArquivoCadastros({ db, usuario, mutar, carregarMunicipio
   const contagem = vinculados && COLECOES_ARQUIVO.filter(c => vinculados[c].size).map(c => `${vinculados[c].size} ${nomes[c].toLowerCase()}`).join(', ');
   const normalizar = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
   const salvar = async (colecao, r, arquivar) => {
+    if (arquivar && document.querySelector('.obs-doc[data-edicao-pendente="true"]') && !window.confirm('Há uma observação não salva. Arquivar o cadastro e descartar o texto?')) return;
     setOcupado(true); setErro('');
     try {
       if (colecao==='processos') await carregarMunicipio(r.municipioId||null,r);else if(r.municipioId)await carregarMunicipio(r.municipioId);
