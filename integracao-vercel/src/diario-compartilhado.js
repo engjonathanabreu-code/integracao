@@ -88,7 +88,15 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  }
  async function resolver(id,escolhas){
   if(!revisao||revisao.id!==id)throw Error('Abra a prévia da pendência antes de confirmar.');
-  const mostrada=revisao,{remoto}=await lerItem(mostrada.item);
+  const mostrada=revisao;
+  // Background processing may have finished while this preview remained open.
+  // A blocked decision still requires its original checks, never an implicit
+  // acceptance of another tab's resolution.
+  if(!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado)){
+   await atualizar();const atual=items.find(i=>i.id===id);
+   if(atual&&terminal(atual)){if(revisao===mostrada)revisao=null;return;}
+  }
+  const {remoto}=await lerItem(mostrada.item);
   if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes),recortarIntencao(mostrada.remoto,mostrada.edicoes)))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
   const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
   if(mostrada.item.recibo&&mostrada.conflitos.length){
@@ -97,7 +105,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   }
   if(!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado)){
    // Unknown writes and receipts are never replaced with a new request.
-   await fila.retomar(conta,id);await atualizar();return;
+   await fila.retomar(conta,id);if(revisao===mostrada)revisao=null;await atualizar();return;
   }
   let edicoes=extrairIntencao(remoto.db,r.dados);
   // Explicitly accepting the server still leaves an auditable no-op replacement.

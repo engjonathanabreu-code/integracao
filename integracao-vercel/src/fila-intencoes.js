@@ -141,7 +141,12 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function retomar(conta,id){
   contaValida(conta);return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
-   if(!item||item.leaseAte>agora()||['confirmado','substituido','dispensado'].includes(item.estado))throw erro('Item não está disponível para retomada.','REVISAO_NECESSARIA');
+   if(!item)throw erro('Item não está disponível nesta conta. Atualize a lista de pendências.','REVISAO_NECESSARIA');
+   // A stale preview is not a new write. Keep terminal entries and active leases
+   // intact, including their receipts, retry counters and original payloads.
+   if(['confirmado','substituido','dispensado'].includes(item.estado))return item;
+   if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado))throw erro('A pendência mudou. Abra novamente a prévia antes de retomar.','REVISAO_NECESSARIA');
+   if(item.leaseAte>agora())return item;
    item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
    await requisicao(s.intencoes.put(item));return item;
   });
