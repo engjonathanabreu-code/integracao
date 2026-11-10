@@ -137,7 +137,7 @@ window.fetch=async(input,options={})=>{
       if(!op.table)return json({message:'Ação não implementada no simulador'},400);
       const rows=base[op.table] ||= [];
       const matches=r=>Object.entries(op.key).every(([k,v])=>r[k]===v);
-      if(op.insert)rows.push({...op.key,...op.changes});
+      if(op.insert)rows.push({created_at:new Date().toISOString(),...op.key,...op.changes});
       else {const row=rows.find(matches);if(!row)return json({message:'Registro ausente'},400);if(op.remove)base[op.table]=rows.filter(r=>!matches(r));else Object.assign(row,op.changes);}
     }
     writes++;document.getElementById('diagnostico').textContent=`Gravações: ${writes}; tabelas: ${operacoes.map(o=>o.table).join(', ')}`;

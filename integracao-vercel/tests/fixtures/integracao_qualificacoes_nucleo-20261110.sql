@@ -18,4 +18,3 @@ begin
  select jsonb_build_object('items',coalesce((select jsonb_agg(p order by p->>'codigo',p->>'id') from pagina),'[]'),'total',(select count(*) from filtrados)) into res;
  return res;
 end $function$
-

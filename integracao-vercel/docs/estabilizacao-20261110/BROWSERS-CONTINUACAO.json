@@ -362,5 +362,36 @@
       "code": 1
     }
   ],
-  "regressao_identificada_e_corrigida": "folha-ponto: revalidar vínculo na abertura da sessão; teste passou após correção"
+  "regressao_identificada_e_corrigida": "folha-ponto: revalidar vínculo na abertura da sessão; teste passou após correção",
+  "complementoConfirmacao": {
+    "processos-protocolados": {
+      "passou": true,
+      "perfis": [
+        "Administrador",
+        "Diretor de Projetos",
+        "Pós-protocolo",
+        "Comercial",
+        "Consulta"
+      ],
+      "filaEncerrada": true
+    },
+    "planejamento-densidade": {
+      "passou": true,
+      "larguras": [
+        1366,
+        1440,
+        1920,
+        3440,
+        390
+      ],
+      "filaEncerrada": true
+    },
+    "planejamento-notificacoes": {
+      "passou": true
+    },
+    "diario-integrado": {
+      "passou": true,
+      "cenarios": 11
+    }
+  }
 }

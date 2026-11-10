@@ -35,6 +35,7 @@ const assert=require('node:assert/strict');
    const b=await page.evaluate(()=>({a:window.baseFixture.processos_kanban_andamentos[0],h:window.baseFixture.processos_kanban_historico[0],n:window.baseFixture.processos_kanban[0]}));
    assert.equal(b.a.visivel_ia,true);assert.equal(b.a.status,'Notificações');assert.equal(b.h.fluxo,'prefeitura');assert.equal(b.n.pendencia,'');
    await page.getByText('Observação reservada da equipe para o histórico.',{exact:true}).waitFor();
+   await page.waitForFunction(()=>!document.body.innerText.includes('Pendências de sincronização ('));
   }
   await page.getByRole('button',{name:'Fechar',exact:true}).last().click();
   if(tipo==='Administrador'){

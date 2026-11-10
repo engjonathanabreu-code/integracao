@@ -21,4 +21,3 @@ BEGIN
  IF inicio=0 THEN SELECT count(*) INTO total FROM public.integracao_moradores e WHERE e.colecao='processos' AND (municipio IS NULL OR e.referencia_id IN (SELECT c.id FROM public.fin_receb_clientes c WHERE c.municipio_id::text=municipio) OR (e.referencia_id IS NULL AND e.dados->>'municipioId'=municipio)); END IF;
  RETURN jsonb_build_object('clientes',clientes,'complementos',complementos,'total',total);
 END $function$
-

@@ -55,10 +55,28 @@ function contem(atual, esperado) {
 
 function conferir(mudancas, remoto, aliases = {}) {
   return mudancas.every(mudanca => {
+    // Presence is device-local; it is deliberately not written by prepararEdicao.
+    if(mudanca.caminho[0]==='usuarios'&&mudanca.caminho.length===3&&['online','ultimaAtividade'].includes(mudanca.caminho[2]))return true;
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
     const campo=mudanca.caminho.at(-1);
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
+      const instante=Date.parse(esperado);
+      if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;
+    }
+    const [colecao,,filhos]=mudanca.caminho;
+    if(mudanca.parcial&&mudanca.caminho.length===4&&typeof campo==='object'){
+      const historicoGerado=(colecao==='nucleos'&&filhos==='historicoEtapas')||(colecao==='metas'&&['historico','comentarios'].includes(filhos));
+      // These inserts use created_at DEFAULT now(), not the UI clock. Still
+      // require a server timestamp and all submitted business/author fields.
+      if(historicoGerado){
+        if(!atual.valor?.data||!Number.isFinite(Date.parse(atual.valor.data)))return false;
+        esperado={...esperado};delete esperado.data;
+      }
+      // The ERP column stores only the calendar date; author remains in its complement.
+      if(colecao==='nucleos'&&filhos==='andamentos')esperado={...esperado,data:String(esperado.data||'').slice(0,10)};
+    }
     // New canonical goals receive their ERP binding on projection. Accept only
     // that exact binding; business nulls and any different identity still differ.
     if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&esperado?.erpId==null&&atual.valor?.erpId===atual.valor?.id&&atual.valor?.id===esperado?.id){

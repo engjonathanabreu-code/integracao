@@ -18,7 +18,7 @@ Deno.serve(async(req)=>{
   if(authError||!identity?.user)return new Response(JSON.stringify({error:"Não autorizado"}),{status:401,headers:corsHeaders});
   const {data:profile,error:profileError}=await caller.from("profiles").select("id,tipo,ativo").eq("id",identity.user.id).maybeSingle();
   if(profileError||!profile?.ativo)return new Response(JSON.stringify({error:"Perfil ativo necessário"}),{status:403,headers:corsHeaders});
- 
+
   if(!["Administrador","Comercial"].includes(profile.tipo)&&!/^Diretor(?: |$)/.test(profile.tipo||""))return new Response(JSON.stringify({error:"Sem permissão para sincronização geral"}),{status:403,headers:corsHeaders});
   const erp=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
   const r=await fetch(CRM_URL,{redirect:"error",signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${CRM_ANON}`,apikey:CRM_ANON,"x-erp-sync-key":SYNC_KEY}});

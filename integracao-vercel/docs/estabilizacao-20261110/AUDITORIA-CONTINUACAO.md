@@ -14,7 +14,7 @@ Escopo autorizado: corrigir pendências da auditoria, testar em ambiente isolado
 
 ## Validação
 
-- Build final: 1.159 testes passaram, 0 falharam; Vite concluído. Sem lint/typecheck configurados; aviso de chunk grande preexistente permanece.
+- Build da primeira publicação: 1.159 testes passaram, 0 falharam; Vite concluído. Sem lint/typecheck configurados; aviso de chunk grande preexistente permanece.
 - 14 testes focados iniciais de Edge/resumo; 11 negativos de Edge após leitura limitada do corpo; todos passaram. Provedores simulados, sem mensagens reais.
 - PostgreSQL 17.6 real, socket isolado: duas conexões comprovaram snapshot antigo consistente e recusa de revisão obsoleta após alteração concorrente com mesma contagem; delta vazio, exclusão, negação por papel e equivalência de qualificações passaram.
 - Qualificações, 301 moradores fictícios sob mesmo papel/RLS: 603 → 301 chamadas ao helper; ensaio observado 17,82 → 13,91 ms. É medição local instrumentada, não previsão de latência de produção. Resultado completo idêntico.
@@ -58,10 +58,30 @@ Edge: sincronizar-processos-crm v5, sincronizar-meta-crm v2 e salvar-observacao-
 
 Advisors posteriores mantêm os quatro grupos anteriores; referências: [RLS sem policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [definer anon](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [definer authenticated](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), [proteção de senhas](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
-Publicação do aplicativo será registrada após READY e verificação do alias público.
+Primeira publicação desta rodada: commit `e21d1b294dac46392f363d99235eab946a01bdab`, deployment `dpl_9tMhNCJM7g6Q2g26LBgdDBiveBbP`, READY, alias de produção confirmado. Complemento de confirmação descrito abaixo aguarda sua própria publicação.
 
 ## Reproduzir a validação isolada
 
 Na pasta integracao-vercel, `npm run build` executa a suíte Node e a compilação. Para preparar a fixture SQL sintética: `INTEGRACAO_EXPORT_SQL=/tmp/integracao-leituras-fixture.sql node --test tests/auditoria-leituras-banco.test.js`. Com o PostgreSQL temporário em /tmp/integracao-pg-socket:55439, executar `python3 tests/auditoria-leituras-postgres.py`. O script aceita somente o socket e cria/remove bancos integracao_test_*; não consulta produção. Os browsers exigem o servidor de fixtures e PLAYWRIGHT_MODULE com rede externa bloqueada.
 
 Commits de implementação: `3c96920` (ponto/contexto/identidade), `a3c1f24` (leituras), `5627d30` (Edge). Nenhuma PR foi aberta.
+
+## Compatibilidade e observação após publicação
+
+A abertura inicial revalida o vínculo de ponto, inclusive CLT → Contrato; consultas periódicas seguintes compartilham prazo entre abas. Sem sessão de rede, uma marcação offline pode ser persistida no escopo local; o envio continua exigindo sessão válida. Nenhuma fila é limpa na troca de conta.
+
+O deploy não recarrega abas em edição. Usuários com a versão anterior aberta podem permanecer nela até a atualização normal; isso limita qualquer conclusão imediata sobre o uso real. A leitura por versão pode retornar conflito se o conjunto mudar durante a paginação; isso é intencional, e não uma coleção vazia.
+
+A implantação não fornece, sozinha, uma série de tráfego posterior suficiente para demonstrar redução de chamadas ou recuperação de todos os usuários. Não foi executado piloto em contas reais.
+
+## Complemento: confirmação de históricos e andamento
+
+A comparação com a versão anterior não torna uma falha aceitável: a versão anterior já continha o diário. A investigação adicional reproduziu um defeito de confirmação no código: históricos de metas/processos usam `created_at` do servidor, enquanto a intenção contém a hora do aparelho. O recibo permanecia aguardando leitura e bloqueava edições dependentes. No simulador também faltava o default `created_at`; a hipótese inicial de aliases não se confirmou para esses registros, cujos IDs já eram UUIDs.
+
+A correção compara todos os campos de negócio e exige data válida do servidor para novos históricos de processo e históricos/comentários de meta, sem exigir igualdade entre os relógios. Datas de início de etapa aceitam representações equivalentes do mesmo instante. O andamento respeita a coluna SQL de data civil; autoria continua conferida pelo complemento persistido. Observações preservam a comparação exata da data do complemento. Presença local de usuário (online/ultimaAtividade), que não gera gravação, não mantém recibo pendente; tipo/permissões continuam exatos. Não houve alteração de schema ou dados de usuários.
+
+Testes focados: 16 passaram, incluindo projeção real de prepararEdicao/projetar, recusa de texto alterado, perda de complemento de autoria, registro ausente e instante diferente. Processos passaram em Administrador, Diretor de Projetos, Pós-protocolo, Comercial e Consulta, com verificação de encerramento da pendência nos papéis que editam. Planejamento passou em 1366, 1440, 1920, 3440 e 390 pixels com verificação de fila encerrada; diário integrado passou nos 11 cenários. Esses resultados substituem a classificação inicial de processos-protocolados e planejamento-densidade como falhas ainda sem diagnóstico.
+
+Rollback deste complemento: reverter somente seu commit de aplicativo para `e21d1b2`, mantendo as três migrations aditivas e as funções Edge já verificadas. O retorno reintroduziria a confirmação pendente; nenhum procedimento apaga filas ou rascunhos.
+
+Planejamento-notificacoes também passou após o complemento. A verificação pública da primeira publicação retornou HTTP 200 para página e bundle, com marcadores do diário e carteira incremental; service worker não força recarga.

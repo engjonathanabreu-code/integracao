@@ -94,3 +94,47 @@ test('nova meta confirma somente o vínculo ERP canônico atribuído à própria
  assert.equal(alteracoesConfirmadas(antes,depois,{metas:[{...depois.metas[0],erpId:'outra-meta'}]}),false);
  assert.equal(alteracoesConfirmadas(antes,depois,{metas:[{id:'meta-fixture',erpId:'meta-fixture',titulo:'Meta nova'}]}),false);
 });
+
+test('confirma histórico com relógio do servidor sem ignorar texto, autor ou ausência',()=>{
+ for(const [colecao,filhos] of [['nucleos','historicoEtapas'],['metas','historico'],['metas','comentarios']]){
+  const antes={[colecao]:[{id:'pai',[filhos]:[]}]};
+  const depois=structuredClone(antes);depois[colecao][0][filhos]=[{id:'novo',texto:'Exato',autor:'Ana',data:'2026-11-10T12:00:00.123Z'}];
+  const remoto=structuredClone(depois);remoto[colecao][0][filhos][0].data='2026-11-10T12:00:01.456+00:00';
+  assert.equal(alteracoesConfirmadas(antes,depois,remoto),true);
+  for(const campo of ['texto','autor','data']){const errado=structuredClone(remoto);errado[colecao][0][filhos][0][campo]='diferente';assert.equal(alteracoesConfirmadas(antes,depois,errado),false);}
+  assert.equal(alteracoesConfirmadas(antes,depois,antes),false);
+ }
+});
+test('andamento confirma a coluna date do ERP e preserva conteúdo e autor',()=>{
+ const antes={nucleos:[{id:'n',andamentos:[]}]},depois=structuredClone(antes);
+ depois.nucleos[0].andamentos=[{id:'a',data:'2026-11-10T12:00:00.123Z',por:'Ana',descricaoCliente:'Aviso exato',visivelIA:true}];
+ const remoto=structuredClone(depois);Object.assign(remoto.nucleos[0].andamentos[0],{data:'2026-11-10'});
+ assert.equal(alteracoesConfirmadas(antes,depois,remoto),true);
+ remoto.nucleos[0].andamentos[0].descricaoCliente='Outro aviso';assert.equal(alteracoesConfirmadas(antes,depois,remoto),false);
+});
+test('presença local não bloqueia recibo, mas permissões e cadastro continuam exatos',()=>{
+ const antes={usuarios:[{id:'u',online:false,tipoERP:'Consulta'}]},depois=structuredClone(antes);Object.assign(depois.usuarios[0],{online:true,ultimaAtividade:'agora'});
+ assert.equal(alteracoesConfirmadas(antes,depois,antes),true);
+ depois.usuarios[0].tipoERP='Administrador';assert.equal(alteracoesConfirmadas(antes,depois,antes),false);
+});
+
+test('timestamp de etapa aceita o mesmo instante, nunca outra data ou texto',()=>{
+ const antes={nucleos:[{id:'n',etapaPrefeituraIniciadaEm:''}]},depois=structuredClone(antes),remoto=structuredClone(antes);
+ depois.nucleos[0].etapaPrefeituraIniciadaEm='2026-11-10T12:00:00.123Z';remoto.nucleos[0].etapaPrefeituraIniciadaEm='2026-11-10T09:00:00.123-03:00';
+ assert.equal(alteracoesConfirmadas(antes,depois,remoto),true);
+ remoto.nucleos[0].etapaPrefeituraIniciadaEm='2026-11-10T12:00:00.124Z';assert.equal(alteracoesConfirmadas(antes,depois,remoto),false);
+});
+
+test('confirma andamentos pela projeção real e recusa perda de texto ou complemento de autoria',async()=>{
+ const {fixture,blank,id}=await import('./fixture.js');
+ const {projetar,prepararEdicao}=await import('../src/dados-compartilhados.js');
+ const b=fixture(),s=projetar(b,blank()),depois=structuredClone(s.db),autor=s.db.usuarios[0];
+ depois.nucleos[0].andamentos=[{id:id(901),status:'Notificações',operacional:'Em andamento',descricaoCliente:'Aviso exato',observacao:'Interno',visivelIA:true,previsao:'',data:'2026-11-10T12:00:00.123Z',por:autor.nome}];
+ depois.nucleos[0].observacoes=[{id:id(902),autor:autor.nome,setor:'Diretoria',texto:'Interno',data:'2026-11-10T12:00:00.123Z'}];
+ const ops=prepararEdicao(s.db,depois,s,autor);
+ for(const op of ops){assert.equal(op.insert,true);(b[op.table]||=[]).push({created_at:'2026-11-10T12:00:01.456+00:00',...op.key,...op.changes});}
+ assert.equal(alteracoesConfirmadas(s.db,depois,projetar(b,blank()).db),true);
+ b.processos_kanban_andamentos[0].descricao_cliente='Errado';assert.equal(alteracoesConfirmadas(s.db,depois,projetar(b,blank()).db),false);
+ b.processos_kanban_andamentos[0].descricao_cliente='Aviso exato';b.integracao_complementos=b.integracao_complementos.filter(x=>x.colecao!=='andamentos');
+ assert.equal(alteracoesConfirmadas(s.db,depois,projetar(b,blank()).db),false);
+});
