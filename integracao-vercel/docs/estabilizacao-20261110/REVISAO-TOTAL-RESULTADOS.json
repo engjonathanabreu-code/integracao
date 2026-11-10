@@ -343,7 +343,12 @@
     "vite_segundos": 6.36,
     "lint_typecheck": "não declarados"
   },
-  "publicacao": "ainda não enviada",
+  "publicacao": {
+    "commit": "4201afcf7cea9dea3bad160f660c30f36c6d6202",
+    "deployment": "dpl_DhPBEufHbx1dYgR7dfH5GdmZoLf2",
+    "estado": "READY",
+    "url": "https://integracao-beige.vercel.app"
+  },
   "sem_migration": true,
   "dados_reais_alterados_pelos_testes": false,
   "rede_externa_browser_bloqueada": true,

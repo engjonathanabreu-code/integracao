@@ -1,0 +1,66 @@
+{
+  "deployment": "dpl_DhPBEufHbx1dYgR7dfH5GdmZoLf2",
+  "status": "READY",
+  "commit": "4201afcf7cea9dea3bad160f660c30f36c6d6202",
+  "branch": "main",
+  "alias": [
+    "integracao-beige.vercel.app",
+    "integracao-engjonathanabreu-8997s-projects.vercel.app",
+    "integracao-git-main-engjonathanabreu-8997s-projects.vercel.app"
+  ],
+  "ready": "2026-11-10T19:31:18.667Z",
+  "build": [
+    {
+      "text": "Build Completed in /vercel/output [4m]",
+      "date": 1794339075644
+    },
+    {
+      "text": "\u001b[32m✓ built in 21.71s\u001b[39m",
+      "date": 1794339073717
+    },
+    {
+      "text": "ℹ fail 0",
+      "date": 1794339051655
+    },
+    {
+      "text": "ℹ pass 1180",
+      "date": 1794339051655
+    },
+    {
+      "text": "ℹ tests 1180",
+      "date": 1794339051654
+    }
+  ],
+  "ci": {
+    "run": 42885400562,
+    "url": "https://github.com/engjonathanabreu-code/integracao/actions/runs/42885400562",
+    "status": "failure",
+    "passaram": 56,
+    "total": 58,
+    "falhas": [
+      "ajustes-interface: medições separadas durante renderização / quebra de linha responsiva",
+      "crm-chatwoot-timeout: RPCs de leitura classificadas como gravação"
+    ],
+    "correcao": "Testes ajustados e aprovados localmente em desktop/celular; aguardando nova execução independente."
+  },
+  "http": {
+    "url": "https://integracao-beige.vercel.app",
+    "html_status": 200,
+    "asset": "/assets/index-RUPoC-IU.js",
+    "asset_status": 200,
+    "asset_sha256": "4607002ec4fc511427fc1cdb86654595a40c2b7e5928853d83481a03a5513d3b",
+    "markers": {
+      "A leitura não confirmou o arquivo enviado. A cópia local foi preservada.": true,
+      "A identidade do rascunho já possui outro conteúdo. Original preservado para revisão.": true,
+      "Revisão mudou; atualize a prévia.": true
+    },
+    "service_worker_status": 200,
+    "service_worker_cache_control": "no-cache",
+    "mesmo_bundle_local": false
+  },
+  "runtime_errors": {
+    "janela": "10 minutos consultados após publicação",
+    "ocorrencias": 0,
+    "limite": "não inclui todos os erros de navegador nem comprova recuperação dos rascunhos dos usuários"
+  }
+}
