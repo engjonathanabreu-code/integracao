@@ -86,3 +86,11 @@ test('retentativas simultâneas aguardam uma só confirmação da intenção',as
   const a=c.retentar('a'),b=c.retentar('a');assert.equal(a,b);assert.equal(c.tamanho,1);
   c.confirmar(depois,depois,{});assert.equal((await a).confirmado,true);await b;
 });
+
+
+test('nova meta confirma somente o vínculo ERP canônico atribuído à própria identidade',()=>{
+ const antes={metas:[]},depois={metas:[{id:'meta-fixture',erpId:null,titulo:'Meta nova',observacoes:null}]};
+ assert.equal(alteracoesConfirmadas(antes,depois,{metas:[{...depois.metas[0],erpId:'meta-fixture'}]}),true);
+ assert.equal(alteracoesConfirmadas(antes,depois,{metas:[{...depois.metas[0],erpId:'outra-meta'}]}),false);
+ assert.equal(alteracoesConfirmadas(antes,depois,{metas:[{id:'meta-fixture',erpId:'meta-fixture',titulo:'Meta nova'}]}),false);
+});

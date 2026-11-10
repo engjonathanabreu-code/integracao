@@ -58,7 +58,13 @@ function conferir(mudancas, remoto, aliases = {}) {
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
     const campo=mudanca.caminho.at(-1);
-    const esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    // New canonical goals receive their ERP binding on projection. Accept only
+    // that exact binding; business nulls and any different identity still differ.
+    if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&esperado?.erpId==null&&atual.valor?.erpId===atual.valor?.id&&atual.valor?.id===esperado?.id){
+      esperado={...esperado,erpId:atual.valor.erpId};
+      if(esperado._compartilhado===undefined)delete esperado._compartilhado;
+    }
     return atual.existe && (mudanca.parcial ? contem(atual.valor, esperado) : igual(atual.valor, esperado));
   });
 }
