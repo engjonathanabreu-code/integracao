@@ -1,0 +1,19 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import vm from 'node:vm';import {transform} from 'esbuild';
+const names=['sincronizar-processos-crm','sincronizar-meta-crm','salvar-observacao-processo'];
+async function invoke(name,{profile={ativo:true,tipo:'Projetos'},user={id:'user'},visible=true,method='POST',allowUpdate=true,allowed=true}={}){
+ let handler,writes=0,external=0,privileged=0,queries=[];
+ const client=(url,key,config)=>{const service=key==='service';if(service)privileged++;return {rpc:async()=>({data:allowed}),auth:{getUser:async()=>({data:{user}})},from:table=>{const q={op:'read',select(){return q;},eq(){return q;},not(){return q;},order(){return q;},limit(){return q;},upsert(){q.op='write';writes++;return q;},update(){q.op='write';writes++;return q;},single(){return q;},maybeSingle(){return q;},then(resolve,reject){queries.push({table,service});let data=[];if(table==='profiles')data=profile;else if(table==='metas')data=visible?{id:'meta',titulo:'Fictícia'}:null;else if(table==='processos_kanban')data=name==='salvar-observacao-processo'?(visible&&(q.op!=='write'||allowUpdate)?{id:'proc',crm_projeto_id:'crm'}:null):[];return Promise.resolve({data,error:null}).then(resolve,reject);}};return q;}};};
+ const source=readFileSync(new URL(`../supabase/functions/${name}/index.ts`,import.meta.url),'utf8').replace(/import "jsr:[^;]+;/,'').replace(/import \{ createClient \} from [^;]+;/,'const createClient=globalThis.fixtureClient;');
+ const code=(await transform(source,{loader:'ts',format:'cjs'})).code;
+ vm.runInNewContext(code,{fixtureClient:client,Deno:{env:{get:k=>k==='SUPABASE_SERVICE_ROLE_KEY'?'service':'fixture'},serve:f=>handler=f},Response,AbortSignal,TextEncoder,TextDecoder,Uint8Array,console:{error(){}},fetch:async()=>{external++;return Response.json({projetos:[],andamentos:[]});}});
+ const r=await handler(new Request('https://fixture.invalid',{method,headers:{Authorization:'Bearer fixture'},...(method==='GET'?{}:{body:JSON.stringify({meta_id:'00000000-0000-4000-8000-000000000001',processo_id:'00000000-0000-4000-8000-000000000002',observacao:'Fictícia'})})}));return {status:r.status,writes,external,privileged,queries};
+}
+for(const name of names){
+ test(`${name}: inativo não lê objetos nem provoca efeitos`,async()=>{const r=await invoke(name,{profile:{ativo:false,tipo:'Administrador'}});assert.equal(r.status,403);assert.equal(r.writes+r.external+r.privileged,0);});
+ test(`${name}: sessão inválida e método recusados`,async()=>{assert.equal((await invoke(name,{user:null})).status,401);assert.equal((await invoke(name,{method:'GET'})).status,405);});
+}
+test('sincronização geral exige papel aprovado; metadado não eleva usuário',async()=>{const r=await invoke(names[0],{user:{id:'u',user_metadata:{is_admin:true}}});assert.equal(r.status,403);assert.equal(r.external+r.writes+r.privileged,0);for(const tipo of ['Administrador','Diretor de Projetos','Comercial'])assert.equal((await invoke(names[0],{profile:{ativo:true,tipo}})).status,200);});
+for(const name of names.slice(1))test(`${name}: alvo invisível não chega ao CRM; leitura usa solicitante`,async()=>{const r=await invoke(name,{visible:false});assert.equal(r.status,404);assert.equal(r.external+r.writes+r.privileged,0);assert(r.queries.every(q=>!q.service));});
+test('observação sem linha atualizada não envia ao CRM',async()=>{const r=await invoke(names[2],{allowUpdate:false});assert.equal(r.status,403);assert.equal(r.external,0);});
+
+test('contrato de operação negado bloqueia antes das leituras e efeitos',async()=>{for(const name of names.slice(1)){const r=await invoke(name,{allowed:false});assert.equal(r.status,403);assert.equal(r.external+r.writes,0);assert.equal(r.queries.filter(q=>q.table!=='profiles').length,0);}});
