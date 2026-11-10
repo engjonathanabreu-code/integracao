@@ -1,0 +1,21 @@
+{
+  "commit": "5108071f5223f964a82826e7cf9d48cab723709d",
+  "url": "https://integracao-beige.vercel.app",
+  "status": 200,
+  "asset": "/assets/index-L1fOldHb.js",
+  "assetStatus": 200,
+  "sha256": "8322815f7e1e07bf52f88a8792dc84246a71b57a220186f7215fe185cf1678c3",
+  "matchesLocal": false,
+  "checks": {
+    "integracao-intencoes-v2": true,
+    "integracao_carteira_delta": true,
+    "Pendências de sincronização": true
+  },
+  "forcedReload": false,
+  "confirmationCodeChecks": {
+    "historicoServidor": true,
+    "dataAndamento": true,
+    "presencaLocal": true,
+    "instanteEtapa": true
+  }
+}

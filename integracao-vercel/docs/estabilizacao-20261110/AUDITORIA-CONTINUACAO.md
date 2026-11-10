@@ -58,7 +58,7 @@ Edge: sincronizar-processos-crm v5, sincronizar-meta-crm v2 e salvar-observacao-
 
 Advisors posteriores mantêm os quatro grupos anteriores; referências: [RLS sem policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [definer anon](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [definer authenticated](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), [proteção de senhas](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
-Primeira publicação desta rodada: commit `e21d1b294dac46392f363d99235eab946a01bdab`, deployment `dpl_9tMhNCJM7g6Q2g26LBgdDBiveBbP`, READY, alias de produção confirmado. Complemento de confirmação descrito abaixo aguarda sua própria publicação.
+Primeira publicação desta rodada: commit `e21d1b294dac46392f363d99235eab946a01bdab`, deployment `dpl_9tMhNCJM7g6Q2g26LBgdDBiveBbP`, READY, alias de produção confirmado. Complemento de confirmação publicado conforme registro final abaixo.
 
 ## Reproduzir a validação isolada
 
@@ -85,3 +85,11 @@ Testes focados: 16 passaram, incluindo projeção real de prepararEdicao/projeta
 Rollback deste complemento: reverter somente seu commit de aplicativo para `e21d1b2`, mantendo as três migrations aditivas e as funções Edge já verificadas. O retorno reintroduziria a confirmação pendente; nenhum procedimento apaga filas ou rascunhos.
 
 Planejamento-notificacoes também passou após o complemento. A verificação pública da primeira publicação retornou HTTP 200 para página e bundle, com marcadores do diário e carteira incremental; service worker não força recarga.
+
+Validação final do complemento `5108071f5223f964a82826e7cf9d48cab723709d`: `npm run build` passou com **1.164 testes, zero falhas**, Vite em 8,48 s. `git diff --check 6657846..HEAD` sem problemas. Avisos de tamanho do bundle e importação simultaneamente estática/dinâmica de ponto-local permanecem; não há scripts dedicados de lint/typecheck. Banco e servidores de testes foram encerrados após validação. Nenhuma dependência foi adicionada; node_modules local é um link não versionado.
+
+Publicação final solicitada pelo push não forçado de `5108071` para main; deployment `dpl_CnbDbxxMVn1Yepn5zPCjCsNhvY5s`. Checagem de erros de execução Vercel na janela de uma hora durante a publicação não encontrou ocorrências; não inclui todos os erros de cliente/Supabase nem substitui uma janela de uso após a versão nova.
+
+Confirmação final: `5108071`, deployment `dpl_CnbDbxxMVn1Yepn5zPCjCsNhvY5s`, **READY** em 10/11/2026 às 17:08:34 UTC, alias https://integracao-beige.vercel.app. Hospedagem repetiu 1.164 testes com zero falhas; página e bundle HTTP 200. `VERIFICACAO-PUBLICACAO.json` registra o hash público e os marcadores específicos do complemento. O bundle remoto não é byte a byte igual ao local; a identidade da versão foi conferida pelo SHA do deploy, pelo alias e pelas verificações do código publicado, sem alegar identidade binária entre ambientes.
+
+Branch local: `codex/estabilizacao-20261110`; main remoto publicado em `5108071`. Sem PR. O registro final de evidências fica em commit documental local posterior, sem provocar outro deploy. A auditoria ampla não é declarada integralmente encerrada: permanecem as limitações e pendências explicitadas acima.
