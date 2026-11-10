@@ -1,0 +1,14 @@
+{
+  "commit": "eb779188f8fedd7a08c8e350192fb057818a3dfa",
+  "deployment": "dpl_H2CEaDpGCMWhWVVb4RFWWhy7g1YM",
+  "status": "READY",
+  "url": "https://integracao-beige.vercel.app",
+  "http": 200,
+  "asset": "/assets/index-DbpmYYJS.js",
+  "assetHttp": 200,
+  "sha256": "4754fcedcff6f3db8191eb67368cf0cc77592063223679f69e1e3f03a123ff9d",
+  "checks": {
+    "presencaLocal": true,
+    "consultaExplicita": true
+  }
+}
