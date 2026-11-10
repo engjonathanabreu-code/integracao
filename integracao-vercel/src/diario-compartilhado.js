@@ -92,11 +92,17 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   // Background processing may have finished while this preview remained open.
   // A blocked decision still requires its original checks, never an implicit
   // acceptance of another tab's resolution.
-  if(!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado)){
+  const retentativa=!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado);
+  const encerrarConcluida=async()=>{
    await atualizar();const atual=items.find(i=>i.id===id);
-   if(atual&&terminal(atual)){if(revisao===mostrada)revisao=null;return;}
-  }
+   if(atual&&terminal(atual)){if(revisao===mostrada)revisao=null;return true;}
+   return false;
+  };
+  if(retentativa&&await encerrarConcluida())return;
   const {remoto}=await lerItem(mostrada.item);
+  // The same send can complete while the remote read is in flight. Its own
+  // confirmed value must not look like a new conflict in this stale preview.
+  if(retentativa&&await encerrarConcluida())return;
   if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes),recortarIntencao(mostrada.remoto,mostrada.edicoes)))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
   const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
   if(mostrada.item.recibo&&mostrada.conflitos.length){

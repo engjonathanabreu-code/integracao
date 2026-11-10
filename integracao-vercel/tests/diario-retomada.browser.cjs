@@ -72,6 +72,18 @@ const assert=require('node:assert/strict');
    const d=criarDiarioCompartilhado({conta:'corrida',fila,ativo:()=>true,carregar:async()=>({db:{}}),preparar:async()=>({operacoes:[]}),enviar:async()=>{writes++;},consultarRecibo:async()=>null,confirmar:async()=>{},atualizou:()=>{}});
    try{await d.previa('item');fila.retomar=async(conta,id)=>{let c=await fila.reservar(conta,{dono:'outra-aba'});c=await fila.registrarRecibo(c,{aliases:{}});await fila.confirmarLeitura(c);return original(conta,id);};await d.resolver('item',{});return {writes,states:(await fila.listar('corrida')).map(i=>i.estado)};}finally{fila.retomar=original;d.fechar();}
   });assert.deepEqual(race,{writes:0,states:['confirmado']});
-  console.log(JSON.stringify({ok:true,cenarios:8,duasAbas:true,indexedDBReal:true,semDadosReais:true}));
+  // A real edited value confirmed during the remote read is not a new conflict.
+  const duringRead=await b.evaluate(async()=>{
+   const {criarDiarioCompartilhado}=await import('/src/diario-compartilhado.js');
+   const edicoes=[{colecao:'metas',id:'meta',antes:{existe:true,valor:{id:'meta',titulo:'antes'}},depois:{existe:true,valor:{id:'meta',titulo:'local'}}}];
+   await fila.enfileirar({conta:'corrida-leitura',id:'item',unidade:'meta',modulo:'metas',operacoes:[{table:'metas',key:{id:'meta'},changes:{titulo:'local'}}],base:{},intencao:{edicoes,arquivos:{}}});
+   let reads=0,writes=0;
+   const d=criarDiarioCompartilhado({conta:'corrida-leitura',fila,ativo:()=>true,carregar:async()=>{
+    reads++;if(reads===2){let c=await fila.reservar('corrida-leitura',{dono:'outra-aba'});c=await fila.registrarRecibo(c,{aliases:{}});await fila.confirmarLeitura(c);}
+    return {db:{metas:[{id:'meta',titulo:reads===1?'antes':'local'}]}};
+   },preparar:async()=>({operacoes:[]}),enviar:async()=>{writes++;},consultarRecibo:async()=>null,confirmar:async()=>{},atualizou:()=>{}});
+   try{await d.previa('item');await d.resolver('item',{});return {reads,writes,states:d.itens().map(i=>i.estado)};}finally{d.fechar();}
+  });assert.deepEqual(duringRead,{reads:2,writes:0,states:['confirmado']});
+  console.log(JSON.stringify({ok:true,cenarios:9,duasAbas:true,indexedDBReal:true,semDadosReais:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
