@@ -1,4 +1,4 @@
-const igual=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+import {igualSemantico as igual} from './igualdade-semantica.js';
 const copiar=x=>x===undefined?undefined:structuredClone(x);
 const objeto=x=>x&&typeof x==='object'&&!Array.isArray(x);
 const identificados=xs=>xs.every(x=>objeto(x)&&typeof x.id==='string')&&new Set(xs.map(x=>x.id)).size===xs.length;

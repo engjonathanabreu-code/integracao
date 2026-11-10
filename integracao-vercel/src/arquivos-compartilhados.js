@@ -1,6 +1,6 @@
 import {copy,eq,temSessao,conteudoStorage} from './dados-compartilhados.js';
 
-let context=null;
+let context=null,geracao=0;
 const recognized=/^integracao-(prf-modelo-(v4$|mun-v1-)|foto-v4-|timbrado-v1-|kml-v1-|campo-offline-v1$|comercial-offline-v1$|doc-offline-v1-|devolutiva-v1-)/;
 const privateKey=k=>/^integracao-(campo-offline|comercial-offline|doc-offline)/.test(k);
 const queueKey=owner=>`integracao-fila-arquivos-${owner}`;
@@ -8,12 +8,13 @@ const cacheKey=(owner,key)=>`integracao-cache-arquivo-${owner}-${key}`;
 const recordId=(owner,key)=>privateKey(key)?`${owner}|${key}`:key;
 const notify=()=>globalThis.window?.dispatchEvent(new Event('integracao:arquivo-pendente'));
 export async function abrirArquivos(actor,base,storage) {
-  const owner=actor.erpRef;
+  const owner=actor.erpRef,gen=++geracao;
   if(context?.owner===owner){context.rows=base.integracao_arquivos||[];return;}
   const queue=JSON.parse(await storage.get(queueKey(owner))||'{}');
+  if(gen!==geracao)throw Object.assign(new Error('Sessão de arquivos alterada.'),{code:'SESSAO_ALTERADA'});
   context={owner,rows:base.integracao_arquivos||[],queue,storage};
 }
-export function fecharArquivos(){context=null;}
+export function fecharArquivos(){geracao++;context=null;}
 export const arquivosPendentes=()=>!!context&&Object.keys(context.queue).length>0;
 export async function agendarArquivo(key,value) {
   const c=context;if(!c||!recognized.test(key))return;

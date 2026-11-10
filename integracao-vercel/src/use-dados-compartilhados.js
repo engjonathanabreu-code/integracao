@@ -35,9 +35,12 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     // Opening recovers only edited client files; entering a nucleus must fetch all.
     municipios.current.forEach(id=>desatualizados.current.add(id));
   };
+  const conferirGeracao=gen=>{if(gen!==generation.current)throw Object.assign(new Error('Sessão encerrada.'),{code:'SESSAO_ALTERADA'});};
   const carregarBase=async(seed,grupos=null)=>{
+    const gen=generation.current,municipio=municipioAtivo.current;
     const tabelas=grupos?tabelasDosGrupos(grupos):null;
     const base=await lerBase({municipios:municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[],tabelas,anterior:grupos?server.current?.base:null});
+    conferirGeracao(gen);
     if(server.current&&(!grupos||grupos.includes('clientes'))){
       const antigos=server.current.base,ativos=new Set(base.fin_receb_clientes.map(c=>c.id)),extras=new Set((base.integracao_moradores||[]).map(e=>e.registro_id)), idsAtivos=new Set(antigos.fin_receb_clientes.filter(c=>c.municipio_id===municipioAtivo.current).map(c=>c.id));
       base.fin_receb_clientes=[...antigos.fin_receb_clientes.filter(c=>c.municipio_id!==municipioAtivo.current&&!ativos.has(c.id)),...base.fin_receb_clientes];
@@ -47,7 +50,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     const avulsos=(seed?.processos||[]).filter(p=>!p.municipioId&&!p._resumo&&p._compartilhado);
     base._moradoresResumo=server.current?.base._moradoresResumo||[];
     await atualizarFichas(base,!grupos||grupos.includes('clientes')?avulsos:[],lerFichaCliente);
-    lastRefresh.current=Date.now();return base;
+    conferirGeracao(gen);lastRefresh.current=Date.now();return base;
   };
   // Projection carries local-only records for display; they are not server rows.
   // Keep them out of the remote baseline when rebasing pending edits, otherwise
@@ -135,8 +138,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     // An unknown write may already have succeeded: consult its receipt first.
     if(attempt.current&&!attempt.current.rejeitada&&!attempt.current.confirmacao){await flush();if(attempt.current&&!attempt.current.rejeitada)return;}
     retentativas.current=0;
-    busy.current=true;
-    try{await conciliar(escolhas);}catch(e){setError(e.message);}finally{busy.current=false;}
+    busy.current=true;const gen=generation.current;
+    try{await conciliar(escolhas);}catch(e){if(gen===generation.current)setError(e.message);}finally{if(gen===generation.current)busy.current=false;}
   };
   const flush=async()=>{
     if(!temSessao()){rejeitarConfirmacoes('A sessão terminou antes da confirmação. As alterações continuam no rascunho.','SESSAO_ENCERRADA');return;}
@@ -208,19 +211,20 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       console.warn('[sincronizacao]',{fase:attempt.current?.confirmacao?'atualizacao':'gravacao',codigo:e.code||e.status||e.name});
       setError(e.message);setStatus(attempt.current?.confirmacao?'Alterações já salvas — aguardando atualização da tela.':'Alterações pendentes — dados locais preservados.');await saveDraft();
       if(falhaTransitoria(e)){clearTimeout(timer.current);timer.current=setTimeout(flush,Math.min(30000,2000*2**Math.min(retentativas.current++,4)));}
-    } finally {busy.current=false;}
+    } finally {if(gen===generation.current)busy.current=false;}
   };
   const open=async (user,legacy)=>{
     rejeitarConfirmacoes('A sessão foi reaberta antes da confirmação. Confira a sincronização do rascunho.','SESSAO_ALTERADA');
     vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
     actor.current=user;generation.current++;server.current=null;municipioAtivo.current=null;desatualizados.current.clear();municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');
+    const gen=generation.current;busy.current=false;clearTimeout(timer.current);attempt.current=null;revisao.current=null;pending.current=false;current.current=null;municipalityLoads.current.clear();
     try {
-    const cached=await storage.get(storageKey());
+    const cached=await storage.get(storageKey());conferirGeracao(gen);
     const draft=cached?JSON.parse(cached):null;
     attempt.current=draft?.attempt||null;recuperacoes.current=draft?.recuperacoes||[];setReservasPreservadas(recuperacoes.current.length);
     if(!temSessao()) {
       if(!draft?.base) throw new Error('Entre conectado uma vez para disponibilizar os dados desta conta neste aparelho.');
-      await abrirArquivos(user,draft.base,storage);
+      await abrirArquivos(user,draft.base,storage);conferirGeracao(gen);
       server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);pending.current=!!draft.pending;
       restaurarMunicipios(draft.municipios||[]);setSummaryReady(true);
       setStatus('Modo offline. Entre novamente conectado para enviar as alterações.');
@@ -229,8 +233,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     let base;
     try {base=await carregarBase(baseLimpa());}
     catch(e){
+      conferirGeracao(gen);
       if(!draft?.base||!draft?.baseline||!falhaTransitoria(e))throw e;
-      await abrirArquivos(user,draft.base,storage);
+      await abrirArquivos(user,draft.base,storage);conferirGeracao(gen);
       server.current={...projetar(draft.base,draft.baseline),db:draft.baseline};publish(draft.db);
       pending.current=!!draft.pending||!!attempt.current;restaurarMunicipios(draft.municipios||[]);
       setSummaryReady(true);setStatus(attempt.current?.confirmacao?'Alterações já salvas — retomando atualização automaticamente.':'Dados locais disponíveis; retomando a conexão automaticamente.');
@@ -238,19 +243,19 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
       iniciarTempoReal();
       return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
     }
-    await abrirArquivos(user,base,storage);
+    conferirGeracao(gen);await abrirArquivos(user,base,storage);conferirGeracao(gen);
     if(legacy && !(await storage.get('integracao-antes-compartilhamento'))) await storage.set('integracao-antes-compartilhamento',JSON.stringify(legacy));
-    const legacyOwner=await storage.get('integracao-dono-base-local');
+    conferirGeracao(gen);const legacyOwner=await storage.get('integracao-dono-base-local');conferirGeracao(gen);
     if(!legacyOwner)await storage.set('integracao-dono-base-local',user.erpRef);
-    const seed=(!legacyOwner||legacyOwner===user.erpRef?legacy:null) || baseLimpa();
+    conferirGeracao(gen);const seed=(!legacyOwner||legacyOwner===user.erpRef?legacy:null) || baseLimpa();
     if(!legacy) {seed.setoresMeta=[];seed.agendas=[];}
     if(draft?.pending&&draft.baseline)await atualizarPendentes(base,draft.baseline,draft.db,draft.attempt);
-    const state=draft?.pending?projetarRemoto(base,draft.db,draft.baseline):projetar(base,draft?.db||seed);
+    conferirGeracao(gen);const state=draft?.pending?projetarRemoto(base,draft.db,draft.baseline):projetar(base,draft?.db||seed);
     // In-flight edits from an earlier session retain their original baseline for conflict checks.
     if(draft?.pending && draft.baseline) {
       restaurarMunicipios(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
       await storage.set(`${storageKey()}-revisao-recebimento`,JSON.stringify(draft));
-      const baseline=separarCriacoesPendentes({...state,db:draft.baseline},draft.baseline,attempt.current,user).db;
+      conferirGeracao(gen);const baseline=separarCriacoesPendentes({...state,db:draft.baseline},draft.baseline,attempt.current,user).db;
       const resultado=atualizarComRascunho(baseline,draft.db,state.db);
       server.current={...state,db:resultado.baseline};publish(attempt.current?.rejeitada?preservarRegistrosAusentes(draft.baseline,resultado.dados,state.db):resultado.dados);pending.current=true;
       if(resultado.conflitos.length){revisao.current={remoto:state.db};setConflitos(resultado.conflitos);setError('Há alterações diferentes no mesmo campo. Escolha os valores para continuar.');}
@@ -266,10 +271,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     }
     pending.current=pending.current||arquivosPendentes();
     await saveDraft();
-    if(pending.current)timer.current=setTimeout(flush,250);
+    conferirGeracao(gen);if(pending.current)timer.current=setTimeout(flush,250);
     setSummaryReady(true);iniciarTempoReal();
     return current.current.usuarios.find(u=>u.erpRef===user.erpRef)||user;
-    } finally {opening.current=false;}
+    } finally {if(gen===generation.current)opening.current=false;}
   };
   const loadMunicipio=async(id,cliente=null)=>{
     const individual=!id && cliente;
@@ -299,10 +304,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
         if(gen!==generation.current)throw new Error('Sessão encerrada.');
         server.current=state;publish(merged);if(!individual){municipios.current.add(id);desatualizados.current.delete(id);}
         await saveDraft();return current.current;
-      } finally {busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}
+      } finally {if(gen===generation.current){busy.current=false;if(pending.current)timer.current=setTimeout(flush,500);}}
     })();
     municipalityLoads.current.set(chave,job);
-    try {return await job;} finally {municipalityLoads.current.delete(chave);}
+    try {return await job;} finally {if(municipalityLoads.current.get(chave)===job)municipalityLoads.current.delete(chave);}
   };
   const mutate=(fn,entry)=>{
     if(!current.current || !server.current) throw new Error('Os dados compartilhados ainda estão carregando.');
@@ -377,12 +382,12 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
         }
       }else{server.current=state;publish(state.db);setStatus('Dados compartilhados no Supabase');setError('');}
       await saveDraft();
-    }catch(e){setError(e.message);if(manual)throw e;return false;}
-    finally{busy.current=false;if(pending.current&&!revisao.current&&!attempt.current?.rejeitada)timer.current=setTimeout(flush,500);}
+    }catch(e){if(gen!==generation.current)return false;setError(e.message);if(manual)throw e;return false;}
+    finally{if(gen===generation.current){busy.current=false;if(pending.current&&!revisao.current&&!attempt.current?.rejeitada)timer.current=setTimeout(flush,500);}}
     if(manual)invalidarIndiceClientes();
     return true;
   };
-  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
+  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
     if(busy.current)return;
     try {

@@ -15,18 +15,18 @@ function versao(raiz,caminho){
 }
 // Only divergent leaves choose a winner; compatible edits, lists and history are merged.
 // Unknown/equal clocks use the freshly read server value, never the time of a retry.
-export function conciliarMaisRecentes(base,local,remoto){
+export function conciliarMaisRecentes(base,local,remoto,explicitas={}){
  const primeira=conciliarEdicoes(base,local,remoto),escolhas={};
  for(const c of primeira.conflitos){
   const temporal=camposTempo.includes(c.caminho.at(-1))||c.caminho.includes('lidaPor')||c.caminho.includes('ultimaLeitura');
   const l=temporal?instante(c.local):versao(local,c.caminho);
   const r=temporal?instante(c.remoto):versao(remoto,c.caminho);
-  escolhas[c.chave]=l>r?'local':'remoto';
+  escolhas[c.chave]=['local','remoto'].includes(explicitas[c.chave])?explicitas[c.chave]:(l>r?'local':'remoto');
  }
  const resultado=conciliarEdicoes(base,local,remoto,escolhas);
  for(const meta of resultado.dados?.metas||[]){
   const atual=remoto.metas?.find(m=>m.id===meta.id);
-  if(meta.status==='Concluído'&&atual?.status==='Concluído'&&!atual.solicitacaoConclusao)meta.solicitacaoConclusao=null;
+  if(meta.solicitacaoConclusao&&meta.status==='Concluído'&&atual?.status==='Concluído'&&!atual.solicitacaoConclusao)meta.solicitacaoConclusao=null;
  }
  return {...resultado,resolvidos:primeira.conflitos.map(c=>({...c,escolha:escolhas[c.chave]}))};
 }

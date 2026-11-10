@@ -1,6 +1,6 @@
 import {erroConcorrencia} from './concorrencia.js';
 import {conciliarMaisRecentes as conciliarEdicoes} from './conciliacao-automatica.js';
-const igual=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+import {igualSemantico as igual} from './igualdade-semantica.js';
 // Each retry reads a new baseline and still uses a database CAS/row lock.
 // A choice never authorizes overwriting a value changed since it was shown.
 export async function editarConciliado({anterior,local,ler,gravar,sempreGravar=false},escolhas={},mostrado=null){
@@ -11,8 +11,9 @@ export async function editarConciliado({anterior,local,ler,gravar,sempreGravar=f
   if(conciliado.resolvidos.length&&typeof window!=='undefined'&&window.storage){
    await window.storage.set(`integracao-editor-revisao-${Date.now()}-${crypto.randomUUID()}`,JSON.stringify({anterior,local,remoto,resolvidos:conciliado.resolvidos}));
   }
-  if(conciliado.conflitos.length){
-   const e=new Error('Escolha os valores diferentes para continuar.');e.code='PT409';e.conflitos=conciliado.conflitos;
+  const descartados=conciliado.resolvidos.filter(c=>c.escolha==='remoto'&&!(mostrado&&igual(mostrado,remoto)&&escolhas[c.chave]==='remoto'));
+  if(conciliado.conflitos.length||descartados.length){
+   const e=new Error('Escolha os valores diferentes para continuar.');e.code='PT409';e.conflitos=[...conciliado.conflitos,...descartados];
    e.resolver=opcoes=>editarConciliado({anterior,local,ler,gravar,sempreGravar},opcoes,remoto);throw e;
   }
   const dados=Object.fromEntries(Object.keys(local).filter(k=>!igual(conciliado.dados[k],remoto[k])).map(k=>[k,conciliado.dados[k]]));

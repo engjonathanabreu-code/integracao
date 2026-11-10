@@ -1,3 +1,4 @@
+import {igualSemantico} from './igualdade-semantica.js';
 import {registrarContrato,limparContratos} from './permissoes-contrato.js';
 import {ideiaPlanejamento} from './planejamento-metas.js';
 import {buscarREST} from './transporte-rest.js';
@@ -10,27 +11,46 @@ export const configERP = {
   url: import.meta.env?.VITE_ERP_SUPABASE_URL || 'https://ycdsyilyvaxslkwbkxyo.supabase.co',
   chave: import.meta.env?.VITE_ERP_SUPABASE_KEY || 'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4',
 };
-let session = null, refreshing = null;
+let session = null, refreshing = null, sessaoEpoch=0, sessaoAbort=new AbortController();
+export function capturarSessao(){
+ const epoch=sessaoEpoch,owner=session?.user?.id,signal=sessaoAbort.signal;
+ const conferir=()=>{if(epoch!==sessaoEpoch||!session||session.user?.id!==owner){const e=new Error('A sessão mudou. Reabra o registro nesta conta.');e.code='SESSAO_ALTERADA';throw e;}};
+ return {conferir,signal,owner};
+}
 let indiceClientes = null, indiceJob = null, indiceGeracao = 0, indiceCarregadoEm = 0, indiceSessao = 0;
 const VALIDADE_INDICE_MS = 5 * 60 * 1000;
 export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceCarregadoEm = 0; }
 export function obterIndiceClientes() { return session ? indiceClientes : null; }
 export function definirSessao(dados) {
+  sessaoEpoch++;sessaoAbort.abort();sessaoAbort=new AbortController();refreshing=null;
   if (!dados || dados.user?.id !== session?.user?.id) limparContratos();
   if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) { indiceSessao++; indiceJob = null; invalidarIndiceClientes(); }
   session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
 export async function requisicao(path, options = {}) {
   if (!session) throw new Error('Entre novamente com sua conta para acessar os dados compartilhados.');
+  const scope=capturarSessao();
   if (session.expires_at < Date.now() + 60000) {
-    if (!refreshing) refreshing = (async () => {
-      const r = await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey: configERP.chave, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: session.refresh_token }) });
-      if (!r.ok) throw new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.');
-      definirSessao(await r.json());
-    })().finally(() => { refreshing = null; });
-    await refreshing;
+    if (!refreshing) {
+      const original=session;
+      const job=(async()=>{
+        const r=await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:configERP.chave,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:original.refresh_token}),signal:scope.signal});
+        scope.conferir();
+        if(!r.ok)throw new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.');
+        const dados=await r.json();scope.conferir();
+        if(dados.user?.id!==scope.owner)throw new Error('Resposta de sessão incompatível. Entre novamente.');
+        session={...dados,expires_at:Date.now()+dados.expires_in*1000};
+      })();
+      refreshing=job;
+      job.finally(()=>{if(refreshing===job)refreshing=null;}).catch(()=>{});
+    }
+    try{await refreshing;}catch(e){scope.conferir();throw e;}
   }
-  return buscarREST(`${configERP.url}/rest/v1/${path}`, {...options, headers: { apikey: configERP.chave, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...options.headers } });
+  scope.conferir();
+  try{
+    const result=await buscarREST(`${configERP.url}/rest/v1/${path}`,{...options,signal:AbortSignal.any([scope.signal,options.signal||AbortSignal.timeout(25000)]),headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',...options.headers}});
+    scope.conferir();return result;
+  }catch(e){scope.conferir();throw e;}
 }
 export async function lerTabela(tabela, campos = '*', filtro = '') {
   const all = [];
@@ -41,18 +61,20 @@ export async function lerTabela(tabela, campos = '*', filtro = '') {
   }
 }
 export async function enviarArquivoSemanal(semana, arquivo) {
+  const scope=capturarSessao();scope.conferir();
   if(!arquivo||arquivo.size>25*1024*1024)throw new Error('Escolha um arquivo de até 25 MB.');
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   const caminho=`${semana}/${crypto.randomUUID()}/${arquivo.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-  const r=await fetch(`${configERP.url}/storage/v1/object/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':arquivo.type||'application/octet-stream','x-upsert':'false'},body:arquivo});
-  if(!r.ok)throw new Error('Não foi possível enviar o arquivo.');
+  scope.conferir();const r=await fetch(`${configERP.url}/storage/v1/object/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':arquivo.type||'application/octet-stream','x-upsert':'false'},body:arquivo});
+  scope.conferir();if(!r.ok)throw new Error('Não foi possível enviar o arquivo.');
   return caminho;
 }
 export async function abrirArquivoSemanal(caminho) {
+  const scope=capturarSessao();scope.conferir();
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
-  const r=await fetch(`${configERP.url}/storage/v1/object/sign/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});
-  if(!r.ok)throw new Error('Sem acesso ao arquivo.');
-  const body=await r.json();return `${configERP.url}/storage/v1${body.signedURL}`;
+  scope.conferir();const r=await fetch(`${configERP.url}/storage/v1/object/sign/integracao-semanal/${caminho}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});
+  scope.conferir();if(!r.ok)throw new Error('Sem acesso ao arquivo.');
+  const body=await r.json();scope.conferir();return `${configERP.url}/storage/v1${body.signedURL}`;
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { integracao_agente_estrategias: 'agente', integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
@@ -91,17 +113,18 @@ export async function lerMoradoresMunicipio(municipio) {
   return carga;
 }
 export async function lerResumoMoradores(db) {
+  const scope=capturarSessao();scope.conferir();
   // Refresh the caller's session if needed, without exposing it to application state.
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   const contexto=Object.fromEntries(['nucleos','campos','checklistCampo','ajustesRequisitos','ajustesMunicipio'].map(k=>[k,db[k]]));
   contexto.nucleos=(db.nucleos||[]).map(({id,codigo,criterio,municipioId})=>({id,codigo,criterio,municipioId}));
-  const response=await fetch('/api/resumo-moradores',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({contexto}),signal:AbortSignal.timeout(90000)});
-  const body=await response.json();
+  scope.conferir();const response=await fetch('/api/resumo-moradores',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({contexto}),signal:AbortSignal.timeout(90000)});
+  const body=await response.json();scope.conferir();
   if(!response.ok)throw new Error(body.message||'Não foi possível carregar as pendências.');
   return expandirResumo(body.resumo);
 }
 export const copy = x => structuredClone(x);
-export const eq = (a,b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+export const eq = igualSemantico;
 const text = x => x ?? '';
 const normalize = x => text(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
 const userId = id => id ? `erp_${id}` : '';
@@ -511,29 +534,32 @@ export async function assinaturaCalendario(ajustes={}) {
 }
 
 export async function lerArquivoERP(chave) {
+  const scope=capturarSessao();scope.conferir();
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   const [,bucket,path]=chave.split('|');
-  const r=await fetch(`${configERP.url}/storage/v1/object/authenticated/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`,{headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`}});
-  if(!r.ok)throw new Error('Arquivo indisponível para esta conta.');
+  scope.conferir();const r=await fetch(`${configERP.url}/storage/v1/object/authenticated/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`,{headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`}});
+  scope.conferir();if(!r.ok)throw new Error('Arquivo indisponível para esta conta.');
   const blob=await r.blob();
-  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
+  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>{try{scope.conferir();resolve(reader.result);}catch(e){reject(e);}};reader.onerror=reject;reader.readAsDataURL(blob);});
 }
 
 // Immutable objects: replacing a template creates a new object and CAS-updates its pointer.
 export async function conteudoStorage(path,bytes) {
+  const scope=capturarSessao();scope.conferir();
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
-  const response=await fetch(`${configERP.url}/storage/v1/object/${bytes?'':'authenticated/'}integracao/${path.split('/').map(encodeURIComponent).join('/')}`,{method:bytes?'POST':'GET',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,...(bytes?{'Content-Type':'text/plain;charset=utf-8','x-upsert':'false'}:{})},...(bytes?{body:bytes}:{})});
-  if(bytes) {
-    const result=await response.json();
+  scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/${bytes?'':'authenticated/'}integracao/${path.split('/').map(encodeURIComponent).join('/')}`,{method:bytes?'POST':'GET',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,...(bytes?{'Content-Type':'text/plain;charset=utf-8','x-upsert':'false'}:{})},...(bytes?{body:bytes}:{})});
+  scope.conferir();if(bytes) {
+    const result=await response.json();scope.conferir();
     if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw new Error(result.message||'Não foi possível guardar o arquivo no Supabase.');
     return path;
   }
   if(!response.ok)throw new Error('Arquivo indisponível para esta conta.');
-  return response.text();
+  const value=await response.text();scope.conferir();return value;
 }
 
 // Only files explicitly attached after loading are uploaded. Existing ERP files stay in place.
 export async function prepararArquivos(before,after,storage,actor) {
+  const scope=capturarSessao();scope.conferir();
   const operations=[];
   for(const m of after.metas||[]) for(const a of m.arquivos||[]) {
     if((before.metas||[]).find(x=>x.id===m.id)?.arquivos?.some(x=>x.id===a.id))continue;
@@ -542,9 +568,9 @@ export async function prepararArquivos(before,after,storage,actor) {
     const blob=await (await fetch(data)).blob();
     const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
     const path=`${actor.erpRef}/metas/${m.id}/${a.id}-${digest}`;
-    await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
-    const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob});
-    const result=await response.json();
+    scope.conferir();await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
+    scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob});
+    const result=await response.json();scope.conferir();
     if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw new Error(result.message||'Não foi possível enviar o arquivo.');
     operations.push({table:'meta_arquivos',key:{id:a.id},insert:true,changes:{meta_id:m.id,nome:a.nome,caminho_storage:path,mime_type:a.tipo||null,tamanho_bytes:blob.size,enviado_por:actor.erpRef}});
   }
@@ -562,7 +588,7 @@ export function lerIndiceClientes() {
     // and reload automatically rather than rejecting an otherwise valid search.
     for (let tentativa = 0; tentativa < 3; tentativa++) {
       const geracao = indiceGeracao;
-      const result = await carregarIndiceClientes();
+      let result;try{result=await carregarIndiceClientes();}catch(e){if(e.code==='SESSAO_ALTERADA')throw Object.assign(new Error('A sessão da busca mudou. Entre novamente para buscar clientes.'),{code:e.code});throw e;}
       if (!session || sessaoDaBusca !== indiceSessao) throw new Error('A sessão da busca mudou. Entre novamente para buscar clientes.');
       if (geracao === indiceGeracao) {
         indiceClientes = result; indiceCarregadoEm = Date.now();

@@ -59,7 +59,7 @@ test('finance and institutions merge independent edits using original validation
 test('CAS editor automatically keeps latest server conflicts and retries independent races',async()=>{
  let remote={x:2,y:1},writes=0;
  const options={anterior:{x:0,y:0},local:{x:1,y:0},ler:async()=>({...remote}),gravar:async novo=>{writes++;remote={...remote,...novo};return remote;}};
- assert.deepEqual(await editarConciliado(options),{x:2,y:1});assert.equal(writes,0);
+ await assert.rejects(()=>editarConciliado(options),e=>e.code==='PT409'&&e.conflitos.length===1);assert.equal(writes,0);
  remote={x:0,y:1};let race=true;
  await editarConciliado({...options,gravar:async novo=>{if(race){race=false;remote.y=2;const e=new Error('race');e.code='PT409';throw e;}remote={...remote,...novo};return remote;}});assert.deepEqual(remote,{x:1,y:2});
 });
