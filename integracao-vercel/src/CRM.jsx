@@ -1,3 +1,4 @@
+import {criarCacheCarteira} from './carteira-cache.js';
 import {followupsPrioritarios,podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import MetasVendas from './MetasVendas.jsx';
 import FollowUpCRM,{ResumoFollowUp,ResumoChatwoot} from './FollowUpCRM.jsx';
@@ -10,7 +11,7 @@ import {EditarComerciaisLead,responsaveisLead} from './ComerciaisLead.jsx';
 import {CadastrarLead} from './LeadCRM.jsx';
 import NegociacaoCRM from './NegociacaoCRM.jsx';
 import EditarCardCRM from './EditarCardCRM.jsx';
-import {invalidarIndiceClientes,lerTabela} from './dados-compartilhados.js';
+import {invalidarIndiceClientes} from './dados-compartilhados.js';
 import {salvarNegociacaoCRM} from './crm-api.js';
 import {useState,useEffect,useRef,useMemo} from 'react';
 import {X,Phone,FileText,MapPin,Layers,MessageSquare,ListTodo,Filter,UserPlus,UserX,BarChart3,Trash2,Archive,Pencil,CalendarCheck} from 'lucide-react';
@@ -96,6 +97,7 @@ export default function CRM({usuario,db,ir,mutar,abrirCliente,pedidoAgente,onReg
   const resumoAtual=chatwoot?.base===m.dados&&chatwoot?.usuario===usuario?.id?chatwoot:null;
   const pedidoAplicado=useRef(false);
   useEffect(()=>{if(!pedidoAgente?.id||!m.dados||pedidoAplicado.current||!acesso.comercial)return;pedidoAplicado.current=true;const c=m.dados.cards.find(c=>c.id===pedidoAgente.id);if(!c){setAvisoLead('Card indisponível ou sem permissão. Nenhum dado foi alterado.');return;}if(pedidoAgente.modo==='editar')setEdicao(c);else{setSelecionado(c);setForm(pedidoAgente.modo?{tipo:pedidoAgente.modo,card:c}:null);}},[m.dados,pedidoAgente]);
+  const cacheCarteira=useRef(null);if(!cacheCarteira.current)cacheCarteira.current=criarCacheCarteira();
   const [carteira,setCarteira]=useState('reurb'),[cadastros,setCadastros]=useState({estado:'oculto',linhas:null,clientes:null}),[tentativaCadastros,setTentativaCadastros]=useState(0);
   const [sugestao,setSugestao]=useState(null),[avisoFicha,setAvisoFicha]=useState(''),[confirmacao,setConfirmacao]=useState(null);
   const [revisaoCadastros,setRevisaoCadastros]=useState(0);
@@ -109,7 +111,7 @@ export default function CRM({usuario,db,ir,mutar,abrirCliente,pedidoAgente,onReg
   },[usuario?.id,acesso.admin]);
   // Cadastros do Integração (somente leitura, só administração; Comercial só enxerga os próprios cartões). Duas leituras: o complemento (integracao_moradores)
   // e o cadastro do financeiro (fin_receb_clientes, sem CPF), porque um cliente pode existir só no financeiro. Falha nunca vira erro da tela.
-  useEffect(()=>{if(!acesso.admin||!m.dados)return undefined;let vivo=true;setCadastros(c=>({estado:'carregando',conta:usuario?.id,linhas:c.conta===usuario?.id?c.linhas:null,clientes:c.conta===usuario?.id?c.clientes:null}));Promise.all([lerTabela('integracao_moradores','registro_id,referencia_id,nome:dados->requerente->>nome,telefone:dados->requerente->>telefone,status_crm:dados->requerente->>statusCRM,situacao:dados->>situacao,municipioId:dados->>municipioId,codigo:dados->>codigo,arquivamento:dados->extras->arquivamento','&colecao=eq.processos'),lerTabela('fin_receb_clientes','id,nome,codigo,municipio_id,ativo')]).then(([linhas,clientes])=>{if(vivo)setCadastros({estado:'ok',conta:usuario?.id,linhas,clientes});}).catch(()=>{if(vivo)setCadastros(c=>({...c,estado:'erro'}));});return()=>{vivo=false;};},[acesso.admin,usuario?.id,!!m.dados,tentativaCadastros,revisaoCadastros]);
+  useEffect(()=>{if(!acesso.admin||!m.dados)return undefined;let vivo=true;setCadastros(c=>({estado:'carregando',conta:usuario?.id,linhas:c.conta===usuario?.id?c.linhas:null,clientes:c.conta===usuario?.id?c.clientes:null}));cacheCarteira.current().then(({linhas,clientes})=>{if(vivo)setCadastros({estado:'ok',conta:usuario?.id,linhas,clientes});}).catch(()=>{if(vivo)setCadastros(c=>({...c,estado:'erro'}));});return()=>{vivo=false;};},[acesso.admin,usuario?.id,!!m.dados,tentativaCadastros,revisaoCadastros]);
   const carteiraDados=useMemo(()=>montarCarteira({cards:m.dados?.cards||[],followups:m.dados?.followups||[],tarefas:m.dados?.tarefas||[],cadastros:acesso.admin&&cadastros.conta===usuario?.id?cadastros.linhas:null,clientes:acesso.admin&&cadastros.conta===usuario?.id?cadastros.clientes:null}),[m.dados,cadastros.linhas,cadastros.clientes,cadastros.conta,usuario?.id,acesso.admin]);
   if(!acesso.comercial)return <div className="contem"><h1>CRM</h1><p>Acesso restrito ao Comercial e à administração.</p></div>;
   const comerciais=db.usuarios.filter(u=>u.ativo&&u.tipoERP==='Comercial');

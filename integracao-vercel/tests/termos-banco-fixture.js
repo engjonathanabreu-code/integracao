@@ -6,8 +6,13 @@ export const idsTermos = { admin: uuidTermoTeste(1), projetos: uuidTermoTeste(2)
 export const sqlTermos = readFileSync(new URL('../supabase/operacoes/termos-municipais-20261106.sql', import.meta.url), 'utf8');
 const snapshot = JSON.parse(readFileSync(new URL('./fixtures/projetos-permissoes-producao-20261106.json', import.meta.url), 'utf8'));
 
-export async function criarBancoTermosTeste({ aplicar = true } = {}) {
+export async function criarBancoTermosTeste({ aplicar = true, registrarSql = null } = {}) {
   const db = new PGlite();
+  if(registrarSql){
+    const exec=db.exec.bind(db),query=db.query.bind(db);
+    db.exec=(sql,...rest)=>{registrarSql(sql);return exec(sql,...rest);};
+    db.query=(sql,params=[],...rest)=>{const literal=v=>v==null?'NULL':"'"+String(typeof v==='object'?JSON.stringify(v):v).replaceAll("'","''")+"'";registrarSql(sql.replace(/\$(\d+)/g,(_,n)=>literal(params[Number(n)-1]))+';');return query(sql,params,...rest);};
+  }
   await db.exec(`create role anon;create role authenticated;create schema auth;
   create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
   grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;

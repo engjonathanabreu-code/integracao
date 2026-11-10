@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';
+import {criarBancoTermosTeste,autenticarTermoTeste,idsTermos as i} from './termos-banco-fixture.js';
+const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const migrations=['20261110162126_leitura_consistente_resumo.sql','20261110162130_qualificacoes_consulta_materializada.sql','20261110162539_carteira_crm_delta.sql'];
+test('leituras sob RLS: versão, delta e qualificações equivalentes',async()=>{const sql=[];const db=await criarBancoTermosTeste({registrarSql:s=>sql.push(s)});try{
+ await db.exec(read('tests/fixtures/integracao_qualificacoes_nucleo-20261110.sql'));
+ await db.exec(read('tests/fixtures/integracao_moradores_carga-20261110.sql'));
+ await db.exec(`create table integracao_revisoes(modulo text primary key,versao bigint);insert into integracao_revisoes values('clientes',1),('usuarios',1);grant select on integracao_revisoes to authenticated;create function integracao_pendencias_insumos(jsonb) returns jsonb language sql immutable as $$select $1$$;`);
+ if(process.env.INTEGRACAO_EXPORT_SQL)writeFileSync(process.env.INTEGRACAO_EXPORT_SQL,sql.join(';\n'));
+ await autenticarTermoTeste(db,i.admin);
+ const before=(await db.query("select integracao_qualificacoes_nucleo('nucleo_a') r")).rows[0].r;
+ await db.exec('reset role');for(const m of migrations)await db.exec(read('supabase/migrations/'+m));
+ await autenticarTermoTeste(db,i.admin);
+ assert.deepEqual((await db.query("select integracao_qualificacoes_nucleo('nucleo_a') r")).rows[0].r,before);
+ const page=(await db.query('select integracao_moradores_pagina_v2() r')).rows[0].r;assert.equal(page.revisao.length,32);
+ await assert.rejects(db.query("select integracao_moradores_pagina_v2(500,'stale')"),/mudou/);
+ const first=(await db.query('select integracao_carteira_delta() r')).rows[0].r;assert.equal(Object.keys(first.alterados).length,4);
+ const second=(await db.query('select integracao_carteira_delta($1) r',[JSON.stringify(first.manifesto)])).rows[0].r;assert.deepEqual(second.alterados,{});
+ await autenticarTermoTeste(db,i.externo);await assert.rejects(db.query('select integracao_carteira_delta()'),/permissão/);
+ await autenticarTermoTeste(db,i.inativo);await assert.rejects(db.query('select integracao_moradores_pagina_v2()'),/ativo/);
+ }finally{await db.close();}});
