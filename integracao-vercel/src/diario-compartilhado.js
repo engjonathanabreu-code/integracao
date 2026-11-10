@@ -82,13 +82,27 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   return items;
  }
  async function previa(id){
-  await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item||terminal(item))throw Error('Esta pendência já foi concluída.');
+  await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item)throw Object.assign(Error('Item não está disponível nesta conta. Atualize a lista de pendências.'),{code:'REVISAO_NECESSARIA'});if(terminal(item)){if(revisao?.id===id)revisao=null;return null;}
   const {remoto,edicoes}=await lerItem(item);const r=aplicarIntencao(remoto.db,edicoes);
   revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos};return {...revisao,dados:r.dados};
  }
  async function resolver(id,escolhas){
   if(!revisao||revisao.id!==id)throw Error('Abra a prévia da pendência antes de confirmar.');
-  const mostrada=revisao,{remoto}=await lerItem(mostrada.item);
+  const mostrada=revisao;
+  // Background processing may have finished while this preview remained open.
+  // A blocked decision still requires its original checks, never an implicit
+  // acceptance of another tab's resolution.
+  const retentativa=!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado);
+  const encerrarConcluida=async()=>{
+   await atualizar();const atual=items.find(i=>i.id===id);
+   if(atual&&terminal(atual)){if(revisao===mostrada)revisao=null;return true;}
+   return false;
+  };
+  if(retentativa&&await encerrarConcluida())return;
+  const {remoto}=await lerItem(mostrada.item);
+  // The same send can complete while the remote read is in flight. Its own
+  // confirmed value must not look like a new conflict in this stale preview.
+  if(retentativa&&await encerrarConcluida())return;
   if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes),recortarIntencao(mostrada.remoto,mostrada.edicoes)))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
   const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
   if(mostrada.item.recibo&&mostrada.conflitos.length){
@@ -97,7 +111,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   }
   if(!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado)){
    // Unknown writes and receipts are never replaced with a new request.
-   await fila.retomar(conta,id);await atualizar();return;
+   await fila.retomar(conta,id);if(revisao===mostrada)revisao=null;await atualizar();return;
   }
   let edicoes=extrairIntencao(remoto.db,r.dados);
   // Explicitly accepting the server still leaves an auditable no-op replacement.
