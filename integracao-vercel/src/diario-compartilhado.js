@@ -82,7 +82,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   return items;
  }
  async function previa(id){
-  await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item||terminal(item))throw Error('Esta pendência já foi concluída.');
+  await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item)throw Object.assign(Error('Item não está disponível nesta conta. Atualize a lista de pendências.'),{code:'REVISAO_NECESSARIA'});if(terminal(item)){if(revisao?.id===id)revisao=null;return null;}
   const {remoto,edicoes}=await lerItem(item);const r=aplicarIntencao(remoto.db,edicoes);
   revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos};return {...revisao,dados:r.dados};
  }

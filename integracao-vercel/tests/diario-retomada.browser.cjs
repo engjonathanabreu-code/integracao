@@ -84,6 +84,33 @@ const assert=require('node:assert/strict');
    },preparar:async()=>({operacoes:[]}),enviar:async()=>{writes++;},consultarRecibo:async()=>null,confirmar:async()=>{},atualizou:()=>{}});
    try{await d.previa('item');await d.resolver('item',{});return {reads,writes,states:d.itens().map(i=>i.estado)};}finally{d.fechar();}
   });assert.deepEqual(duringRead,{reads:2,writes:0,states:['confirmado']});
-  console.log(JSON.stringify({ok:true,cenarios:9,duasAbas:true,indexedDBReal:true,semDadosReais:true}));
+  // Real hook: an obsolete completed row cannot recreate the global error banner.
+  const ui=await context.newPage();
+  await ui.goto('http://127.0.0.1:5178/tests/sincronizacao-ciclo.html?diario&cenario=fantasma');
+  await ui.waitForFunction(()=>window.syncHarness?.ready&&!syncHarness.sync.pendencias.length&&syncHarness.stats.writes===1);
+  const completedId=await ui.evaluate(async()=>{const {abrirFilaIntencoes}=await import('/src/fila-intencoes.js');const q=abrirFilaIntencoes();try{return (await q.listar('00000000-0000-4000-8000-000000000001')).find(i=>i.estado==='confirmado').id;}finally{q.fechar();}});
+  await ui.evaluate(id=>syncHarness.sync.abrirPendencia(id),completedId);
+  await ui.waitForFunction(()=>!syncHarness.sync.error&&!syncHarness.sync.previaPendencia);
+  assert.equal(await ui.evaluate(()=>syncHarness.stats.writes),1);
+  await ui.evaluate(()=>syncHarness.sync.abrirPendencia('item-ausente'));
+  await ui.waitForFunction(()=>syncHarness.sync.error.includes('não está disponível'));
+
+  // A genuine unpersisted edit still keeps the warning, even when another row is done.
+  await ui.evaluate(()=>{window.originalAdd=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){if(this.name==='intencoes')throw new DOMException('fixture','QuotaExceededError');return window.originalAdd.apply(this,args);};syncHarness.sync.mutate(d=>{d.metas[0].titulo='Alteração ainda não guardada';return d;});});
+  await ui.waitForFunction(()=>syncHarness.sync.pendencias.some(i=>i.estado==='persistencia_falhou'));
+  await ui.evaluate(id=>syncHarness.sync.abrirPendencia(id),completedId);
+  await ui.waitForFunction(()=>!!syncHarness.sync.error&&syncHarness.sync.pendencias.some(i=>i.estado==='persistencia_falhou'));
+  assert.equal(await ui.evaluate(()=>syncHarness.db.metas[0].titulo),'Alteração ainda não guardada');
+  assert.equal(await ui.evaluate(()=>syncHarness.stats.writes),1);
+  await ui.evaluate(()=>{IDBObjectStore.prototype.add=window.originalAdd;});await ui.close();
+
+  const deniedContext=await browser.newContext();
+  await deniedContext.route('**/*',r=>['127.0.0.1','localhost'].includes(new URL(r.request().url()).hostname)?r.continue():r.abort());
+  const denied=await deniedContext.newPage();await denied.goto('http://127.0.0.1:5178/tests/sincronizacao-ciclo.html?diario&cenario=permissao');
+  await denied.waitForFunction(()=>window.syncHarness?.ready&&syncHarness.sync.pendencias.some(i=>i.estado==='bloqueado_validacao'));
+  await denied.evaluate(()=>syncHarness.sync.flush());
+  assert.ok(await denied.evaluate(()=>!!syncHarness.sync.error&&syncHarness.sync.pendencias.some(i=>i.estado==='bloqueado_validacao')));
+  assert.equal(await denied.evaluate(()=>syncHarness.stats.writes),0);await deniedContext.close();
+  console.log(JSON.stringify({ok:true,cenarios:13,duasAbas:true,indexedDBReal:true,hookReal:true,semDadosReais:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -33,3 +33,10 @@ test('conclusão durante a releitura de delta real não aparece como nova diverg
  const edicoes=[{colecao:'metas',id:'meta',antes:{existe:true,valor:{id:'meta',titulo:'antes'}},depois:{existe:true,valor:{id:'meta',titulo:'local'}}}];
  const a=ambiente({edicoes});try{a.setRemoto({metas:[{id:'meta',titulo:'antes'}]});await a.diario.previa('item');a.setAoLer(()=>{a.setEstado('confirmado');a.setRemoto({metas:[{id:'meta',titulo:'local'}]});});await a.diario.resolver('item',{});assert.deepEqual(a.calls,{leituras:2,retomadas:0,decisoes:0,envios:0});assert.equal(a.diario.itens()[0].estado,'confirmado');}finally{a.diario.fechar();}
 });
+
+for(const estado of ['confirmado','substituido','dispensado'])test(`abrir item ${estado} retorna prévia vazia sem criar erro de sincronização`,async()=>{
+ const a=ambiente({estado});try{assert.equal(await a.diario.previa('item'),null);assert.deepEqual(a.calls,{leituras:0,retomadas:0,decisoes:0,envios:0});assert.equal(a.diario.itens()[0].estado,estado);}finally{a.diario.fechar();}
+});
+test('abrir item ausente não é tratado como confirmação de sucesso',async()=>{
+ const a=ambiente();try{a.remover();await assert.rejects(a.diario.previa('item'),{code:'REVISAO_NECESSARIA'});assert.equal(a.calls.leituras,0);}finally{a.diario.fechar();}
+});
