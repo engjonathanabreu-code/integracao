@@ -138,3 +138,32 @@ test('confirma andamentos pela projeção real e recusa perda de texto ou comple
  b.processos_kanban_andamentos[0].descricao_cliente='Aviso exato';b.integracao_complementos=b.integracao_complementos.filter(x=>x.colecao!=='andamentos');
  assert.equal(alteracoesConfirmadas(s.db,depois,projetar(b,blank()).db),false);
 });
+
+for(const colecao of ['municipios','remessas','nucleos'])test(`novo ${colecao}: origem ERP de projeção não prende recibo, mas campos e origem explícita continuam conferidos`,()=>{
+ const antes={[colecao]:[]},depois={[colecao]:[{id:'novo',nome:'Cadastro',origem:[],prf:{telefone:'123'}}]},remoto=structuredClone(depois);
+ remoto[colecao][0]={...remoto[colecao][0],origem:['ERP'],_compartilhado:true};assert.equal(alteracoesConfirmadas(antes,depois,remoto),true);
+ for(const alterar of [r=>r.nome='Outro',r=>r.prf.telefone='999',r=>r.origem=['importado'],r=>delete r._compartilhado,r=>r.id='diferente']){const r=structuredClone(remoto);alterar(r[colecao][0]);assert.equal(alteracoesConfirmadas(antes,depois,r),false);}
+ const origemExplicita=structuredClone(depois);origemExplicita[colecao][0].origem=['planilha'];assert.equal(alteracoesConfirmadas(antes,origemExplicita,remoto),false);
+ const jaExistia=structuredClone(depois);jaExistia[colecao][0].nome='Antes';assert.equal(alteracoesConfirmadas(jaExistia,depois,remoto),true);
+});
+
+test('município, remessa e núcleo novos confirmam pela preparação e projeção reais',async()=>{
+ const {fixture,blank,id}=await import('./fixture.js'),{projetar,prepararEdicao}=await import('../src/dados-compartilhados.js');
+ for(const colecao of ['municipios','remessas','nucleos']){
+  const b=fixture(),s=projetar(b,blank()),depois=structuredClone(s.db),autor=s.db.usuarios[0];
+  const novos={municipios:{id:id(950),nome:'Novo Município',uf:'SC',prefixo:'NMO',prf:{telefone:'123'},origem:[],criado:'2026-11-10T12:00:00.000Z'},remessas:{id:id(950),municipioId:id(2),numero:2,titulo:'Segunda remessa',criada:'2026-11-10',origem:[]},nucleos:{id:id(950),municipioId:id(2),remessaId:id(3),nome:'NUI99',codigo:'NUI99',situacao:'Ativo',etapa:0,campos:{},checks:{},analiseMatricula:'Pendente',ambiental:'Pendente',risco:'Em análise',origem:[],externo:{}}};
+  depois[colecao].push(novos[colecao]);const ops=prepararEdicao(s.db,depois,s,autor);
+  for(const op of ops){assert.equal(op.insert,true);(b[op.table]||=[]).push({created_at:'2026-11-10T12:00:01.456+00:00',...op.key,...op.changes});}
+  const remoto=projetar(b,blank()).db;assert.equal(alteracoesConfirmadas(s.db,depois,remoto),true,colecao);
+  remoto[colecao].find(r=>r.id===id(950))[colecao==='remessas'?'titulo':'nome']='Divergente';assert.equal(alteracoesConfirmadas(s.db,depois,remoto),false,colecao);
+ }
+});
+
+test('meta nova confirma histórico e arquivo pelo endereço exato da operação, sem relaxar conteúdo ou autoria',()=>{
+ const antes={metas:[]},depois={metas:[{id:'m',erpId:null,titulo:'Meta',historico:[{id:'h',acao:'Criada',autor:'Ana',data:'2026-11-10T12:00:00Z'}],arquivos:[{id:'a',nome:'planta.pdf',tipo:'application/pdf',tamanho:100,chave:'integracao-devolutiva-v1-local',por:'Ana',data:'2026-11-10T12:00:00Z'}]}]};
+ const path='owner/metas/m/a-hash',ops=[{table:'meta_arquivos',key:{id:'a'},insert:true,changes:{meta_id:'m',nome:'planta.pdf',mime_type:'application/pdf',tamanho_bytes:100,caminho_storage:path,enviado_por:'owner'}}];
+ const remoto=structuredClone(depois),m=remoto.metas[0];m.erpId='m';m.historico[0].data='2026-11-10T12:00:01Z';m.arquivos[0].data='2026-11-10T12:00:02Z';m.arquivos[0].chave='erp-storage|documentos|'+path;
+ assert.equal(alteracoesConfirmadas(antes,depois,remoto,{},ops),true);assert.equal(alteracoesConfirmadas(antes,depois,remoto),false);
+ for(const alterar of [m=>m.historico=[],m=>m.historico[0].acao='Outra',m=>m.historico[0].autor='Outra',m=>m.historico[0].data='inválida',m=>m.arquivos=[],m=>m.arquivos[0].chave+='outro-hash',m=>m.arquivos[0].nome='outro.pdf',m=>m.arquivos[0].por='Outro',m=>m.arquivos[0].data='',m=>m.arquivos[0].tamanho=99]){const r=structuredClone(remoto);alterar(r.metas[0]);assert.equal(alteracoesConfirmadas(antes,depois,r,{},ops),false);}
+ const errada=structuredClone(ops);errada[0].changes.meta_id='outro';assert.equal(alteracoesConfirmadas(antes,depois,remoto,{},errada),false);
+});

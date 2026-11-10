@@ -1,0 +1,351 @@
+{
+  "data": "2026-11-10",
+  "baseline_publicado": "eb779188f8fedd7a08c8e350192fb057818a3dfa",
+  "baseline_browser": {
+    "total": 57,
+    "passaram": 41,
+    "falharam": [
+      "ajustes-interface.browser.cjs",
+      "atualizacao-pendente.browser.cjs",
+      "busca-clientes.browser.cjs",
+      "concorrencia-global.browser.cjs",
+      "contatos-interface.browser.cjs",
+      "crm-chatwoot-timeout.browser.cjs",
+      "crm-hoje-funil.browser.cjs",
+      "devolutivas-anexos.browser.cjs",
+      "funil-notificacoes.browser.cjs",
+      "oficio-modelo.browser.cjs",
+      "oficios-equipe.browser.cjs",
+      "oficios.browser.cjs",
+      "panorama-acoes.browser.cjs",
+      "pendencias-sob-demanda.browser.cjs",
+      "recusas-metas.browser.cjs",
+      "sincronizacao-rascunho.browser.cjs"
+    ]
+  },
+  "browser_final": {
+    "jornadas_distintas": 58,
+    "passaram": 58,
+    "resultado_completo": [
+      {
+        "test": "ajustes-page.browser.cjs",
+        "status": 0,
+        "ms": 5720
+      },
+      {
+        "test": "andamentos-navegacao.browser.cjs",
+        "status": 1,
+        "ms": 1110
+      },
+      {
+        "test": "ajustes-interface.browser.cjs",
+        "status": 0,
+        "ms": 8574
+      },
+      {
+        "test": "atualizacao-pendente.browser.cjs",
+        "status": 0,
+        "ms": 2169
+      },
+      {
+        "test": "calendario-vencimento.browser.cjs",
+        "status": 0,
+        "ms": 1571
+      },
+      {
+        "test": "busca-clientes.browser.cjs",
+        "status": 0,
+        "ms": 3616
+      },
+      {
+        "test": "carteira-incremental.browser.cjs",
+        "status": 0,
+        "ms": 3156
+      },
+      {
+        "test": "clientes-incompletos.browser.cjs",
+        "status": 0,
+        "ms": 10266
+      },
+      {
+        "test": "chat-popup-flexivel.browser.cjs",
+        "status": 0,
+        "ms": 17096
+      },
+      {
+        "test": "concorrencia-global.browser.cjs",
+        "status": 0,
+        "ms": 4131
+      },
+      {
+        "test": "clientes-nucleo-render.browser.cjs",
+        "status": 0,
+        "ms": 11164
+      },
+      {
+        "test": "conjuge-andamentos.browser.cjs",
+        "status": 0,
+        "ms": 4912
+      },
+      {
+        "test": "contatos-interface.browser.cjs",
+        "status": 0,
+        "ms": 1173
+      },
+      {
+        "test": "concorrencia-institucional.browser.cjs",
+        "status": 0,
+        "ms": 7923
+      },
+      {
+        "test": "crm-arquivo.browser.cjs",
+        "status": 0,
+        "ms": 3996
+      },
+      {
+        "test": "contrato-venda.browser.cjs",
+        "status": 0,
+        "ms": 5029
+      },
+      {
+        "test": "crm-ativacoes.browser.cjs",
+        "status": 0,
+        "ms": 1563
+      },
+      {
+        "test": "crm-editar-card.browser.cjs",
+        "status": 0,
+        "ms": 1679
+      },
+      {
+        "test": "crm-chatwoot-timeout.browser.cjs",
+        "status": 0,
+        "ms": 2534
+      },
+      {
+        "test": "crm-followup.browser.cjs",
+        "status": 0,
+        "ms": 5142
+      },
+      {
+        "test": "crm-institucionais.browser.cjs",
+        "status": 0,
+        "ms": 3320
+      },
+      {
+        "test": "crm-hoje-funil.browser.cjs",
+        "status": 0,
+        "ms": 22781
+      },
+      {
+        "test": "crm-modal.browser.cjs",
+        "status": 0,
+        "ms": 13079
+      },
+      {
+        "test": "crm-multiplos-comerciais.browser.cjs",
+        "status": 0,
+        "ms": 3933
+      },
+      {
+        "test": "crm-leads.browser.cjs",
+        "status": 1,
+        "ms": 32158
+      },
+      {
+        "test": "crm-negociacao.browser.cjs",
+        "status": 0,
+        "ms": 3313
+      },
+      {
+        "test": "crm-telefone-compartilhado.browser.cjs",
+        "status": 0,
+        "ms": 3274
+      },
+      {
+        "test": "devolutivas-anexos.browser.cjs",
+        "status": 0,
+        "ms": 2309
+      },
+      {
+        "test": "diario-resiliencia.browser.cjs",
+        "status": 0,
+        "ms": 370
+      },
+      {
+        "test": "diario-integrado.browser.cjs",
+        "status": 0,
+        "ms": 15959
+      },
+      {
+        "test": "fila-intencoes.browser.cjs",
+        "status": 0,
+        "ms": 309
+      },
+      {
+        "test": "financeiro-compartilhado.browser.cjs",
+        "status": 0,
+        "ms": 7382
+      },
+      {
+        "test": "documentos-comerciais.browser.cjs",
+        "status": 0,
+        "ms": 23570
+      },
+      {
+        "test": "folha-ponto.browser.cjs",
+        "status": 0,
+        "ms": 2829
+      },
+      {
+        "test": "financeiro.browser.cjs",
+        "status": 0,
+        "ms": 7996
+      },
+      {
+        "test": "geojson-fluxo.browser.cjs",
+        "status": 0,
+        "ms": 733
+      },
+      {
+        "test": "funil-notificacoes.browser.cjs",
+        "status": 0,
+        "ms": 7044
+      },
+      {
+        "test": "modulo-sessao.browser.cjs",
+        "status": 0,
+        "ms": 805
+      },
+      {
+        "test": "mailing.browser.cjs",
+        "status": 0,
+        "ms": 4156
+      },
+      {
+        "test": "morador-legado.browser.cjs",
+        "status": 0,
+        "ms": 639
+      },
+      {
+        "test": "oficios-config.browser.cjs",
+        "status": 0,
+        "ms": 1292
+      },
+      {
+        "test": "oficio-modelo.browser.cjs",
+        "status": 0,
+        "ms": 4576
+      },
+      {
+        "test": "oficios-equipe.browser.cjs",
+        "status": 0,
+        "ms": 4474
+      },
+      {
+        "test": "oficios.browser.cjs",
+        "status": 0,
+        "ms": 2275
+      },
+      {
+        "test": "pendencias-sob-demanda.browser.cjs",
+        "status": 0,
+        "ms": 1316
+      },
+      {
+        "test": "panorama-acoes.browser.cjs",
+        "status": 0,
+        "ms": 5394
+      },
+      {
+        "test": "planejamento-densidade.browser.cjs",
+        "status": 0,
+        "ms": 9199
+      },
+      {
+        "test": "planejamento-notificacoes.browser.cjs",
+        "status": 0,
+        "ms": 7135
+      },
+      {
+        "test": "ponto-offline-sessao.browser.cjs",
+        "status": 0,
+        "ms": 894
+      },
+      {
+        "test": "ponto-offline.browser.cjs",
+        "status": 0,
+        "ms": 1670
+      },
+      {
+        "test": "planos-planejamento.browser.cjs",
+        "status": 0,
+        "ms": 4831
+      },
+      {
+        "test": "ponto-solicitacoes.browser.cjs",
+        "status": 0,
+        "ms": 1491
+      },
+      {
+        "test": "processos-protocolados.browser.cjs",
+        "status": 0,
+        "ms": 6016
+      },
+      {
+        "test": "rotina-mensal.browser.cjs",
+        "status": 0,
+        "ms": 1600
+      },
+      {
+        "test": "recusas-metas.browser.cjs",
+        "status": 0,
+        "ms": 16497
+      },
+      {
+        "test": "sincronizacao-rascunho.browser.cjs",
+        "status": 0,
+        "ms": 2088
+      },
+      {
+        "test": "sincronizacao-ciclo.browser.cjs",
+        "status": 0,
+        "ms": 15359
+      },
+      {
+        "test": "tempo-real.browser.cjs",
+        "status": 0,
+        "ms": 8433
+      }
+    ],
+    "retestes": [
+      {
+        "test": "andamentos-navegacao.browser.cjs",
+        "code": 0
+      },
+      {
+        "test": "crm-leads.browser.cjs",
+        "code": 0
+      },
+      {
+        "test": "diario-resiliencia.browser.cjs",
+        "code": 0
+      }
+    ],
+    "observacao": "Duas jornadas da execução conjunta foram repetidas: CRM teve elemento desanexado durante atualização local; Andamentos apresentou intermitência ao digitar imediatamente após o retorno do histórico. O teste agora aguarda a restauração do foco antes de preencher a busca e aguarda o resultado do filtro. Resiliência final repetida com 10 cenários."
+  },
+  "unit_build": {
+    "comando": "npm run build",
+    "tests": 1180,
+    "pass": 1180,
+    "fail": 0,
+    "vite": "sucesso",
+    "vite_segundos": 6.36,
+    "lint_typecheck": "não declarados"
+  },
+  "publicacao": "ainda não enviada",
+  "sem_migration": true,
+  "dados_reais_alterados_pelos_testes": false,
+  "rede_externa_browser_bloqueada": true,
+  "ambiente": "Node 22.16.0; Chromium Playwright 1.57.0; Vite local; dados fictícios; IndexedDB real"
+}

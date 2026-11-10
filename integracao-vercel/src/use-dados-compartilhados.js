@@ -99,8 +99,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
         return {operacoes:[...ops,...files,...assets.operations],sent:assets.sent};
       },enviar:gravarOperacoes,consultarRecibo:consultarReciboOperacao,
       confirmar:async(item,state)=>{
-        conferirGeracao(gen);if(item.preparado&&!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,item.recibo?.aliases||{}))throw Object.assign(Error('O recibo existe, mas a leitura ainda diverge. Nenhuma gravação será repetida.'),{code:'LEITURA_DIVERGENTE',status:409});await confirmarArquivos(item.preparado?.sent,state.base);conferirGeracao(gen);
-        server.current=state;confirmacoes.current.confirmar(item.preparado?.depois||state.db,state.db,item.recibo);
+        conferirGeracao(gen);if(item.preparado&&!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,item.recibo?.aliases||{},item.payload||[]))throw Object.assign(Error('O recibo existe, mas a leitura ainda diverge. Nenhuma gravação será repetida.'),{code:'LEITURA_DIVERGENTE',status:409});await confirmarArquivos(item.preparado?.sent,state.base);conferirGeracao(gen);
+        server.current=state;confirmacoes.current.confirmar(item.preparado?.depois||state.db,state.db,{...item.recibo,operacoes:item.payload||[]});
       }
     });
     return diario.current;

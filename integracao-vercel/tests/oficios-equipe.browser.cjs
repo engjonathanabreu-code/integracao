@@ -2,7 +2,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
 const url=process.env.TEST_URL||'http://127.0.0.1:5187';
 (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});try{
  for(const mobile of [false,true]){
- const p=await b.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:1100}});p.setDefaultTimeout(15000);const errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('PAGEERROR',e.message)});
+ const p=await b.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:1100}});p.setDefaultTimeout(15000);p.on('dialog',d=>d.accept());const errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('PAGEERROR',e.message)});
  await p.goto(url+'/tests/browser.html?oficios&financeiroTeste=Projetos');await p.getByLabel('E-mail',{exact:true}).waitFor();
  await p.evaluate(()=>{const base=window.baseFixture;base.integracao_configuracoes.push({colecao:'config',registro_id:'modelosDoc',referencia_tabela:'integracao_config',dados:{valor:{oficio:{introducao:'Introdução aprovada para teste.',encerramento:'Atenciosamente,'}}}});const original=window.fetch;window.fetch=(input,options)=>String(input)==='/api/oficios-gerar'?Promise.resolve(Response.json({conteudo:'Solicitamos os documentos do processo informado, para continuidade da análise técnica.'})):original(input,options);});
  await p.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await p.getByLabel('Senha',{exact:true}).fill('fixture');await p.getByRole('button',{name:'Entrar',exact:true}).click();
@@ -12,9 +12,9 @@ const url=process.env.TEST_URL||'http://127.0.0.1:5187';
  await p.getByText('Escrever com auxílio da IA',{exact:true}).click();await p.getByLabel('Orientação para a IA',{exact:true}).fill('Solicitar documentos para continuidade da análise.');await p.getByRole('button',{name:'Gerar sugestão de conteúdo',exact:true}).click();await p.getByLabel('Sugestão da IA para revisão',{exact:true}).waitFor();assert.equal(await p.getByLabel('Conteúdo do ofício',{exact:true}).inputValue(),'Conteúdo manual preservado.');await p.getByRole('button',{name:'Usar sugestão no conteúdo',exact:true}).click();
  assert.equal(await p.getByLabel('Introdução do ofício',{exact:true}).inputValue(),'Introdução aprovada para teste.');
  for(const format of ['PDF','Word']){const wait=p.waitForEvent('download');await p.getByRole('button',{name:`Baixar ofício em ${format}`,exact:true}).click();const dl=await wait;await dl.saveAs(`/tmp/oficio-equipe-${mobile?'mobile':'desktop'}.${format==='PDF'?'pdf':'docx'}`);}
- assert.equal(await p.evaluate(()=>window.oficiosTeste.length),0);await p.screenshot({path:`/tmp/oficio-equipe-${mobile?'mobile':'desktop'}.png`,fullPage:true});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);await p.close();console.log('PASS geração Projeto',mobile?'mobile':'desktop','modelo, revisão IA, PDF e Word sem consumir sequência');
+ assert.equal(await p.evaluate(()=>window.oficiosTeste.length),0);await p.screenshot({path:`/tmp/oficio-equipe-${mobile?'mobile':'desktop'}.png`,fullPage:true});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);await p.close();console.log('PASS geração Projeto',mobile?'mobile':'desktop','modelo, revisão IA, PDF e Word com reserva idempotente');
  }
- const p=await b.newPage({viewport:{width:1440,height:1100}});p.setDefaultTimeout(15000);
+ const p=await b.newPage({viewport:{width:1440,height:1100}});p.setDefaultTimeout(15000);p.on('dialog',d=>d.accept());
  await p.goto(url+'/tests/browser.html?oficios&financeiroTeste=Projetos');await p.getByLabel('E-mail',{exact:true}).waitFor();
  await p.evaluate(async()=>{
  const base=window.baseFixture,m=base.metas[0];m.associacao_tipo='processo';m.associacao_id=base.processos_kanban[0].id;m.titulo='Devolutiva da técnica';m.semana_inicio=new Date().toISOString().slice(0,10);m.prazo='2026-12-31';

@@ -8,6 +8,7 @@ const cacheKey=(owner,key)=>`integracao-cache-arquivo-${owner}-${key}`;
 const recordId=(owner,key)=>privateKey(key)?`${owner}|${key}`:key;
 const conferirContexto=c=>{if(context!==c)throw Object.assign(new Error('Sessão de arquivos alterada.'),{code:'SESSAO_ALTERADA'});};
 const notify=()=>globalThis.window?.dispatchEvent(new Event('integracao:arquivo-pendente'));
+const serializar=(c,fn)=>{const job=(c.corrente||Promise.resolve()).catch(()=>{}).then(fn);c.corrente=job;return job;};
 export async function abrirArquivos(actor,base,storage) {
   const owner=actor.erpRef,gen=++geracao;
   if(context?.owner===owner){context.rows=base.integracao_arquivos||[];return;}
@@ -19,12 +20,14 @@ export function fecharArquivos(){geracao++;context=null;}
 export const arquivosPendentes=()=>!!context&&Object.keys(context.queue).length>0;
 export async function agendarArquivo(key,value) {
   const c=context;if(!c||!recognized.test(key))return;
+  return serializar(c,async()=>{
   const id=recordId(c.owner,key),row=c.rows.find(r=>r.registro_id===id);
   const prior=c.queue[id];
   if(prior && prior.value===value)return;
   c.queue[id]={key,value,version:crypto.randomUUID(),expected:prior?prior.expected:copy(row?.dados||null)};
   await c.storage.set(cacheKey(c.owner,key),JSON.stringify({value}));
   await c.storage.set(queueKey(c.owner),JSON.stringify(c.queue));if(context===c)notify();
+  });
 }
 export async function obterArquivo(key) {
   const c=context;if(!c||!recognized.test(key))return undefined;
@@ -77,14 +80,28 @@ export async function prepararArmazenamento(state,after,selecionados=null) {
   return {operations,sent};
 }
 export async function confirmarArquivos(sent,base) {
-  const c=context;if(!c)return;
-  c.rows=base.integracao_arquivos||[];
+  const c=context;if(!c){if(Object.keys(sent||{}).length)throw Object.assign(Error('Sessão de arquivos alterada.'),{code:'SESSAO_ALTERADA'});return;}
+  return serializar(c,async()=>{
+  conferirContexto(c);const rows=base.integracao_arquivos||[];
+  // A receipt is not proof that this read contains the uploaded bytes. Validate
+  // every selected file before consuming any queue entry or updating its base.
+  for(const [id,item] of Object.entries(sent||{})){
+    const row=rows.find(r=>r.registro_id===id);let confere=!row;
+    if(item.value!==null){
+      const bytes=new TextEncoder().encode(item.value),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+      conferirContexto(c);confere=row?.dados?.hash===hash&&row.dados.path===`${c.owner}/${hash}`&&row.dados.chave===item.key&&Number(row.dados.bytes)===bytes.length;
+    }
+    if(!confere)throw Object.assign(Error('A leitura não confirmou o arquivo enviado. A cópia local foi preservada.'),{code:'LEITURA_DIVERGENTE',status:409});
+  }
+  const next=copy(c.queue);c.rows=rows;
   for(const [id,item] of Object.entries(sent||{})) {
     const row=c.rows.find(r=>r.registro_id===id);
-    if(c.queue[id]?.version===item.version) {
-      delete c.queue[id];
+    if(next[id]?.version===item.version) {
+      delete next[id];
       await c.storage.set(cacheKey(c.owner,item.key),JSON.stringify({path:row?.dados.path,value:item.value}));
-    } else if(c.queue[id]) c.queue[id].expected=copy(row?.dados||null);
+    } else if(next[id]) next[id].expected=copy(row?.dados||null);
+    conferirContexto(c);
   }
-  await c.storage.set(queueKey(c.owner),JSON.stringify(c.queue));
+  await c.storage.set(queueKey(c.owner),JSON.stringify(next));conferirContexto(c);c.queue=next;
+  });
 }

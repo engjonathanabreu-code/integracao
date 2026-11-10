@@ -24,7 +24,7 @@ const assert=require('node:assert/strict');
    await page.getByRole('button',{name:'Entrar',exact:true}).click();
    await page.getByRole('navigation').waitFor({state:'attached'});
    if(await page.getByRole('button',{name:'Abrir menu',exact:true}).isVisible())await page.getByRole('button',{name:'Abrir menu',exact:true}).click();
-   await page.getByRole('navigation').getByRole('button',{name:/Agente/}).click();
+   await page.getByRole('navigation').getByRole('button',{name:'Gestão Técnica',exact:true}).click();
    await page.locator('.agente-acao').nth(9).waitFor({state:'attached'});
    assert.equal(await page.locator('.agente-acao').count(),10);
    assert.equal(await page.locator('.agente-acao img').count(),0);

@@ -7,3 +7,5 @@ dist/
 !.env.example
 integracao-vercel/tests/generated-operations.json
 integracao-vercel/supabase/.temp/
+
+integracao-vercel/test-results/

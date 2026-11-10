@@ -53,7 +53,7 @@ function contem(atual, esperado) {
   return igual(atual, esperado);
 }
 
-function conferir(mudancas, remoto, aliases = {}) {
+function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   return mudancas.every(mudanca => {
     // Presence is device-local; it is deliberately not written by prepararEdicao.
     if(mudanca.caminho[0]==='usuarios'&&mudanca.caminho.length===3&&['online','ultimaAtividade'].includes(mudanca.caminho[2]))return true;
@@ -77,6 +77,26 @@ function conferir(mudancas, remoto, aliases = {}) {
       // The ERP column stores only the calendar date; author remains in its complement.
       if(colecao==='nucleos'&&filhos==='andamentos')esperado={...esperado,data:String(esperado.data||'').slice(0,10)};
     }
+    // New municipality/remittance/nucleus records acquire this read-only ERP
+    // marker after insertion. Only accept the exact known transition; keep all
+    // submitted business fields and any nonempty provenance subject to checks.
+    if(mudanca.parcial&&mudanca.caminho.length===2&&['municipios','remessas','nucleos'].includes(colecao)&&Array.isArray(esperado?.origem)&&esperado.origem.length===0&&atual.valor?._compartilhado===true&&igual(atual.valor.origem,['ERP']))esperado={...esperado,origem:['ERP']};
+    if(mudanca.parcial&&mudanca.caminho.length===4&&colecao==='metas'&&filhos==='arquivos'&&typeof esperado?.chave==='string'&&!esperado.chave.startsWith('erp-storage|')){
+      const metaId=aliases[mudanca.caminho[1].id]||mudanca.caminho[1].id;
+      const op=operacoes.find(o=>o.table==='meta_arquivos'&&o.insert&&o.key?.id===esperado.id&&o.changes?.meta_id===metaId),d=op?.changes;
+      if(!d||d.nome!==esperado.nome||d.mime_type!==esperado.tipo||Number(d.tamanho_bytes)!==Number(esperado.tamanho)||!atual.valor?.data||!Number.isFinite(Date.parse(atual.valor.data)))return false;
+      esperado={...esperado,chave:`erp-storage|documentos|${d.caminho_storage}`,data:atual.valor.data};
+    }
+    // The same child insert rules apply when the parent itself was just created.
+    // Match child identities, never positions; preserve all business comparisons.
+    if(mudanca.parcial&&mudanca.caminho.length===2&&objeto(esperado)){
+      const filhosNovos=colecao==='metas'?['historico','comentarios','arquivos']:colecao==='nucleos'?['historicoEtapas','andamentos']:[];
+      esperado={...esperado};
+      for(const filho of filhosNovos)if(listaPorId(esperado[filho])){
+        if(!conferir(diferencas([],esperado[filho],[...mudanca.caminho,filho]),remoto,aliases,operacoes))return false;
+        delete esperado[filho];
+      }
+    }
     // New canonical goals receive their ERP binding on projection. Accept only
     // that exact binding; business nulls and any different identity still differ.
     if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&esperado?.erpId==null&&atual.valor?.erpId===atual.valor?.id&&atual.valor?.id===esperado?.id){
@@ -87,8 +107,8 @@ function conferir(mudancas, remoto, aliases = {}) {
   });
 }
 
-export function alteracoesConfirmadas(antes, depois, remoto, aliases = {}) {
-  return conferir(diferencas(antes, depois), remoto, aliases);
+export function alteracoesConfirmadas(antes, depois, remoto, aliases = {}, operacoes = []) {
+  return conferir(diferencas(antes, depois), remoto, aliases, operacoes);
 }
 
 export function erroConfirmacao(mensagem, codigo = 'CONFIRMACAO_PENDENTE', causa) {
@@ -141,7 +161,7 @@ export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeo
       const ids = new Set((enviado?.auditoria || []).map(x => x.id));
       for (const [id, item] of registros) {
         if (!ids.has(id) || item.resultado) continue;
-        if (!conferir(item.mudancas, remoto, recibo.aliases || {})) {
+        if (!conferir(item.mudancas, remoto, recibo.aliases || {}, recibo.operacoes || [])) {
           concluir(id, erroConfirmacao('A leitura do servidor não confirmou todos os campos desta alteração. O rascunho foi preservado; confira a sincronização antes de continuar.', 'LEITURA_DIVERGENTE'));
         } else concluir(id, null, { confirmado: true, id, recibo });
       }

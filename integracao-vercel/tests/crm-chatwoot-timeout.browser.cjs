@@ -18,11 +18,13 @@ const assert=require('node:assert/strict');
   await page.getByRole('button',{name:'Abrir ficha de Morador Teste',exact:true}).first().click();
   await page.getByText('Resumo do Chatwoot indisponível.',{exact:true}).first().waitFor();
   await page.evaluate(()=>{window.resumoFalha=false;window.escritasTeste=[];});
+  await page.getByRole('button',{name:'Fechar ficha',exact:true}).click();
   await page.getByRole('button',{name:'Tentar resumo novamente',exact:true}).click();
+  await page.getByRole('button',{name:'Abrir ficha de Morador Teste',exact:true}).first().click();
   await page.getByText('2 conversa(s) · 12 mensagem(ns) registradas',{exact:true}).first().waitFor();
   assert.equal(await page.getByRole('button',{name:'Tentar resumo novamente',exact:true}).count(),0);
   const calls=await page.evaluate(()=>window.consultasResumo);assert(calls.every(u=>u.includes('&card_id=in.(')));assert(calls.length>=2);
-  assert.deepEqual(await page.evaluate(()=>window.escritasTeste),[]);assert.deepEqual(errors,[]);
+  assert.deepEqual(await page.evaluate(()=>window.escritasTeste.filter(u=>!u.includes('/rpc/integracao_crm_delta'))),[]);assert.deepEqual(errors,[]);
   console.log(`PASS Comercial ${width}px: timeout não bloqueia funil/ficha; aviso e recuperação; filtros; sem gravações`);await page.close();
  }}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

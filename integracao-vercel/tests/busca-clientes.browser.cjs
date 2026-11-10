@@ -23,7 +23,7 @@ const assert=require('node:assert/strict');
    await home();input=await abrirBusca();await input.fill('avu_003');await page.getByRole('option',{name:/João Avulso/}).waitFor();await input.press('ArrowDown');await input.press('Enter');
    await page.getByRole('heading',{name:/João Avulso/}).waitFor().catch(async e=>{console.log(await page.locator('body').innerText());throw e;});
    await page.getByRole('button',{name:'Atualizar dados',exact:true}).click();
-   await page.getByText('Dados compartilhados no Supabase',{exact:true}).waitFor();
+   await page.waitForFunction(()=>!document.body.innerText.includes('Pendências de sincronização (')&&!document.body.innerText.includes('Guardando alterações'));
    await page.getByRole('heading',{name:/João Avulso/}).waitFor();
    await home();input=await abrirBusca();await input.fill('tst01_001');await page.getByRole('option',{name:/João da Silva/}).click();
    await page.getByRole('heading',{name:/João da Silva/}).waitFor();

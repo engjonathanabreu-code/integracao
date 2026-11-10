@@ -48,24 +48,32 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  }
  const contaValida=conta=>{if(typeof conta!=='string'||!conta)throw erro('Conta da intenção ausente.','CONTA_INVALIDA');};
  async function listar(conta){contaValida(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
- async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null}){
+ async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null,substituirId=null}){
   contaValida(conta);
   if(!unidade||!modulo||!Array.isArray(operacoes)||(!operacoes.length&&!preparar)||dependencias.includes(id))throw erro('Unidade, módulo ou operações inválidos.','INTENCAO_INVALIDA');
   // Copy before the first await; callers may keep editing their objects.
   const original=structuredClone({protocolo:PROTOCOLO,unidade,modulo,dependencias:[...new Set(dependencias)],operacoes,base,intencao,preparar,recursos,referencias,criadas});
+  if(substituirId)original.substitui=substituirId;
   canonico(original);
   const checksum=await checksumIntencao(original);
   return transacao('readwrite',async s=>{
    const existente=await requisicao(s.intencoes.get([conta,id]));
    if(existente){if(existente.checksum!==checksum)throw erro('A mesma intenção foi reutilizada com outro conteúdo.','PEDIDO_DIVERGENTE');return existente;}
+   const substituida=substituirId?await requisicao(s.intencoes.get([conta,substituirId])):null;
+   if(substituirId&&(!substituida||substituirId===id||substituida.recibo||substituida.leaseAte>agora()||!['bloqueado_conflito','bloqueado_validacao'].includes(substituida.estado)))throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    for(const dep of original.dependencias)if(!await requisicao(s.intencoes.get([conta,dep])))throw erro('Dependência indisponível nesta conta.','DEPENDENCIA_INDISPONIVEL');
    const anteriores=await requisicao(s.intencoes.index('conta').getAll(conta));
    // Append order and dependency capture share the same transaction across tabs.
    const deps=anteriores.filter(x=>!['confirmado','substituido','dispensado'].includes(x.estado)&&(x.original.recursos?.some(r=>recursos.includes(r))||x.original.criadas?.some(r=>referencias.includes(r)))).map(x=>x.id);
    const seq=await requisicao(s.sequencias.get(conta));
    const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',tentativas:0,criadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
+   if(substituida){
+    item.dependencias=[...(substituida.dependencias||[])];item.ordem=substituida.ordem;
+    substituida.estado='substituido';substituida.substituidaPor=id;
+    await requisicao(s.intencoes.put(substituida));
+   }
    if(legado){item.payload=structuredClone(operacoes);item.preparado={antes:legado.before,depois:legado.after,sent:legado.sent||{}};item.estado=legado.confirmacao?'confirmado_aguardando_leitura':legado.rejeitada?'bloqueado_validacao':'resultado_desconhecido';if(legado.confirmacao)item.recibo=structuredClone(legado.confirmacao);}
-   await requisicao(s.sequencias.put({conta,valor:item.ordem}));await requisicao(s.intencoes.add(item));return item;
+   await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));return item;
   });
  }
  async function reservar(conta,{dono,leaseMs=60000}={}){

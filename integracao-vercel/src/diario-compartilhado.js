@@ -2,6 +2,8 @@ import {abrirFilaIntencoes,processarIntencao,checksumIntencao} from './fila-inte
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
+import {edicaoSomenteLocal} from './intencoes-locais.js';
+import {arquivosDaIntencao} from './arquivos-intencoes.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
 export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,consultarRecibo,confirmar,atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
@@ -18,9 +20,10 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(!edicoes.length&&!Object.keys(arquivos).length&&!opcoes.legado)return Promise.resolve(null);
   const recursos=[...recursosIntencao(edicoes),...Object.keys(arquivos).map(k=>'arquivo:'+k)];
   const payload={conta,id,unidade:recursos[0]||'auditoria:'+id,recursos,modulo:edicoes.find(e=>e.colecao!=='auditoria')?.colecao||'arquivos',dependencias:opcoes.dependencias||[],referencias:referenciasIdentidades(edicoes),criadas:edicoes.filter(e=>e.id&&!e.antes.existe).map(e=>e.id),operacoes:opcoes.legado?.operations||[],preparar:!opcoes.legado,base:{},intencao:{edicoes,arquivos},legado:opcoes.legado||null};
+  if(opcoes.substituirId)payload.substituirId=opcoes.substituirId;
   volateis.set(id,payload);
   // Serialization stays local to this controller; the database also orders other tabs.
-  const trabalho=corrente.catch(()=>{}).then(async()=>{const item=await fila.enfileirar(payload);volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
+  const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar(payload);}catch(e){if(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA')volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
  }
  async function importarLegado(texto){
   if(!texto)return;await fila.preservarLegado(conta,texto);conferir();
@@ -28,11 +31,22 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(!draft.pending&&!draft.attempt)return;
   if(!draft.baseline||!draft.db)throw Error('Rascunho antigo preservado sem base original; exporte para revisão seletiva.');
   const hash=await checksumIntencao(texto);conferir();
+  const importar=async(antes,depois,arquivos,opcoes)=>{
+   const existente=(await fila.listar(conta)).find(i=>i.id===opcoes.id);conferir();
+   if(existente){
+    const o=existente.original;
+    const a=opcoes.legado;
+    const compativel=a?o.preparar===false&&igualSemantico(o.operacoes,a.operations)&&igualSemantico(existente.preparado?.antes,a.before)&&igualSemantico(existente.preparado?.depois,a.after)&&igualSemantico(existente.preparado?.sent||{},a.sent||{}):o.preparar===true&&igualSemantico((o.intencao.edicoes||[]).filter(e=>!edicaoSomenteLocal(e)),extrairIntencao(antes,depois))&&igualSemantico(o.intencao.arquivos||{},arquivos);
+    if(!compativel)throw Error('A identidade do rascunho já possui outro conteúdo. Original preservado para revisão.');
+    return existente;
+   }
+   return adicionar(antes,depois,arquivos,opcoes);
+  };
   if(draft.attempt){
    const a=draft.attempt;if(!a.id||!a.before||!a.after||!Array.isArray(a.operations))throw Error('Tentativa antiga incompleta; original preservado para revisão.');
-   await adicionar(a.before,a.after,a.sent||{},{id:a.id,legado:a});conferir();
-   await adicionar(a.after,draft.db,{}, {id:uuidHash(hash),dependencias:[a.id]});
-  }else await adicionar(draft.baseline,draft.db,{}, {id:uuidHash(hash)});
+   await importar(a.before,a.after,a.sent||{},{id:a.id,legado:a});conferir();
+   await importar(a.after,draft.db,{}, {id:uuidHash(hash),dependencias:[a.id]});
+  }else await importar(draft.baseline,draft.db,{}, {id:uuidHash(hash)});
   conferir();await atualizar();
  }
  async function migrar(texto){
@@ -52,7 +66,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  async function prepararItem(item){
   const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,edicoes);
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
-  const pronto=await preparar(remoto,r.dados,item.original.intencao.arquivos);conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
+  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
  }
  async function executar(){
   await corrente.catch(()=>{});conferir();await atualizar();
@@ -75,7 +89,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  async function resolver(id,escolhas){
   if(!revisao||revisao.id!==id)throw Error('Abra a prévia da pendência antes de confirmar.');
   const mostrada=revisao,{remoto}=await lerItem(mostrada.item);
-  if(!igualSemantico(remoto.db,mostrada.remoto))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
+  if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes),recortarIntencao(mostrada.remoto,mostrada.edicoes)))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
   const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
   if(mostrada.item.recibo&&mostrada.conflitos.length){
    if(!igualSemantico(r.dados,remoto.db))throw Error('Esta gravação já tem recibo. Reconheça o valor atual compartilhado e depois abra o registro para fazer uma nova edição.');
@@ -87,9 +101,13 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   }
   let edicoes=extrairIntencao(remoto.db,r.dados);
   // Explicitly accepting the server still leaves an auditable no-op replacement.
-  if(!edicoes.length){await fila.aceitarRemoto(conta,id);revisao=null;await atualizar();return;}
-  const novo=await adicionar(remoto.db,r.dados,mostrada.item.original.intencao.arquivos);
-  await fila.substituir(conta,id,novo.id);revisao=null;await atualizar();
+  if(!edicoes.length&&!Object.keys(mostrada.item.original.intencao.arquivos||{}).length){await fila.aceitarRemoto(conta,id);revisao=null;await atualizar();return;}
+  await adicionar(remoto.db,r.dados,mostrada.item.original.intencao.arquivos,{substituirId:id});revisao=null;await atualizar();
  }
- return {fechar:()=>{canal?.close();corrente.finally(()=>fila.fechar()).catch(()=>{});},adicionar,migrar,atualizar,materializar,executar,previa,resolver,esperar:()=>corrente,exportar:async()=>({...await fila.exportar(conta),naoPersistidas:[...volateis.values()]}),itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ async function exportar(){
+  const emCurso=structuredClone([...volateis.values()]);
+  const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
+  return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
+ }
+ return {fechar:()=>{canal?.close();corrente.finally(()=>fila.fechar()).catch(()=>{});},adicionar,migrar,atualizar,materializar,executar,previa,resolver,esperar:()=>corrente,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }
