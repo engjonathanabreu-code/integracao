@@ -12,6 +12,8 @@ export async function buscarREST(url, options = {}) {
       if (!response.ok) {
         const erro = new Error(body?.message || `Não foi possível acessar os dados (${response.status}).`);
         erro.status = response.status;
+        const retry=response.headers.get('Retry-After');
+        if(retry){const segundos=Number(retry),ms=Number.isFinite(segundos)?segundos*1000:Date.parse(retry)-Date.now();if(Number.isFinite(ms)&&ms>=0)erro.retryAfterMs=ms;}
         erro.code = body?.code;
         erro.details = body?.details;
         throw erro;

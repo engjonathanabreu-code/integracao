@@ -346,7 +346,17 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     if(!uuid(m.id)) continue;
     const removed=(prev?.responsaveis||[]).filter(x=>!(m.responsaveis||[]).includes(x));
     for(const u of removed) ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:rawUser(u)},expected:{meta_id:m.id,usuario_id:rawUser(u)},remove:true});
-    for(const u of (m.responsaveis||[]).filter(x=>!(prev?.responsaveis||[]).includes(x))) ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:rawUser(u)},insert:true,changes:{meta_id:m.id,usuario_id:rawUser(u)}});
+    for(const u of (m.responsaveis||[]).filter(x=>!(prev?.responsaveis||[]).includes(x))){
+      const perfil=(state.base.profiles||[]).find(p=>p.id===rawUser(u));
+      if(!perfil||perfil.ativo!==true)throw Object.assign(new Error('O responsável escolhido não possui perfil ativo no cadastro atual. Revise a escolha; a alteração foi preservada.'),{status:422,code:'RESPONSAVEL_INDISPONIVEL'});
+      ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:perfil.id},insert:true,changes:{meta_id:m.id,usuario_id:perfil.id}});
+    }
+    for(const [campo,tabela] of [['checklist','meta_checklist'],['comentarios','meta_comentarios'],['historico','meta_historico']]){
+      for(const x of newItems(prev?.[campo],m[campo])){
+        const existente=(state.base[tabela]||[]).find(r=>r.id===x.id);
+        if(existente&&existente.meta_id!==m.id)throw Object.assign(new Error('Este item já pertence a outra meta. Crie um novo item sem reutilizar seu histórico; o original foi preservado.'),{status:409,code:'IDENTIDADE_OUTRA_META'});
+      }
+    }
     for(const x of newItems(prev?.checklist,m.checklist)) insert('meta_checklist',x.id,{meta_id:m.id,titulo:x.titulo,concluido:!!x.concluido,created_by:who});
     for(const x of newItems(prev?.comentarios,m.comentarios)) insert('meta_comentarios',x.id,{meta_id:m.id,autor_id:who,texto:x.texto});
     for(const x of newItems(prev?.historico,m.historico)) insert('meta_historico',x.id,{meta_id:m.id,meta_titulo:m.titulo,entidade_tipo:['ordem_servico','projeto','plano'].includes(m.associacao_tipo)?m.associacao_tipo:'avulsa',entidade_id:['ordem_servico','projeto','plano'].includes(m.associacao_tipo)?m.associacao_id:null,acao:x.acao,descricao:x.descricao||'',autor_id:who});

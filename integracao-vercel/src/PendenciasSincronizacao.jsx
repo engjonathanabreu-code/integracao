@@ -1,6 +1,6 @@
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
 const estados={persistencia_falhou:'Ainda não guardada — exporte antes de sair',legado_revisao:'Original preservado para revisão',pendente_local:'Guardada no aparelho',resultado_desconhecido:'Consultando confirmação',confirmado_aguardando_leitura:'Confirmada; aguardando leitura',bloqueado_conflito:'Valores diferentes — revisar',bloqueado_validacao:'Validação ou permissão — revisar',falha_transitoria:'Aguardando nova tentativa'};
-const motivos={23503:'Confira os responsáveis e vínculos: uma referência está indisponível.',42501:'Sua conta não tem permissão para esta operação.',PT409:'O registro mudou ou sua identidade precisa de revisão.',ARQUIVO_LOCAL_AUSENTE:'O arquivo original não está disponível neste aparelho.',LEITURA_DIVERGENTE:'Há recibo, mas os valores atuais diferem da gravação.'};
+const motivos={RESPONSAVEL_INDISPONIVEL:'O responsável escolhido não está ativo no cadastro atual. Revise a atribuição.',IDENTIDADE_OUTRA_META:'Um item pertence a outra meta. Preserve o histórico e revise a criação.',23503:'Confira os responsáveis e vínculos: uma referência está indisponível.',42501:'Sua conta não tem permissão para esta operação.',PT409:'O registro mudou ou sua identidade precisa de revisão.',ARQUIVO_LOCAL_AUSENTE:'O arquivo original não está disponível neste aparelho.',LEITURA_DIVERGENTE:'Há recibo, mas os valores atuais diferem da gravação.'};
 export default function PendenciasSincronizacao({sync}){
  const p=sync.previaPendencia;
  if(!sync.pendencias?.length&&!p)return null;
