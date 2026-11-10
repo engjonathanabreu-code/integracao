@@ -1,3 +1,4 @@
+import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
@@ -36,7 +37,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
    if(existente){
     const o=existente.original;
     const a=opcoes.legado;
-    const compativel=a?o.preparar===false&&igualSemantico(o.operacoes,a.operations)&&igualSemantico(existente.preparado?.antes,a.before)&&igualSemantico(existente.preparado?.depois,a.after)&&igualSemantico(existente.preparado?.sent||{},a.sent||{}):o.preparar===true&&igualSemantico((o.intencao.edicoes||[]).filter(e=>!edicaoSomenteLocal(e)),extrairIntencao(antes,depois))&&igualSemantico(o.intencao.arquivos||{},arquivos);
+    const compativel=a?o.preparar===false&&igualSemantico(o.operacoes,a.operations)&&igualSemantico(existente.preparado?.antes,a.before)&&igualSemantico(existente.preparado?.depois,a.after)&&igualSemantico(existente.preparado?.sent||{},a.sent||{}):o.preparar===true&&igualSemantico((o.intencao.edicoes||[]).filter(e=>!edicaoSomenteLocal(e)&&!edicaoDerivada(e)),extrairIntencao(antes,depois))&&igualSemantico(o.intencao.arquivos||{},arquivos);
     if(!compativel)throw Error('A identidade do rascunho já possui outro conteúdo. Original preservado para revisão.');
     return existente;
    }
@@ -60,7 +61,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   }
  }
  async function lerItem(item){
-  conferir();const edicoes=remapearIdentidades(item.original.intencao.edicoes||[],aliases());
+  conferir();const edicoes=remapearIdentidades(item.original.intencao.edicoes||[],aliases()).filter(e=>preservarDerivadasFixadas(item)||!edicaoDerivada(e));
   const remoto=await carregar(edicoes);conferir();return {remoto,edicoes};
  }
  async function prepararItem(item){
@@ -83,7 +84,10 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  }
  async function previa(id){
   await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item)throw Object.assign(Error('Item não está disponível nesta conta. Atualize a lista de pendências.'),{code:'REVISAO_NECESSARIA'});if(terminal(item)){if(revisao?.id===id)revisao=null;return null;}
-  const {remoto,edicoes}=await lerItem(item);const r=aplicarIntencao(remoto.db,edicoes);
+  const {remoto,edicoes}=await lerItem(item);
+  // Fixed payloads retain their original review, including the explicit option
+  // to recognize current values after a receipt. Never rewrite a sent request.
+  const r=aplicarIntencao(remoto.db,edicoes,{preservarDerivadas:preservarDerivadasFixadas(item)});
   revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos};return {...revisao,dados:r.dados};
  }
  async function resolver(id,escolhas){
@@ -103,8 +107,8 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   // The same send can complete while the remote read is in flight. Its own
   // confirmed value must not look like a new conflict in this stale preview.
   if(retentativa&&await encerrarConcluida())return;
-  if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes),recortarIntencao(mostrada.remoto,mostrada.edicoes)))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
-  const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
+  if(!igualSemantico(recortarIntencao(remoto.db,mostrada.edicoes,{preservarDerivadas:preservarDerivadasFixadas(mostrada.item)}),recortarIntencao(mostrada.remoto,mostrada.edicoes,{preservarDerivadas:preservarDerivadasFixadas(mostrada.item)})))throw Error('Os dados mudaram. Abra novamente a prévia e confira os valores.');
+  const r=aplicarIntencao(remoto.db,mostrada.edicoes,{escolhas,preservarDerivadas:preservarDerivadasFixadas(mostrada.item)});if(r.conflitos.length)throw Error('Escolha todos os valores em conflito.');
   if(mostrada.item.recibo&&mostrada.conflitos.length){
    if(!igualSemantico(r.dados,remoto.db))throw Error('Esta gravação já tem recibo. Reconheça o valor atual compartilhado e depois abra o registro para fazer uma nova edição.');
    await fila.aceitarLeituraAtual(conta,id);revisao=null;await atualizar();return;
