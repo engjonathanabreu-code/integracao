@@ -8,3 +8,10 @@ export function remapearIdentidades(valor,aliases,campo=''){
  if(valor&&typeof valor==='object')return Object.fromEntries(Object.entries(valor).map(([k,v])=>[mapas.has(campo)?aliases[k]||k:k,remapearIdentidades(v,aliases,k)]));
  return valor;
 }
+
+export function referenciasIdentidades(valor,campo='',saida=new Set()){
+ if(typeof valor==='string'&&(campos.has(campo)||listas.has(campo)))saida.add(valor);
+ else if(Array.isArray(valor))valor.forEach(v=>referenciasIdentidades(v,campo,saida));
+ else if(valor&&typeof valor==='object')Object.entries(valor).forEach(([k,v])=>referenciasIdentidades(v,k,saida));
+ return [...saida];
+}

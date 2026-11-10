@@ -106,6 +106,7 @@ import {obterArquivo,agendarArquivo} from './arquivos-compartilhados.js';
 import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao, lerArquivoERP, tokenTempoReal, assinaturaCalendario} from './dados-compartilhados.js';
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
+import PendenciasSincronizacao from './PendenciasSincronizacao.jsx';
 import {useAvisoChat} from './use-aviso-chat.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -312,7 +313,7 @@ const armazenamento = {
   async get(chave) {
     if(chave?.startsWith('erp-storage|'))return lerArquivoERP(chave);
     const remoto=await obterArquivo(chave);if(remoto!==undefined)return remoto;
-    try { if (typeof window !== "undefined" && window.storage) { const r = await window.storage.get(chave, false); if (r && r.value !== undefined) return r.value; } } catch (e) { /* chave inexistente */ }
+    try { if (typeof window !== "undefined" && window.storage) { const r = await window.storage.get(chave, false); if (r && r.value !== undefined) return r.value; } } catch (e) { if(e.message!=="chave não encontrada")throw e; }
     return memoriaLocal.has(chave) ? memoriaLocal.get(chave) : null;
   },
   async set(chave, valor) {
@@ -12405,6 +12406,7 @@ export default function App() {
     }, "Entrou no sistema");
   };
   const sair = async () => {
+    if(compartilhado.pendencias?.some(i=>i.estado==='persistencia_falhou')&&!window.confirm("Há alterações que o navegador não conseguiu guardar. Baixe uma cópia em Pendências antes de sair. Sair mesmo assim?"))return;
     if(document.querySelector('.obs-doc[data-edicao-pendente="true"]')&&!window.confirm("Há uma observação não salva. Sair do sistema e descartar o texto?"))return;
     let falhaRegistro=false;
     if(!AMBIENTE.DEMO && temSessao()) {try{await registrarAcesso("logout","manual");}catch{falhaRegistro=true;}}
@@ -12531,6 +12533,7 @@ export default function App() {
           </header>
           {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
+          {!AMBIENTE.DEMO && <PendenciasSincronizacao sync={compartilhado}/>}
           {!AMBIENTE.DEMO && compartilhado.reservasPreservadas>0 && <div role="status" className="ajuda" style={{padding:"8px 18px"}}>{compartilhado.reservasPreservadas} reserva(s) conflitante(s) preservada(s) em cópia. As reservas já confirmadas foram mantidas; os demais dados podem sincronizar.<button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das reservas</button></div>}
           {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>

@@ -58,9 +58,10 @@ function referencia(key,state,after) {
   }
   return {referencia_tabela:null,referencia_id:null};
 }
-export async function prepararArmazenamento(state,after) {
+export const capturarArquivos=()=>context?copy(context.queue):{};
+export async function prepararArmazenamento(state,after,selecionados=null) {
   const c=context;if(!c)return {operations:[],sent:{}};
-  const sent=copy(c.queue),operations=[];
+  const sent=copy(selecionados||c.queue),operations=[];
   for(const [id,item] of Object.entries(sent)) {
     conferirContexto(c);
     const key={colecao:'arquivos',registro_id:id};

@@ -4,6 +4,7 @@ import {fixture,blank,id} from './fixture.js';
 import {projetar,copy,definirSessao} from '../src/dados-compartilhados.js';
 import {useDadosCompartilhados} from '../src/use-dados-compartilhados.js';
 import RevisaoConcorrencia from '../src/RevisaoConcorrencia.jsx';
+import PendenciasSincronizacao from '../src/PendenciasSincronizacao.jsx';
 
 // Isolated real-hook harness. Never forwards requests or credentials to an external host.
 const scenario=new URLSearchParams(location.search).get('cenario')||'fantasma';
@@ -63,10 +64,12 @@ if(scenario==='concorrente-independente')base.integracao_moradores[0].dados.chec
 const response=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
  const url=new URL(typeof input==='string'?input:input.url,location.href);
+ if(new URLSearchParams(location.search).has('diario')&&localStorage.getItem('harness-server')){base=JSON.parse(localStorage.getItem('harness-server'));receipts=JSON.parse(localStorage.getItem('harness-receipts')||'{}');stats.writes=Number(localStorage.getItem('harness-writes')||0);}
  stats.requests.push(url.pathname);
  if(url.pathname==='/api/conexao')return response({ok:true});
  if(!url.hostname.endsWith('.supabase.co'))return response({message:'Rede externa bloqueada'},503);
  if(url.pathname.includes('/auth/'))return response({message:'Autenticação não utilizada no teste'},403);
+ if(url.pathname.endsWith('/rpc/integracao_consultar_pedido'))return response(receipts[JSON.parse(options.body).pedido]||null);
  if(url.pathname.endsWith('/rpc/integracao_gravar')){
   stats.posts++;const {operacoes,pedido}=JSON.parse(options.body);
   if(receipts[pedido])return response(receipts[pedido]);
@@ -111,9 +114,9 @@ window.fetch=async(input,options={})=>{
 window.WebSocket=class{static OPEN=1;constructor(){this.readyState=0;}close(){this.readyState=3;}send(){}};
 function Harness(){
  const [db,setDb]=useState(blank()),[ready,setReady]=useState(false),[fatal,setFatal]=useState('');
- const sync=useDadosCompartilhados({setDb,storage,baseLimpa:blank});
+ const sync=useDadosCompartilhados({setDb,storage,baseLimpa:blank,usarDiario:new URLSearchParams(location.search).has('diario')});
  useEffect(()=>{definirSessao({user:{id:id(1)},access_token:'isolated-fixture',expires_in:3600});sync.open(actor,null).then(()=>setReady(true)).catch(e=>setFatal(e.message));},[]);
  window.syncHarness={definirSessao,stats,flags,db,sync,ready,base:()=>base,salvarServidor:saveServer,draft:()=>JSON.parse(localStorage.getItem(key)),recover:()=>{flags.failReads=false;localStorage.setItem('harness-recovered','1');window.dispatchEvent(new Event('online'));}};
- return <main><h1>Sincronização — {tipo}</h1><p id="status">{sync.status}</p><p id="error">{sync.error||fatal}</p>{sync.conflitos.length>0&&<RevisaoConcorrencia dados={db} conflitos={sync.conflitos} resolver={sync.resolverConflitos}/>}<p id="etapa">Etapa: {db.processos.find(x=>x.id===id(4))?.etapa}</p><p id="metas">Metas: {db.metas.map(m=>m.status).join(", ")}</p><p id="ghost">Ficha antiga: {db.processos.some(x=>x.id===id(99))?'presente':'ausente'}</p><button disabled={!ready} onClick={()=>sync.mutate(d=>{d.processos.find(x=>x.id===id(4)).etapa=2;return d;})}>Editar novamente</button><button onClick={()=>window.syncHarness.recover()}>Restaurar conexão</button></main>;
+ return <main><PendenciasSincronizacao sync={sync}/><h1>Sincronização — {tipo}</h1><p id="status">{sync.status}</p><p id="error">{sync.error||fatal}</p>{sync.conflitos.length>0&&<RevisaoConcorrencia dados={db} conflitos={sync.conflitos} resolver={sync.resolverConflitos}/>}<p id="etapa">Etapa: {db.processos.find(x=>x.id===id(4))?.etapa}</p><p id="metas">Metas: {db.metas.map(m=>m.status).join(", ")}</p><p id="ghost">Ficha antiga: {db.processos.some(x=>x.id===id(99))?'presente':'ausente'}</p><button disabled={!ready} onClick={()=>sync.mutate(d=>{d.processos.find(x=>x.id===id(4)).etapa=2;return d;})}>Editar novamente</button><button onClick={()=>window.syncHarness.recover()}>Restaurar conexão</button></main>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);

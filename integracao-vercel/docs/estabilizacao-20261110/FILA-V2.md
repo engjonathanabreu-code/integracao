@@ -1,33 +1,32 @@
-# Diário de intenções — núcleo isolado, ainda não integrado ao hook
+# Diário v2 integrado
 
-`src/fila-intencoes.js` prepara o protocolo 2 em um banco IndexedDB separado. Não é importado pela aplicação; não substitui a fila atual, não migra automaticamente e não envia operações reais. O diagnóstico de sobrescrita da fila legada continua válido. A ativação ainda NÃO está pronta.
+O hook principal usa `diario-compartilhado.js` e IndexedDB separado (`integracao-intencoes-v2`). `usarDiario=false` existe somente para regressões explícitas do protocolo antigo. A aplicação usa v2 por padrão.
 
-## Contrato implementado
+Cada ação preserva os deltas de registros, identidade, autoria, anexos e auditoria numa unidade. A preparação usa a base atual com merge de três vias; conflito é bloqueado para escolha, não resolvido pelo relógio local. Operações e ID de pedido são fixados antes do envio. Campos alheios não entram no delta. Pai, filhos e arquivos de uma mesma ação continuam no mesmo pedido transacional. A fila registra dependências de registros e criações; ações independentes podem avançar após recusa de outra unidade.
 
-Uma entrada contém conta, ID de intenção/pedido estável, unidade de negócio explícita, módulo, dependências, operações, base original, intenção, versão, checksum e sequência transacional. A mesma identidade com outro conteúdo é recusada. Duas conexões IndexedDB inserem entradas distintas sem sobrescrever um snapshot compartilhado. A Promise só resolve após `transaction.oncomplete`; abort/quota rejeitam sem sucesso falso. Não há fallback silencioso para memória/localStorage.
+O append e a captura de dependências são uma transação IndexedDB. Claims têm lease/token; abas consultam o mesmo diário e recebem avisos mínimos por BroadcastChannel. Recibos persistem antes da releitura. Resultado desconhecido consulta `integracao_consultar_pedido` sob RLS, com validação do payload, antes de retomar o mesmo pedido. Recusas determinísticas são bloqueadas. Retries transitórios, inclusive releituras, são limitados e têm espera/jitter. Nenhum comprovante é purgado.
 
-O chamador define a unidade de negócio completa. O núcleo não deduz independência pela tabela: pai, filhos, auditoria obrigatória e referências de anexos devem integrar a mesma entrada. Dependências só podem apontar para entradas já existentes da mesma conta; isso impede ciclos e referências entre contas. Uma unidade bloqueada impede suas próximas entradas/dependentes, mas não impede unidades independentes.
+A indisponibilidade de persistência não vira sucesso: a intenção permanece em memória, aparece como não guardada, continua visível após refresh e pode ser exportada/retentada seletivamente. Fechamento do navegador é protegido por beforeunload. A confirmação de saída manual alerta sobre alterações não persistidas; nenhum software garante sobrevivência a um crash se o navegador recusou a gravação.
 
-Estados: pendente_local, resultado_desconhecido, confirmado_aguardando_leitura, confirmado, bloqueado_conflito, bloqueado_validacao, falha_transitoria. Claim com lease e token impede alteração por consumidor antigo. O payload enviado é fixado no primeiro claim, aplicando aliases tipados das dependências confirmadas. O original nunca muda. Recibo e aliases persistem antes da releitura; falha de leitura não reenvia a gravação.
+## Migração
 
-Depois de lease vencido ou resposta perdida, o consumidor consulta recibo primeiro; se ausente, usa exatamente o mesmo pedido/payload. O callback de envio precisa manter a idempotência transacional da RPC atual. 400/401/403/404/422 e 409 bloqueiam explicitamente; transporte/5xx deixam resultado desconhecido. Retry automático tem backoff/jitter, Retry-After e limite de cinco envios. Depois disso, permanece pendente/incerto para revisão, sem descarte. O callback de sessão deve estar vinculado à identidade capturada; mudança de sessão interrompe callbacks e deixa recuperação para a conta original.
+Antes da conversão, o texto legado é preservado integralmente com SHA-256 e versão. Intenções importadas têm IDs determinísticos; reabrir não duplica. Tentativa antiga enviada mantém pedido/payload integral, inclusive sua autoria e recibo. Não é dividida retroativamente. Uma edição posterior à tentativa vira outra entrada dependente. Um rascunho sem tentativa é convertido em deltas contra a base original; não se importa o snapshot completo como inserts.
 
-`preservarLegado` guarda o texto original, checksum e versão em transação idempotente, inclusive JSON malformado. Não importa um snapshot como operações. `exportar` retorna somente os registros da conta solicitada. A interface autenticada continua responsável por autorizar quem pode chamar esse método; IndexedDB não é barreira contra código da mesma origem. Não existe purge de originais, intenções ou recibos neste protocolo.
+Originais malformados, sem base ou com identidade inconsistente ficam preservados para revisão/exportação e não são enviados. A chave legada não é apagada nem sobrescrita. O cache v2 guarda só a projeção canônica; cache não é fila. Uma aba antiga não consegue escrever na base do diário novo.
 
-## Evidência isolada
+## Recuperação seletiva
 
-`tests/fila-intencoes.browser.cjs` executa 13 cenários com IndexedDB real e duas abas em contexto descartável, bloqueando rede externa: append concorrente; claims distintos; aba fechada/recovery; isolamento de unidade inválida; dependências/aliases; mesmo pedido divergente; original legado idempotente; quota/abort sem meia entrada; IndexedDB ausente; resposta perdida; releitura falha; troca de conta; limite de retry. O teste imprime explicitamente `fluxoPrincipalIntegrado:false`.
+Na interface, **Pendências de sincronização → Revisar esta alteração** mostra pedido, estado e diferenças. Escolhas são validadas novamente contra o remoto exibido. Tentativas sem resultado conhecido nunca viram novo pedido por uma escolha de conflito. Uma tentativa recusada pode originar substituição explícita com nova pré-condição; o original permanece arquivado e as dependências são redirecionadas atomicamente. Escolher integralmente o remoto registra dispensa explícita, sem fingir que o valor local foi gravado.
 
-Há três testes de contrato na suíte Node: checksum/semântica, ausência de IndexedDB e serialização inválida. Esses testes não substituem a prova de navegador.
+Recibo já confirmado com leitura divergente não autoriza reenvio; o usuário pode reconhecer o estado atual e depois editar normalmente. A cópia exportada contém original, checksum, entradas, recibos e intenções ainda não persistidas. Não houve recuperação em massa de dados reais nesta tarefa.
 
-## Integração ainda necessária
+## Validação
 
-1. Mapear cada chamada de mutate/mutateConfirmed para unidade, dependências e referências de arquivos; preservar o contrato síncrono de edição e assíncrono de confirmação.
-2. Persistir a intenção antes de anunciar durabilidade; tratar quota na UI com exportação segura, sem fechar o texto.
-3. Construir/adaptar operações com a base canônica correta quando outra intenção anterior cria pais ou gera aliases. Não regenerar IDs/autoria nem atualizar expected com cache parcial.
-4. Classificar os rascunhos antigos com base original + local + remoto, consultar recibos antigos e obter escolhas explícitas para conflitos. Preservar tentativa já enviada integralmente: não dividi-la retroativamente.
-5. Integrar o leitor de recibos sob RLS, a releitura por domínio e a conferência dos campos de cada confirmação. Manter estado parcial explícito e bloquear repetição determinística sem alteração de intenção.
-6. Conectar avisos/coordenação entre abas e a renderização das pendências de todas as abas da mesma conta, com invalidação por geração de sessão.
-7. Homologar o handshake de versão, service worker/abas antigas, edição durante envio, recuperação assistida, revisão de bloqueados e rollback. Uma versão antiga não entende o novo diário; não basta ligá-lo por feature flag.
+- 13 cenários do núcleo com IndexedDB real e duas abas, sem serviços externos.
+- 10 cenários do hook integrado: migração, reload idempotente, nova edição, unidade recusada independente, revisão seletiva, duas abas, resposta perdida, recibo com releitura falha, edição durante envio e quota/retomada.
+- PostgreSQL real: replay, divergência de payload, RLS, concorrência, consulta somente leitura e autorização.
+- Suíte anterior continua exercitando explicitamente o protocolo legado; não é contabilizada como teste do diário v2.
 
-Somente após esses itens o novo diário pode assumir os envios do hook. Atualmente a fila antiga ainda controla a aplicação e mantém suas limitações conhecidas.
+## Reversão
+
+A versão antiga não lê o diário v2. Depois de existirem intenções v2, não retornar ao aplicativo antigo como se as pendências tivessem sumido. Preservar o banco local e publicar correção compatível; em emergência, suspender envios afetados mantendo leitura/exportação. Nunca limpar IndexedDB, restaurar snapshot de banco ou fazer backfill inverso. O service worker novo aguarda as abas antigas fecharem; não força reload durante edição.

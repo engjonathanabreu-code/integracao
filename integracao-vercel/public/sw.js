@@ -3,11 +3,12 @@ const CACHE = "integracao-conexao-v2";
 const ESSENCIAIS = ["/", "/index.html", "/manifest.webmanifest", "/icone-192.png", "/fonts/nunito.ttf", "/favicon.svg?v=conexao-3", "/favicon-32.png?v=conexao-3", "__ARQUIVOS__"];
 
 self.addEventListener("install", (evento) => {
-  evento.waitUntil(caches.open(CACHE).then((c) => c.addAll(ESSENCIAIS)).then(() => self.skipWaiting()));
+  evento.waitUntil(caches.open(CACHE).then((c) => c.addAll(ESSENCIAIS)));
 });
 
 self.addEventListener("activate", (evento) => {
-  // Keep two previous builds so open tabs can still load their hashed chunks.
+  // Activation waits for old controlled tabs to close; never force reload mid-edit.
+  // Keep two previous builds as an additional offline fallback.
   evento.waitUntil(
     caches.keys().then((chaves) => Promise.all(chaves.filter(k => k.startsWith("integracao-") && k !== CACHE).slice(0, -2).map(k => caches.delete(k)))).then(() => self.clients.claim())
   );

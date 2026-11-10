@@ -6,6 +6,7 @@ const PROTOCOLO=2;
 const erro=(message,code)=>Object.assign(new Error(message),{code});
 const requisicao=p=>new Promise((resolve,reject)=>{p.onsuccess=()=>resolve(p.result);p.onerror=()=>reject(p.error);});
 function canonico(v){
+ if(v===undefined)return 'undefined';
  if(v===null||typeof v==='string'||typeof v==='boolean')return JSON.stringify(v);
  if(typeof v==='number'&&Number.isFinite(v))return JSON.stringify(v);
  if(Array.isArray(v))return '['+v.map(canonico).join(',')+']';
@@ -46,18 +47,23 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  }
  const contaValida=conta=>{if(typeof conta!=='string'||!conta)throw erro('Conta da intenção ausente.','CONTA_INVALIDA');};
  async function listar(conta){contaValida(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
- async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao}){
+ async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null}){
   contaValida(conta);
-  if(!unidade||!modulo||!Array.isArray(operacoes)||!operacoes.length||dependencias.includes(id))throw erro('Unidade, módulo ou operações inválidos.','INTENCAO_INVALIDA');
+  if(!unidade||!modulo||!Array.isArray(operacoes)||(!operacoes.length&&!preparar)||dependencias.includes(id))throw erro('Unidade, módulo ou operações inválidos.','INTENCAO_INVALIDA');
   // Copy before the first await; callers may keep editing their objects.
-  const original=JSON.parse(canonico({protocolo:PROTOCOLO,unidade,modulo,dependencias:[...new Set(dependencias)],operacoes,base,intencao}));
+  const original=structuredClone({protocolo:PROTOCOLO,unidade,modulo,dependencias:[...new Set(dependencias)],operacoes,base,intencao,preparar,recursos,referencias,criadas});
+  canonico(original);
   const checksum=await checksumIntencao(original);
   return transacao('readwrite',async s=>{
    const existente=await requisicao(s.intencoes.get([conta,id]));
    if(existente){if(existente.checksum!==checksum)throw erro('A mesma intenção foi reutilizada com outro conteúdo.','PEDIDO_DIVERGENTE');return existente;}
    for(const dep of original.dependencias)if(!await requisicao(s.intencoes.get([conta,dep])))throw erro('Dependência indisponível nesta conta.','DEPENDENCIA_INDISPONIVEL');
+   const anteriores=await requisicao(s.intencoes.index('conta').getAll(conta));
+   // Append order and dependency capture share the same transaction across tabs.
+   const deps=anteriores.filter(x=>!['confirmado','substituido','dispensado'].includes(x.estado)&&(x.original.recursos?.some(r=>recursos.includes(r))||x.original.criadas?.some(r=>referencias.includes(r)))).map(x=>x.id);
    const seq=await requisicao(s.sequencias.get(conta));
-   const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',tentativas:0,criadoEm:agora(),proximaTentativa:0};
+   const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',tentativas:0,criadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
+   if(legado){item.payload=structuredClone(operacoes);item.preparado={antes:legado.before,depois:legado.after,sent:legado.sent||{}};item.estado=legado.confirmacao?'confirmado_aguardando_leitura':legado.rejeitada?'bloqueado_validacao':'resultado_desconhecido';if(legado.confirmacao)item.recibo=structuredClone(legado.confirmacao);}
    await requisicao(s.sequencias.put({conta,valor:item.ordem}));await requisicao(s.intencoes.add(item));return item;
   });
  }
@@ -67,15 +73,16 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
    for(const item of items){
     if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||item.proximaTentativa>tempo||item.leaseAte>tempo)continue;
-    if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&antes.estado!=='confirmado'))continue;
-    const deps=item.original.dependencias.map(id=>items.find(i=>i.id===id));
-    if(deps.some(d=>!d||d.estado!=='confirmado'))continue;
-    if(!item.payload){
+    if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;
+    const resolver=id=>{let d=items.find(i=>i.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=items.find(i=>i.id===d.substituidaPor);}return d;};
+    const deps=(item.dependencias||item.original.dependencias).map(resolver);
+    if(deps.some(d=>!d||!['confirmado','dispensado'].includes(d.estado)))continue;
+    if(!item.payload&&!item.original.preparar){
      const aliases=Object.assign({},...deps.map(d=>d.recibo?.aliases||{}));
      item.payload=remapearIdentidades(item.original.operacoes,aliases);
     }
-    item.fase=item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
-    if(item.fase!=='releitura')item.estado='resultado_desconhecido';
+    item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
+    if(item.fase==='envio'||item.fase==='recibo')item.estado='resultado_desconhecido';
     item.dono=dono;item.reserva=crypto.randomUUID();item.leaseAte=tempo+leaseMs;
     await requisicao(s.intencoes.put(item));return item;
    }
@@ -107,12 +114,48 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   else if([400,401,403,404,422].includes(status))atual.estado='bloqueado_validacao';
   else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
   atual.erro={status:Number.isFinite(status)?status:null,codigo:String(codigo).slice(0,60)};
+  atual.falhas=(atual.falhas||0)+1;
   const retry=Number(e.retryAfterMs)||0;
   atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(atual.tentativas,6))*(.5+aleatorio()*.5));
   // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
-  if(atual.tentativas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  if(atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
   soltar(atual);
  });
+ const fixarPayload=(item,payload,preparado)=>alterarReserva(item,atual=>{
+  if(atual.payload)throw erro('Payload já fixado.','PAYLOAD_IMUTAVEL');
+  atual.payload=structuredClone(payload);atual.preparado=structuredClone(preparado);atual.estado='resultado_desconhecido';
+ });
+ async function retomar(conta,id){
+  contaValida(conta);return transacao('readwrite',async s=>{
+   const item=await requisicao(s.intencoes.get([conta,id]));
+   if(!item||item.leaseAte>agora()||['confirmado','substituido','dispensado'].includes(item.estado))throw erro('Item não está disponível para retomada.','REVISAO_NECESSARIA');
+   item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
+   await requisicao(s.intencoes.put(item));return item;
+  });
+ }
+ async function substituir(conta,id,novoId){
+  contaValida(conta);return transacao('readwrite',async s=>{
+   const item=await requisicao(s.intencoes.get([conta,id])),novo=await requisicao(s.intencoes.get([conta,novoId]));
+   if(!item||!novo||item.leaseAte>agora()||!['bloqueado_conflito','bloqueado_validacao'].includes(item.estado)||novo.estado!=='pendente_local')throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
+   // The replacement must not wait on the item it supersedes.
+   novo.dependencias=[...(item.dependencias||[])];novo.ordem=item.ordem;item.estado='substituido';item.substituidaPor=novoId;
+   await requisicao(s.intencoes.put(novo));await requisicao(s.intencoes.put(item));return novo;
+  });
+ }
+ async function aceitarLeituraAtual(conta,id){
+  return transacao('readwrite',async s=>{
+   const item=await requisicao(s.intencoes.get([conta,id]));
+   if(!item?.recibo||item.estado!=='confirmado_aguardando_leitura'||item.leaseAte>agora())throw erro('Confirmação ainda não disponível para revisão.','REVISAO_NECESSARIA');
+   item.estado='confirmado';item.decisao={tipo:'aceitar_estado_atual_apos_recibo',em:agora()};await requisicao(s.intencoes.put(item));return item;
+  });
+ }
+ async function aceitarRemoto(conta,id){
+  return transacao('readwrite',async s=>{
+   const item=await requisicao(s.intencoes.get([conta,id]));
+   if(!item||!['bloqueado_conflito','bloqueado_validacao'].includes(item.estado)||item.leaseAte>agora())throw erro('Somente uma tentativa recusada pode ser dispensada.','REVISAO_NECESSARIA');
+   item.estado='dispensado';item.decisao={tipo:'manter_remoto',em:agora()};await requisicao(s.intencoes.put(item));return item;
+  });
+ }
  async function preservarLegado(conta,texto){
   contaValida(conta);if(typeof texto!=='string')throw erro('Rascunho original inválido.','LEGADO_INVALIDO');
   const checksum=await checksumIntencao(texto);
@@ -126,16 +169,17 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // The application must capture session identity in these callbacks. This processor
 // never obtains a token itself, and never infers a business unit from table names.
-export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler}){
+export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler,preparar}){
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
  conferir();let item=await fila.reservar(conta,{dono});if(!item)return null;
  try{
   conferir();
+  if(!item.payload){const pronto=await preparar(item);conferir();item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();}
   if(!item.recibo){
    let recibo;
    if(item.fase==='recibo'){recibo=await consultarRecibo(item);conferir();}

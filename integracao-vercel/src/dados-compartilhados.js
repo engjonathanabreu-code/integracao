@@ -563,7 +563,7 @@ export async function prepararArquivos(before,after,storage,actor) {
   for(const m of after.metas||[]) for(const a of m.arquivos||[]) {
     if((before.metas||[]).find(x=>x.id===m.id)?.arquivos?.some(x=>x.id===a.id))continue;
     if(a.chave?.startsWith('erp-storage|'))continue;
-    const data=await storage.get(a.chave);if(!data)throw new Error(`O arquivo ${a.nome} não está disponível neste aparelho. O rascunho foi preservado.`);
+    const data=await storage.get(a.chave);if(!data)throw Object.assign(new Error(`O arquivo ${a.nome} não está disponível neste aparelho. O rascunho foi preservado.`),{status:422,code:'ARQUIVO_LOCAL_AUSENTE'});
     const blob=await (await fetch(data)).blob();
     const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
     const path=`${actor.erpRef}/metas/${m.id}/${a.id}-${digest}`;
@@ -641,4 +641,10 @@ export async function analisarMatriculaNUI(arquivo){
  const data=await new Promise((ok,erro)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=()=>erro(new Error('Não foi possível ler o arquivo.'));r.readAsDataURL(arquivo);});
  const response=await fetch('/api/ler-matricula',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({arquivo:arquivo.name,mime:arquivo.type,base64:data}),signal:AbortSignal.timeout(290000)});
  const result=await response.json();if(!response.ok)throw new Error(result.message||'Falha na análise.');return result;
+}
+
+// Caller-token/RLS receipt lookup. No side effect, no new request identity.
+export async function consultarReciboOperacao(item){
+ const operacoes=recuperarCamposVazios(item.payload,item.preparado?.depois);
+ return requisicao('rpc/integracao_consultar_pedido',{method:'POST',body:JSON.stringify({operacoes,pedido:item.pedido})});
 }
