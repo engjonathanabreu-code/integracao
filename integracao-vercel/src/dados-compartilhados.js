@@ -351,7 +351,9 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
   for(const a of newItems(before.agendas,after.agendas)) ops.push({action:'agenda',tempId:a.id,payload:{nome:a.nome,cor:a.cor}});
   for(const e of after.eventos||[]) {
     const prev=(before.eventos||[]).find(x=>x.id===e.id);
-    if(!prev) ops.push({action:'evento',tempId:e.id,payload:{titulo:e.titulo,descricao:e.descricao,inicio:new Date(e.inicio).toISOString(),fim:new Date(e.fim).toISOString(),agenda_id:uuid(e.agendaId)?e.agendaId:null,participantes:e.participantes.map(rawUser),publico:e.publico,recorrencia:e.recorrencia||'nenhuma',repetir_ate:e.recorrenciaAte||null,...link(e.entidade)}});
+    // A never-confirmed local cancellation is not a new active reservation.
+    // Keep the draft for history; existing remote cancellations use evento_status above.
+    if(!prev && e.status!=='cancelado') ops.push({action:'evento',tempId:e.id,payload:{titulo:e.titulo,descricao:e.descricao,inicio:new Date(e.inicio).toISOString(),fim:new Date(e.fim).toISOString(),agenda_id:uuid(e.agendaId)?e.agendaId:null,participantes:e.participantes.map(rawUser),publico:e.publico,recorrencia:e.recorrencia||'nenhuma',repetir_ate:e.recorrenciaAte||null,...link(e.entidade)}});
     if(prev && !eq(prev.respostas?.[actor.id],e.respostas?.[actor.id])) ops.push({action:'resposta',payload:{id:e.id,resposta:e.respostas[actor.id]}});
   }
   for(const c of after.conversas||[]) {

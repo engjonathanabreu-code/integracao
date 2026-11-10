@@ -53,3 +53,41 @@ test('calendar form changes the resource without requesting an administrative co
  const ops=prepararEdicao(state.db,db,state,db.usuarios[0]);
  assert.ok(ops.some(o=>o.changes?.agenda_id===id(43)));assert.ok(!ops.some(o=>o.action==='evento_cor'));
 });
+
+
+test('cancelled local reservation never becomes an active creation, with or without overlap',()=>{
+ const base=fixture();base.erp_eventos=[{id:id(41),titulo:'Confirmed',inicio:'2026-11-10T12:00:00Z',fim:'2026-11-10T15:00:00Z',agenda_id:id(40),participantes:[id(1)],status:'ativo',created_by:id(1)}];
+ const state=projetar(base,blank()),actor=state.db.usuarios[0];
+ for(const agendaId of ['',id(40)]){
+  const after=copy(state.db);
+  after.eventos.push({id:id(42),titulo:'Cancelled before confirmation',inicio:'2026-11-10T12:00:00Z',fim:'2026-11-10T15:00:00Z',agendaId,participantes:[actor.id],status:'cancelado',respostas:{}});
+  const operations=prepararEdicao(state.db,after,state,actor);
+  assert.ok(!operations.some(o=>o.action==='evento'));
+  const history=operations.find(o=>o.table==='integracao_calendario'&&o.key.registro_id===id(42));
+  assert.equal(history.changes.dados.status,'cancelado');
+  assert.equal(history.changes.criado_por,actor.erpRef);
+  assert.equal(history.changes.referencia_tabela,null);
+  assert.equal(history.changes.referencia_id,null);
+  assert.equal(after.eventos[1].status,'cancelado','retain local history');
+  after.eventos[1].status='ativo';
+  assert.ok(prepararEdicao(state.db,after,state,actor).some(o=>o.action==='evento'&&o.tempId===id(42)),'reactivated draft can be created');
+ }
+});
+
+test('cancelling a confirmed event still sends its guarded cancellation',()=>{
+ const base=fixture();base.erp_eventos=[{id:id(41),titulo:'Confirmed',inicio:'2026-11-10T12:00:00Z',fim:'2026-11-10T15:00:00Z',agenda_id:id(40),participantes:[id(1)],status:'ativo',created_by:id(1)}];
+ const state=projetar(base,blank()),after=copy(state.db);after.eventos[0].status='cancelado';
+ const operations=prepararEdicao(state.db,after,state,state.db.usuarios[0]);
+ assert.ok(operations.some(o=>o.action==='evento_status'&&o.payload.id===id(41)&&o.payload.status==='cancelado'&&o.expected.status==='ativo'));
+ assert.ok(!operations.some(o=>o.action==='evento'));
+});
+
+test('rejected creation queue recognizes original IDs recovered on the server',()=>{
+ const base=fixture(),initial=projetar(base,blank()),local=copy(initial.db);
+ for(const n of [42,43,44])local.eventos.push({id:id(n),titulo:'Recovered reservation',inicio:'2026-11-10T12:00:00Z',fim:'2026-11-10T15:00:00Z',agendaId:'',participantes:[initial.db.usuarios[0].id],status:'ativo',respostas:{}});
+ const attempt={rejeitada:true,operations:local.eventos.map(e=>({action:'evento',tempId:e.id})),after:local};
+ base.erp_eventos=local.eventos.map(e=>({id:e.id,titulo:e.titulo,inicio:e.inicio,fim:e.fim,agenda_id:null,participantes:[id(1)],status:'ativo',created_by:id(1)}));
+ const remote=separarCriacoesPendentes(projetar(base,local),initial.db,attempt,initial.db.usuarios[0]);
+ assert.equal(remote.db.eventos.length,3,'canonical bindings take precedence over stale temporary IDs');
+ assert.ok(!prepararEdicao(remote.db,copy(remote.db),remote,initial.db.usuarios[0]).some(o=>o.action==='evento'),'rebuilt queue must not duplicate recovered reservations');
+});

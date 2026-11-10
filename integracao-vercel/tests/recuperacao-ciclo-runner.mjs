@@ -63,5 +63,6 @@ if(['cor-reserva','cor-reserva-rejeitada','cor-baseline-antiga','cor-resposta-pe
   assert.ok([...cache.entries()].some(([k,v])=>k.includes('-revisao-')&&v.includes('#777777')),'rascunho original deve permanecer recuperável');
  }
 }
+if(cenario==='reserva-cancelada-rejeitada'){assert.equal(h.stats.writes,1);await h.sync.flush();await h.sync.flush();assert.equal(h.stats.writes,1,'retry must not recreate cancelled draft');assert.equal(h.base().erp_eventos.length,1);assert.equal(h.db.eventos.find(e=>e.id.endsWith('000000000042')).status,'cancelado');assert.equal(h.db.processos[0].etapa,1);assert.ok([...cache.keys()].some(k=>k.includes('-revisao-')));}
 console.log(JSON.stringify({cenario,pending:h.draft().pending,posts:h.stats.posts,writes:h.stats.writes,clientes:h.db.processos.length,conflitos:h.sync.conflitos.length}));
 h.sync.close();process.exit(0);

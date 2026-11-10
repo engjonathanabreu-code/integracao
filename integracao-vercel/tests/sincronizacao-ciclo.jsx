@@ -16,7 +16,7 @@ if(scenario==='municipio-restaurado'){
  initial.fin_receb_clientes.push({...initial.fin_receb_clientes[0],id:id(44),codigo:'TST01_002',nome:'Outro cliente ativo'});
  initial.integracao_moradores.push({...initial.integracao_moradores[0],registro_id:id(44),referencia_id:id(44),dados:{etapa:0,nucleoId:id(5),checks:{}}});
 }
-if(['reserva-recusada','cor-reserva','cor-reserva-rejeitada','cor-baseline-antiga','cor-resposta-perdida','reserva-apos-conflito'].includes(scenario)){
+if(['reserva-cancelada-rejeitada','reserva-recusada','cor-reserva','cor-reserva-rejeitada','cor-baseline-antiga','cor-resposta-perdida','reserva-apos-conflito'].includes(scenario)){
  initial.erp_agendas=[{id:id(40),nome:'Sala',cor:'#888888'},{id:id(43),nome:'Carro',cor:'#777777'}];
  initial.erp_eventos=[{id:id(41),titulo:'Reserva confirmada',cor:'#123456',agenda_id:id(40),inicio:'2026-10-15T13:00:00Z',fim:'2026-10-15T14:00:00Z',status:'ativo',participantes:[id(1)],created_by:id(1)}];
 }
@@ -37,7 +37,7 @@ if(!localStorage.getItem(key)){
  after.processos[0].etapa=1;
  if(scenario==='fantasma'){before.processos.push(copy(ghost));after.processos.push(copy(ghost));}
  let operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},expected:{dados:initial.integracao_moradores[0].dados},changes:{dados:{etapa:1,checks:{}}}}];
- if(scenario==='reserva-recusada'){const evento={...after.eventos[0],id:id(42),titulo:'Reserva pendente'};delete evento._compartilhado;after.eventos.push(evento);operations.push({action:'evento',tempId:evento.id,payload:{titulo:evento.titulo,agenda_id:id(40),inicio:evento.inicio,fim:evento.fim}});}
+ if(['reserva-recusada','reserva-cancelada-rejeitada'].includes(scenario)){const evento={...after.eventos[0],id:id(42),titulo:'Reserva pendente'};delete evento._compartilhado;if(scenario==='reserva-cancelada-rejeitada')evento.status='cancelado';after.eventos.push(evento);operations.push({action:'evento',tempId:evento.id,payload:{titulo:evento.titulo,agenda_id:id(40),inicio:evento.inicio,fim:evento.fim}});}
  if(['cor-reserva','cor-reserva-rejeitada','cor-baseline-antiga','cor-resposta-perdida','reserva-apos-conflito'].includes(scenario)){
   if(scenario!=='reserva-apos-conflito'){
    Object.assign(after.eventos[0],{agendaId:id(43),cor:'#777777',titulo:'Reserva ajustada'});
@@ -55,6 +55,7 @@ if(!localStorage.getItem(key)){
  }
  if(scenario==='cor-baseline-antiga'){before.eventos.push(copy(after.eventos.find(e=>e.id==='ev_nova')));operations=operations.filter(o=>o.action!=='evento');}
  localStorage.setItem(key,JSON.stringify({db:after,baseline:before,base:initial,pending:true,attempt:{id:crypto.randomUUID(),before,after,operations,sent:{},...(['cor-reserva-rejeitada','cor-baseline-antiga'].includes(scenario)?{rejeitada:true,erro:'Somente a administração pode alterar cores'}:{})},municipios:[id(2)]}));
+ if(scenario==='reserva-cancelada-rejeitada'){const draft=JSON.parse(localStorage.getItem(key));draft.attempt.rejeitada=true;draft.attempt.erro='O ativo já está reservado em uma das datas selecionadas';localStorage.setItem(key,JSON.stringify(draft));}
 }
 if(scenario==='concorrente-igual')base.integracao_moradores[0].dados.etapa=1;
 if(scenario==='concorrente-divergente')base.integracao_moradores[0].dados.etapa=2;
@@ -69,7 +70,7 @@ window.fetch=async(input,options={})=>{
  if(url.pathname.endsWith('/rpc/integracao_gravar')){
   stats.posts++;const {operacoes,pedido}=JSON.parse(options.body);
   if(receipts[pedido])return response(receipts[pedido]);
-  if(scenario==='reserva-recusada'&&operacoes.some(o=>o.action==='evento'))return response({message:'O ativo já está reservado em uma das datas selecionadas',code:'P0001'},400);
+  if(['reserva-recusada','reserva-cancelada-rejeitada'].includes(scenario)&&operacoes.some(o=>o.action==='evento'))return response({message:'O ativo já está reservado em uma das datas selecionadas',code:'P0001'},400);
   if(scenario==='exclusao-recusada'&&operacoes.some(o=>o.remove))return response({message:'Exclusão não autorizada',code:'P0001'},400);
   if(flags.deny)return response({message:'Sem permissão para gravar',code:'42501'},403);
   if(flags.conflict)return response({message:'Conflito real preservado',code:'PT409'},409);
