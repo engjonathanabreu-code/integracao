@@ -1,3 +1,4 @@
+import {colecaoDerivada,edicaoDerivada} from './projecoes-derivadas.js';
 import {igualSemantico} from './igualdade-semantica.js';
 import {conciliarEdicoes} from './concorrencia.js';
 import {remapearIdentidades} from './aliases-tipados.js';
@@ -8,7 +9,7 @@ const valor=x=>x===undefined?{existe:false}:{existe:true,valor:copia(x)};
 export function extrairIntencao(antes,depois){
  const edicoes=[];
  for(const colecao of new Set([...Object.keys(antes),...Object.keys(depois)])){
-  if(igualSemantico(antes[colecao],depois[colecao]))continue;
+  if(colecaoDerivada(colecao)||igualSemantico(antes[colecao],depois[colecao]))continue;
   if(lista(antes[colecao])&&lista(depois[colecao])){
    const a=new Map(antes[colecao].map(x=>[x.id,x])),b=new Map(depois[colecao].map(x=>[x.id,x]));
    for(const id of new Set([...a.keys(),...b.keys()]))if(!igualSemantico(a.get(id),b.get(id)))edicoes.push({colecao,id,antes:valor(a.get(id)),depois:valor(b.get(id))});
@@ -16,12 +17,14 @@ export function extrairIntencao(antes,depois){
  }
  return edicoes.filter(e=>!edicaoSomenteLocal(e));
 }
-export const recursosIntencao=edicoes=>edicoes.filter(e=>e.colecao!=='auditoria').map(e=>JSON.stringify([e.colecao,e.id||'*']));
+export const recursosIntencao=edicoes=>edicoes.filter(e=>e.colecao!=='auditoria'&&!edicaoDerivada(e)).map(e=>JSON.stringify([e.colecao,e.id||'*']));
 // Overlay only the explicit changed records. Missing canonical rows remain conflicts,
 // never evidence that a client may insert a row hidden by RLS.
-export function aplicarIntencao(remoto,edicoes,{aliases={},escolhas={}}={}){
+export function aplicarIntencao(remoto,edicoes,{aliases={},escolhas={},preservarDerivadas=false}={}){
  const dados=copia(remoto),conflitos=[];
  for(const entrada of edicoes){
+  // Historical originals remain intact; overlay only editable data.
+  if(!preservarDerivadas&&edicaoDerivada(entrada))continue;
   const e=remapearIdentidades(entrada,aliases),{colecao,id}=e;
   const base=e.antes.existe?e.antes.valor:undefined,local=e.depois.existe?e.depois.valor:undefined;
   const atual=id?(dados[colecao]||[]).find(r=>r.id===id):dados[colecao];
@@ -40,9 +43,10 @@ export function semearOriginais(remoto,edicoes){
  return dados;
 }
 
-export function recortarIntencao(db,edicoes){
+export function recortarIntencao(db,edicoes,{preservarDerivadas=false}={}){
  const corte={};
  for(const e of edicoes){
+  if(!preservarDerivadas&&edicaoDerivada(e))continue;
   if(e.id){corte[e.colecao]||=[];const r=db[e.colecao]?.find(r=>r.id===e.id);if(r)corte[e.colecao].push(copia(r));}
   else if(Object.hasOwn(db,e.colecao))corte[e.colecao]=copia(db[e.colecao]);
  }
