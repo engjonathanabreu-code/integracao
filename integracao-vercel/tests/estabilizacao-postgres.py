@@ -100,6 +100,32 @@ try:
  run(service(f"select integracao_envios_claim('{uncertain}');"));run(f"update integracao_envios_privado.outbox set lease_ate=now()-interval '1 second' where id='{uncertain}'")
  run(service(f"select integracao_envios_claim('{uncertain}');"))
  assert run(f"select estado from integracao_envios_privado.outbox where id='{uncertain}'").stdout.strip()=='incerto'
- print(json.dumps({'database':DB,'postgres':'17.6','passed':13,'failed':0,'scenarios':['concurrent independent fields','concurrent same field conflict','receipt replay','request payload mismatch','FK atomic rollback','RLS invisible record','typed server alias preserves free text','outbox disabled by default','outbox authenticated denied','historical backlog excluded','outbox payload mismatch','outbox two real consumers and receipt','expired lease uncertain without resend'],'limits':'Synthetic RLS/tables; deployed integracao_gravar definition; does not certify all production policies or browser queue. Outbox SQL tested against synthetic legacy table.'}))
+ # Selective reconciliation uses exact preview/version and never resends uncertainty.
+ run((ROOT/'supabase/migrations/20261110153758_recuperacao_seletiva_outbox.sql').read_text())
+ preview=json.loads(run(service(f"select integracao_envios_previa(array['{uncertain}'::uuid]);")).stdout.strip().splitlines()[-1])[0]
+ version=preview['versao'];evidence='a'*64
+ assert run(service(f"select integracao_envios_reconciliar('{uncertain}','stale','confirmar_recibo','{evidence}','fixture');"),False).returncode!=0
+ assert run(service(f"select integracao_envios_reconciliar('{uncertain}','{version}','retomar_recusado','{evidence}');"),False).returncode!=0
+ run(service(f"select integracao_envios_reconciliar('{uncertain}','{version}','confirmar_recibo','{evidence}','fixture');"))
+ assert run(f"select estado from integracao_envios_privado.outbox where id='{uncertain}'").stdout.strip()=='enviado'
+ assert run('select count(*) from integracao_envios_privado.revisoes').stdout.strip()=='1'
+ assert run(login()+f"select integracao_envios_previa(array['{uncertain}'::uuid]);",False).returncode!=0
+ legacy=json.loads(run(service("select integracao_envios_previa_legado(array[2::bigint]);")).stdout.strip().splitlines()[-1])[0]
+ assert run(service("select integracao_envios_autorizar_legado(2,'stale','approval-fixture');"),False).returncode!=0
+ run(service(f"select integracao_envios_autorizar_legado(2,'{legacy['versao']}','approval-fixture');"))
+ approved=json.loads(run(service("select integracao_envios_enfileirar('convite/2/0','convite','{}',2);")).stdout.strip().splitlines()[-1])
+ assert approved['estado']=='pendente'
+ assert run('select enviado_em is null from integracao_calendario_fila where id=2').stdout.strip()=='t'
+ # Receipt lookup has no writes and validates payload identity under caller RLS.
+ run((ROOT/'supabase/migrations/20261110152928_consulta_recibo_intencao_v2.sql').read_text())
+ pedido=str(uuid.uuid4());payload=[op({'nota':'lookup'},{'nota':'temp-event'})]
+ run(login()+call(payload,pedido))
+ def lookup(ops,who=A):return login(who)+"select integracao_consultar_pedido('"+json.dumps(ops).replace("'","''")+"'::jsonb,'"+pedido+"'::uuid);"
+ assert '{}' in run(lookup(payload)).stdout
+ assert run(lookup([op({'nota':'wrong'})]),False).returncode!=0
+ assert run(lookup(payload,B)).stdout.strip()=='SET\nSET'
+ run(f"update profiles set ativo=false where id='{A}'")
+ assert run(lookup(payload),False).returncode!=0
+ print(json.dumps({'database':DB,'postgres':'17.6','passed':23,'failed':0,'scenarios':['concurrent independent fields','concurrent same field conflict','receipt replay','request payload mismatch','FK atomic rollback','RLS invisible record','typed server alias preserves free text','outbox disabled by default','outbox authenticated denied','historical backlog excluded','outbox payload mismatch','outbox two real consumers and receipt','expired lease uncertain without resend','read-only receipt lookup','receipt payload mismatch','receipt hidden from another account','inactive account receipt denied','recovery stale preview rejected','uncertain item never released for resend','selected receipt audited atomically','recovery denied to authenticated','historical stale approval rejected','historical item explicitly authorized without sending'],'limits':'Synthetic RLS/tables; deployed integracao_gravar definition; does not certify all production policies or browser queue. Outbox SQL tested against synthetic legacy table.'}))
 finally:
  subprocess.run([BIN+'/dropdb',DB],env=ENV,check=True)

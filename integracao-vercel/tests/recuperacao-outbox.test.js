@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {previaPublica,comprovarRecibo,confirmarRecuperacao} from '../server/recuperacao-outbox.js';
+const item={id:'fixture',versao:'v1',estado:'incerto',lease_ate:'2026-11-10T10:03:00Z',corpo:{from:'teste@example.invalid',to:['destino@example.invalid'],subject:'fictício',html:'<p>teste</p>',text:'teste'}};
+const recibo={...item.corpo,id:'receipt',created_at:'2026-11-10T10:00:10Z'};
+test('prévia oculta destinatário e corpo sem perder identidade/versionamento',()=>{const r=JSON.stringify(previaPublica([item]));assert(!r.includes('destino@'));assert(!r.includes('<p>'));assert(r.includes('v1'));});
+test('recibo precisa corresponder a conteúdo, conta e janela do claim',()=>{assert.equal(comprovarRecibo(item,recibo).recibo,'receipt');for(const patch of [{subject:'outro'},{to:['outra@example.invalid']},{created_at:'2026-11-09T10:00:00Z'},{id:null}])assert.throws(()=>comprovarRecibo(item,{...recibo,...patch}));});
+test('reconciliação faz somente consulta do provedor e confirmação do item escolhido',async()=>{const calls=[];await confirmarRecuperacao({id:'fixture',versao:'v1',reciboId:'receipt',consultarProvedor:async()=>recibo,rpc:async(n,p)=>{calls.push([n,p]);return n.endsWith('previa')?[item]:{ok:true};}});assert.deepEqual(calls.map(c=>c[0]),['integracao_envios_previa','integracao_envios_reconciliar']);assert.equal(calls[1][1].p_id,'fixture');});
+test('prévia desatualizada nunca consulta provedor nem altera fila',async()=>{let consultou=false;await assert.rejects(confirmarRecuperacao({id:'fixture',versao:'velha',reciboId:'receipt',consultarProvedor:async()=>{consultou=true;},rpc:async()=>[item]}));assert.equal(consultou,false);});
+
+test('convite com anexo exige evidência do anexo além do assunto e corpo',()=>{assert.throws(()=>comprovarRecibo({...item,corpo:{...item.corpo,attachments:[{filename:'convite.ics',content:'fixture'}]}},recibo));});

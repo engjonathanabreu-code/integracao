@@ -8,6 +8,12 @@ CREATE TABLE integracao_envios_privado.config (
  corte timestamptz, CHECK(NOT habilitado OR corte IS NOT NULL)
 );
 INSERT INTO integracao_envios_privado.config DEFAULT VALUES;
+CREATE TABLE integracao_envios_privado.autorizacoes_legado (
+ fila_id bigint PRIMARY KEY REFERENCES public.integracao_calendario_fila(id),
+ versao text NOT NULL, referencia_aprovacao text NOT NULL,
+ autorizado_em timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE integracao_envios_privado.autorizacoes_legado ENABLE ROW LEVEL SECURITY;
 CREATE TABLE integracao_envios_privado.outbox (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chave text NOT NULL UNIQUE,
  origem text NOT NULL CHECK(origem IN ('convite','resumo')), fila_id bigint UNIQUE REFERENCES public.integracao_calendario_fila(id),
@@ -32,7 +38,7 @@ BEGIN
  IF NOT (SELECT habilitado FROM integracao_envios_privado.config WHERE id) THEN RETURN jsonb_build_object('estado','desativado'); END IF;
  IF (p_origem='convite') IS DISTINCT FROM (p_fila IS NOT NULL) THEN RAISE EXCEPTION 'Origem incompatível'; END IF;
  IF length(p_chave)>200 OR length(p_chave)<1 OR jsonb_typeof(p_corpo)<>'object' THEN RAISE EXCEPTION 'Envio inválido'; END IF;
- IF p_origem='convite' AND NOT EXISTS(SELECT 1 FROM public.integracao_calendario_fila f,integracao_envios_privado.config c WHERE c.id AND f.id=p_fila AND f.criado_em>=c.corte AND f.enviado_em IS NULL) THEN
+ IF p_origem='convite' AND NOT EXISTS(SELECT 1 FROM public.integracao_calendario_fila f,integracao_envios_privado.config c WHERE c.id AND f.id=p_fila AND (f.criado_em>=c.corte OR EXISTS(SELECT 1 FROM integracao_envios_privado.autorizacoes_legado a WHERE a.fila_id=f.id AND a.versao=md5(to_jsonb(f)::text))) AND f.enviado_em IS NULL) THEN
   RAISE EXCEPTION 'Item fora do lote autorizado';
  END IF;
  INSERT INTO integracao_envios_privado.outbox(chave,origem,corpo,fila_id) VALUES(p_chave,p_origem,p_corpo,p_fila) ON CONFLICT(chave) DO NOTHING;
@@ -83,7 +89,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$
   SELECT f.* FROM public.integracao_calendario_fila f
   CROSS JOIN integracao_envios_privado.config c
   LEFT JOIN integracao_envios_privado.outbox o ON o.fila_id=f.id
-  WHERE c.id AND c.habilitado AND f.criado_em>=c.corte AND f.enviado_em IS NULL
+  WHERE c.id AND c.habilitado AND (f.criado_em>=c.corte OR EXISTS(SELECT 1 FROM integracao_envios_privado.autorizacoes_legado a WHERE a.fila_id=f.id AND a.versao=md5(to_jsonb(f)::text))) AND f.enviado_em IS NULL
    AND (o.id IS NULL OR (o.estado='pendente' AND o.proxima<=now()) OR (o.estado='enviando' AND o.lease_ate<now()))
   ORDER BY f.criado_em,f.id LIMIT greatest(1,least(p_limite,40))
  ) f;

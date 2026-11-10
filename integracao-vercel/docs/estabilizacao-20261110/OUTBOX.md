@@ -26,3 +26,13 @@ Rollback: desabilitar envio e manter o consumidor v2 ou fazer forward fix. Recol
 ## Limitações que impedem rollout
 
 Ainda falta a ferramenta de reconciliação de resultado incerto com evidência do provedor e envio seletivo autorizado. A integração SQL usa service_role como o worker anterior, mas os demais consumidores externos e os efeitos do corte não foram validados em produção. Nada foi enviado nem ativado.
+
+## Recuperação seletiva implementada em 10/11
+
+`server/recuperacao-outbox.js` e `scripts/recuperar-outbox.mjs` fornecem prévia de IDs explícitos (até 20), mascarando destinatários e omitindo conteúdo. A confirmação de um resultado incerto exige recibo consultado no provedor e correspondência de remetente, destinatários, assunto, corpo e janela do claim. A gravação de confirmação usa versão da prévia e registra hash da evidência em auditoria transacional. O helper não chama endpoint de envio.
+
+Modos: `previa`, `confirmar-recibo`, `previa-legado`, `autorizar-legado`. O arquivo JSON de seleção deve informar IDs; confirmação inclui `id`, `versao`, `reciboId`. Autorização histórica exige um único ID numérico, versão, `referenciaAprovacao` e `confirmado:true`. É uma autorização de envio posterior pelo worker quando habilitado, não um teste inofensivo. Credenciais são fornecidas explicitamente via `RECUPERACAO_SUPABASE_URL`, `RECUPERACAO_SERVICE_ROLE` e, para consulta externa, `RECUPERACAO_RESEND_KEY`; não existem defaults de produção nem leitura automática de .env.
+
+Nenhuma autorização histórica, consulta de recibo real, reconciliação ou envio real foi executado. A fila de produção tinha 76 pendentes e nenhum enviado registrado na leitura agregada anterior à implantação. A expansão continua desabilitada, sem corte e sem autorizações. Ativar futuros envios ou selecionar históricos é operação posterior específica; a publicação não drena essa fila.
+
+A migration de recuperação e os testes substituem a limitação anterior de ausência de ferramenta. Persistem os limites de correspondência do recibo externo: prova insuficiente não permite reenviar; deve permanecer incerto.
