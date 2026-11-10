@@ -1,0 +1,366 @@
+{
+  "primeira_varredura_exploratoria": [
+    {
+      "test": "ajustes-interface.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "ajustes-page.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "andamentos-navegacao.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "atualizacao-pendente.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "busca-clientes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "calendario-vencimento.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "chat-popup-flexivel.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "clientes-incompletos.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "clientes-nucleo-render.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "concorrencia-global.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "concorrencia-institucional.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "conjuge-andamentos.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "contatos-interface.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "contrato-venda.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-arquivo.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-ativacoes.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-chatwoot-timeout.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-editar-card.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-followup.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-hoje-funil.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-institucionais.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-leads.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-modal.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-multiplos-comerciais.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-negociacao.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-telefone-compartilhado.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "devolutivas-anexos.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "diario-integrado.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "documentos-comerciais.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "fila-intencoes.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "financeiro-compartilhado.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "financeiro.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "folha-ponto.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "funil-notificacoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "geojson-fluxo.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "mailing.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "oficio-modelo.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "oficios-config.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "oficios-equipe.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "oficios.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "panorama-acoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "pendencias-sob-demanda.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "planejamento-densidade.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "planejamento-notificacoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "planos-planejamento.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "ponto-offline.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "ponto-solicitacoes.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "processos-protocolados.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "recusas-metas.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "rotina-mensal.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "sincronizacao-ciclo.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "sincronizacao-rascunho.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "tempo-real.browser.cjs",
+      "code": 0
+    }
+  ],
+  "segunda_rodada": [
+    {
+      "test": "modulo-sessao.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-leads.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-modal.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-editar-card.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "crm-chatwoot-timeout.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "busca-clientes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "contrato-venda.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "documentos-comerciais.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "ponto-offline.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "ponto-solicitacoes.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "andamentos-navegacao.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "diario-integrado.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "tempo-real.browser.cjs",
+      "code": 0
+    }
+  ],
+  "observacao": "Falha não equivale a regressão confirmada; pass não certifica aparelhos físicos. CRM leads passou na reexecução isolada posterior; carteira-incremental e modulo-sessao passaram.",
+  "comparacao_base_6657846": [
+    {
+      "test": "ajustes-interface.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "atualizacao-pendente.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "busca-clientes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "concorrencia-global.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "contatos-interface.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "contrato-venda.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-chatwoot-timeout.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-editar-card.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "crm-hoje-funil.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "devolutivas-anexos.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "documentos-comerciais.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "folha-ponto.browser.cjs",
+      "code": 0
+    },
+    {
+      "test": "funil-notificacoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "oficio-modelo.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "oficios-equipe.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "oficios.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "panorama-acoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "pendencias-sob-demanda.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "planejamento-densidade.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "planejamento-notificacoes.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "processos-protocolados.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "recusas-metas.browser.cjs",
+      "code": 1
+    },
+    {
+      "test": "sincronizacao-rascunho.browser.cjs",
+      "code": 1
+    }
+  ],
+  "regressao_identificada_e_corrigida": "folha-ponto: revalidar vínculo na abertura da sessão; teste passou após correção"
+}

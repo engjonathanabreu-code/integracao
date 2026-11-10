@@ -13,7 +13,7 @@ const assert=require('node:assert/strict');
    await page.getByLabel('Senha',{exact:true}).fill('fixture-only');
    await page.getByRole('button',{name:'Entrar',exact:true}).click();
    const home=async()=>{if(mobile)await page.getByRole('button',{name:'Abrir menu'}).click();await page.getByRole('button',{name:'Início',exact:true}).click();};
-   const abrirBusca=async()=>{await page.getByRole('button',{name:/Buscar cliente PF/}).click();return page.getByRole('combobox',{name:'Buscar cliente por nome ou código'});};
+   const abrirBusca=async()=>{await page.getByRole('button',{name:/Buscar cliente PF/}).click();return page.getByRole('combobox',{name:'Buscar cliente por nome, cônjuge ou código'});};
    let input=await abrirBusca();await input.fill('JOAO');
    await page.getByRole('option',{name:/João Comércio/}).waitFor();
    assert.equal(await page.getByRole('option').count(),3);

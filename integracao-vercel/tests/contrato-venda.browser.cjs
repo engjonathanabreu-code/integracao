@@ -7,7 +7,7 @@ for(const mobile of [false,true]){
  await page.getByLabel('E-mail',{exact:true}).waitFor();
  await page.evaluate(()=>{const b=window.baseFixture,c=b.fin_receb_clientes[0];c.cpf_cnpj='52998224725';b.integracao_moradores.push({colecao:'processos',registro_id:c.id,referencia_id:c.id,referencia_tabela:'fin_receb_clientes',dados:{nucleoId:b.processos_kanban[0].id,etapa:4,requerente:{profissao:'Autônomo',estadoCivil:'Solteiro(a)',rg:'1234567'},social:{rendaFamiliar:'2400',modalidade:'REURB-S'},endereco:{logradouro:'Rua das Flores',numero:'123',bairro:'Centro',municipio:'Município teste',uf:'SC',cep:'89000000'},comercial:{modalidade:'À vista',valorTotal:'2400'},distrato:{registradoEm:'2026-09-22',tipo:'sem_acerto',motivo:'Encerramento de teste',comarca:'Município teste'},qualificacaoRequerente:{quali_compromisso:'Morador Teste, CPF 529.982.247-25'},compromisso:{itens:{agua:true},prazos:{agua:'90'}}}});});
  await page.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await page.getByLabel('Senha',{exact:true}).fill('fixture');await page.getByRole('button',{name:'Entrar',exact:true}).click();
- await page.getByRole('button',{name:/Buscar cliente PF/}).click();await page.getByRole('combobox',{name:'Buscar cliente por nome ou código'}).fill('Morador');await page.getByRole('option',{name:/Morador Teste/}).click();
+ await page.getByRole('button',{name:/Buscar cliente PF/}).click();await page.getByRole('combobox',{name:'Buscar cliente por nome, cônjuge ou código'}).fill('Morador');await page.getByRole('option',{name:/Morador Teste/}).click();
  await page.getByRole('heading',{name:/Morador Teste/}).waitFor();await page.getByRole('tab',{name:/Comercial/}).click();
 
  const venda=()=>page.locator('section').filter({has:page.getByLabel('Forma de venda',{exact:true})});
@@ -31,7 +31,7 @@ for(const mobile of [false,true]){
  if(mobile)await page.getByRole('button',{name:'Abrir menu',exact:true}).click();
  await page.getByRole('button',{name:'Início',exact:true}).click();
  await page.getByRole('button',{name:/Buscar cliente PF/}).click();
- await page.getByRole('combobox',{name:'Buscar cliente por nome ou código'}).fill('Morador');await page.getByRole('option',{name:/Morador Teste/}).click();
+ await page.getByRole('combobox',{name:'Buscar cliente por nome, cônjuge ou código'}).fill('Morador');await page.getByRole('option',{name:/Morador Teste/}).click();
  await page.getByRole('tab',{name:/Comercial/}).click();
  assert.equal(await page.getByLabel('Entrada (R$)',{exact:true}).inputValue(),'500,01');
  await page.locator('.card').filter({has:page.locator('strong',{hasText:'Contrato de prestação de serviços'})}).last().getByRole('button',{name:'Ver e baixar'}).click();

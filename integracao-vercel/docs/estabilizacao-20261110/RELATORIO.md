@@ -69,3 +69,5 @@ Deployment `dpl_6rLZXyhJqCVEwquJGC6961PFTavG`, commit `6657846717ff793bbeaa18647
 Leitura pública após READY retornou HTTP 200 e asset `/assets/index-a_2cI6Bh.js`, SHA-256 `254f923bd92f44aff3d7c3bed82769f6991d0a9c968e66499c679546c026c298`. O arquivo contém o diário v2 e a interface de pendências; service worker sem ativação forçada. Nenhuma sessão real foi usada nessa verificação.
 
 Commits desta continuação: `e19cdbd` (diário), `860ceef` (outbox seletiva), `dccd0d5` (evidências), `6657846` (confirmação canônica). Nenhuma PR foi aberta. Esta atualização final do relatório permanece na branch de trabalho, sem provocar uma nova publicação apenas documental.
+
+Continuação posterior: [AUDITORIA-CONTINUACAO.md](AUDITORIA-CONTINUACAO.md), com correções de ponto, consultas, contexto, identidade e integrações CRM.
