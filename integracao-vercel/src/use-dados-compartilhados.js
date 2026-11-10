@@ -1,3 +1,4 @@
+import {remapearIdentidades as remap} from './aliases-tipados.js';
 import {separarCriacoesPendentes,recuperarCorDeAgenda,mensagemRejeicao} from './recuperacao-sincronizacao.js';
 import {temConexao} from './conexao-rede.js';
 import {criarConfirmacoesMutacoes,erroConfirmacao} from './confirmacao-mutacoes.js';
@@ -37,7 +38,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
   };
   const conferirGeracao=gen=>{if(gen!==generation.current)throw Object.assign(new Error('Sessão encerrada.'),{code:'SESSAO_ALTERADA'});};
   const carregarBase=async(seed,grupos=null)=>{
-    const gen=generation.current,municipio=municipioAtivo.current;
+    const gen=generation.current;
     const tabelas=grupos?tabelasDosGrupos(grupos):null;
     const base=await lerBase({municipios:municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[],tabelas,anterior:grupos?server.current?.base:null});
     conferirGeracao(gen);
@@ -79,13 +80,6 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa}) {
     throw new Error('Novas edições preservadas. A sincronização será retomada.');
   };
 
-  const remap=(value,aliases)=>{
-    if(!value) return value;
-    if(typeof value==='string') return aliases[value]||value;
-    if(Array.isArray(value)) return value.map(x=>remap(x,aliases));
-    if(typeof value==='object') return Object.fromEntries(Object.entries(value).map(([k,v])=>[aliases[k]||k,remap(v,aliases)]));
-    return value;
-  };
   const processarAvisos=async()=>{
     clearTimeout(avisoTimer.current);avisoTimer.current=null;
     if(!actor.current||!avisos.current.size)return;

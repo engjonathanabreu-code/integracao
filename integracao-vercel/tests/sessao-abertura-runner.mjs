@@ -1,0 +1,34 @@
+import {createRequire} from 'node:module';
+import assert from 'node:assert/strict';
+const require=createRequire(new URL('../package.json',import.meta.url));
+const {parseHTML}=require('linkedom');
+const {window}=parseHTML('<!doctype html><html><body><div id="root"></div></body></html>');
+const bundle=process.argv[2],cenario=process.argv[3]||'sucesso';
+const cache=new Map();
+const localStorage={getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)};
+Object.assign(globalThis,{window,document:window.document,location:new URL('http://localhost/?cenario=concorrente-independente'),localStorage,HTMLElement:window.HTMLElement,CustomEvent:window.CustomEvent});
+Object.defineProperty(globalThis,'navigator',{value:{onLine:cenario!=='offline',userAgent:'Node isolated test'},configurable:true});
+window.localStorage=localStorage;window.location=globalThis.location;document.visibilityState='visible';
+globalThis.fetch=(...args)=>window.fetch(...args);
+await import(bundle);
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+for(let i=0;i<100;i++){
+ await wait(30);const h=window.syncHarness;
+ if(h?.ready&&(cenario==='offline'||h.draft()&&!h.draft().pending))break;
+}
+const h=window.syncHarness;assert.ok(h?.ready,'hook ready');
+const actorA=h.db.usuarios[0],actorB={...actorA,id:'erp_fixture-B',erpRef:'fixture-B'};
+h.sync.close();
+h.definirSessao({user:{id:actorA.erpRef},access_token:'fixture-A',expires_in:3600});
+const original=localStorage.getItem;let liberar,chegou;
+const barreira=new Promise(r=>liberar=r),entrada=new Promise(r=>chegou=r);
+const keyA='integracao-compartilhado-'+actorA.erpRef;
+const draft=JSON.parse(original(keyA));draft.db.marcadorPrivado='somente-A';
+localStorage.getItem=k=>{if(k===keyA){chegou();return barreira;}return original(k);};
+const antiga=h.sync.open(actorA,null).then(()=>null,e=>e);await entrada;
+h.sync.close();h.definirSessao({user:{id:actorB.erpRef},access_token:'fixture-B',expires_in:3600});
+await h.sync.open(actorB,null);liberar(JSON.stringify(draft));
+assert.equal((await antiga)?.code,'SESSAO_ALTERADA');await wait(20);
+assert.equal(window.syncHarness.db.marcadorPrivado,undefined);
+assert.ok(!original('integracao-compartilhado-fixture-B').includes('somente-A'));
+localStorage.getItem=original;h.sync.close();console.log(JSON.stringify({ok:true}));process.exit(0);

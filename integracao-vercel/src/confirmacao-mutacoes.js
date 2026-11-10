@@ -1,8 +1,9 @@
+import {remapearIdentidades as remapear} from './aliases-tipados.js';
+import {igualSemantico as igual} from './igualdade-semantica.js';
 // Observa o pipeline existente; não grava, repete ou concilia mutações.
 // A auditoria identifica o snapshot enviado, e os campos alterados são conferidos
 // contra a leitura feita depois do recibo. Edições posteriores aguardam outro lote.
 const possui = (obj, chave) => Object.prototype.hasOwnProperty.call(obj || {}, chave);
-const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const objeto = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const listaPorId = v => Array.isArray(v) && v.every(x => objeto(x) && x.id != null) && new Set(v.map(x => String(x.id))).size === v.length;
 const copiar = v => v === undefined ? undefined : structuredClone(v);
@@ -29,16 +30,9 @@ function diferencas(antes, depois, caminho = [], saida = []) {
   return saida;
 }
 
-function remapear(valor, aliases) {
-  if (typeof valor === 'string') return aliases[valor] || valor;
-  if (Array.isArray(valor)) return valor.map(v => remapear(v, aliases));
-  if (objeto(valor)) return Object.fromEntries(Object.entries(valor).map(([k, v]) => [aliases[k] || k, remapear(v, aliases)]));
-  return valor;
-}
-
 function lerCaminho(raiz, caminho, aliases) {
   let valor = raiz;
-  for (const parte of caminho) {
+  for (const [indice,parte] of caminho.entries()) {
     if (typeof parte === 'object') {
       const id = aliases[parte.id] || parte.id;
       if (!Array.isArray(valor)) return { existe: false };
@@ -46,7 +40,7 @@ function lerCaminho(raiz, caminho, aliases) {
       if (!achado) return { existe: false };
       valor = achado;
     } else {
-      const chave = aliases[parte] || parte;
+      const chave = ['lidaPor','ultimaLeitura','respostas'].includes(caminho[indice-1]) ? aliases[parte] || parte : parte;
       if (!possui(valor, chave)) return { existe: false };
       valor = valor[chave];
     }
@@ -63,7 +57,8 @@ function conferir(mudancas, remoto, aliases = {}) {
   return mudancas.every(mudanca => {
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
-    const esperado = remapear(mudanca.valor, aliases);
+    const campo=mudanca.caminho.at(-1);
+    const esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
     return atual.existe && (mudanca.parcial ? contem(atual.valor, esperado) : igual(atual.valor, esperado));
   });
 }

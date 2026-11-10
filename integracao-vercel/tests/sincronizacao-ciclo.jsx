@@ -113,7 +113,7 @@ function Harness(){
  const [db,setDb]=useState(blank()),[ready,setReady]=useState(false),[fatal,setFatal]=useState('');
  const sync=useDadosCompartilhados({setDb,storage,baseLimpa:blank});
  useEffect(()=>{definirSessao({user:{id:id(1)},access_token:'isolated-fixture',expires_in:3600});sync.open(actor,null).then(()=>setReady(true)).catch(e=>setFatal(e.message));},[]);
- window.syncHarness={stats,flags,db,sync,ready,base:()=>base,salvarServidor:saveServer,draft:()=>JSON.parse(localStorage.getItem(key)),recover:()=>{flags.failReads=false;localStorage.setItem('harness-recovered','1');window.dispatchEvent(new Event('online'));}};
+ window.syncHarness={definirSessao,stats,flags,db,sync,ready,base:()=>base,salvarServidor:saveServer,draft:()=>JSON.parse(localStorage.getItem(key)),recover:()=>{flags.failReads=false;localStorage.setItem('harness-recovered','1');window.dispatchEvent(new Event('online'));}};
  return <main><h1>Sincronização — {tipo}</h1><p id="status">{sync.status}</p><p id="error">{sync.error||fatal}</p>{sync.conflitos.length>0&&<RevisaoConcorrencia dados={db} conflitos={sync.conflitos} resolver={sync.resolverConflitos}/>}<p id="etapa">Etapa: {db.processos.find(x=>x.id===id(4))?.etapa}</p><p id="metas">Metas: {db.metas.map(m=>m.status).join(", ")}</p><p id="ghost">Ficha antiga: {db.processos.some(x=>x.id===id(99))?'presente':'ausente'}</p><button disabled={!ready} onClick={()=>sync.mutate(d=>{d.processos.find(x=>x.id===id(4)).etapa=2;return d;})}>Editar novamente</button><button onClick={()=>window.syncHarness.recover()}>Restaurar conexão</button></main>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);

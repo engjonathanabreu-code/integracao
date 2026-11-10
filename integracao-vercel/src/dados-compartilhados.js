@@ -1,3 +1,4 @@
+import {remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
 import {registrarContrato,limparContratos} from './permissoes-contrato.js';
 import {ideiaPlanejamento} from './planejamento-metas.js';
@@ -53,11 +54,12 @@ export async function requisicao(path, options = {}) {
   }catch(e){scope.conferir();throw e;}
 }
 export async function lerTabela(tabela, campos = '*', filtro = '') {
+  const scope=capturarSessao();
   const all = [];
   for (let offset = 0; ; offset += 500) {
     const ordem = compositeOrder[tabela] || (tabelasProprias.includes(tabela)||tabela==='integracao_arquivos'?'colecao,registro_id':'id');
     const page = await requisicao(`${tabela}?select=${encodeURIComponent(campos)}${filtro}&order=${ordem}&limit=500&offset=${offset}`);
-    all.push(...page); if (page.length < 500) return all;
+    scope.conferir();all.push(...page); if (page.length < 500) return all;
   }
 }
 export async function enviarArquivoSemanal(semana, arquivo) {
@@ -78,20 +80,21 @@ export async function abrirArquivoSemanal(caminho) {
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { integracao_agente_estrategias: 'agente', integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
-export async function tokenTempoReal(){if(!session)return null;if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});return session?.access_token||null;}
+export async function tokenTempoReal(){if(!session)return null;const scope=capturarSessao();if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});scope.conferir();return session.access_token;}
 export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
-  if(!tabelas||tabelas.includes("profiles")){const contrato=await requisicao("rpc/integracao_atribuicoes_contrato_ler",{method:"POST",body:"{}"});registrarContrato(session?.user?.id,contrato); }
+  const scope=capturarSessao();
+  if(!tabelas||tabelas.includes("profiles")){const contrato=await requisicao("rpc/integracao_atribuicoes_contrato_ler",{method:"POST",body:"{}"});scope.conferir();registrarContrato(scope.owner,contrato); }
   const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
       const path = `${table==='erp_eventos'?'rpc/integracao_eventos':table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`;
       const page = await requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:{});
-      rows.push(...page); if (page.length < 500) break;
+      scope.conferir();rows.push(...page); if (page.length < 500) break;
     }
     return [table, rows];
   }));
-  const result = {...(anterior||{}),...Object.fromEntries(pairs)};
+  scope.conferir();const result = {...(anterior||{}),...Object.fromEntries(pairs)};
   if(!tabelas||tabelas.includes('fin_receb_clientes'))result._contagensClientes=await requisicao('rpc/integracao_contagens_clientes',{method:'POST',body:'{}'});
   // projetar reúne complementos; não reutilize cópias de tabelas próprias removidas.
   if(tabelas&&!tabelas.includes('integracao_complementos'))result.integracao_complementos=(result.integracao_complementos||[]).filter(e=>!e._tabela||e._tabela==='integracao_complementos');
@@ -104,12 +107,13 @@ export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
   result.fin_receb_clientes=[];result.integracao_moradores=[];
   for(const municipio of municipios){const carga=await lerMoradoresMunicipio(municipio);result.fin_receb_clientes.push(...carga.clientes);result.integracao_moradores.push(...carga.complementos);}
   }
-  return result;
+  scope.conferir();return result;
 }
 export async function lerMoradoresMunicipio(municipio) {
+  const scope=capturarSessao();
   const pagina=inicio=>requisicao('rpc/integracao_moradores_carga',{method:'POST',body:JSON.stringify({municipio,resumo:false,inicio})});
-  const carga=await pagina(0);
-  for(let inicio=500;inicio<carga.total;inicio+=500){const next=await pagina(inicio);carga.complementos.push(...next.complementos);}
+  const carga=await pagina(0);scope.conferir();
+  for(let inicio=500;inicio<carga.total;inicio+=500){const next=await pagina(inicio);scope.conferir();carga.complementos.push(...next.complementos);}
   return carga;
 }
 export async function lerResumoMoradores(db) {
@@ -120,7 +124,7 @@ export async function lerResumoMoradores(db) {
   contexto.nucleos=(db.nucleos||[]).map(({id,codigo,criterio,municipioId})=>({id,codigo,criterio,municipioId}));
   scope.conferir();const response=await fetch('/api/resumo-moradores',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({contexto}),signal:AbortSignal.timeout(90000)});
   const body=await response.json();scope.conferir();
-  if(!response.ok)throw new Error(body.message||'Não foi possível carregar as pendências.');
+  if(!response.ok)throw Object.assign(new Error(body.message||'Não foi possível carregar as pendências.'),{status:response.status,code:body.code});
   return expandirResumo(body.resumo);
 }
 export const copy = x => structuredClone(x);
@@ -143,12 +147,7 @@ const sectors = { Administrador:'diretoria', 'Diretor Técnico':'diretoria', 'Di
 export function projetar(base, local) {
   base={...base,integracao_complementos:reunirComplementos(base)};
   const aliases=Object.fromEntries((local.usuarios||[]).filter(u=>uuid(u.erpRef)).map(u=>[u.id,userId(u.erpRef)]));
-  const relink=value=>{
-    if(typeof value==='string')return aliases[value]||value;
-    if(Array.isArray(value))return value.map(relink);
-    if(value && typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[aliases[k]||k,relink(v)]));
-    return value;
-  };
+  const relink=value=>remapearIdentidades(value,aliases);
   const db = relink(copy(local)), bindings = [];
   db._contagensClientes=base._contagensClientes??null;
   if(base._moradoresResumo){

@@ -6,6 +6,7 @@ const privateKey=k=>/^integracao-(campo-offline|comercial-offline|doc-offline)/.
 const queueKey=owner=>`integracao-fila-arquivos-${owner}`;
 const cacheKey=(owner,key)=>`integracao-cache-arquivo-${owner}-${key}`;
 const recordId=(owner,key)=>privateKey(key)?`${owner}|${key}`:key;
+const conferirContexto=c=>{if(context!==c)throw Object.assign(new Error('Sessão de arquivos alterada.'),{code:'SESSAO_ALTERADA'});};
 const notify=()=>globalThis.window?.dispatchEvent(new Event('integracao:arquivo-pendente'));
 export async function abrirArquivos(actor,base,storage) {
   const owner=actor.erpRef,gen=++geracao;
@@ -23,23 +24,23 @@ export async function agendarArquivo(key,value) {
   if(prior && prior.value===value)return;
   c.queue[id]={key,value,version:crypto.randomUUID(),expected:prior?prior.expected:copy(row?.dados||null)};
   await c.storage.set(cacheKey(c.owner,key),JSON.stringify({value}));
-  await c.storage.set(queueKey(c.owner),JSON.stringify(c.queue));notify();
+  await c.storage.set(queueKey(c.owner),JSON.stringify(c.queue));if(context===c)notify();
 }
 export async function obterArquivo(key) {
   const c=context;if(!c||!recognized.test(key))return undefined;
   const id=recordId(c.owner,key),queued=c.queue[id];if(queued)return queued.value;
   const row=c.rows.find(r=>r.registro_id===id);
-  const cached=JSON.parse(await c.storage.get(cacheKey(c.owner,key))||'null');
+  const cached=JSON.parse(await c.storage.get(cacheKey(c.owner,key))||'null');conferirContexto(c);
   if(row) {
     if(cached?.path===row.dados.path)return cached.value;
     if(!temSessao()||globalThis.navigator?.onLine===false){if(cached)return cached.value;throw new Error('Conecte-se para baixar este arquivo neste aparelho.');}
-    const value=await conteudoStorage(row.dados.path);
-    await c.storage.set(cacheKey(c.owner,key),JSON.stringify({path:row.dados.path,value}));return value;
+    const value=await conteudoStorage(row.dados.path);conferirContexto(c);
+    await c.storage.set(cacheKey(c.owner,key),JSON.stringify({path:row.dados.path,value}));conferirContexto(c);return value;
   }
   if(cached)return cached.path?null:cached.value;
   // A previous account's private field package must never become this user's draft.
   if(privateKey(key)) {
-    const legacyOwner=await c.storage.get('integracao-dono-base-local');
+    const legacyOwner=await c.storage.get('integracao-dono-base-local');conferirContexto(c);
     if(legacyOwner && legacyOwner!==c.owner)return null;
   }
   return undefined;
@@ -61,12 +62,13 @@ export async function prepararArmazenamento(state,after) {
   const c=context;if(!c)return {operations:[],sent:{}};
   const sent=copy(c.queue),operations=[];
   for(const [id,item] of Object.entries(sent)) {
+    conferirContexto(c);
     const key={colecao:'arquivos',registro_id:id};
     if(item.value===null) {if(item.expected)operations.push({table:'integracao_arquivos',key,expected:{dados:item.expected},remove:true});continue;}
     const bytes=new TextEncoder().encode(item.value);
     const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
     const path=`${c.owner}/${hash}`;
-    await conteudoStorage(path,bytes);
+    conferirContexto(c);await conteudoStorage(path,bytes);conferirContexto(c);
     const dados={chave:item.key,path,hash,bytes:bytes.length};
     if(eq(dados,item.expected))continue;
     operations.push(item.expected?{table:'integracao_arquivos',key,expected:{dados:item.expected},changes:{dados,updated_at:new Date().toISOString()}}:{table:'integracao_arquivos',key,insert:true,changes:{dados,criado_por:c.owner,...referencia(item.key,state,after)}});
