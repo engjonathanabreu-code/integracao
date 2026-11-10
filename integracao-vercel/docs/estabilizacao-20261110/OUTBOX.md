@@ -15,7 +15,7 @@ Worker com provedor simulado: concorrência, repetição confirmada, timeout ap�
 ## Ativação pendente
 
 1. Revisar corte, permissões, migration e ambiente. Não retomar PR 97/migration interrompida.
-2. Homologar os dois endpoints HTTP e a recuperação assistida com o protocolo completo; ausência de erros no worker não basta.
+2. Os três testes HTTP locais de concorrência/deduplicação/configuração passaram com transporte simulado. Ainda homologar o protocolo completo e a recuperação assistida com consumidores e banco; ausência de erros no worker não basta.
 3. Interromper os consumidores antigos durante a transição e aguardar a janela de execuções em voo. Um envio antigo sem recibo precisa ser classificado; não presumir falha.
 4. Aplicar expansão desabilitada e publicar consumidor compatível em ordem coordenada.
 5. Somente com autorização de envio, definir corte posterior à cessação do consumidor antigo e habilitar piloto sintético. Não liberar envs/backlog nesta tarefa por efeito colateral.

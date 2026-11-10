@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tests = readdirSync(new URL('../tests/', import.meta.url))
-  .filter(name => name.endsWith('.test.js')).sort()
+  .filter(name => name.endsWith('.test.js') || name === 'memoriais-integracao.test.mjs').sort()
   .map(name => `tests/${name}`);
 if (!tests.length) throw new Error('Publicação bloqueada: nenhum teste encontrado.');
 function run(args) {

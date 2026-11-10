@@ -1,0 +1,634 @@
+{
+  "telas": [
+    "agentes",
+    "andamentos",
+    "calendario",
+    "campo",
+    "campoOffline",
+    "chat",
+    "config",
+    "crm",
+    "financeiro",
+    "home",
+    "importar",
+    "mailing",
+    "marketing",
+    "metas",
+    "municipio",
+    "municipios",
+    "nucleo",
+    "pessoalIA",
+    "plano",
+    "planos",
+    "prefeitura",
+    "prf",
+    "processo",
+    "processos",
+    "remessa",
+    "semanal"
+  ],
+  "quantidade_telas": 26,
+  "apis": [
+    {
+      "rota": "/api/agente-pessoal",
+      "arquivo": "api/agente-pessoal.js",
+      "chamadores_estaticos_por_nome": [
+        "src/interpretador-pedidos.js",
+        "src/AgentePessoalTeste.jsx"
+      ],
+      "testes_importam_rota": [],
+      "auth_e_metodo_linhas": [
+        1,
+        3
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/agentes",
+      "arquivo": "api/agentes.js",
+      "chamadores_estaticos_por_nome": [
+        "src/AgentesChatwoot.jsx",
+        "src/DashboardCRM.jsx",
+        "src/AgentesConversa.jsx",
+        "src/crm-dashboard.js",
+        "src/AgentesPanorama.jsx",
+        "src/AgentePessoalTeste.jsx",
+        "src/SugestoesMetas.jsx",
+        "src/sincronizacao-regras.js",
+        "src/agente-memoria-teste.js",
+        "src/App.jsx",
+        "src/CRM.jsx",
+        "src/AgentesIA.jsx",
+        "src/agentes.css",
+        "src/EstrategiasAgentes.jsx",
+        "src/agentes-api.js",
+        "src/permissoes-apresentacao.js"
+      ],
+      "testes_importam_rota": [
+        "tests/agentes-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        15,
+        18,
+        34,
+        36,
+        37,
+        39,
+        48,
+        51,
+        52,
+        57,
+        58,
+        59,
+        72,
+        77,
+        78,
+        79,
+        80,
+        83,
+        92,
+        95,
+        96,
+        99,
+        110,
+        114,
+        115,
+        118,
+        119,
+        120,
+        121,
+        126,
+        130
+      ],
+      "limite_runtime_declarado": [
+        "150"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/andamento-integracao",
+      "arquivo": "api/andamento-integracao.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [
+        "tests/crm-regras.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        1,
+        3,
+        4,
+        9
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/calendario-emails",
+      "arquivo": "api/calendario-emails.js",
+      "chamadores_estaticos_por_nome": [
+        "src/dados-compartilhados.js"
+      ],
+      "testes_importam_rota": [
+        "tests/calendario-outbox-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        2,
+        28,
+        29
+      ],
+      "limite_runtime_declarado": [
+        "120"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/calendario-ics",
+      "arquivo": "api/calendario-ics.js",
+      "chamadores_estaticos_por_nome": [
+        "src/calendario-email.js",
+        "src/App.jsx",
+        "api/calendario-emails.js",
+        "api/calendario-resumo.js"
+      ],
+      "testes_importam_rota": [
+        "tests/calendario-ics.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        10
+      ],
+      "limite_runtime_declarado": [
+        "30"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/calendario-resumo",
+      "arquivo": "api/calendario-resumo.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [
+        "tests/calendario-outbox-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        1,
+        12,
+        13
+      ],
+      "limite_runtime_declarado": [
+        "120"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/chatwoot-integracao",
+      "arquivo": "api/chatwoot-integracao.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [
+        "tests/crm-chatwoot-dashboard.test.js",
+        "tests/crm-regras.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        25
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/claude",
+      "arquivo": "api/claude.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [
+        "tests/openai.test.js"
+      ],
+      "auth_e_metodo_linhas": [],
+      "limite_runtime_declarado": [
+        "150"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/conexao",
+      "arquivo": "api/conexao.js",
+      "chamadores_estaticos_por_nome": [
+        "src/use-dados-compartilhados.js",
+        "src/conexao-rede.js",
+        "src/funil-institucional.css",
+        "src/App.jsx",
+        "src/armazenamento-local.js",
+        "src/tempo-real.js",
+        "src/FunilInstitucional.jsx"
+      ],
+      "testes_importam_rota": [
+        "tests/conexao-rede.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        4
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/contatos-nucleo",
+      "arquivo": "api/contatos-nucleo.js",
+      "chamadores_estaticos_por_nome": [
+        "src/AgenteDadosNucleo.jsx"
+      ],
+      "testes_importam_rota": [
+        "tests/contatos-nucleo.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        4,
+        7
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/crm-chatwoot-sincronizar",
+      "arquivo": "api/crm-chatwoot-sincronizar.js",
+      "chamadores_estaticos_por_nome": [
+        "src/DashboardCRM.jsx"
+      ],
+      "testes_importam_rota": [
+        "tests/crm-chatwoot-dashboard.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        6,
+        7,
+        8,
+        10
+      ],
+      "limite_runtime_declarado": [
+        "120"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/financeiro-documentos",
+      "arquivo": "api/financeiro-documentos.js",
+      "chamadores_estaticos_por_nome": [
+        "src/financeiro-importacao.js"
+      ],
+      "testes_importam_rota": [],
+      "auth_e_metodo_linhas": [
+        4,
+        5,
+        7
+      ],
+      "limite_runtime_declarado": [
+        "120"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/financeiro-lembretes",
+      "arquivo": "api/financeiro-lembretes.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [
+        "tests/financeiro-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        1,
+        7,
+        8,
+        13
+      ],
+      "limite_runtime_declarado": [
+        "300"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/ia",
+      "arquivo": "api/ia.js",
+      "chamadores_estaticos_por_nome": [
+        "src/processos-protocolados.js",
+        "src/balao-arrastavel.js",
+        "src/documentos-ia-envio.js",
+        "src/oficios.css",
+        "src/documento-pdf.js",
+        "src/mailing-mailboxes.js",
+        "src/processos-filtros.js",
+        "src/busca-clientes.js",
+        "src/plano-parcelas.js",
+        "src/RevisaoConcorrencia.jsx",
+        "src/protecao-edicao.js",
+        "src/mailing-references.js",
+        "src/use-ordenacao.jsx",
+        "src/crm-api.js",
+        "src/ImportarFinanceiro.jsx",
+        "src/ControleAcessos.jsx",
+        "src/recusas-metas.js",
+        "src/FaixasMetas.jsx",
+        "src/crm-ativacoes.js",
+        "src/financeiro.css",
+        "src/FluxoMoradoresPermissoes.jsx",
+        "src/agente-comercial-regras.js",
+        "src/crm-edicao.js",
+        "src/marketing-ui.jsx",
+        "src/interpretador-pedidos.js",
+        "src/prazo-residencia.js",
+        "src/AgenteComercial.jsx",
+        "src/JornadaMarketing.jsx",
+        "src/ConfiguracaoIANucleo.jsx",
+        "src/notificacoes-usuario.css",
+        "src/dados-nui.css",
+        "src/andamentos.css",
+        "src/confirmacao-mutacoes.js",
+        "src/funil-institucional.js",
+        "src/GestaoSemanal.jsx",
+        "src/editor-plano-parcelas.js",
+        "src/MetasVendas.jsx",
+        "src/LeitorMatriculaNUI.jsx",
+        "src/AgenteDadosNucleo.jsx",
+        "src/jornada-ponto.js",
+        "src/Marketing.jsx",
+        "src/oficio-modelo.js",
+        "src/notificacoes-usuario.js",
+        "src/documentos-ia-sessao.js",
+        "src/use-dados-compartilhados.js",
+        "src/calendario-ics.js",
+        "src/DadosNUI.jsx",
+        "src/ChatResposta.jsx",
+        "src/termos-municipais.js",
+        "src/documento-formato.js",
+        "src/observacoes-documentos-api.js",
+        "src/modelos-prf.js",
+        "src/contrato-dados.js",
+        "src/distrato.js",
+        "src/edicao-conciliada.js",
+        "src/observacoes-documentos.js",
+        "src/pedido-prf-pessoal.js",
+        "src/termos-municipais-api.js",
+        "src/PrazoFollowUp.jsx",
+        "src/metas-organizacao.js",
+        "src/pessoa-menor.js",
+        "src/andamentos-navegacao.js",
+        "src/AgentesChatwoot.jsx",
+        "src/DashboardCRM.jsx",
+        "src/documento-docx.js",
+        "src/ArquivoCadastros.jsx",
+        "src/timbrado-integral-2026.js",
+        "src/AgentesConversa.jsx",
+        "src/modelos-html.js",
+        "src/PermissoesAtuais.jsx",
+        "src/crm-dashboard.js",
+        "src/planejamento-densidade.js",
+        "src/folha-ponto.css",
+        "src/dados-compartilhados.js",
+        "src/persistencia-modulos.js",
+        "src/ArquivoCRM.jsx",
+        "src/pedido-calendario.js",
+        "src/planejamento-metas.js",
+        "src/empresa-municipio.js",
+        "src/aliases-tipados.js",
+        "src/crm.css",
+        "src/crm-hoje.js",
+        "src/FolhaPonto.jsx",
+        "src/mailing.css",
+        "src/metas-kanban.js",
+        "src/sincronizacao-clientes.js",
+        "src/crm-arquivo.js",
+        "src/AgentesPanorama.jsx",
+        "src/CarregandoLoteamento.jsx",
+        "src/TabelaAndamentosMunicipios.jsx",
+        "src/calendario-email.js",
+        "src/conexao-rede.js",
+        "src/importar-integrado.js",
+        "src/requisitos-moradores.js",
+        "src/dados-nui.js",
+        "src/agentes-graficos.jsx",
+        "src/cadastros-prf.js",
+        "src/observacoes-documentos.css",
+        "src/crm-followup.js",
+        "src/NegociacaoCRM.jsx",
+        "src/crm-regras.js",
+        "src/HojeCRM.jsx",
+        "src/documentos-verificacao-humana.js",
+        "src/crm-dashboard.css",
+        "src/DocumentalChatwootConfig.jsx",
+        "src/qualificacoes-nucleo-api.js",
+        "src/InstitucionaisCRM.jsx",
+        "src/funil-institucional.css",
+        "src/CardFunilInstitucional.jsx",
+        "src/AgentePessoalTeste.jsx",
+        "src/chat-resposta.css",
+        "src/SugestoesMetas.jsx",
+        "src/calendario-prazos.js",
+        "src/metas-visual.css",
+        "src/metas-vendas.css",
+        "src/metas-identidade.js",
+        "src/crm-metas.js",
+        "src/atualizacao-rascunho.js",
+        "src/QualificacoesNucleo.jsx",
+        "src/ponto-local.js",
+        "src/contrato-modelo.js",
+        "src/ComerciaisLead.jsx",
+        "src/semanal.css",
+        "src/leitor-nui.js",
+        "src/sincronizacao-regras.js",
+        "src/rotina-colunas.js",
+        "src/calendario-periodos.js",
+        "src/MetasAgrupadas.jsx",
+        "src/recuperacao-sincronizacao.js",
+        "src/controle-acessos.css",
+        "src/avatares-teste.js",
+        "src/agente-memoria-teste.js",
+        "src/OperacoesAgenteTeste.jsx",
+        "src/concorrencia.js",
+        "src/arquivos-compartilhados.js",
+        "src/BuscaFinanceiro.jsx",
+        "src/PlanejamentoMetas.jsx",
+        "src/App.jsx",
+        "src/Mailing.jsx",
+        "src/modulo-ui.jsx",
+        "src/crm-hoje-funil.css",
+        "src/CRM.jsx",
+        "src/oficios-api.js",
+        "src/andamentos-municipios.js",
+        "src/arquivamento.js",
+        "src/use-ponto-local.js",
+        "src/AgentesIA.jsx",
+        "src/agente-pessoal-teste.css",
+        "src/crm-negociacao.js",
+        "src/agentes.css",
+        "src/resumo-transporte.js",
+        "src/BuscaClientes.jsx",
+        "src/Financeiro.jsx",
+        "src/processo-etapas.js",
+        "src/FunilCRM.jsx",
+        "src/calendario-ocorrencias.js",
+        "src/permissoes.js",
+        "src/timbrado.js",
+        "src/EditarCardCRM.jsx",
+        "src/EstrategiasAgentes.jsx",
+        "src/FollowUpCRM.jsx",
+        "src/oficios-permissoes.js",
+        "src/agentes-api.js",
+        "src/SolicitacoesPonto.jsx",
+        "src/financeiro-regras.js",
+        "src/tempo-real.js",
+        "src/RelatorioAtivacoes.jsx",
+        "src/LeadCRM.jsx",
+        "src/ObservacoesDocumentos.jsx",
+        "src/ui-guide.css",
+        "src/Oficios.jsx",
+        "src/regras-documentais.js",
+        "src/permissoes-apresentacao.js",
+        "src/GeradorOficio.jsx",
+        "src/agentes-ia.js",
+        "src/ponto-api.js",
+        "src/TermosMunicipais.jsx",
+        "src/MailingRecipients.jsx",
+        "src/acessos-regras.js",
+        "src/qualificacoes-nucleo.js",
+        "src/financeiro-importacao.js",
+        "src/conciliacao-automatica.js",
+        "src/VersoesOficio.jsx",
+        "src/marketing.css",
+        "src/NotificacoesUsuario.jsx",
+        "src/FormulariosNucleoPRF.jsx",
+        "src/FunilInstitucional.jsx",
+        "src/GruposMarketing.jsx",
+        "src/condicoes-venda.js",
+        "src/confrontantes.js",
+        "src/planejamento-metas.css",
+        "src/resumo-moradores.js",
+        "src/Andamentos.jsx",
+        "src/RotinaMensal.jsx",
+        "src/AjustesPRFTeste.jsx",
+        "src/carregando-loteamento.css",
+        "server/contatos-nucleo.js",
+        "server/calendario-outbox.js",
+        "server/openai.js",
+        "api/calendario-emails.js",
+        "api/claude.js",
+        "api/identificar-integracao.js",
+        "api/calendario-resumo.js",
+        "api/calendario-ics.js",
+        "api/_calendario.js",
+        "api/andamento-integracao.js",
+        "api/contatos-nucleo.js",
+        "api/agente-pessoal.js",
+        "api/financeiro-lembretes.js",
+        "api/agentes.js",
+        "api/crm-chatwoot-sincronizar.js",
+        "api/oficios-analisar.js",
+        "api/financeiro-documentos.js",
+        "api/oficios-gerar.js",
+        "api/resumo-moradores.js"
+      ],
+      "testes_importam_rota": [
+        "tests/projetos-documentos-persistencia.test.js",
+        "tests/openai.test.js",
+        "tests/concorrencia-global.test.js",
+        "tests/crm-metas-estrategias.test.js",
+        "tests/agentes-ia.test.js",
+        "tests/documentos-aplicacao.test.js",
+        "tests/prazo-residencia.test.js",
+        "tests/atualizacao-rascunho.test.js",
+        "tests/agentes-conversa.test.js",
+        "tests/agentes-citacao-orcamento.test.js",
+        "tests/documentos-ia-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        2,
+        7,
+        14
+      ],
+      "limite_runtime_declarado": [
+        "150"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/identificar-integracao",
+      "arquivo": "api/identificar-integracao.js",
+      "chamadores_estaticos_por_nome": [],
+      "testes_importam_rota": [],
+      "auth_e_metodo_linhas": [
+        1,
+        5,
+        6
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/ler-matricula",
+      "arquivo": "api/ler-matricula.js",
+      "chamadores_estaticos_por_nome": [
+        "src/dados-compartilhados.js"
+      ],
+      "testes_importam_rota": [],
+      "auth_e_metodo_linhas": [
+        3,
+        4,
+        8
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/oficios-analisar",
+      "arquivo": "api/oficios-analisar.js",
+      "chamadores_estaticos_por_nome": [
+        "src/oficios-api.js"
+      ],
+      "testes_importam_rota": [
+        "tests/oficios-equipe.test.js",
+        "tests/oficios-api.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        7,
+        8,
+        10
+      ],
+      "limite_runtime_declarado": [
+        "150"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/oficios-gerar",
+      "arquivo": "api/oficios-gerar.js",
+      "chamadores_estaticos_por_nome": [
+        "src/oficios-api.js"
+      ],
+      "testes_importam_rota": [
+        "tests/projetos-permissoes.test.js",
+        "tests/oficios-equipe.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        6,
+        7,
+        8,
+        14
+      ],
+      "limite_runtime_declarado": [
+        "150"
+      ],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    },
+    {
+      "rota": "/api/resumo-moradores",
+      "arquivo": "api/resumo-moradores.js",
+      "chamadores_estaticos_por_nome": [
+        "src/dados-compartilhados.js"
+      ],
+      "testes_importam_rota": [
+        "tests/confrontantes.test.js",
+        "tests/resumo-api.test.js",
+        "tests/estabilizacao-regressoes.test.js",
+        "tests/moradores-lazy.test.js"
+      ],
+      "auth_e_metodo_linhas": [
+        6,
+        7,
+        8,
+        17
+      ],
+      "limite_runtime_declarado": [],
+      "limite": "Referências estáticas não provam autorização por objeto nem cobertura de schemas/deadline."
+    }
+  ]
+}
