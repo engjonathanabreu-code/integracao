@@ -16,13 +16,14 @@ Atualização de 10/11/2026. A continuação foi autorizada pelo usuário, inclu
 | Verificação | Resultado |
 |---|---|
 | npm test durante integração | 1.130 passaram, 0 falharam |
-| npm run build com testes de recuperação | 1.134 passaram, 0 falharam; Vite concluído |
+| npm run build final, incluindo vínculo canônico de meta | 1.136 passaram, 0 falharam; Vite concluído |
 | Núcleo IndexedDB em duas abas reais | 13 cenários passaram |
-| Hook integrado em navegador | 10 cenários passaram |
+| Hook integrado em navegador | 11 cenários passaram |
+| Recuperação pelos botões em viewport 390 px | Passou, sem transbordamento horizontal |
 | PostgreSQL 17.6 com duas conexões | 23 cenários passaram |
 | Browsers de módulos da etapa anterior | ponto-offline, crm-leads e crm-modal passaram |
 
-Os cenários integrados incluem migração, reload sem duplicação, nova edição, unidade recusada sem bloquear outra, escolha seletiva, duas abas, resposta perdida, releitura falha após recibo, edição durante envio e quota/retomada. Banco/testes usam dados fictícios e provedores simulados; não houve escrita em registros de usuários para testar.
+Os cenários integrados incluem migração, reload sem duplicação, nova edição, unidade recusada sem bloquear outra, escolha seletiva, duas abas, resposta perdida, releitura falha após recibo, edição durante envio e quota/retomada e criação de meta com erpId nulo. Banco/testes usam dados fictícios e provedores simulados; não houve escrita em registros de usuários para testar.
 
 Não há lint/typecheck configurados. Permanece o aviso preexistente de chunk grande. Os outros 48 browsers originais, aparelhos físicos e piloto em rascunhos reais de funcionários não foram executados. O total de testes não demonstra que todos os casos históricos de funcionários foram recuperados.
 
@@ -42,4 +43,29 @@ A análise de segurança do Supabase também apontou avisos preexistentes em fun
 
 ## Implantação
 
-Registro do commit, migrations efetivamente aplicadas, deployment e verificação do asset serão acrescentados após a publicação autorizada. Preparação não é publicação; READY não comprova recuperação de cada navegador real.
+As quatro migrations foram aplicadas individualmente no projeto ycdsyilyvaxslkwbkxyo e conferidas. Mapeamento local → registro remoto (o MCP atribui o instante da aplicação):
+
+| Arquivo local | Versão remota |
+|---|---|
+| 20261110143311_calendario_outbox_duravel.sql | 20261110155130 |
+| 20261110144604_aliases_tipados_gravacao.sql | 20261110155140 |
+| 20261110152928_consulta_recibo_intencao_v2.sql | 20261110155148 |
+| 20261110153758_recuperacao_seletiva_outbox.sql | 20261110155159 |
+
+Readback confirmou envio desabilitado, corte NULL, zero itens da outbox, zero autorizações históricas e os mesmos 76 pendentes antigos. A função de recibo não permite anon; a recuperação privilegiada não permite authenticated; o alias tipado preserva descrição igual ao antigo ID. Nenhum registro operacional real foi alterado para testes.
+
+`admin-create-usar` foi publicada na versão 2, ACTIVE, com código implantado conferido contra o patch. A autenticação continua no corpo da função; verify_jwt mantém a configuração anterior. Nenhum usuário foi criado para validar a função.
+
+A primeira publicação (`dccd0d5`, deployment `dpl_5a2LeyCQE5HxC7rTxoe1YPN1GPUG`) chegou a READY. Um teste adicional mostrou que a confirmação de uma meta nova precisava aceitar o preenchimento canônico de erpId, inicialmente nulo no formulário. A meta já estava gravada e o recibo foi mantido; não houve reenvio. O ajuste valida que o vínculo recebido corresponde exatamente ao próprio ID, preservando diferenças em campos de negócio e identidades divergentes. Regressão Node e browser foram acrescentadas e passaram. Correção enviada em `6657846717ff793bbeaa18647336b1de5487f5a2`; a verificação final foi concluída conforme abaixo.
+
+O endereço público respondeu 200, servindo o diário e a interface de recuperação; sw.js não contém chamada a skipWaiting. A atualização não comprova recuperação dos rascunhos de todos os funcionários: cada navegador importa os próprios dados ao abrir a nova versão.
+
+Duas ações opcionais foram rejeitadas pela revisão automática: criar acesso temporário ao preview protegido e cancelar o primeiro deployment durante a investigação do teste extra. Nenhum link foi criado nem proteção desabilitada; o diagnóstico continuou isolado e a correção compatível foi publicada pelo fluxo autorizado. A verificação HTTP usa somente o alias público existente.
+
+### Verificação final da produção
+
+Deployment `dpl_6rLZXyhJqCVEwquJGC6961PFTavG`, commit `6657846717ff793bbeaa18647336b1de5487f5a2`, main, target production: READY, alias `https://integracao-beige.vercel.app`, sem erro de alias. Logs remotos confirmam build concluído e deployment completed.
+
+Leitura pública após READY retornou HTTP 200 e asset `/assets/index-a_2cI6Bh.js`, SHA-256 `254f923bd92f44aff3d7c3bed82769f6991d0a9c968e66499c679546c026c298`. O arquivo contém o diário v2 e a interface de pendências; service worker sem ativação forçada. Nenhuma sessão real foi usada nessa verificação.
+
+Commits desta continuação: `e19cdbd` (diário), `860ceef` (outbox seletiva), `dccd0d5` (evidências), `6657846` (confirmação canônica). Nenhuma PR foi aberta. Esta atualização final do relatório permanece na branch de trabalho, sem provocar uma nova publicação apenas documental.

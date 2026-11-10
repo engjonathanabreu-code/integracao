@@ -23,7 +23,7 @@ Recibo já confirmado com leitura divergente não autoriza reenvio; o usuário p
 ## Validação
 
 - 13 cenários do núcleo com IndexedDB real e duas abas, sem serviços externos.
-- 10 cenários do hook integrado: migração, reload idempotente, nova edição, unidade recusada independente, revisão seletiva, duas abas, resposta perdida, recibo com releitura falha, edição durante envio e quota/retomada.
+- 11 cenários do hook integrado: migração, reload idempotente, nova edição, unidade recusada independente, revisão seletiva, duas abas, resposta perdida, recibo com releitura falha, edição durante envio, quota/retomada e criação de meta com vínculo ERP inicialmente nulo.
 - PostgreSQL real: replay, divergência de payload, RLS, concorrência, consulta somente leitura e autorização.
 - Suíte anterior continua exercitando explicitamente o protocolo legado; não é contabilizada como teste do diário v2.
 
