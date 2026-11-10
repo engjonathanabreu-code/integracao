@@ -1,4 +1,5 @@
 import {remapearIdentidades} from './aliases-tipados.js';
+import {pendenciaSomenteLocal} from './intencoes-locais.js';
 
 // Protocol 2 has its own database. Legacy clients cannot write its entries.
 // An entry is one explicitly defined atomic business operation, never one table.
@@ -71,6 +72,10 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
+   for(const item of items)if(!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
+    item.estado='dispensado';item.decisao={tipo:'somente_presenca_ou_acesso_local',em:tempo};
+    await requisicao(s.intencoes.put(item));
+   }
    for(const item of items){
     if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||item.proximaTentativa>tempo||item.leaseAte>tempo)continue;
     if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;

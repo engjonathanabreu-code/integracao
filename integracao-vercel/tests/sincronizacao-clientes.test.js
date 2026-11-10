@@ -45,3 +45,12 @@ test('legacy reference is resolved through the complement with the same user ses
 });
 
 test("transport-wrapped lost response remains retryable without retrying denied writes",()=>{assert.equal(falhaTransitoria(new Error("mensagem",{cause:new TypeError("rede")})),true);assert.equal(falhaTransitoria(new Error("mensagem",{cause:{status:403}})),false);});
+
+test('intenção antiga sem marcador sempre identifica a ficha que deve ser relida',async()=>{
+ const {clientesDasIntencoes,fichasVisiveis}=await import('../src/sincronizacao-clientes.js');
+ const e={colecao:'processos',id:id(1),antes:{existe:true,valor:{id:id(1),financeiroRef:id(2),docs:[{id:'doc'}]}}},novo={colecao:'processos',id:id(3),antes:{existe:false},depois:{existe:true,valor:{id:id(3)}}};
+ const clientes=clientesDasIntencoes([e,novo,e,{colecao:'metas',id:'m'}]);assert.equal(clientes.length,2);assert.equal(clientes[0].financeiroRef,id(2));
+ assert.deepEqual([...fichasVisiveis({fin_receb_clientes:[{id:id(2)}],integracao_moradores:[]},clientes)],[id(1)]);
+ assert.deepEqual([...fichasVisiveis({fin_receb_clientes:[],integracao_moradores:[]},clientes)],[]);
+ assert.deepEqual([...fichasVisiveis({integracao_moradores:[{registro_id:id(3)}]},clientes)],[id(3)]);
+});

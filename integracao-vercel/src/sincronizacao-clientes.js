@@ -1,4 +1,12 @@
 // Rehydrate every written resident, including metadata-only edits outside a municipality route.
+export function clientesDasIntencoes(edicoes){
+ return [...new Map(edicoes.filter(e=>e.colecao==='processos'&&e.id).map(e=>[e.id,{...(e.antes?.existe?e.antes.valor:e.depois?.valor),id:e.id}])).values()];
+}
+
+export function fichasVisiveis(base,clientes){
+ return new Set(clientes.filter(c=>(base.fin_receb_clientes||[]).some(r=>r.id===(c.financeiroRef||c.id))||(base.integracao_moradores||[]).some(r=>r.registro_id===c.id||(c.financeiroRef&&r.referencia_id===c.financeiroRef))).map(c=>c.id));
+}
+
 export function clientesDasOperacoes(operations,processos=[]) {
  const clientes=new Map();
  for(const op of operations) {

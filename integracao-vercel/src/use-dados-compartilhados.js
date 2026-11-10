@@ -1,5 +1,5 @@
 import {criarDiarioCompartilhado} from './diario-compartilhado.js';
-import {semearOriginais,aplicarIntencao} from './intencoes-edicao.js';
+import {semearOriginais} from './intencoes-edicao.js';
 import {remapearIdentidades as remap} from './aliases-tipados.js';
 import {separarCriacoesPendentes,recuperarCorDeAgenda,mensagemRejeicao} from './recuperacao-sincronizacao.js';
 import {temConexao} from './conexao-rede.js';
@@ -11,7 +11,7 @@ import {temEdicaoEmAndamento} from './protecao-edicao.js';
 import {conectarTempoReal} from './tempo-real.js';
 import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincronizacao-regras.js';
 import {filaRascunho} from './fila-rascunho.js';
-import {clientesDasOperacoes,clientesComEdicao,atualizarFichas} from './sincronizacao-clientes.js';
+import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisiveis,atualizarFichas} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
@@ -82,9 +82,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const iniciarDiario=(user,gen)=>{
     diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
       carregar:async edicoes=>{
-        const seed=semearOriginais(server.current.db,edicoes),local=aplicarIntencao(seed,edicoes).dados;
-        const base=await carregarBase(seed);conferirGeracao(gen);await atualizarPendentes(base,seed,local,null);conferirGeracao(gen);
-        return projetarRemoto(base,seed,server.current.db);
+        const seed=semearOriginais(server.current.db,edicoes),clientes=clientesDasIntencoes(edicoes);
+        const base=await carregarBase(seed);conferirGeracao(gen);
+        // Persisted intent IDs, not an old cache marker, determine what must be
+        // re-read. A legacy record may lack _compartilhado entirely.
+        await atualizarFichas(base,clientes,lerFichaCliente);conferirGeracao(gen);
+        const state=projetarRemoto(base,seed,server.current.db),consultados=new Set(clientes.map(c=>c.id)),visiveis=fichasVisiveis(base,clientes);
+        // Never present a cached row as the authorized remote row when its
+        // fresh lookup is empty. Existing edits become explicit conflicts.
+        state.db.processos=state.db.processos.filter(p=>!consultados.has(p.id)||visiveis.has(p.id));
+        return state;
       },
       preparar:async(state,depois,arquivos)=>{
         const ops=prepararEdicao(state.db,depois,state,user),files=await prepararArquivos(state.db,depois,storage,user);conferirGeracao(gen);

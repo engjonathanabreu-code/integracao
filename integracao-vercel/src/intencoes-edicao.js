@@ -1,6 +1,7 @@
 import {igualSemantico} from './igualdade-semantica.js';
 import {conciliarEdicoes} from './concorrencia.js';
 import {remapearIdentidades} from './aliases-tipados.js';
+import {edicaoSomenteLocal} from './intencoes-locais.js';
 const copia=x=>structuredClone(x);
 const lista=x=>Array.isArray(x)&&x.every(i=>i&&typeof i.id==='string')&&new Set(x.map(i=>i.id)).size===x.length;
 const valor=x=>x===undefined?{existe:false}:{existe:true,valor:copia(x)};
@@ -13,7 +14,7 @@ export function extrairIntencao(antes,depois){
    for(const id of new Set([...a.keys(),...b.keys()]))if(!igualSemantico(a.get(id),b.get(id)))edicoes.push({colecao,id,antes:valor(a.get(id)),depois:valor(b.get(id))});
   }else edicoes.push({colecao,antes:valor(antes[colecao]),depois:valor(depois[colecao])});
  }
- return edicoes;
+ return edicoes.filter(e=>!edicaoSomenteLocal(e));
 }
 export const recursosIntencao=edicoes=>edicoes.filter(e=>e.colecao!=='auditoria').map(e=>JSON.stringify([e.colecao,e.id||'*']));
 // Overlay only the explicit changed records. Missing canonical rows remain conflicts,

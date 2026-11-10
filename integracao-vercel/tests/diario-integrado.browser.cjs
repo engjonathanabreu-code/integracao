@@ -9,6 +9,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
  await p.evaluate(()=>syncHarness.sync.loadMunicipio('00000000-0000-4000-8000-000000000002'));await p.getByRole('button',{name:'Editar novamente'}).click();await p.waitForFunction(()=>syncHarness.stats.writes===2&&!syncHarness.sync.pendencias.length);assert.equal(await p.evaluate(()=>syncHarness.base().integracao_moradores[0].dados.etapa),2);cenarios++;console.log('cenário aprovado',cenarios);await c.close();
  // Refused unit is retained while an independent goal edit completes.
  c=await contexto();p=await abrir(c,'reserva-recusada');await p.waitForFunction(()=>syncHarness.sync.pendencias.some(i=>i.estado==='bloqueado_validacao'));
+ const antesPresenca=await p.evaluate(()=>({pendencias:syncHarness.sync.pendencias.length,posts:syncHarness.stats.posts}));
+ await p.evaluate(()=>{for(let n=0;n<8;n++)syncHarness.sync.mutate(d=>{d.usuarios[0].online=true;d.usuarios[0].ultimaAtividade='2026-11-10T12:00:0'+n+'Z';return d;});});
+ await p.waitForTimeout(500);assert.deepEqual(await p.evaluate(()=>({pendencias:syncHarness.sync.pendencias.length,posts:syncHarness.stats.posts})),antesPresenca);cenarios++;console.log('sinais locais não acumulam fila',cenarios);
  await p.evaluate(()=>syncHarness.sync.mutate(d=>{d.metas[0].titulo='Meta independente';return d;}));
  await p.waitForFunction(()=>syncHarness.base().metas[0].titulo==='Meta independente');assert.equal(await p.evaluate(()=>syncHarness.sync.pendencias.filter(i=>i.estado==='bloqueado_validacao').length),1);cenarios++;console.log('cenário aprovado',cenarios);await c.close();
  // Explicit recovery uses a fresh precondition and does not erase another field.

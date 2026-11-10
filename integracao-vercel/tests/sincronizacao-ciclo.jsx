@@ -55,12 +55,14 @@ if(!localStorage.getItem(key)){
   operations.push({table:'meta_historico',key:{id:id(98)},insert:true,changes:{meta_id:id(99),meta_titulo:'Meta removida',acao:'alterar',autor_id:id(1)}});
  }
  if(scenario==='cor-baseline-antiga'){before.eventos.push(copy(after.eventos.find(e=>e.id==='ev_nova')));operations=operations.filter(o=>o.action!=='evento');}
+ if(scenario==='morador-sem-marcador'){delete before.processos[0]._compartilhado;delete after.processos[0]._compartilhado;operations=[{table:'integracao_moradores',key:{colecao:'processos',registro_id:id(4)},insert:true,changes:{dados:{etapa:1,checks:{}}}}];}
  localStorage.setItem(key,JSON.stringify({db:after,baseline:before,base:initial,pending:true,attempt:{id:crypto.randomUUID(),before,after,operations,sent:{},...(['cor-reserva-rejeitada','cor-baseline-antiga'].includes(scenario)?{rejeitada:true,erro:'Somente a administração pode alterar cores'}:{})},municipios:[id(2)]}));
+ if(scenario==='morador-sem-marcador'){const draft=JSON.parse(localStorage.getItem(key));draft.attempt.rejeitada=true;localStorage.setItem(key,JSON.stringify(draft));}
  if(scenario==='reserva-cancelada-rejeitada'){const draft=JSON.parse(localStorage.getItem(key));draft.attempt.rejeitada=true;draft.attempt.erro='O ativo já está reservado em uma das datas selecionadas';localStorage.setItem(key,JSON.stringify(draft));}
 }
 if(scenario==='concorrente-igual')base.integracao_moradores[0].dados.etapa=1;
 if(scenario==='concorrente-divergente')base.integracao_moradores[0].dados.etapa=2;
-if(scenario==='concorrente-independente')base.integracao_moradores[0].dados.checks={remoto:true};
+if(['concorrente-independente','morador-sem-marcador'].includes(scenario))base.integracao_moradores[0].dados.checks={remoto:true};
 const response=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(input,options={})=>{
  const url=new URL(typeof input==='string'?input:input.url,location.href);
