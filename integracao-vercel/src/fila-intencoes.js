@@ -1,3 +1,4 @@
+import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao} from './arquivos-intencoes.js';
 import {classificarFalha,revisaoDeRecusa} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {pendenciaSomenteLocal} from './intencoes-locais.js';
@@ -49,6 +50,15 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  }
  const contaValida=conta=>{if(typeof conta!=='string'||!conta)throw erro('Conta da intenção ausente.','CONTA_INVALIDA');};
  async function listar(conta){contaValida(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
+ // Freeze safe scopes even when their own real dependencies are still blocked.
+ // Otherwise an already persisted file-only successor can never reach selection.
+ async function congelarEscopos(s,items,tempo=agora()){
+  for(const item of items.sort((a,b)=>a.ordem-b.ordem)){
+   if(item.escopoArquivos||item.leaseAte>tempo)continue;
+   const escopo=escopoArquivosDaIntencao(item,items);
+   if(escopo){item.escopoArquivos=escopo;await requisicao(s.intencoes.put(item));}
+  }
+ }
  async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null,substituirId=null}){
   contaValida(conta);
   if(!unidade||!modulo||!Array.isArray(operacoes)||(!operacoes.length&&!preparar)||dependencias.includes(id))throw erro('Unidade, módulo ou operações inválidos.','INTENCAO_INVALIDA');
@@ -64,12 +74,15 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    if(substituirId&&(!substituida||substituirId===id||substituida.recibo||substituida.leaseAte>agora()||!revisaoDeRecusa(substituida)))throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    for(const dep of original.dependencias)if(!await requisicao(s.intencoes.get([conta,dep])))throw erro('Dependência indisponível nesta conta.','DEPENDENCIA_INDISPONIVEL');
    const anteriores=await requisicao(s.intencoes.index('conta').getAll(conta));
+   // Persist proven pre-send scopes before capturing successor resources. The
+   // removed attachment must not reappear if its unrelated data edit later fails.
+   await congelarEscopos(s,anteriores);
    // Append order and dependency capture share the same transaction across tabs.
-   const deps=anteriores.filter(x=>!['confirmado','substituido','dispensado'].includes(x.estado)&&(x.original.recursos?.some(r=>recursos.includes(r))||x.original.criadas?.some(r=>referencias.includes(r)))).map(x=>x.id);
+   const deps=anteriores.filter(x=>!['confirmado','substituido','dispensado'].includes(x.estado)&&(x.original.unidade===unidade||recursosEfetivosDaIntencao(x).some(r=>recursos.includes(r))||x.original.criadas?.some(r=>referencias.includes(r)))).map(x=>x.id);
    const seq=await requisicao(s.sequencias.get(conta));
    const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',tentativas:0,criadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
    if(substituida){
-    item.dependencias=[...(substituida.dependencias||[])];item.ordem=substituida.ordem;
+    item.dependencias=dependenciasEfetivasDaIntencao(substituida);item.ordem=substituida.ordem;
     substituida.estado='substituido';substituida.substituidaPor=id;
     await requisicao(s.intencoes.put(substituida));
    }
@@ -85,16 +98,19 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     item.estado='dispensado';item.decisao={tipo:'somente_presenca_ou_acesso_local',em:tempo};
     await requisicao(s.intencoes.put(item));
    }
+   await congelarEscopos(s,items,tempo);
    for(const item of items){
     if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||item.proximaTentativa>tempo||item.leaseAte>tempo)continue;
     if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;
     const resolver=id=>{let d=items.find(i=>i.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=items.find(i=>i.id===d.substituidaPor);}return d;};
-    const deps=(item.dependencias||item.original.dependencias).map(resolver);
+    const escopo=escopoArquivosDaIntencao(item,items);
+    const deps=(escopo?.dependencias||item.dependencias||item.original.dependencias).map(resolver);
     if(deps.some(d=>!d||!['confirmado','dispensado'].includes(d.estado)))continue;
     if(!item.payload&&!item.original.preparar){
      const aliases=Object.assign({},...deps.map(d=>d.recibo?.aliases||{}));
      item.payload=remapearIdentidades(item.original.operacoes,aliases);
     }
+    if(escopo&&!item.escopoArquivos)item.escopoArquivos=escopo;
     item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
     if(item.fase==='envio'||item.fase==='recibo')item.estado='resultado_desconhecido';
     item.dono=dono;item.reserva=crypto.randomUUID();item.leaseAte=tempo+leaseMs;
@@ -158,15 +174,18 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    const item=await requisicao(s.intencoes.get([conta,id])),novo=await requisicao(s.intencoes.get([conta,novoId]));
    if(!item||!novo||item.leaseAte>agora()||!revisaoDeRecusa(item)||novo.estado!=='pendente_local')throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    // The replacement must not wait on the item it supersedes.
-   novo.dependencias=[...(item.dependencias||[])];novo.ordem=item.ordem;item.estado='substituido';item.substituidaPor=novoId;
+   novo.dependencias=dependenciasEfetivasDaIntencao(item);
+   if(novo.escopoArquivos?.versao===1)novo.escopoArquivos={...novo.escopoArquivos,dependencias:[...novo.dependencias]};
+   novo.ordem=item.ordem;item.estado='substituido';item.substituidaPor=novoId;
    await requisicao(s.intencoes.put(novo));await requisicao(s.intencoes.put(item));return novo;
   });
  }
- async function aceitarLeituraAtual(conta,id){
+ async function aceitarLeituraAtual(conta,id,{arquivosAtual={}}={}){
+  contaValida(conta);
   return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
    if(!item?.recibo||item.estado!=='confirmado_aguardando_leitura'||item.leaseAte>agora())throw erro('Confirmação ainda não disponível para revisão.','REVISAO_NECESSARIA');
-   item.estado='confirmado';item.decisao={tipo:'aceitar_estado_atual_apos_recibo',em:agora()};await requisicao(s.intencoes.put(item));return item;
+   item.estado='confirmado';item.decisao={tipo:'aceitar_estado_atual_apos_recibo',em:agora(),arquivosAtual:structuredClone(arquivosAtual)};await requisicao(s.intencoes.put(item));return item;
   });
  }
  async function aceitarRemoto(conta,id){

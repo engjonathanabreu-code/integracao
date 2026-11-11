@@ -127,6 +127,18 @@ export function alteracoesConfirmadas(antes, depois, remoto, aliases = {}, opera
   return conferir(diferencas(antes, depois), remoto, aliases, operacoes);
 }
 
+// A receipt may be followed by a different authorized read, including the old
+// base value or a removed record. Three-way merge conflicts alone miss those
+// cases. Reuse the exact confirmation contract, including canonical adapters.
+export function divergenciasConfirmacao(antes, depois, remoto, aliases = {}, operacoes = []) {
+  return diferencas(antes, depois).filter(m => !conferir([m], remoto, aliases, operacoes)).map(m => ({
+    caminho: m.caminho.map(p => typeof p === 'object' ? aliases[p.id] || p.id : p),
+    base: lerCaminho(antes, m.caminho, {}).valor,
+    local: m.existe ? copiar(m.valor) : undefined,
+    remoto: copiar(lerCaminho(remoto, m.caminho, aliases).valor),
+  }));
+}
+
 export function erroConfirmacao(mensagem, codigo = 'CONFIRMACAO_PENDENTE', causa) {
   const erro = new Error(mensagem, causa ? { cause: causa } : undefined);
   erro.code = codigo;

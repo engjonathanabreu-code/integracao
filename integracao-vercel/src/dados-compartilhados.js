@@ -560,11 +560,11 @@ export async function conteudoStorage(path,bytes) {
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/${bytes?'':'authenticated/'}integracao/${path.split('/').map(encodeURIComponent).join('/')}`,{method:bytes?'POST':'GET',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,...(bytes?{'Content-Type':'text/plain;charset=utf-8','x-upsert':'false'}:{})},...(bytes?{body:bytes}:{})});
   scope.conferir();if(bytes) {
-    const result=await response.json();scope.conferir();
-    if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw new Error(result.message||'Não foi possível guardar o arquivo no Supabase.');
+    const result=await response.json().catch(()=>({}));scope.conferir();
+    if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw Object.assign(new Error(result.message||'Não foi possível guardar o arquivo no Supabase.'),{status:response.status,code:String(result.code||result.error||'STORAGE_UPLOAD')});
     return path;
   }
-  if(!response.ok)throw new Error('Arquivo indisponível para esta conta.');
+  if(!response.ok)throw Object.assign(new Error('Arquivo indisponível para esta conta.'),{status:response.status,code:'STORAGE_READ'});
   const value=await response.text();scope.conferir();return value;
 }
 
@@ -581,8 +581,8 @@ export async function prepararArquivos(before,after,storage,actor) {
     const path=`${actor.erpRef}/metas/${m.id}/${a.id}-${digest}`;
     scope.conferir();await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
     scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob});
-    const result=await response.json();scope.conferir();
-    if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw new Error(result.message||'Não foi possível enviar o arquivo.');
+    const result=await response.json().catch(()=>({}));scope.conferir();
+    if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw Object.assign(new Error(result.message||'Não foi possível enviar o arquivo.'),{status:response.status,code:String(result.code||result.error||'STORAGE_UPLOAD')});
     operations.push({table:'meta_arquivos',key:{id:a.id},insert:true,changes:{meta_id:m.id,nome:a.nome,caminho_storage:path,mime_type:a.tipo||null,tamanho_bytes:blob.size,enviado_por:actor.erpRef}});
   }
   return operations;
