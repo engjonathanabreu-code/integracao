@@ -8,6 +8,9 @@ permissions:
 jobs:
   navegador-isolado:
     runs-on: ubuntu-latest
+    container:
+      # Official Playwright 1.57.0 Noble image; immutable manifest verified at mcr.microsoft.com.
+      image: mcr.microsoft.com/playwright@sha256:3bed4b1a12f2338642f3d8cba28e291deef3c66bd4a964bbeb3e57bbff511dbd
     timeout-minutes: 20
     defaults:
       run:
@@ -22,7 +25,8 @@ jobs:
           cache: npm
           cache-dependency-path: integracao-vercel/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
+      - name: Verify bundled Chromium
+        run: node -e "const {chromium}=require('playwright'); chromium.launch({headless:true}).then(async b=>{console.log(await b.version());await b.close()}).catch(e=>{console.error(e);process.exit(1)})"
       - run: npm run build
       - run: npm run test:browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
