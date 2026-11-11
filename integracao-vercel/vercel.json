@@ -92,5 +92,10 @@
       "path": "/api/calendario-resumo",
       "schedule": "0 10 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "test/sync-originals-order-20261111": false
+    }
+  }
 }
