@@ -18,6 +18,8 @@ A prévia usa o mesmo contrato da confirmação, inclusive os adaptadores financ
 
 O usuário pode repetir somente a leitura ou reconhecer explicitamente os valores atuais. O reconhecimento relê a informação e recusa a decisão se os campos/arquivos mostrados mudaram. A decisão e o recibo ficam arquivados com o original. Ela não afirma que o conteúdo enviado permanece atual, não reenvia dados e não autoriza uma versão posterior de arquivo a sobrescrever conteúdo concorrente.
 
+Abertura e refresh hidratam apenas as fichas referenciadas por intenções pendentes, usando a sessão atual. Uma carga resumida não é interpretada como exclusão. Consulta vazia autorizada mantém a ficha ausente; erro de leitura não vira ausência nem libera nova gravação.
+
 O overlay mostra valores remotos nos campos conflitantes, preservando alterações locais compatíveis. Recibos cuja leitura comprovadamente divergiu não reaplicam o snapshot enviado sobre a leitura atual. O conteúdo local continua disponível na revisão e exportação.
 
 O reconhecimento ou descarte explícito consome somente a mesma versão do arquivo na fila auxiliar. Versões posteriores são preservadas. O cache não associa bytes antigos a um caminho remoto diferente. Se essa atualização local falhar após a decisão durável, a próxima abertura/retomada completa a reconciliação da mesma versão, sem reenvio.

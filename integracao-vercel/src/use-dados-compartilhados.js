@@ -80,19 +80,31 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     setStatus(bloqueadas.length?`${bloqueadas.length} alteração(ões) aguardando revisão; as demais podem sincronizar.`:pending.current?'Alterações guardadas neste aparelho; aguardando confirmação.':'Dados compartilhados no Supabase');
     if(bloqueadas.length)setError('Abra Pendências para revisar cada alteração.');else setError('');
   };
+  const edicoesDiario=()=>{
+    const itens=diario.current?.itens()||[],aliases=Object.assign({},...itens.filter(i=>i.recibo).map(i=>i.recibo.aliases||{}));
+    return remap(itens.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado)).flatMap(i=>i.original?.intencao?.edicoes||[]),aliases);
+  };
+  const hidratarFichasDiario=async(base,edicoes,gen)=>{
+    // A summary load does not prove that an edited resident was deleted. Read
+    // only the referenced files with the current account before projection.
+    const clientes=clientesDasIntencoes(edicoes);
+    await atualizarFichas(base,clientes,lerFichaCliente);conferirGeracao(gen);
+    return clientes;
+  };
+  const filtrarFichasDiario=(state,clientes)=>{
+    const consultados=new Set(clientes.map(c=>c.id)),visiveis=fichasVisiveis(state.base,clientes);
+    // A successful empty read is authoritative, including RLS-hidden rows.
+    // Never restore such a row from the old cache or the pending original.
+    state.db.processos=state.db.processos.filter(p=>!consultados.has(p.id)||visiveis.has(p.id));
+    return state;
+  };
   const iniciarDiario=(user,gen)=>{
     diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
       carregar:async edicoes=>{
-        const seed=semearOriginais(server.current.db,edicoes),clientes=clientesDasIntencoes(edicoes);
+        const seed=semearOriginais(server.current.db,edicoes);
         const base=await carregarBase(seed);conferirGeracao(gen);
-        // Persisted intent IDs, not an old cache marker, determine what must be
-        // re-read. A legacy record may lack _compartilhado entirely.
-        await atualizarFichas(base,clientes,lerFichaCliente);conferirGeracao(gen);
-        const state=projetarRemoto(base,seed,server.current.db),consultados=new Set(clientes.map(c=>c.id)),visiveis=fichasVisiveis(base,clientes);
-        // Never present a cached row as the authorized remote row when its
-        // fresh lookup is empty. Existing edits become explicit conflicts.
-        state.db.processos=state.db.processos.filter(p=>!consultados.has(p.id)||visiveis.has(p.id));
-        return state;
+        const clientes=await hidratarFichasDiario(base,edicoes,gen);
+        return filtrarFichasDiario(projetarRemoto(base,seed,server.current.db),clientes);
       },
       preparar:async(state,depois,arquivos)=>{
         const ops=prepararEdicao(state.db,depois,state,user),files=await prepararArquivos(state.db,depois,storage,user);conferirGeracao(gen);
@@ -312,7 +324,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     conferirGeracao(gen);const seed=(!legacyOwner||legacyOwner===user.erpRef?legacy:null) || baseLimpa();
     if(!legacy) {seed.setoresMeta=[];seed.agendas=[];}
     if(draft?.pending&&draft.baseline)await atualizarPendentes(base,draft.baseline,draft.db,draft.attempt);
+    const clientesDiario=usarDiario?await hidratarFichasDiario(base,edicoesDiario(),gen):[];
     conferirGeracao(gen);const state=draft?.pending?projetarRemoto(base,draft.db,draft.baseline):projetar(base,draft?.db||seed);
+    if(usarDiario)filtrarFichasDiario(state,clientesDiario);
     // In-flight edits from an earlier session retain their original baseline for conflict checks.
     if(draft?.pending && draft.baseline) {
       restaurarMunicipios(draft.municipios||[...new Set((draft.baseline.processos||[]).filter(p=>!p._resumo).map(p=>p.municipioId))]);
@@ -423,7 +437,13 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     if(usarDiario){
       if(!actor.current||opening.current||busy.current||!server.current||!temSessao()||!temConexao())return false;
       busy.current=true;const gen=generation.current;
-      try{const base=await carregarBase(server.current.db,grupos);conferirGeracao(gen);const state=projetarRemoto(base,server.current.db);await diario.current.atualizar();conferirGeracao(gen);server.current=state;publish(diario.current.materializar(state.db));await saveDraft();return true;}
+      try{
+        await diario.current.atualizar();conferirGeracao(gen);
+        const base=await carregarBase(server.current.db,grupos);conferirGeracao(gen);
+        const clientes=await hidratarFichasDiario(base,edicoesDiario(),gen);
+        const state=filtrarFichasDiario(projetarRemoto(base,server.current.db),clientes);
+        server.current=state;publish(diario.current.materializar(state.db));await saveDraft();return true;
+      }
       catch(e){if(gen===generation.current)setError(e.message);return false;}
       finally{if(gen===generation.current){busy.current=false;if(pending.current)timer.current=setTimeout(flush,250);}}
     }
