@@ -16,9 +16,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
    consultarRecibo:async()=>null,
    confirmar:async(item,state)=>{if(!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,{},item.payload))throw Object.assign(Error('divergente'),{code:'LEITURA_DIVERGENTE'});}
   });
-  await d.adicionar(initial.db,a);await d.adicionar(a,b);const original=(await fila.exportar('fixture')).intencoes.map(i=>JSON.stringify(i.original));
+  await d.adicionar(initial.db,a,{}, {id:'ffffffff-ffff-4fff-8fff-ffffffffffff'});await d.adicionar(a,b,{}, {id:'00000000-0000-4000-8000-000000000000'});const original=new Map((await fila.exportar('fixture')).intencoes.map(i=>[i.id,JSON.stringify(i.original)]));
   await d.executar();const items=await fila.listar('fixture');const view=d.materializar(projetar(base,initial.db).db);
-  const r={estados:items.map(i=>i.estado),valor:base.fin_receb_clientes[0].valor_entrada,tela:view.processos[0].comercial.entrada,envios:envios.length,expected:envios.map(x=>x[0].expected.valor_entrada),originaisPreservados:items.every((i,n)=>JSON.stringify(i.original)===original[n])};d.fechar();return r;
+  const r={estados:items.map(i=>i.estado),valor:base.fin_receb_clientes[0].valor_entrada,tela:view.processos[0].comercial.entrada,envios:envios.length,expected:envios.map(x=>x[0].expected.valor_entrada),originaisPreservados:items.every(i=>JSON.stringify(i.original)===original.get(i.id))};d.fechar();return r;
  });
  assert.deepEqual(result,{estados:['confirmado','confirmado'],valor:600,tela:'600',envios:2,expected:[400,500],originaisPreservados:true});console.log(JSON.stringify(result));
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

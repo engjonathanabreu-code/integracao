@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "test/sync-originals-order-20261111": false
+    }
+  }
+}
