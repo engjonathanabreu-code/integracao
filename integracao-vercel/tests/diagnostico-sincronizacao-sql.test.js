@@ -8,7 +8,7 @@ test('diagnóstico: RLS por conta/diretoria, identidade imutável, campos limita
  try{
   await db.exec(`create role authenticated;create role anon;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;create table profiles(id uuid primary key,tipo text,ativo boolean);grant select on profiles to authenticated;alter table profiles enable row level security;create policy proprio on profiles for select to authenticated using(id=auth.uid());`);
   await db.query('insert into profiles values($1,$2,true),($3,$4,true),($5,$6,false)',[id(1),'Topografia',id(2),'Administrador',id(3),'Administrador']);
-  await db.exec(readFileSync(new URL('../supabase/migrations/20261111131535_diagnostico_sincronizacao_dispositivos.sql',import.meta.url),'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261111134421_diagnostico_sincronizacao_dispositivos.sql',import.meta.url),'utf8'));
   const login=async n=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(n)]);await db.exec('set role authenticated');};
   const salvar=(u,inst=id(10),resumo=[])=>db.query('insert into integracao_sincronizacao_dispositivos(usuario_id,instalacao_id,versao,resumo,ultimo_contato) values($1,$2,$3,$4,$5)',[id(u),inst,'test-v1',JSON.stringify(resumo),'2000-01-01']);
   await login(1);await salvar(1);const row=(await db.query('select * from integracao_sincronizacao_dispositivos')).rows[0];assert.ok(new Date(row.ultimo_contato)>new Date('2026-01-01'));
