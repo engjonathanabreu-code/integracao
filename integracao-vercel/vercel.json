@@ -92,5 +92,10 @@
       "path": "/api/calendario-resumo",
       "schedule": "0 10 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "fix/filas-confirmacao-arquivos-20261111": false
+    }
+  }
 }

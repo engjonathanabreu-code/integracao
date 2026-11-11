@@ -20,7 +20,7 @@ export function orientacaoPendencia(i){
  if(categoria==='permissao')return 'Esta conta não tem permissão. Solicite revisão a um perfil autorizado; a regra de acesso continua válida.';
  if(i.estado.startsWith('bloqueado')&&!revisaoDeRecusa(i))return 'A recusa da gravação não foi comprovada. Retome o pedido original para consultar seu recibo.';
  if(categoria==='armazenamento'||i.estado==='persistencia_falhou')return 'O navegador não guardou a alteração. Baixe uma cópia antes de sair e verifique o armazenamento.';
- if(i.recibo)return 'A gravação tem recibo. A retomada fará somente a leitura de confirmação.';
+ if(i.recibo)return 'A gravação tem recibo. A retomada fará somente a leitura de confirmação. Se os valores atuais divergirem, confira a prévia antes de reconhecê-los; o original será preservado.';
  if(i.estado==='resultado_desconhecido')return 'O resultado ainda é desconhecido. A retomada consultará o recibo antes de repetir o mesmo pedido.';
  if(categoria==='conflito')return 'Compare a base original, sua alteração e o valor compartilhado antes de escolher.';
  if(categoria==='validacao')return 'Revise os campos e vínculos do cadastro. Confirme a correção somente nesta alteração.';
