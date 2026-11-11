@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "fix/sync-incident-audit-20261111": false
+    }
+  }
+}

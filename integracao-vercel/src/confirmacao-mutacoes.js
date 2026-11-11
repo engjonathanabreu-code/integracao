@@ -1,3 +1,4 @@
+import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} from './contrato-financeiro.js';
 import {remapearIdentidades as remapear} from './aliases-tipados.js';
 import {igualSemantico as igual} from './igualdade-semantica.js';
 // Observa o pipeline existente; não grava, repete ou concilia mutações.
@@ -64,6 +65,21 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
       if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;
+    }
+    // Financial inputs are encoded as numbers and projected back without
+    // insignificant decimal zeroes. Confirm only the exact submitted column
+    // for this canonical client, never coerce arbitrary fields or other rows.
+    if(mudanca.caminho.length===4&&mudanca.caminho[0]==='processos'&&mudanca.caminho[2]==='comercial'){
+      const coluna=COLUNAS_FINANCEIRAS[campo],registro=lerCaminho(remoto,mudanca.caminho.slice(0,2),aliases).valor;
+      const id=registro?.financeiroRef||registro?.id;
+      const op=coluna&&operacoes.find(o=>o.table==='fin_receb_clientes'&&o.key?.id===id&&!o.remove&&possui(o.changes,coluna));
+      if(op){
+        const numero=codificarNumeroFinanceiro(campo,esperado);
+        if((numero===null||Number.isFinite(numero))&&op.changes[coluna]===numero){
+          const canonico=projetarNumeroFinanceiro(numero);
+          return atual.existe&&atual.valor===canonico;
+        }
+      }
     }
     const [colecao,,filhos]=mudanca.caminho;
     if(mudanca.parcial&&mudanca.caminho.length===4&&typeof campo==='object'){

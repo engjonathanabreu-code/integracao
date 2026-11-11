@@ -1,3 +1,4 @@
+import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} from './contrato-financeiro.js';
 import {colecaoDerivada} from './projecoes-derivadas.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
@@ -139,7 +140,7 @@ const uuid = id => /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id || '')
 const fieldValue=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value);
 const decimal=v=>Number(typeof v==='string' && v.includes(',')?v.replace(/\./g,'').replace(',','.'):v||0);
 const vazio=v=>v==null || (typeof v==='string' && !v.trim());
-const numeroComercial=(campo,valor)=>['parcelas','diaVencimento'].includes(campo)&&vazio(valor)?null:decimal(valor);
+const numeroComercial=codificarNumeroFinanceiro;
 const group = (rows, key, id) => (rows || []).filter(r => r[key] === id);
 const nestedFields={nucleos:['andamentos','observacoes','historicoEtapas'],metas:['responsaveis','checklist','comentarios','historico','arquivos','associacao_tipo','associacao_id'],planos:['etapas','comentarios','documentos'],etapas:['responsaveis','entregaveis','comentarios'],ordensServico:['comentarios'],eventos:['respostas','participantes','entidade','agendaId','serieERP'],conversas:['mensagens','participantes','entidade','criadoPor','exclusaoSolicitada']};
 const sectors = { Administrador:'diretoria', 'Diretor Técnico':'diretoria', 'Diretor de Projetos':'diretoria', Financeiro:'financeiro', Comercial:'comercial', Atendimentos:'comercial', Topografia:'topografia', Projetos:'projeto', 'Pós-protocolo':'posprotocolo', 'Jurídico':'juridico' };
@@ -182,9 +183,9 @@ export function projetar(base, local) {
       value.requerente={...view.requerente,...saved.requerente,nome:row.nome,cpf:pj?'':(row.cpf_cnpj||''),cnpj:pj?(row.cpf_cnpj||''):(saved.requerente?.cnpj||'')};
       if(pj){delete map['requerente.cpf'];map['requerente.cnpj']='cpf_cnpj';}
       if(saved.situacao && (saved.situacao==='Ativo')===row.ativo)value.situacao=saved.situacao;
-      const amounts={valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'};
+      const amounts=COLUNAS_FINANCEIRAS;
       value.comercial={modalidade:Number(row.valor_entrada)>0?'Entrada e parcelas':'Parcelado sem entrada',reajuste:'Sem reajuste',observacoes:'',...saved.comercial,primeiroVencimento:row.primeiro_vencimento||''};
-      for(const [field,column] of Object.entries(amounts)) {value.comercial[field]=row[column]==null?'':String(row[column]).replace('.',',');map[`comercial.${field}`]={column,encode:v=>numeroComercial(field,v)};}
+      for(const [field,column] of Object.entries(amounts)) {value.comercial[field]=projetarNumeroFinanceiro(row[column]);map[`comercial.${field}`]={column,encode:v=>numeroComercial(field,v)};}
       map['comercial.primeiroVencimento']='primeiro_vencimento';
     }
     bindings.push({ collection, id: value.id, table, key: {id:row.id}, row, map, parent, view: value });
@@ -328,7 +329,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const m=after.municipios.find(x=>x.id===r.municipioId);
     insert('fin_receb_remessas',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),codigo:r.codigo||`${m?.prefixo||''}${String(r.numero).padStart(2,'0')}`,nome:r.titulo||'',data_emissao:nullText(r.criada)});
   }
-  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries({valorTotal:'valor_global',entrada:'valor_entrada',parcelas:'numero_parcelas',valorParcela:'valor_parcela',diaVencimento:'dia_vencimento'}).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,numeroComercial(k,r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
+  for(const r of newItems(before.processos,after.processos)) insert('fin_receb_clientes',requireUuid(r.id),{municipio_id:requireUuid(municipioReal(r.municipioId)),remessa_id:r.remessaId?requireUuid(r.remessaId):null,codigo:r.codigo||null,nome:r.requerente?.nome||'',cpf_cnpj:nullText(r.requerente?.tipoPessoa==='juridica'?r.requerente?.cnpj:r.requerente?.cpf),ativo:r.situacao!=='Inativo',...Object.fromEntries(Object.entries(COLUNAS_FINANCEIRAS).filter(([k])=>r.comercial?.[k]!==undefined).map(([k,v])=>[v,numeroComercial(k,r.comercial[k])])),primeiro_vencimento:nullText(r.comercial?.primeiroVencimento)});
   for(const n of after.nucleos||[]) {
     const prev=(before.nucleos||[]).find(x=>x.id===n.id);
     const id=n.externo?.kanbanId || n.id;

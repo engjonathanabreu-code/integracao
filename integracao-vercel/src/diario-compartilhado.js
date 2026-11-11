@@ -1,3 +1,4 @@
+import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,checksumIntencao} from './fila-intencoes.js';
@@ -66,7 +67,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const remoto=await carregar(edicoes);conferir();return {remoto,edicoes};
  }
  async function prepararItem(item){
-  const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,edicoes);
+  const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
   const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
  }
