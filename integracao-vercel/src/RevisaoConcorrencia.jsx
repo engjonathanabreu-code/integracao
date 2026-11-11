@@ -12,6 +12,7 @@ export default function RevisaoConcorrencia({conflitos,resolver,dados}){
  return <section aria-label="Revisar alterações simultâneas" style={{padding:16,background:'var(--card)',color:'var(--text)'}}>
   <strong>Revisar alterações simultâneas</strong><p>As alterações compatíveis serão mantidas. Escolha apenas os valores que ficaram diferentes.</p>
   {conflitos.map(c=><fieldset key={c.chave} disabled={ocupado} style={{marginBottom:12}}><legend>{rotulo(c,dados)}</legend>
+   <p>Base original: {valor(c.base)}</p>
    {[['local','Sua alteração',c.local],['remoto','Valor atual compartilhado',c.remoto]].map(([opcao,nome,v])=><label key={opcao} style={{display:'block',overflowWrap:'anywhere'}}><input type="radio" name={c.chave} checked={escolhas[c.chave]===opcao} onChange={()=>setEscolhas(x=>({...x,[c.chave]:opcao}))}/>{nome}: {valor(v)}</label>)}
   </fieldset>)}
   <button className="btn btn-sm" disabled={ocupado||conflitos.some(c=>!escolhas[c.chave])} onClick={async()=>{setOcupado(true);try{await resolver(escolhas);}finally{setOcupado(false);setEscolhas({});}}}>{ocupado?'Salvando…':'Salvar escolhas e continuar'}</button>

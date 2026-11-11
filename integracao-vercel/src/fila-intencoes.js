@@ -1,3 +1,4 @@
+import {classificarFalha,revisaoDeRecusa} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {pendenciaSomenteLocal} from './intencoes-locais.js';
 
@@ -60,7 +61,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    const existente=await requisicao(s.intencoes.get([conta,id]));
    if(existente){if(existente.checksum!==checksum)throw erro('A mesma intenção foi reutilizada com outro conteúdo.','PEDIDO_DIVERGENTE');return existente;}
    const substituida=substituirId?await requisicao(s.intencoes.get([conta,substituirId])):null;
-   if(substituirId&&(!substituida||substituirId===id||substituida.recibo||substituida.leaseAte>agora()||!['bloqueado_conflito','bloqueado_validacao'].includes(substituida.estado)))throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
+   if(substituirId&&(!substituida||substituirId===id||substituida.recibo||substituida.leaseAte>agora()||!revisaoDeRecusa(substituida)))throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    for(const dep of original.dependencias)if(!await requisicao(s.intencoes.get([conta,dep])))throw erro('Dependência indisponível nesta conta.','DEPENDENCIA_INDISPONIVEL');
    const anteriores=await requisicao(s.intencoes.index('conta').getAll(conta));
    // Append order and dependency capture share the same transaction across tabs.
@@ -119,19 +120,20 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   if(!atual.recibo)throw erro('A leitura não substitui o recibo de gravação.','RECIBO_AUSENTE');
   atual.estado='confirmado';atual.lidoEm=agora();soltar(atual);
  });
- const registrarFalha=(item,e)=>alterarReserva(item,atual=>{
-  const status=Number(e.status||e.cause?.status),codigo=e.code||e.cause?.code||'TRANSPORTE';
+ const registrarFalha=(item,e,{fase=item.fase}={})=>alterarReserva(item,atual=>{
+  const falha=classificarFalha(e),{status,codigo,categoria}=falha;
+  const rejeicaoConfirmada=['preparacao','envio'].includes(fase)&&([400,401,403,404,409,422].includes(status)||codigo==='PT409');
   // Only statuses received from the server prove rejection. A lost response does not.
   if(atual.recibo)atual.estado='confirmado_aguardando_leitura';
-  else if(status===409||codigo==='PT409')atual.estado='bloqueado_conflito';
-  else if([400,401,403,404,422].includes(status))atual.estado='bloqueado_validacao';
+  else if(rejeicaoConfirmada&&categoria==='conflito')atual.estado='bloqueado_conflito';
+  else if(categoria==='sessao'||categoria==='permissao'||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
   else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
-  atual.erro={status:Number.isFinite(status)?status:null,codigo:String(codigo).slice(0,60)};
+  atual.erro={...falha,rejeicaoConfirmada,fase};
   atual.falhas=(atual.falhas||0)+1;
   const retry=Number(e.retryAfterMs)||0;
   atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(atual.tentativas,6))*(.5+aleatorio()*.5));
   // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
-  if(atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  if(['sessao','permissao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
   soltar(atual);
  });
  const fixarPayload=(item,payload,preparado)=>alterarReserva(item,atual=>{
@@ -145,7 +147,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    // A stale preview is not a new write. Keep terminal entries and active leases
    // intact, including their receipts, retry counters and original payloads.
    if(['confirmado','substituido','dispensado'].includes(item.estado))return item;
-   if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado))throw erro('A pendência mudou. Abra novamente a prévia antes de retomar.','REVISAO_NECESSARIA');
+   if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)&&!(['bloqueado_validacao','bloqueado_conflito'].includes(item.estado)&&!revisaoDeRecusa(item)))throw erro('A pendência mudou. Abra novamente a prévia antes de retomar.','REVISAO_NECESSARIA');
    if(item.leaseAte>agora())return item;
    item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
    await requisicao(s.intencoes.put(item));return item;
@@ -154,7 +156,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function substituir(conta,id,novoId){
   contaValida(conta);return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id])),novo=await requisicao(s.intencoes.get([conta,novoId]));
-   if(!item||!novo||item.leaseAte>agora()||!['bloqueado_conflito','bloqueado_validacao'].includes(item.estado)||novo.estado!=='pendente_local')throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
+   if(!item||!novo||item.leaseAte>agora()||!revisaoDeRecusa(item)||novo.estado!=='pendente_local')throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    // The replacement must not wait on the item it supersedes.
    novo.dependencias=[...(item.dependencias||[])];novo.ordem=item.ordem;item.estado='substituido';item.substituidaPor=novoId;
    await requisicao(s.intencoes.put(novo));await requisicao(s.intencoes.put(item));return novo;
@@ -170,7 +172,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function aceitarRemoto(conta,id){
   return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
-   if(!item||!['bloqueado_conflito','bloqueado_validacao'].includes(item.estado)||item.leaseAte>agora())throw erro('Somente uma tentativa recusada pode ser dispensada.','REVISAO_NECESSARIA');
+   if(!item||item.recibo||!revisaoDeRecusa(item)||item.leaseAte>agora())throw erro('Somente uma tentativa recusada pode ser dispensada.','REVISAO_NECESSARIA');
    item.estado='dispensado';item.decisao={tipo:'manter_remoto',em:agora()};await requisicao(s.intencoes.put(item));return item;
   });
  }
@@ -194,21 +196,21 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
 // never obtains a token itself, and never infers a business unit from table names.
 export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler,preparar}){
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
- conferir();let item=await fila.reservar(conta,{dono});if(!item)return null;
+ conferir();let item=await fila.reservar(conta,{dono});if(!item)return null;let fase=item.fase;
  try{
   conferir();
-  if(!item.payload){const pronto=await preparar(item);conferir();item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();}
+  if(!item.payload){fase='preparacao';const pronto=await preparar(item);conferir();item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();}
   if(!item.recibo){
    let recibo;
-   if(item.fase==='recibo'){recibo=await consultarRecibo(item);conferir();}
-   if(!recibo){item=await fila.registrarEnvio(item);conferir();recibo=await enviar(item);conferir();}
+   if(item.fase==='recibo'){fase='recibo';recibo=await consultarRecibo(item);conferir();}
+   if(!recibo){fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await enviar(item);conferir();}
    item=await fila.registrarRecibo(item,recibo);conferir();
   }
-  await reler(item);conferir();return await fila.confirmarLeitura(item);
+  fase='releitura';await reler(item);conferir();return await fila.confirmarLeitura(item);
  }catch(e){
   // A session change leaves the lease to expire; no callbacks for the new account.
   if(e.code==='SESSAO_ALTERADA')throw e;
-  try{await fila.registrarFalha(item,e);}catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
+  try{await fila.registrarFalha(item,e,{fase});}catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
   throw e;
  }
 }

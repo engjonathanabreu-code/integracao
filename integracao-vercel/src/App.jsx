@@ -107,6 +107,7 @@ import {configERP, definirSessao, lerTabela as lerTabelaCompartilhada, temSessao
 import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
 import PendenciasSincronizacao from './PendenciasSincronizacao.jsx';
+import DiagnosticoSincronizacao from './DiagnosticoSincronizacao.jsx';
 import {useAvisoChat} from './use-aviso-chat.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -12531,10 +12532,10 @@ export default function App() {
               <NotificacoesUsuario db={db} usuario={usuario} ir={ir} mutar={mutar} />
             </div>
           </header>
-          {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Tentar salvar novamente"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
+          {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Retomar tentativas automáticas"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
-          {!AMBIENTE.DEMO && <PendenciasSincronizacao sync={compartilhado}/>}
-          {!AMBIENTE.DEMO && compartilhado.reservasPreservadas>0 && <div role="status" className="ajuda" style={{padding:"8px 18px"}}>{compartilhado.reservasPreservadas} reserva(s) conflitante(s) preservada(s) em cópia. As reservas já confirmadas foram mantidas; os demais dados podem sincronizar.<button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das reservas</button></div>}
+          {!AMBIENTE.DEMO && <><PendenciasSincronizacao sync={compartilhado}/><DiagnosticoSincronizacao sync={compartilhado} usuario={usuario} usuarios={db.usuarios||[]}/></>}
+          {!AMBIENTE.DEMO && compartilhado.reservasPreservadas>0 && <details className="ajuda" style={{padding:"8px 18px"}}><summary>Cópias históricas de reservas ({compartilhado.reservasPreservadas})</summary><p>Estas cópias estão arquivadas para consulta. Confira em Pendências se há alguma alteração ativa que ainda precisa de revisão.</p><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das reservas</button></details>}
           {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}

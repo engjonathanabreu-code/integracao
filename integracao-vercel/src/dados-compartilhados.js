@@ -30,7 +30,7 @@ export function definirSessao(dados) {
   session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
 export function temSessao() { return !!session; }
 export async function requisicao(path, options = {}) {
-  if (!session) throw new Error('Entre novamente com sua conta para acessar os dados compartilhados.');
+  if (!session) throw Object.assign(new Error('Entre novamente com sua conta para acessar os dados compartilhados.'),{status:401,code:'SESSAO_AUSENTE'});
   const scope=capturarSessao();
   if (session.expires_at < Date.now() + 60000) {
     if (!refreshing) {
@@ -38,7 +38,7 @@ export async function requisicao(path, options = {}) {
       const job=(async()=>{
         const r=await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:configERP.chave,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:original.refresh_token}),signal:scope.signal});
         scope.conferir();
-        if(!r.ok)throw new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.');
+        if(!r.ok){if([400,401,403].includes(r.status))throw Object.assign(new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.'),{status:401,code:'SESSAO_EXPIRADA'});throw Object.assign(new Error('Não foi possível renovar a sessão agora. Tente novamente; suas alterações locais foram preservadas.'),{status:r.status});}
         const dados=await r.json();scope.conferir();
         if(dados.user?.id!==scope.owner)throw new Error('Resposta de sessão incompatível. Entre novamente.');
         session={...dados,expires_at:Date.now()+dados.expires_in*1000};

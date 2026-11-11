@@ -28,7 +28,7 @@ export function conciliarEdicoes(base,local,remoto,escolhas={}) {
   const chave=JSON.stringify(caminho);
   if(escolhas[chave]==='remoto')return copiar(r);
   if(escolhas[chave]==='local')return copiar(l);
-  conflitos.push({chave,caminho,local:copiar(l),remoto:copiar(r)});
+  conflitos.push({chave,caminho,base:copiar(b),local:copiar(l),remoto:copiar(r)});
   return copiar(l);
  };
  return {dados:mesclar(base,local,remoto),conflitos};

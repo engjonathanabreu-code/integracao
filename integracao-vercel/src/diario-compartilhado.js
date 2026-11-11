@@ -1,3 +1,4 @@
+import {revisaoDeRecusa} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
@@ -96,13 +97,16 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   // Background processing may have finished while this preview remained open.
   // A blocked decision still requires its original checks, never an implicit
   // acceptance of another tab's resolution.
-  const retentativa=!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado);
+  const retentativa=!revisaoDeRecusa(mostrada.item);
   const encerrarConcluida=async()=>{
    await atualizar();const atual=items.find(i=>i.id===id);
    if(atual&&terminal(atual)){if(revisao===mostrada)revisao=null;return true;}
    return false;
   };
   if(retentativa&&await encerrarConcluida())return;
+  if(retentativa&&mostrada.item.estado.startsWith('bloqueado')&&!mostrada.item.recibo){
+   await fila.retomar(conta,id);if(revisao===mostrada)revisao=null;await atualizar();return;
+  }
   const {remoto}=await lerItem(mostrada.item);
   // The same send can complete while the remote read is in flight. Its own
   // confirmed value must not look like a new conflict in this stale preview.
@@ -113,7 +117,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
    if(!igualSemantico(r.dados,remoto.db))throw Error('Esta gravação já tem recibo. Reconheça o valor atual compartilhado e depois abra o registro para fazer uma nova edição.');
    await fila.aceitarLeituraAtual(conta,id);revisao=null;await atualizar();return;
   }
-  if(!['bloqueado_conflito','bloqueado_validacao'].includes(mostrada.item.estado)){
+  if(!revisaoDeRecusa(mostrada.item)){
    // Unknown writes and receipts are never replaced with a new request.
    await fila.retomar(conta,id);if(revisao===mostrada)revisao=null;await atualizar();return;
   }
@@ -122,10 +126,19 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(!edicoes.length&&!Object.keys(mostrada.item.original.intencao.arquivos||{}).length){await fila.aceitarRemoto(conta,id);revisao=null;await atualizar();return;}
   await adicionar(remoto.db,r.dados,mostrada.item.original.intencao.arquivos,{substituirId:id});revisao=null;await atualizar();
  }
+ async function descartar(id){
+  if(!revisao||revisao.id!==id||!revisaoDeRecusa(revisao.item))throw Error('Abra a prévia de uma tentativa recusada antes de descartá-la.');
+  conferir();await fila.aceitarRemoto(conta,id);conferir();revisao=null;sinalizar();await atualizar();
+ }
+ async function retomarAutomaticas(){
+  await corrente.catch(()=>{});conferir();await atualizar();
+  for(const item of items)if(!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
+  await atualizar();
+ }
  async function exportar(){
   const emCurso=structuredClone([...volateis.values()]);
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();corrente.finally(()=>fila.fechar()).catch(()=>{});},adicionar,migrar,atualizar,materializar,executar,previa,resolver,esperar:()=>corrente,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();corrente.finally(()=>fila.fechar()).catch(()=>{});},adicionar,migrar,atualizar,materializar,executar,previa,resolver,descartar,retomarAutomaticas,esperar:()=>corrente,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

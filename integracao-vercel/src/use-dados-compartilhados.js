@@ -75,7 +75,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const atualizarDiario=items=>{
     setPendencias(items.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado)));
     pending.current=items.some(i=>!['confirmado','substituido','dispensado'].includes(i.estado));
-    const bloqueadas=items.filter(i=>(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado))||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
+    const bloqueadas=items.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado)).filter(i=>(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado))||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
     setStatus(bloqueadas.length?`${bloqueadas.length} alteração(ões) aguardando revisão; as demais podem sincronizar.`:pending.current?'Alterações guardadas neste aparelho; aguardando confirmação.':'Dados compartilhados no Supabase');
     if(bloqueadas.length)setError('Abra Pendências para revisar cada alteração.');else setError('');
   };
@@ -456,7 +456,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       await storage.set(`${storageKey()}-revisao-${Date.now()}`,snapshot);
       const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
       const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-      setStatus('Cópia baixada. As alterações continuam pendentes neste navegador; use Tentar salvar novamente.');await saveDraft();
+      setStatus('Cópia baixada. Consulte Pendências para conferir quais alterações ainda precisam de ação.');await saveDraft();
     }catch(e){setError(e.message);}
   };
   useEffect(()=>{
@@ -470,7 +470,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
     return()=>{generation.current++;diario.current?.fechar();rejeitarConfirmacoes('A tela de sincronização foi encerrada antes da confirmação.','TELA_ENCERRADA');vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
-  const abrirPendencia=async id=>{try{const previa=await diario.current.previa(id);setPreviaPendencia(previa);}catch(e){setError(e.message);}};
-  const resolverPendencia=async escolhas=>{try{await diario.current.resolver(previaPendencia.id,escolhas);setPreviaPendencia(null);await flush();}catch(e){setError(e.message);}};
-  return {pendencias,previaPendencia,abrirPendencia,resolverPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:()=>{retentativas.current=0;return flush();},refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  const abrirPendencia=async id=>{const gen=generation.current;try{const previa=await diario.current.previa(id);conferirGeracao(gen);setPreviaPendencia(previa);}catch(e){if(gen===generation.current)setError(e.message);}};
+  const resolverPendencia=async escolhas=>{const gen=generation.current;try{await diario.current.resolver(previaPendencia.id,escolhas);conferirGeracao(gen);setPreviaPendencia(null);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
+  const descartarPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.descartar(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();conferirGeracao(gen);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
+  const tentarNovamente=async()=>{const gen=generation.current;retentativas.current=0;if(usarDiario&&diario.current){try{await diario.current.retomarAutomaticas();conferirGeracao(gen);}catch(e){if(gen===generation.current)setError(e.message);return;}}return flush();};
+  return {diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }

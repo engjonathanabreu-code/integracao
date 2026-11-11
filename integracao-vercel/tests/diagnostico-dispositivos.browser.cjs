@@ -1,0 +1,8 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch({headless:true});try{const p=await b.newPage();await p.goto('http://127.0.0.1:5178/tests/diagnostico-interface.html');await p.waitForFunction(()=>window.pronto);
+ if(process.env.VITE_DIAGNOSTICO_SINCRONIZACAO!=='1'){assert.equal(await p.getByText('Diagnóstico dos dispositivos').count(),0);assert.equal(await p.evaluate(()=>relatorioCalls.length),0);console.log('Diagnóstico desativado não gera tráfego.');return;}
+ await p.waitForFunction(()=>relatorioCalls.some(c=>c.opts.method==='POST'));
+ const envio=await p.evaluate(()=>relatorioCalls.find(c=>c.opts.method==='POST'));const body=JSON.parse(envio.opts.body);assert.equal(envio.opts.headers.Authorization,'Bearer token-ficticio');assert.equal(JSON.stringify(body).includes('conteudo-privado'),false);assert.deepEqual(body.resumo,[{estado:'bloqueado_validacao',modulo:'metas',codigo:'23503',quantidade:1}]);
+ await p.getByText('Diagnóstico dos dispositivos',{exact:true}).click();await p.getByRole('button',{name:'Consultar relatos'}).click();await p.getByText('Pessoa sem contato · sem relato · Estado desconhecido',{exact:true}).waitFor();assert.equal(await p.getByText(/Diretoria fictícia · .*Estado desconhecido/).count(),1);
+ await p.screenshot({path:'diagnostico-dispositivos.png',fullPage:true});console.log('Diagnóstico habilitado usa token próprio, não envia conteúdo e não confunde ausência de contato com fila vazia.');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

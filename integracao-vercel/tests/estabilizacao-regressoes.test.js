@@ -39,3 +39,8 @@ test('resumo recusa páginas vazias com total positivo',async()=>{
  const original=global.fetch;global.fetch=async()=>Response.json({clientes:[],complementos:[],total:1001});
  try{const r=res();await resumo({method:'POST',headers:{authorization:'Bearer fixture'},body:{contexto:{nucleos:[]}}},r);assert.notEqual(r.code,200);}finally{global.fetch=original;}
 });
+for(const status of [400,401,403,429,503])test(`refresh HTTP ${status} preserva classificação e não inicia gravação`,async()=>{
+ const original=global.fetch;let chamadas=0;
+ global.fetch=async url=>{chamadas++;assert.ok(String(url).includes('/auth/'));return Response.json({message:'fixture'}, {status});};
+ try{definirSessao(sessao('A',-1));const falha=await requisicao('rpc/integracao_gravar',{method:'POST',body:'{}'}).then(()=>null,e=>e);assert.equal(falha.status,[400,401,403].includes(status)?401:status);assert.equal(falha.code,[400,401,403].includes(status)?'SESSAO_EXPIRADA':undefined);assert.equal(chamadas,1);assert.equal(temSessao(),true);}finally{definirSessao(null);global.fetch=original;}
+});

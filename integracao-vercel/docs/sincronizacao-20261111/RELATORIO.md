@@ -1,0 +1,41 @@
+# Recuperação da sincronização — 11/11/2026
+
+Repositório `engjonathanabreu-code/integracao`, base `2c4255a`, branch local `codex/sincronizacao-recuperacao-20261111`. A criação de worktree gerenciada informou `Cloud worktrees are unavailable`; foi usado um clone isolado no workspace desta tarefa, sem modificar o checkout original. O prompt da conversa de origem foi aplicado como escopo de investigação e correção. Não houve push, PR, merge, deploy, escrita em banco remoto ou acesso a computadores de colaboradores.
+
+## Causas comprovadas e correções
+
+- A fila agrupava sessão expirada, permissão e validação. Agora conserva status, código, categoria e fase da falha, sem mensagens pessoais nos metadados de diagnóstico. Erros de renovação HTTP 400/401/403 pedem autenticação na mesma conta; HTTP 429/503 preservam a condição temporária. A renovação recusada não chega a iniciar a gravação de negócio.
+- Uma recusa na **consulta** de recibo podia ser confundida com recusa da **gravação**. Agora só uma falha determinística na preparação/envio registra rejeição comprovada. Falha de consulta preserva pedido, payload e resultado incerto; não autoriza dispensa ou substituição. Retomar consulta o recibo antes de reenviar. Entradas antigas já enviadas, com erro mas sem comprovação de fase, também recebem tratamento conservador. Não se reescreve seu original.
+- O botão geral agora informa seu alcance: **Retomar tentativas automáticas**. Retoma itens automáticos esgotados, mantendo pedido e recibo. Bloqueios exigem revisão individual; não há promessa de que todos foram salvos.
+- A contagem de revisão considerava o limite de tentativas de entradas terminais. A jornada de RLS/exportação/F5/substituição reproduziu o aviso mesmo com o original substituído e o novo pedido confirmado. A contagem agora exclui `confirmado`, `substituido` e `dispensado` antes de avaliar bloqueios/limites.
+- A revisão mostra base original, valor local e remoto. Uma tentativa comprovadamente recusada pode ser descartada individualmente, com confirmação explícita. O IndexedDB mantém original, checksum e decisão; resultados incertos, recibos e leases ativos não podem ser descartados por esse caminho. Erros de vínculo/campo continuam precisando de correção no cadastro ou decisão explícita sobre a intenção recusada; o sistema não inventa valores nem amplia acesso.
+- Reservas preservadas passam a aparecer em uma seção recolhida de **cópias históricas**, com exportação disponível. A presença da cópia não é apresentada como prova de conflito ativo. Nenhuma cópia é apagada.
+- Operações de revisão/descarte e consultas paginadas de diagnóstico verificam a conta/geração antes de atualizar a interface após uma espera.
+
+## Diagnóstico por conta e instalação
+
+`DiagnosticoSincronizacao.jsx` e `diagnostico-sincronizacao.js` implementam relatos mínimos e um painel de consulta para a diretoria. O identificador é da instalação do navegador, não uma identificação física do computador. Cada relato inclui versão e contagens por estado, módulo e código; não inclui CPF, nome de cliente, documento, conteúdo da intenção, pedido, senha ou token. O transporte usa a sessão do próprio usuário, mantida em memória. Há uma lista permitida no cliente e validação independente no banco.
+
+A nova migration `20261111131535_diagnostico_sincronizacao_dispositivos.sql`, criada pela CLI, é aditiva. Cria somente a tabela de diagnóstico e seu trigger de validação. RLS permite ao perfil ativo escrever apenas seu próprio relato e ler seus próprios relatos; administradores/diretoria ativos podem ler os demais. Eles não podem editar relatos de outra conta. Não há DELETE concedido, função SECURITY DEFINER, comando remoto, alteração de papéis existentes ou mudança nas políticas dos cadastros. O horário do último contato é atribuído pelo servidor.
+
+O recurso está **desativado por padrão**. A cópia `.env.example` documenta `VITE_DIAGNOSTICO_SINCRONIZACAO=0` e `VITE_BUILD_ID`. Somente depois de autorizar e aplicar a migration no ambiente escolhido, conferir exposição da tabela no Data API e validar RLS nesse ambiente, configurar a primeira variável para `1` e a segunda para a revisão implantada, em um build autorizado. Cada aplicativo aberto relata a cada dois minutos quando sua fila foi carregada. Falhas no diagnóstico não alteram a fila de negócio.
+
+O painel distingue último relato e situação atual: ausência de relato ou contato há cinco minutos resulta em **estado desconhecido**. Zero no último relato não comprova ausência atual de pendências. Um usuário pode ter outros navegadores/aparelhos ainda não registrados. Contas sem relato também aparecem como desconhecidas; não existe varredura remota das filas particulares de aparelhos desconectados.
+
+## Preservação e escopo operacional
+
+Nenhum cadastro real foi conciliado, intenção real descartada ou aviso de colaborador removido. Nenhum computador foi acessado; seus estados continuam desconhecidos. O caso de Marcelo continua encerrado por decisão do usuário, sem reaplicação. A migration e a PR 97 interrompidas não foram retomadas. A exclusão específica de `_contagensClientes` permanece; não foi adicionada regra genérica para nomes com sublinhado. Idempotência, recibos, concorrência e regras de responsável/administrador permanecem nas rotas e funções existentes.
+
+## Validação e limitações
+
+O build final passou com **1.213 testes aprovados, zero falhas e zero ignorados**. Foram aprovadas **62 jornadas distintas de navegador**, consolidadas entre a execução completa e repetições isoladas. A execução completa inicial passou 58/61; financeiro e notificações passaram isoladamente, e a falha persistente do rascunho revelou a contagem de entrada terminal descrita acima, corrigida e aprovada em nova aceitação. A nova jornada de diagnóstico passou com o recurso ativado e desativado. Não se afirma uma execução completa única sem falhas. Os resultados por jornada e comandos estão em `RESULTADOS.json`. Todos os testes de escrita usam fixtures, IndexedDB real no Chromium ou PostgreSQL embutido isolado (PGlite); tráfego externo é bloqueado nos navegadores. As verificações incluem os testes preexistentes de migração, filas antigas, resposta perdida, offline, troca de sessão, recibo com leitura divergente, duas abas, dependências, quota, arquivos e regressão das contagens derivadas.
+
+A revisão SQL executou SELECT/INSERT/UPDATE/DELETE sob papéis distintos e verificou recusa de escrita em outra conta, perfil inativo e anônimo, imutabilidade de identidade, campos extras, valores nulos/inválidos e horário do servidor. Isso não substitui a verificação no projeto Supabase de destino. `supabase db advisors --type security --fail-on error` foi tentado no alvo **local** e encontrou conexão recusada em `127.0.0.1:54322`; não há stack local ativa. Nenhuma auditoria remota nem migration foi executada. Não há scripts dedicados de lint ou tipos no package.json. O build mantém o aviso preexistente de bundle grande. `npm ci` informou cinco vulnerabilidades nas dependências existentes; não foi feita atualização fora do escopo.
+
+Não foram testados Safari, iOS/Android físicos ou os dados particulares de colaboradores. Falhas reais de autorização, dados inválidos e conflitos humanos continuam exigindo ação legitimamente autorizada. O painel não oferece controle remoto nem promete eliminar falhas futuras.
+
+## Publicação e reversão
+
+O trabalho está preparado para revisão local; publicação depende de autorização específica. Não ativar o diagnóstico antes de instalar e verificar sua migration no ambiente autorizado. Não usar o README histórico como autorização de deploy.
+
+Para desativar somente o diagnóstico, publicar um build autorizado com `VITE_DIAGNOSTICO_SINCRONIZACAO=0`; a tabela aditiva pode permanecer sem alterar cadastros. Em uma reversão do aplicativo, preservar IndexedDB, exportações e originais. Não voltar a uma versão que trate falha de consulta de recibo como rejeição de gravação; manter os envios afetados suspensos e corrigir de forma compatível. Nunca limpar filas ou restaurar snapshots completos para remover o aviso. O checkout-base `2c4255a` continua disponível para comparação; nenhuma reversão de dados reais é necessária, pois não foram alterados.

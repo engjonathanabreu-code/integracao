@@ -1,0 +1,370 @@
+{
+  "base": "2c4255a",
+  "branch": "codex/sincronizacao-recuperacao-20261111",
+  "publicado": false,
+  "banco_remoto_alterado": false,
+  "usuarios_reais_conciliados": 0,
+  "computadores_acessados": 0,
+  "npm_run_build": {
+    "tests": 1213,
+    "pass": 1213,
+    "fail": 0,
+    "skipped": 0,
+    "vite": "aprovado",
+    "aviso": "bundle acima de 2000 kB"
+  },
+  "navegador": {
+    "jornadas_distintas": 62,
+    "aprovadas_consolidadas": 62,
+    "execucao_completa_inicial": {
+      "total": 61,
+      "aprovadas": 58,
+      "falhas": [
+        "funil-notificacoes.browser.cjs",
+        "financeiro.browser.cjs",
+        "sincronizacao-rascunho.browser.cjs"
+      ]
+    },
+    "tratamento": "Financeiro e notificacoes passaram isoladamente. Rascunho revelou contagem de item terminal com limite antigo; corrigido e aprovado na aceitacao. Nova jornada de diagnostico verificada separadamente, com recurso ativado e desativado.",
+    "resultado_final_por_jornada": [
+      {
+        "test": "ajustes-interface.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "ajustes-page.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "andamentos-navegacao.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "atualizacao-pendente.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "busca-clientes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "calendario-vencimento.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "carteira-incremental.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "chat-popup-flexivel.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "clientes-incompletos.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "clientes-nucleo-render.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "concorrencia-global.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "concorrencia-institucional.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "conjuge-andamentos.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "contatos-interface.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "contrato-venda.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-arquivo.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-ativacoes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-chatwoot-timeout.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-editar-card.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-followup.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-hoje-funil.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-institucionais.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-leads.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-modal.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-multiplos-comerciais.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-negociacao.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "crm-telefone-compartilhado.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "devolutivas-anexos.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "diagnostico-dispositivos.browser.cjs",
+        "status": 0,
+        "verificacao": "repeticao_isolada"
+      },
+      {
+        "test": "diario-contagens.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "diario-integrado.browser.cjs",
+        "status": 0,
+        "verificacao": "aceitacao_apos_correcao"
+      },
+      {
+        "test": "diario-recuperacao-acesso.browser.cjs",
+        "status": 0,
+        "verificacao": "aceitacao_apos_correcao"
+      },
+      {
+        "test": "diario-resiliencia.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "diario-retomada.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "documentos-comerciais.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "fila-intencoes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "financeiro-compartilhado.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "financeiro.browser.cjs",
+        "status": 0,
+        "verificacao": "repeticao_isolada"
+      },
+      {
+        "test": "folha-ponto.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "funil-notificacoes.browser.cjs",
+        "status": 0,
+        "verificacao": "repeticao_isolada"
+      },
+      {
+        "test": "geojson-fluxo.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "mailing.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "modulo-sessao.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "morador-legado.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "oficio-modelo.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "oficios-config.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "oficios-equipe.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "oficios.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "panorama-acoes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "pendencias-sob-demanda.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "planejamento-densidade.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "planejamento-notificacoes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "planos-planejamento.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "ponto-offline-sessao.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "ponto-offline.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "ponto-solicitacoes.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "processos-protocolados.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "recusas-metas.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "rotina-mensal.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "sincronizacao-ciclo.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      },
+      {
+        "test": "sincronizacao-rascunho.browser.cjs",
+        "status": 0,
+        "verificacao": "aceitacao_apos_correcao"
+      },
+      {
+        "test": "tempo-real.browser.cjs",
+        "status": 0,
+        "verificacao": "execucao_completa"
+      }
+    ]
+  },
+  "novos_cenarios": {
+    "recuperacao_acesso": "401/403/404/409 na consulta de recibo nao autorizam descartar/substituir; pedido original confirmado sem segundo envio",
+    "descarte": "recusa 422, geral nao reenvia bloqueio; descarte explicito preserva original/checksum",
+    "interface": "acao de descarte ausente em resultado incerto; cancelar confirmacao nao descarta",
+    "diagnostico": "desativado sem trafego; ativado usa token proprio e exclui conteudo; ausencia de contato desconhecida",
+    "sql": "RLS, perfis inativos/anonimos, isolamento de contas, identidade e horario do servidor, formato limitado",
+    "refresh": "400/401/403 de renovacao classificados como sessao; 429/503 temporarios sem iniciar gravação"
+  },
+  "nao_executados": {
+    "supabase_advisors": "Alvo local 127.0.0.1:54322 indisponivel (ECONNREFUSED). Migration somente testada em PostgreSQL embutido.",
+    "lint_typecheck": "scripts dedicados ausentes",
+    "dispositivos_reais": "sem acesso remoto; estados desconhecidos",
+    "producao": "sem deploy, migration ou conciliacao de dados"
+  },
+  "comandos": [
+    "npm ci --ignore-scripts",
+    "npm run build",
+    "npm run test:browser",
+    "npm run test:browser:sync",
+    "node --test tests/estabilizacao-regressoes.test.js tests/diario-retomada.test.js tests/estado-sincronizacao.test.js tests/diagnostico-sincronizacao-sql.test.js",
+    "supabase db advisors --type security --fail-on error (local indisponivel)"
+  ],
+  "ambiente": {
+    "node": "22.16.0 portatil em /tmp",
+    "playwright": "1.57.0, Chromium em /tmp",
+    "supabase_cli": "3.1.0 usada para gerar migration; nenhum comando remoto",
+    "servicos_de_teste": "Vite local, fixtures, IndexedDB e PGlite; HTTP/WebSocket externos bloqueados"
+  }
+}
