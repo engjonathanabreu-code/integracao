@@ -18,6 +18,7 @@ import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
+import {diagnosticosSuporte,prepararRecuperacaoAtualizacao,edicaoVisivelParaAtualizar} from './suporte-remoto-local.js';
 import {configERP,consultarReciboOperacao,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}) {
@@ -531,5 +532,52 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const descartarPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.descartar(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();conferirGeracao(gen);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const tentarNovamente=async()=>{const gen=generation.current;retentativas.current=0;if(usarDiario&&diario.current){try{await diario.current.retomarAutomaticas();conferirGeracao(gen);}catch(e){if(gen===generation.current)setError(e.message);return;}}return flush();};
   const diagnosticarPendencia=id=>{const itens=diario.current?.itens()||[],item=itens.find(i=>i.id===id);return item?diagnosticoOperacao(item,Date.now(),itens):null;};
-  return {diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  const executarSuporte=async({tipo,pedido=null},conferirComando=()=>{},revalidar=async()=>{})=>{
+    const gen=generation.current,d=diario.current;
+    const verificar=()=>{conferirGeracao(gen);try{conferirComando();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}};
+    const validar=async()=>{verificar();try{await revalidar();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}verificar();};
+    const resultado=codigo=>({codigo,itens:diagnosticosSuporte(d?.itens()||[],pedido)});
+    verificar();
+    if(!usarDiario||!d||opening.current||!server.current||!temSessao())return resultado('EM_ANDAMENTO');
+    if(busy.current||temEdicaoEmAndamento())return resultado('EM_ANDAMENTO');
+    busy.current=true;clearTimeout(timer.current);
+    try{
+      await d.esperar();verificar();await d.atualizar();verificar();
+      const alvo=pedido?d.itens().find(i=>i.id===pedido):null;
+      if(pedido&&!alvo)return resultado('PEDIDO_AUSENTE');
+      if(['diagnostico','revisar_bloqueios'].includes(tipo))return resultado('DIAGNOSTICO');
+      if(tipo==='solicitar_atualizacao')return resultado('ATUALIZACAO_SOLICITADA');
+      if(['consultar_recibo','reler_confirmacao'].includes(tipo)){
+        if(!pedido||!alvo?.payload||tipo==='reler_confirmacao'&&!alvo.recibo)return resultado('REVISAO_NECESSARIA');
+        const lido=await d.consultarExistente(pedido,{modo:tipo==='consultar_recibo'?'consulta':'releitura',validar,verificar});verificar();
+        publish(d.materializar(server.current.db));await saveDraft();verificar();
+        return resultado(!lido?'EM_ANDAMENTO':tipo==='reler_confirmacao'?'LEITURA_CONFIRMADA':lido.recibo?alvo.recibo?'RECIBO_LOCAL':'RECIBO_ENCONTRADO':'SEM_RECIBO');
+      }
+      if(tipo!=='retomar_automaticas')return resultado('REVISAO_NECESSARIA');
+      if(alvo&&(alvo.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(alvo.estado)))return resultado('REVISAO_NECESSARIA');
+      const aptos=d.itens().filter(i=>(!pedido||i.id===pedido)&&!['confirmado','substituido','dispensado','persistencia_falhou','legado_revisao'].includes(i.estado)&&!i.estado.startsWith('bloqueado')).map(i=>i.id);
+      if(!aptos.length)return resultado('SEM_ALTERACAO');
+      await validar();await d.retomarAutomaticas({id:pedido});verificar();
+      await d.executar({id:pedido,validar,verificar});verificar();
+      publish(d.materializar(server.current.db));await saveDraft();verificar();
+      const depois=d.itens().filter(i=>aptos.includes(i.id));
+      return resultado(depois.some(i=>i.erro?.codigo==='LEITURA_DIVERGENTE')?'LEITURA_DIVERGENTE':depois.some(i=>i.estado.startsWith('bloqueado'))?'REVISAO_NECESSARIA':depois.length&&depois.every(i=>i.estado==='confirmado')?'LEITURA_CONFIRMADA':'EM_ANDAMENTO');
+    }catch(e){
+      if(e.code==='SESSAO_ALTERADA'||gen!==generation.current)throw e;
+      if(e.code==='LEITURA_DIVERGENTE')return resultado('LEITURA_DIVERGENTE');
+      return resultado(e.code==='ARQUIVO_LOCAL_AUSENTE'?'ARQUIVO_LOCAL_AUSENTE':e.status===403?'REVISAO_NECESSARIA':'RESULTADO_INCERTO');
+    }finally{if(gen===generation.current){busy.current=false;if(pending.current){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
+  };
+  const prepararAtualizacaoSuporte=async()=>{
+    const gen=generation.current,d=diario.current,conta=actor.current?.erpRef;
+    if(!conta||!d||busy.current||opening.current||!current.current||!server.current)return false;
+    const seguro=()=>gen===generation.current&&actor.current?.erpRef===conta&&!opening.current&&!temEdicaoEmAndamento()&&!edicaoVisivelParaAtualizar()&&!arquivosPendentes()&&!d.itens().some(i=>!['confirmado','substituido','dispensado'].includes(i.estado));
+    busy.current=true;
+    try{
+      await d.esperar();conferirGeracao(gen);await d.atualizar();conferirGeracao(gen);if(!seguro())return false;
+      const diarioPreservado=await d.exportar();conferirGeracao(gen);
+      return await prepararRecuperacaoAtualizacao({conta,storage,snapshot:()=>({protocolo:1,conta,dados:current.current,base:server.current,diario:diarioPreservado}),seguro,conferir:()=>conferirGeracao(gen),esperar:async()=>{await d.esperar();await saveDraft();}});
+    }catch{return false;}finally{if(gen===generation.current){busy.current=false;if(pending.current){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
+  };
+  return {executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
