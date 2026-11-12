@@ -29,7 +29,7 @@ let base=JSON.parse(localStorage.getItem('harness-server')||'null')||copy(initia
 let receipts=JSON.parse(localStorage.getItem('harness-receipts')||'{}');
 const actor=projetar(initial,blank()).db.usuarios[0];
 const ghost={id:id(99),_compartilhado:true,requerente:{rg:'rascunho antigo'},checks:{}};
-const stats={writes:Number(localStorage.getItem('harness-writes')||0),posts:0,requests:[],readsAfterSave:0};
+const stats={writes:Number(localStorage.getItem('harness-writes')||0),posts:0,postIds:[],requests:[],readsAfterSave:0};
 const flags={failReads:scenario==='falha-leitura'&&!localStorage.getItem('harness-recovered'),loseResponse:['resposta-perdida','cor-resposta-perdida'].includes(scenario),deny:['permissao','permissao-persistente'].includes(scenario),conflict:scenario==='conflito'};
 const saveServer=()=>{localStorage.setItem('harness-server',JSON.stringify(base));localStorage.setItem('harness-receipts',JSON.stringify(receipts));localStorage.setItem('harness-writes',String(stats.writes));};
 const key='integracao-compartilhado-'+id(1);
@@ -73,7 +73,7 @@ window.fetch=async(input,options={})=>{
  if(url.pathname.includes('/auth/'))return response({message:'Autenticação não utilizada no teste'},403);
  if(url.pathname.endsWith('/rpc/integracao_consultar_pedido'))return response(receipts[JSON.parse(options.body).pedido]||null);
  if(url.pathname.endsWith('/rpc/integracao_gravar')){
-  stats.posts++;const {operacoes,pedido}=JSON.parse(options.body);
+  stats.posts++;const {operacoes,pedido}=JSON.parse(options.body);stats.postIds.push(pedido);
   if(receipts[pedido])return response(receipts[pedido]);
   if(['reserva-recusada','reserva-cancelada-rejeitada'].includes(scenario)&&operacoes.some(o=>o.action==='evento'))return response({message:'O ativo já está reservado em uma das datas selecionadas',code:'P0001'},400);
   if(scenario==='exclusao-recusada'&&operacoes.some(o=>o.remove))return response({message:'Exclusão não autorizada',code:'P0001'},400);
