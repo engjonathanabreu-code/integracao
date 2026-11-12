@@ -63,6 +63,12 @@ function instanteChecklist(valor) {
   return Number.isFinite(instante)&&new Date(iso[1]+'T00:00:00Z').toISOString().slice(0,10)===iso[1]?instante:NaN;
 }
 
+function mesmosResponsaveis(atual, esperado) {
+  const valido=lista=>Array.isArray(lista)&&lista.every(id=>typeof id==='string'&&/^(?:erp_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))&&new Set(lista).size===lista.length;
+  if(!valido(atual)||!valido(esperado)||atual.length!==esperado.length)return false;
+  const ids=new Set(atual);return esperado.every(id=>ids.has(id));
+}
+
 function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   return mudancas.every(mudanca => {
     // Presence is device-local; it is deliberately not written by prepararEdicao.
@@ -90,6 +96,9 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       if(op&&Number.isFinite(instante)&&op.changes[campo]===new Date(instante).toISOString())return atual.existe&&instante===Date.parse(atual.valor);
     }
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    // Goal responsibilities are membership rows; their SELECT order carries
+    // no user intent. Never generalize this to ordered lists or invalid IDs.
+    if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===3&&typeof mudanca.caminho[1]==='object'&&campo==='responsaveis')return atual.existe&&mesmosResponsaveis(atual.valor,esperado);
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
       if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;
@@ -170,6 +179,10 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
         if(!conferir(diferencas([],esperado[filho],[...mudanca.caminho,filho]),remoto,aliases,operacoes))return false;
         delete esperado[filho];
       }
+    }
+    if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&typeof mudanca.caminho[1]==='object'&&objeto(esperado)&&possui(esperado,'responsaveis')){
+      if(!mesmosResponsaveis(atual.valor?.responsaveis,esperado.responsaveis))return false;
+      esperado={...esperado};delete esperado.responsaveis;
     }
     // New canonical goals receive their ERP binding on projection. Accept only
     // that exact binding; business nulls and any different identity still differ.
