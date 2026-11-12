@@ -16,6 +16,7 @@ import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincroniza
 import {filaRascunho} from './fila-rascunho.js';
 import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisiveis,atualizarFichas,preservarFichaAnterior} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
+import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
@@ -113,7 +114,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
       carregar:async edicoes=>{
         const seed=semearOriginais(server.current.db,edicoes);
-        const base=await carregarBase(seed,null,{fichasAvulsas:false});conferirGeracao(gen);
+        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false});conferirGeracao(gen);
         const clientes=await hidratarFichasDiario(base,edicoes,gen);
         return filtrarFichasDiario(projetarRemoto(base,seed,server.current.db),clientes);
       },
