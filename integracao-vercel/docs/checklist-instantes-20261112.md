@@ -1,0 +1,15 @@
+# Confirmação do horário de checklist
+
+O formulário grava `concluido_em` como ISO UTC com `Z`; a leitura PostgreSQL pode representar o mesmo instante com `+00:00`. A comparação textual prendia uma gravação com recibo em leitura divergente e mantinha uma edição posterior da mesma meta aguardando sua dependência.
+
+A adaptação vale somente para a folha `metas/<id>/checklist/<id>/concluido_em`, em atualização `meta_checklist` da mesma identidade e com o valor original efetivamente enviado. Não se aplica a inserções, exclusões, ações ou outras colunas. Exige ISO com fuso, data válida e instante idêntico; diferenças submilissegundo não são truncadas para confirmar valores diferentes. Nulos, ausência, autoria e demais campos editados continuam sujeitos às regras existentes.
+
+A reabertura também usa o contrato específico do campo: o formulário limpa com `''` e o encoder transmite `NULL`. A confirmação aceita essa passagem somente quando a mesma atualização envia explicitamente `concluido:false` e `concluido_em:null`, e a leitura da própria linha confirma que foi reaberta e o campo existe como `NULL`. Não há equivalência global entre vazio, nulo e ausência.
+
+O encoder de itens novos passa a transmitir explicitamente um horário fornecido, validado como ISO com fuso e precisão de até microssegundos. Não inventa horário ausente nem muda o contrato de autoria. O checklist inicial de uma meta nova é comparado recursivamente por identidade e campos enviados, permitindo somente os defaults adicionais de leitura. A normalização de horário em inserção exige a operação de INSERT da própria identidade, vínculo da mesma meta e o instante transmitido; não se aplica a ações ou outras linhas.
+
+Os testes reproduzem a rejeição antes da correção e conferem preparação/projeção reais, aliases e casos negativos. A jornada de duas contas fictícias usa o hook e IndexedDB reais: uma intenção histórica com recibo e horário canônico é confirmada por leitura; a sucessora da mesma meta é então enviada uma vez; a segunda conta recebe a alteração ao atualizar sua leitura. O pedido já gravado não é reenviado e o reload preserva os recibos.
+
+Não há migration, alteração de permissões, dados reais, payloads, recibos ou limpeza de filas. O teste confirma o defeito e o protocolo com fixtures, não identifica a causa de uma pendência particular sem seu pedido e prévia atuais. Não comprova recuperação de aparelhos reais. A reversão é apenas do código do cliente; originais e recibos devem ser preservados.
+
+A recuperação exportada inclui também bytes locais de anexos de Metas referenciados nas intenções atuais (inclusive a versão anterior de um anexo removido), em campo separado `recuperacaoAnexosMetas`. A busca fica restrita às chaves locais válidas dos pedidos atuais; não varre anexos históricos nem inclui o prefixo no uploader genérico. Leituras ausentes ou indisponíveis produzem lista técnica e aviso de cópia parcial, sem impedir a exportação dos demais originais. Uma troca de sessão interrompe a cópia. Isso não comprova integridade de arquivos de aparelhos não observados nem de arquivos históricos fora das intenções atuais.

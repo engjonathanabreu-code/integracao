@@ -1,4 +1,5 @@
 import {exportarCopiaRecuperacao} from './copia-recuperacao.js';
+import {recuperarAnexosMetas} from './recuperacao-anexos-metas.js';
 import {criarDiarioCompartilhado} from './diario-compartilhado.js';
 import {semearOriginais,extrairIntencao} from './intencoes-edicao.js';
 import {selecionarArquivosDaEdicao,arquivosDaIntencao} from './arquivos-intencoes.js';
@@ -15,6 +16,7 @@ import {tabelasDosGrupos,falhaTransitoria,gruposDasOperacoes} from './sincroniza
 import {filaRascunho} from './fila-rascunho.js';
 import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisiveis,atualizarFichas,preservarFichaAnterior} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
+import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
@@ -112,7 +114,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
       carregar:async edicoes=>{
         const seed=semearOriginais(server.current.db,edicoes);
-        const base=await carregarBase(seed,null,{fichasAvulsas:false});conferirGeracao(gen);
+        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false});conferirGeracao(gen);
         const clientes=await hidratarFichasDiario(base,edicoes,gen);
         return filtrarFichasDiario(projetarRemoto(base,seed,server.current.db),clientes);
       },
@@ -501,17 +503,23 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     const gen=generation.current;
     try {
       if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
-      const chave=storageKey(),d=diario.current;
+      const chave=storageKey(),d=diario.current,conta=actor.current.erpRef;
       // Capture local state and queued bytes before awaiting IndexedDB. Export
       // remains available during a send and cannot mix another account's data.
       const conteudo=copy({dados:current.current,base:server.current?.db,envio:attempt.current,reservasPreservadas:recuperacoes.current,arquivosPendentes:capturarArquivos()});
       conteudo.diario=usarDiario?await d.exportar():undefined;conferirGeracao(gen);
+      conteudo.recuperacaoAnexosMetas=await recuperarAnexosMetas({diario:conteudo.diario,envio:conteudo.envio,conta,storage,conferir:()=>conferirGeracao(gen)});conferirGeracao(gen);
       const resultado=await exportarCopiaRecuperacao({conteudo:JSON.stringify(conteudo,null,2),baixar:snapshot=>{
         conferirGeracao(gen);const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
         try{const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
       },preservar:async snapshot=>{conferirGeracao(gen);await storage.set(`${chave}-revisao-${Date.now()}`,snapshot);conferirGeracao(gen);await saveDraft();}});
-      conferirGeracao(gen);setStatus('Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
-      if(!resultado.copiaInterna)setError('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
+      conferirGeracao(gen);
+      const parcial=!conteudo.recuperacaoAnexosMetas.completa;
+      setStatus(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
+      const avisos=[];
+      if(parcial)avisos.push(`${conteudo.recuperacaoAnexosMetas.ausentes.length} anexo(s) de Metas não puderam ser incluídos. Preserve este aparelho e revise os arquivos indicados na cópia antes de fechar a tela.`);
+      if(!resultado.copiaInterna)avisos.push('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
+      if(avisos.length)setError(avisos.join(' '));
     }catch(e){if(gen===generation.current)setError(e.message);}
   };
   useEffect(()=>{

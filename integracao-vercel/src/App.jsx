@@ -7811,7 +7811,7 @@ function PaginaHome({ db, usuario, ir, offline, conexao, abrirCliente }) {
         </div>
       )}
       {buscaClientes && <Modal titulo="Buscar cliente" onFechar={() => setBuscaClientes(false)}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} autoFocus emModal incluirConjuge /></Modal>}
-      {!AMBIENTE.DEMO && <MetasVendas usuario={usuario} db={db} resumo />}
+      {!AMBIENTE.DEMO && <MetasVendas usuario={usuario} db={db} resumo abrirMetasOperacionais={() => ir({ pag: "metas" })} />}
       <div className="layout-home">
         <Secao titulo="Suas pendências" nota="Em ordem cronológica: o que está esperando há mais tempo aparece primeiro. Metas aparecem pelo prazo.">
           {!pend.length && <p style={{ margin: 0, color: "var(--muted)" }}>Nenhuma pendência para você agora.</p>}
@@ -10694,7 +10694,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     } catch (e) { setToast("Não foi possível abrir o arquivo."); }
   };
   const removerAnexo = async (a) => {
-    await armazenamento.del(a.chave).catch(() => {});
+    // Earlier durable intentions can still reference this local payload.
+    // Remove metadata only; preserve bytes until reachability can be proven.
     alterar((q) => { q.arquivos = (q.arquivos || []).filter((x) => x.id !== a.id); }, "Arquivo removido", a.nome);
     setToast("Arquivo removido.");
   };
