@@ -1,0 +1,81 @@
+{
+  "base": "c5a52bf2097a74bdd2bb8b9e1631250b11290916",
+  "branch": "feat/sincronizacao-cinco-acoes-20261111",
+  "commitCriado": false,
+  "pushRealizado": false,
+  "pr": null,
+  "producaoAlterada": false,
+  "sqlRemotoExecutado": false,
+  "status": "implementado_localmente_com_bloqueios_de_validacao",
+  "testes": {
+    "focados": {
+      "total": 17,
+      "aprovados": 17,
+      "log": "evolution-focused-final.log"
+    },
+    "suiteCompleta": {
+      "total": 1259,
+      "aprovados": 1258,
+      "falhas": 1,
+      "motivo": "timeout de subprocesso de recuperação",
+      "log": "evolution-build.log"
+    },
+    "recuperacaoReexecucaoIsolada": {
+      "total": 1,
+      "aprovados": 1,
+      "cenarios": 15,
+      "log": "evolution-recovery-final.log"
+    },
+    "compilacaoViteFinal": {
+      "aprovada": true,
+      "duracaoSegundos": 22.43,
+      "log": "evolution-vite-final.log"
+    },
+    "revisaoIndependenteFinal": {
+      "testesAprovados": 14,
+      "p1p2RemanescentesIdentificados": 0
+    },
+    "diffCheck": true,
+    "scriptsLintTipos": false,
+    "browser": {
+      "totalArquivosPreparados": 67,
+      "validacao": "pendente",
+      "motivos": [
+        "Download oficial do navegador inválido/HTTP400",
+        "Chromium local: socket() failed: Operation not permitted",
+        "CI depende de push/PR bloqueados"
+      ]
+    },
+    "contasReais": "pendente; duas sessões autorizadas indisponíveis",
+    "concorrenciaConexoesReais": "pendente; PGlite tem uma conexão"
+  },
+  "bloqueios": [
+    {
+      "acao": "git commit e git push -u origin feat/sincronizacao-cinco-acoes-20261111",
+      "alvo": "engjonathanabreu-code/integracao",
+      "estado": "negada_sem_execucao",
+      "origem": "revisão automática de aprovação",
+      "motivo": "Committing and pushing a new remote branch is an external repository commitment; the user authorized remote implementation but did not explicitly authorize publication/push, and repository rules require separate authorization before push or PR.",
+      "providencia": "É necessária autorização explícita para commit/push e PR em rascunho; não inclui merge/deploy/migration."
+    }
+  ],
+  "hashesSHA256": {
+    "src/PendenciasSincronizacao.jsx": "09001e52294d62098eb8347c971b0f4f99427c7fd8b7278640963da8c53baf0e",
+    "src/confirmacao-mutacoes.js": "e52eb8329d0449317e4d9bb2ae87a907dc326e161996ac9132c75f0b24706309",
+    "src/diagnostico-sincronizacao.js": "a636ede6a52ffc34b2efc7296cdf135689234527783c0c08c2f400bc02138cff",
+    "src/fila-intencoes.js": "eb45aba32dfbc5583351ed1b9b035d68e95f6951e8ac69b960d5c64b71ceb6d4",
+    "src/sincronizacao-clientes.js": "1d0b526c22d822071151d798c4740a524fec5d139d5429a4e4d6cc1e8ee13638",
+    "src/use-dados-compartilhados.js": "1238933207b4d7f10d4345f85e6e1af7559d830e4079211b6e06a4eb2e9ff2cc",
+    "src/recibo-operacoes.js": "66ea8e1c3143988c54d08f54e5841aa8cd9035ac01f7c1baa7f5479c12c5d029",
+    "supabase/migrations/20261111192443_recibos_canonicos_operacoes.sql": "2c395d98e7987a97ef2ccbe94eff7b72dab542fb6e442a47a32e9055242f9aa6",
+    "supabase/operacoes/recibos-canonicos-reversao.sql": "405b8ecc7170e5f584e18b752f1cedd85d17dc28cc773fb1539b52341f8329c5",
+    "tests/atualizacao-pendente.browser.cjs": "a735df16f07d4520bdc6213a673053589807ad07bb9697cd9f195830fd89ad52",
+    "tests/sincronizacao-ciclo.jsx": "109084df72c216bfb9a6b31af9795e3d88fe650bf2ec2212b43040b23ba2cf1e",
+    "tests/recibos-canonicos.test.js": "67b6e63f7a7940b54ca0d625b322615a078cd9c2c911c5081495f435c53b4752",
+    "tests/sincronizacao-evolucao.test.js": "84ba36163244b3f88f19a16b538b5824535541af6f3a9e940d9bac79dfff25ce",
+    "tests/diario-isolamento-fichas.browser.cjs": "5516c0a057ecceab7b3b6f7518a5b7f2ea7a7f84d869fa30a2324c965e88ce7f",
+    "tests/diario-recibos-canonicos.browser.cjs": "f5e3a6c8cd2db3a4259d8eceb3c81eff0501ce96d2c2ba349895e07eef21cd6c",
+    "vercel.json": "b4d89af72eb10c7ae8e30d809272c75614c98f24e5d018bb4d589cae0cbfa002",
+    "../vercel.json": "95f10fd6ad7564647d3c3a2dbead9045fdcccac1f2748f257261aeb1b6261f05"
+  }
+}

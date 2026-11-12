@@ -98,7 +98,9 @@ window.fetch=async(input,options={})=>{
     if(op.remove)next[op.table]=rows.filter(r=>!matches(r));else Object.assign(row,op.changes);
    }
   }
-  base=next;receipts[pedido]={aliases};stats.writes++;saveServer();
+  base=next;receipts[pedido]={aliases};
+  if(new URLSearchParams(location.search).has('recibos'))receipts[pedido]={aliases,protocoloRecibo:1,pedido,confirmadoEm:new Date().toISOString(),resultados:operacoes.map((op,indice)=>op.action?{indice,tipo:'acao',acao:op.action,canonico:{id:aliases[op.tempId]},versao:'a'.repeat(32)}:{indice,tipo:'registro',tabela:op.table,chave:op.key,removido:!!op.remove,disponivel:true,canonico:op.remove?null:Object.fromEntries(Object.entries((base[op.table]||[]).find(r=>Object.entries(op.key).every(([k,v])=>r[k]===v))||{}).filter(([k])=>Object.hasOwn(op.key,k)||Object.hasOwn(op.changes||{},k))),versao:'a'.repeat(32)})};
+  stats.writes++;saveServer();
   if(flags.loseResponse){flags.loseResponse=false;throw new TypeError('Resposta perdida após gravação');}
   return response(receipts[pedido]);
  }

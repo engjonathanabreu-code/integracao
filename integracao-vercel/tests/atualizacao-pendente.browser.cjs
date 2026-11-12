@@ -18,11 +18,11 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
   else{const fetch=window.fetch;window.fetch=(input,options)=>{const url=new URL(typeof input==='string'?input:input.url,location.href);return url.pathname.endsWith('/fin_receb_clientes')&&url.searchParams.has('id')?Promise.resolve(Response.json({message:'Consulta da ficha recusada',code:'42501'},{status:403})):fetch(input,options);};}
   return syncHarness.sync.refresh({force:true});
  },cenario);
- assert.equal(refreshed,cenario==='ausente');assert.equal(await p.evaluate(()=>syncHarness.stats.writes),0);assert.deepEqual(await p.evaluate(()=>syncHarness.sync.pendencias[0].original),original.original);assert.deepEqual(await p.evaluate(()=>syncHarness.sync.pendencias[0].payload),original.payload);
+ assert.equal(refreshed,true);assert.equal(await p.evaluate(()=>syncHarness.stats.writes),0);assert.deepEqual(await p.evaluate(()=>syncHarness.sync.pendencias[0].original),original.original);assert.deepEqual(await p.evaluate(()=>syncHarness.sync.pendencias[0].payload),original.payload);
  if(cenario==='ausente'){
   await p.waitForFunction(()=>syncHarness.db.processos.length===0);await p.reload();await p.waitForFunction(()=>syncHarness?.ready&&syncHarness.sync.pendencias.length===1);assert.equal(await p.evaluate(()=>syncHarness.db.processos.length),0);assert.deepEqual(await p.evaluate(()=>syncHarness.sync.pendencias[0].original),original.original);
  }else{
-  await p.waitForFunction(()=>syncHarness.sync.error.includes('Consulta da ficha recusada'));assert.equal(await p.evaluate(()=>syncHarness.db.processos[0].etapa),1);
+  await p.waitForFunction(()=>syncHarness.sync.falhasAtualizacao.length===1);assert.equal(await p.evaluate(()=>syncHarness.db.processos[0].etapa),1);
  }
  assert.equal(await p.evaluate(()=>syncHarness.stats.requests.some(u=>u.endsWith('/rpc/integracao_moradores_carga'))),false,'hidratação é direcionada, sem baixar todos os municípios');assert.equal(await p.evaluate(()=>syncHarness.stats.writes),0);await context.close();casos++;
  }

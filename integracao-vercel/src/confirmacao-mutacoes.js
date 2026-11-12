@@ -61,6 +61,14 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
     const campo=mudanca.caminho.at(-1);
+    // Only timestamp columns actually submitted to the calendar contract accept
+    // equivalent ISO offsets. Dates, text and unrelated paths stay exact.
+    if(mudanca.caminho[0]==='eventos'&&mudanca.caminho.length===3&&['inicio','fim'].includes(campo)){
+      const id=aliases[mudanca.caminho[1].id]||mudanca.caminho[1].id;
+      const op=operacoes.find(o=>o.table==='erp_eventos'&&o.key?.id===id&&possui(o.changes,campo));
+      const instante=typeof mudanca.valor==='string'?Date.parse(mudanca.valor):NaN;
+      if(op&&Number.isFinite(instante)&&op.changes[campo]===new Date(instante).toISOString())return atual.existe&&instante===Date.parse(atual.valor);
+    }
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
@@ -92,6 +100,16 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       }
       // The ERP column stores only the calendar date; author remains in its complement.
       if(colecao==='nucleos'&&filhos==='andamentos')esperado={...esperado,data:String(esperado.data||'').slice(0,10)};
+    }
+    if(mudanca.parcial&&mudanca.caminho[0]==='eventos'&&mudanca.caminho.length===2&&objeto(esperado)){
+      const op=operacoes.find(o=>o.action==='evento'&&(aliases[o.tempId]||o.tempId)===esperado.id);
+      if(op){
+        esperado={...esperado};
+        for(const coluna of ['inicio','fim']){
+          const instante=typeof esperado[coluna]==='string'?Date.parse(esperado[coluna]):NaN;
+          if(Number.isFinite(instante)&&op.payload?.[coluna]===new Date(instante).toISOString()&&instante===Date.parse(atual.valor?.[coluna]))esperado[coluna]=atual.valor[coluna];
+        }
+      }
     }
     // New municipality/remittance/nucleus records acquire this read-only ERP
     // marker after insertion. Only accept the exact known transition; keep all
