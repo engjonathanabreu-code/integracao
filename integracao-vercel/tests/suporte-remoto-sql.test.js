@@ -9,7 +9,7 @@ const prova=(inst,n=2)=>createHash('sha256').update('fixture:'+n+':'+inst).diges
 const vinculo=(inst,n=2)=>({instalacao_id:inst,prova_instalacao:prova(inst,n)});
 const diagnostico=inst=>id(10000+Number(inst.slice(-12)));
 const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
-const migration='../supabase/migrations/20261112190126_suporte_remoto_exclusivo.sql';
+const migration='../supabase/migrations/20261112202826_suporte_remoto_exclusivo.sql';
 const fixture=`create role authenticated;create role anon;create role service_role;create schema auth;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;

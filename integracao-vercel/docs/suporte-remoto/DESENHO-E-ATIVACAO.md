@@ -1,6 +1,6 @@
-# Suporte remoto em Configurações — preparado para revisão
+# Suporte remoto em Configurações — desenho e ativação
 
-Esta entrega desenvolve o módulo em branch isolada. Não aplica a migration, não configura o operador, não habilita o cliente e não autoriza publicação. O canal começa desativado e com operador nulo. A publicação anterior das melhorias de sincronização não autoriza ativá-lo.
+O módulo foi desenvolvido em branch isolada e recebeu autorização específica de publicação e ativação em 12/11/2026. A migration `20261112202826_suporte_remoto_exclusivo.sql` corresponde à versão registrada pelo serviço em produção; seu SQL começa desativado e com operador nulo. Vínculo, flag do cliente e ativação são operações separadas e verificadas. A autorização anterior das melhorias de sincronização, por si só, não autorizava esse canal.
 
 ## Escopo e navegação
 
@@ -80,7 +80,7 @@ Os testes usam contas, aparelhos e dados fictícios. Incluem SQL com RLS/ACL, ad
 
 `scripts/verificar-suporte-postgres.mjs` é um teste adicional explícito com PostgreSQL local. Ele cria cluster próprio, confirma seu diretório, usa duas conexões reais, testa reserva/autorização concorrentes, faz backup dos objetos novos, restaura em outro banco descartável e testa desativação preservando comandos, auditoria e recibos. Não se conecta ao Supabase nem a cluster existente. Exemplo: `SUPORTE_PG_BIN=/caminho/postgresql/bin node scripts/verificar-suporte-postgres.mjs`.
 
-Esse backup é de fixtures e objetos novos, não de produção. A migration de produção permanece não aplicada. Antes de futura aplicação, confirmar backup administrativo recuperável do projeto e dos objetos existentes; não presumir que evidência local cubra os dados de produção.
+Esse backup é de fixtures e objetos novos, não de produção. A migration foi aplicada inicialmente desativada após confirmação de backup físico disponível no projeto. Esse backup de produção não foi restaurado durante o rollout; não presumir que os testes locais comprovem uma restauração integral de produção.
 
 A reversão preparada em `supabase/operacoes/suporte-remoto-desativar.sql` desativa o canal, cancela apenas solicitações não iniciadas, marca iniciadas como incertas e revoga sua execução. Não remove tabelas, auditoria, recibos ou armazenamento local. Desabilitar a flag e voltar o deployment do cliente complementam a reversão. Não fazer `DROP`, limpeza de IndexedDB ou exclusão de filas.
 

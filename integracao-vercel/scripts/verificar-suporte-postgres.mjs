@@ -63,7 +63,7 @@ try{
  insert into integracao_pedidos values(${sqlString(id(2))},${sqlString(id(700))},'{"aliases":{},"fixture":true}');`;
  await sql('suporte_origem',fixture);
  const beforeReceipts=(await sql('suporte_origem',"select md5(string_agg(to_jsonb(p)::text,'' order by usuario_id,pedido)) from public.integracao_pedidos p;")).trim();
- const migrationPath=join(app,'supabase/migrations/20261112190126_suporte_remoto_exclusivo.sql');await sql('suporte_origem',await readFile(migrationPath,'utf8'));
+ const migrationPath=join(app,'supabase/migrations/20261112202826_suporte_remoto_exclusivo.sql');await sql('suporte_origem',await readFile(migrationPath,'utf8'));
  assert.equal((await sql('suporte_origem',"select (not habilitado and operador is null)::text from integracao_suporte_privado.config;")).trim(),'true');
  await sql('suporte_origem',`update integracao_suporte_privado.config set operador=${sqlString(id(1))},habilitado=true;`);
  const claims=n=>`begin;set local role authenticated;set local "request.jwt.claim.sub"=${sqlString(id(n))};set local "request.jwt.claims"=${sqlString(JSON.stringify({sub:id(n),session_id:id(100+n)}))};\n`;
