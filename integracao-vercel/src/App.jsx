@@ -10694,7 +10694,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     } catch (e) { setToast("Não foi possível abrir o arquivo."); }
   };
   const removerAnexo = async (a) => {
-    await armazenamento.del(a.chave).catch(() => {});
+    // Earlier durable intentions can still reference this local payload.
+    // Remove metadata only; preserve bytes until reachability can be proven.
     alterar((q) => { q.arquivos = (q.arquivos || []).filter((x) => x.id !== a.id); }, "Arquivo removido", a.nome);
     setToast("Arquivo removido.");
   };
