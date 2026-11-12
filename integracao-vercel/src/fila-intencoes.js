@@ -208,10 +208,21 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    await requisicao(s.originais.add(original));return original;
   });
  }
+ async function classificarLegadoSemEfeito(conta,checksum,pedido){
+  contaValida(conta);return transacao('readwrite',async s=>{
+   const original=await requisicao(s.originais.get([conta,checksum]));
+   if(!original||await requisicao(s.intencoes.get([conta,pedido])))throw erro('A identidade antiga já precisa de revisão. Original preservado.','REVISAO_NECESSARIA');
+   if(original.estado!=='sem_operacoes_de_negocio'){
+    original.estado='sem_operacoes_de_negocio';original.classificacao={tipo:'tentativa_vazia_sem_arquivos_ou_edicoes',pedido,em:agora()};
+    await requisicao(s.originais.put(original));
+   }
+   return original;
+  });
+ }
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // The application must capture session identity in these callbacks. This processor
