@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import SuporteRemoto,{useAcessoSuporte} from '../src/SuporteRemoto.jsx';
+import {IndicacaoSuporteRemoto} from '../src/SuporteRemotoExecutor.jsx';
 import appSource from '../src/App.jsx?raw';
 import guiaCSS from '../src/ui-guide.css?raw';
 import '../src/index.css';
@@ -33,7 +34,7 @@ function App(){
  const [usuario,setUsuario]=useState(usuarios.operador),[aba,setAba]=useState('suporteRemoto'),[v,setV]=useState(0);
  trocar=tipo=>{sessao.controller.abort();sessao={owner:usuarios[tipo].erpRef,controller:new AbortController()};setUsuario(usuarios[tipo]);};abrir=setAba;forcar=()=>setV(v=>v+1);
  const acesso=useAcessoSuporte(usuario,{api,capturar});
- return <main className="rb" data-ui-guide data-render={v} style={{padding:16}}><style>{appCSS}{guiaCSS}</style><div className="cabeca"><h1>Configurações</h1></div><nav className="abas" aria-label="Configurações" role="tablist"><button className="aba" aria-selected={aba==='temas'} role="tab" onClick={()=>setAba('temas')}>Temas</button>{acesso.operador&&<button className="aba" aria-selected={aba==='suporteRemoto'} role="tab" onClick={()=>setAba('suporteRemoto')}>Suporte remoto</button>}</nav>{aba==='suporteRemoto'?<SuporteRemoto usuario={usuario} acesso={acesso} api={api}/>:<p>Temas preservados</p>}</main>;
+ return <main className="rb" data-ui-guide data-render={v} style={{padding:16}}><style>{appCSS}{guiaCSS}</style><div className="cabeca"><h1>Configurações</h1></div><IndicacaoSuporteRemoto/><nav className="abas" aria-label="Configurações" role="tablist"><button className="aba" aria-selected={aba==='temas'} role="tab" onClick={()=>setAba('temas')}>Temas</button>{acesso.operador&&<button className="aba" aria-selected={aba==='suporteRemoto'} role="tab" onClick={()=>setAba('suporteRemoto')}>Suporte remoto</button>}</nav>{aba==='suporteRemoto'?<SuporteRemoto usuario={usuario} acesso={acesso} api={api}/>:<p>Temas preservados</p>}</main>;
 }
 window.suporteFixture={flags,estatisticas,pedidos,trocar:tipo=>trocar(tipo),abrir:aba=>abrir(aba),forcar:()=>forcar(),resolverCap:()=>resolverCap?.(),resolverLista:()=>resolverLista?.(),id};
 createRoot(document.getElementById('root')).render(<App/>);

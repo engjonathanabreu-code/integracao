@@ -62,6 +62,10 @@ Autorizar é uma transição única. Antes de preparar, consultar, enviar ou rel
 
 Auditoria somente de acréscimo registra solicitação, ator, evento, horário e motivo técnico permitido. Clientes não editam/apagam o histórico. A administração do banco permanece uma fronteira privilegiada de confiança, como no restante do sistema.
 
+## Indicação visível ao funcionário
+
+O aplicativo habilitado mostra uma indicação não modal de que solicitações de Jonathan podem ser recebidas, com ações registradas e sem acesso à tela. Tentativas seguras não exigem confirmação repetida do funcionário. O painel de operação continua exclusivo do proprietário. A solicitação de atualização permanece uma decisão local explícita.
+
 ## Atualização e preservação local
 
 A atualização exige clique do funcionário, sessão original, ausência de envio e de pendências, nenhum arquivo pendente e nenhuma edição detectada. A guarda é conservadora: campos editáveis visíveis impedem recarga mesmo sem foco, além dos marcadores e diálogos existentes. A pessoa deve terminar a edição e abrir uma tela sem campos editáveis.
