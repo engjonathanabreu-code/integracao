@@ -1,4 +1,6 @@
 import {terminal} from './estado-sincronizacao.js';
+import {restricaoPermitida} from './diagnostico-validacao.js';
+import {escopoArquivosDaIntencao} from './arquivos-intencoes.js';
 const estados=new Set(['persistencia_falhou','legado_revisao','pendente_local','resultado_desconhecido','confirmado_aguardando_leitura','bloqueado_conflito','bloqueado_validacao','falha_transitoria']);
 const modulos=new Set(['processos','municipios','remessas','nucleos','metas','planos','ordensServico','eventos','usuarios','arquivos','auditoria','config','crmCards','crmAtendimentos','crmTarefas','conversas','mensagens','pontoBatidas','pontoSolicitacoes','marketingGrupos']);
 const codigos=new Set(['SESSAO_EXPIRADA','SESSAO_AUSENTE','TRANSPORTE','LEITURA_DIVERGENTE','ARQUIVO_LOCAL_AUSENTE','RESPONSAVEL_INDISPONIVEL','IDENTIDADE_OUTRA_META','PERSISTENCIA_INDISPONIVEL','PERSISTENCIA_ABORTADA','FILA_BLOQUEADA']);
@@ -29,7 +31,21 @@ export const VERSAO_CLIENTE=import.meta.env?.VITE_BUILD_ID||'sync-evolution-1';
 const fases=new Set(['preparacao','envio','recibo','releitura']);
 const identificador=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)?v:null;
 const numero=v=>Number.isSafeInteger(v)&&v>=0?v:null;
-export function diagnosticoOperacao(i,agora=Date.now()){
+function esperaOperacao(i,itens,agora){
+ if(!Array.isArray(itens))return {motivo:'nao_verificado'};
+ if(terminal(i))return {motivo:'encerrado'};
+ if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(i.estado))return {motivo:'revisao'};
+ if(i.proximaTentativa===Number.MAX_SAFE_INTEGER)return {motivo:'retomada_manual'};
+ if(i.proximaTentativa>agora)return {motivo:'intervalo_de_tentativa'};
+ if(i.leaseAte>agora)return {motivo:'reserva_ativa'};
+ const anterior=itens.find(a=>a.ordem<i.ordem&&a.original?.unidade===i.original?.unidade&&!terminal(a));
+ if(anterior)return {motivo:'pedido_anterior',pedido:identificador(anterior.id)};
+ const resolver=id=>{let d=itens.find(x=>x.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=itens.find(x=>x.id===d.substituidaPor);}return d;};
+ const dependencias=escopoArquivosDaIntencao(i,itens)?.dependencias||i.dependencias||i.original?.dependencias||[];
+ const bloqueios=dependencias.map(id=>({id:identificador(id),item:resolver(id)})).filter(d=>!d.item||!['confirmado','dispensado'].includes(d.item.estado));
+ return bloqueios.length?{motivo:'dependencia',pedidos:bloqueios.map(d=>({id:d.id,estado:d.item?(estados.has(d.item.estado)||terminal(d.item)?d.item.estado:'desconhecido'):'ausente'}))}:{motivo:'pronto_para_verificacao'};
+}
+export function diagnosticoOperacao(i,agora=Date.now(),itens=null){
  const fase=fases.has(i.fase)?i.fase:fases.has(i.erro?.fase)?i.erro.fase:null;
  const bruto=String(i.erro?.codigo||'SEM_ERRO');
  const codigo=bruto==='SEM_ERRO'||codigos.has(bruto)||/^[0-9A-Z]{5}$/.test(bruto)?bruto:'OUTRO';
@@ -40,5 +56,5 @@ export function diagnosticoOperacao(i,agora=Date.now()){
   criadoEm:numero(i.criadoEm),atualizadoEm:numero(i.atualizadoEm),enviadoEm:numero(i.enviadoEm),confirmadoEm:numero(i.confirmadoEm),lidoEm:numero(i.lidoEm),
   tempoMs:numero(i.criadoEm)!==null?Math.max(0,(numero(i.lidoEm)||agora)-i.criadoEm):null,tentativas:numero(i.tentativas)||0,tentativasTotais:numero(i.tentativasTotais),
   dependencias:(i.escopoArquivos?.dependencias||i.dependencias||[]).map(identificador).filter(Boolean),
-  propagacao:i.lidoEm?'confirmada_neste_aparelho':'nao_verificada',outrosAparelhos:'nao_verificado'};
+  propagacao:i.lidoEm?'confirmada_neste_aparelho':'nao_verificada',outrosAparelhos:'nao_verificado',restricao:restricaoPermitida(i.erro?.restricao),espera:esperaOperacao(i,itens,agora)};
 }

@@ -17,6 +17,7 @@ import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisive
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
+import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {configERP,consultarReciboOperacao,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
 export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}) {
@@ -529,5 +530,6 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const reconhecerPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.reconhecerLeitura(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const descartarPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.descartar(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();conferirGeracao(gen);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const tentarNovamente=async()=>{const gen=generation.current;retentativas.current=0;if(usarDiario&&diario.current){try{await diario.current.retomarAutomaticas();conferirGeracao(gen);}catch(e){if(gen===generation.current)setError(e.message);return;}}return flush();};
-  return {falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  const diagnosticarPendencia=id=>{const itens=diario.current?.itens()||[],item=itens.find(i=>i.id===id);return item?diagnosticoOperacao(item,Date.now(),itens):null;};
+  return {diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
