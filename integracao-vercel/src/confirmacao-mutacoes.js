@@ -54,6 +54,15 @@ function contem(atual, esperado) {
   return igual(atual, esperado);
 }
 
+function instanteChecklist(valor) {
+  const iso=typeof valor==='string'&&valor.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:Z|[+-]\d{2}:\d{2})$/);
+  // A date without timezone is not proof of an instant. Keep submillisecond
+  // differences meaningful rather than accepting Date.parse's truncation.
+  if(!iso||Number(iso[2])>23||Number(iso[3])>59||Number(iso[4])>59||/[1-9]/.test(iso[5]?.slice(3)||''))return NaN;
+  const instante=Date.parse(valor);
+  return Number.isFinite(instante)&&new Date(iso[1]+'T00:00:00Z').toISOString().slice(0,10)===iso[1]?instante:NaN;
+}
+
 function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   return mudancas.every(mudanca => {
     // Presence is device-local; it is deliberately not written by prepararEdicao.
@@ -61,6 +70,14 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
     const campo=mudanca.caminho.at(-1);
+    if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===5&&mudanca.caminho[2]==='checklist'&&campo==='concluido_em'){
+      const id=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
+      const op=operacoes.find(o=>o.table==='meta_checklist'&&!o.action&&!o.insert&&!o.remove&&(aliases[o.key?.id]||o.key?.id)===id&&possui(o.changes,campo));
+      const instante=instanteChecklist(mudanca.valor);
+      // Only this row's submitted completion time may use the equivalent ISO
+      // representation returned by PostgreSQL. Every other field stays exact.
+      if(op&&op.changes[campo]===mudanca.valor&&Number.isFinite(instante))return atual.existe&&instante===instanteChecklist(atual.valor);
+    }
     // Only timestamp columns actually submitted to the calendar contract accept
     // equivalent ISO offsets. Dates, text and unrelated paths stay exact.
     if(mudanca.caminho[0]==='eventos'&&mudanca.caminho.length===3&&['inicio','fim'].includes(campo)){
