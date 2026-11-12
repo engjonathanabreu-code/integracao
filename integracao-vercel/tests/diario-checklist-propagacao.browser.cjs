@@ -21,8 +21,14 @@ const assert=require('node:assert/strict');
   await leitora.waitForFunction(()=>fluxoChecklist.db.metas[0].titulo==='Edição posterior da mesma meta');
   assert.equal(await leitora.evaluate(()=>fluxoChecklist.db.metas[0].checklist[0].concluido),true);
   assert.equal(await leitora.evaluate(()=>fluxoChecklist.sync.pendencias.length),0);
+  await emissora.evaluate(()=>fluxoChecklist.sync.mutate(d=>{Object.assign(d.metas[0].checklist[0],{concluido:false,concluido_por:'',concluido_em:''});return d;}));
+  await emissora.evaluate(()=>fluxoChecklist.sync.flush());
+  await emissora.waitForFunction(()=>!fluxoChecklist.sync.pendencias.length&&fluxoChecklist.servidor().gravacoes===3);
+  await leitora.evaluate(()=>fluxoChecklist.sync.refresh({force:true}));
+  await leitora.waitForFunction(()=>fluxoChecklist.db.metas[0].checklist[0].concluido===false&&fluxoChecklist.db.metas[0].checklist[0].concluido_em===null);
   await emissora.reload();await emissora.waitForFunction(()=>window.fluxoChecklist?.ready&&!fluxoChecklist.sync.pendencias.length);
-  assert.equal(await emissora.evaluate(()=>fluxoChecklist.servidor().envios.length),1,'reload conserva o recibo e não repete pedidos');
-  console.log(JSON.stringify({ok:true,duasContas:true,indexedDBReal:true,primeiroReciboSemReenvio:true,sucessoraConfirmada:true,segundaContaAtualizadaPorLeitura:true,semDadosReais:true}));
+  assert.equal(await emissora.evaluate(()=>fluxoChecklist.servidor().envios.length),2,'uma edição sucessora e uma reabertura; reload não repete pedidos');
+  assert.equal(await emissora.evaluate(()=>fluxoChecklist.servidor().envios.some(e=>e.pedido===fluxoChecklist.pedido)),false,'pedido original com recibo nunca é reenviado');
+  console.log(JSON.stringify({ok:true,duasContas:true,indexedDBReal:true,primeiroReciboSemReenvio:true,sucessoraConfirmada:true,reaberturaConfirmada:true,segundaContaAtualizadaPorLeitura:true,semDadosReais:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

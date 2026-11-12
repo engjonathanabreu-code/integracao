@@ -16,6 +16,15 @@ function caso(){
 const conferir=c=>alteracoesConfirmadas(c.antes,c.depois,c.remoto,c.aliases||{},c.ops);
 const item=c=>c.remoto.metas[0].checklist[0];
 
+function reabertura(){
+ const base=fixture();base.meta_checklist=[{id:id(20),meta_id:id(7),titulo:'Item fictício',concluido:true,concluido_por:id(1),concluido_em:'2026-11-12T16:15:36.123+00:00',created_by:id(1)}];
+ const state=projetar(base,blank()),antes=state.db,depois=structuredClone(antes);
+ Object.assign(depois.metas[0].checklist[0],{concluido:false,concluido_por:'',concluido_em:''});
+ const ops=prepararEdicao(antes,depois,state,antes.usuarios[0]);
+ for(const op of ops){const rows=base[op.table]||=[],row=rows.find(r=>Object.entries(op.key).every(([k,v])=>r[k]===v));if(row)Object.assign(row,op.changes);else rows.push({...op.key,...op.changes});}
+ return {antes,depois,ops,remoto:projetar(base,blank()).db};
+}
+
 test('checklist: preparação e projeção reais confirmam o instante enviado em outra representação ISO',()=>{
  for(const horario of ['2026-11-12T16:15:36.123+00:00','2026-11-12T13:15:36.123-03:00','2026-11-12T16:15:36.123000Z']){
   const c=caso(),snapshot=structuredClone(c);item(c).concluido_em=horario;
@@ -50,4 +59,15 @@ test('checklist: adaptação não muda timestamps de outras coleções, campos o
   assert.equal(alteracoesConfirmadas(antes,depois,remoto,{},[{table:'meta_checklist',key:{id:id(7)},changes:{concluido_em:depois[colecao][0][campo]}}]),false);
  }
  const c=caso();c.antes.metas[0].checklist=[];assert.equal(conferir(c),false,'inserção exige contrato próprio, não regra de atualização');
+});
+
+test('checklist: reabertura confirma o campo vazio do formulário somente no NULL enviado pela própria operação',()=>{
+ const c=reabertura(),snapshot=structuredClone(c);
+ assert.equal(c.ops[0].changes.concluido,false);assert.equal(c.ops[0].changes.concluido_em,null);
+ assert.equal(item(c).concluido_em,null);assert.equal(conferir(c),true);assert.deepEqual(c,snapshot);
+});
+test('checklist: reabertura não transforma ausência, outra operação ou registro ainda concluído em confirmação',()=>{
+ for(const alterar of [c=>delete item(c).concluido_em,c=>item(c).concluido_em='2026-11-12T16:15:36.123Z',c=>item(c).concluido=true,c=>item(c).concluido_por='Outra pessoa',c=>c.ops=[],c=>c.ops[0].key.id=id(21),c=>delete c.ops[0].changes.concluido_em,c=>delete c.ops[0].changes.concluido,c=>c.ops[0].changes.concluido=true,c=>c.ops[0].action='evento',c=>c.ops[0].insert=true,c=>c.ops[0].remove=true,c=>c.ops[0].table='metas']){
+  const c=reabertura();alterar(c);assert.equal(conferir(c),false);
+ }
 });

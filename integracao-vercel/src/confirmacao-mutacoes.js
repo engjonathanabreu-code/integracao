@@ -73,6 +73,9 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===5&&mudanca.caminho[2]==='checklist'&&campo==='concluido_em'){
       const id=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
       const op=operacoes.find(o=>o.table==='meta_checklist'&&!o.action&&!o.insert&&!o.remove&&(aliases[o.key?.id]||o.key?.id)===id&&possui(o.changes,campo));
+      // Reopening clears the form with '', which this column's encoder sends
+      // as NULL. Require the explicit reopen operation and the reopened row.
+      if(op&&mudanca.valor===''&&op.changes[campo]===null&&op.changes.concluido===false&&atual.existe&&atual.valor===null&&lerCaminho(remoto,mudanca.caminho.slice(0,4),aliases).valor?.concluido===false)return true;
       const instante=instanteChecklist(mudanca.valor);
       // Only this row's submitted completion time may use the equivalent ISO
       // representation returned by PostgreSQL. Every other field stays exact.

@@ -4,6 +4,8 @@ O formulário grava `concluido_em` como ISO UTC com `Z`; a leitura PostgreSQL po
 
 A adaptação vale somente para a folha `metas/<id>/checklist/<id>/concluido_em`, em atualização `meta_checklist` da mesma identidade e com o valor original efetivamente enviado. Não se aplica a inserções, exclusões, ações ou outras colunas. Exige ISO com fuso, data válida e instante idêntico; diferenças submilissegundo não são truncadas para confirmar valores diferentes. Nulos, ausência, autoria e demais campos editados continuam sujeitos às regras existentes.
 
+A reabertura também usa o contrato específico do campo: o formulário limpa com `''` e o encoder transmite `NULL`. A confirmação aceita essa passagem somente quando a mesma atualização envia explicitamente `concluido:false` e `concluido_em:null`, e a leitura da própria linha confirma que foi reaberta e o campo existe como `NULL`. Não há equivalência global entre vazio, nulo e ausência.
+
 Os testes reproduzem a rejeição antes da correção e conferem preparação/projeção reais, aliases e casos negativos. A jornada de duas contas fictícias usa o hook e IndexedDB reais: uma intenção histórica com recibo e horário canônico é confirmada por leitura; a sucessora da mesma meta é então enviada uma vez; a segunda conta recebe a alteração ao atualizar sua leitura. O pedido já gravado não é reenviado e o reload preserva os recibos.
 
 Não há migration, alteração de permissões, dados reais, payloads, recibos ou limpeza de filas. O teste confirma o defeito e o protocolo com fixtures, não identifica a causa de uma pendência particular sem seu pedido e prévia atuais. Não comprova recuperação de aparelhos reais. A reversão é apenas do código do cliente; originais e recibos devem ser preservados.
