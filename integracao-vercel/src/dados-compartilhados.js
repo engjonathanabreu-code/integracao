@@ -5,6 +5,7 @@ import {igualSemantico} from './igualdade-semantica.js';
 import {registrarContrato,limparContratos} from './permissoes-contrato.js';
 import {ideiaPlanejamento} from './planejamento-metas.js';
 import {buscarREST} from './transporte-rest.js';
+import {horarioNovoChecklist} from './contrato-checklist.js';
 import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
@@ -359,7 +360,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
         if(existente&&existente.meta_id!==m.id)throw Object.assign(new Error('Este item já pertence a outra meta. Crie um novo item sem reutilizar seu histórico; o original foi preservado.'),{status:409,code:'IDENTIDADE_OUTRA_META'});
       }
     }
-    for(const x of newItems(prev?.checklist,m.checklist)) insert('meta_checklist',x.id,{meta_id:m.id,titulo:x.titulo,concluido:!!x.concluido,created_by:who});
+    for(const x of newItems(prev?.checklist,m.checklist)) insert('meta_checklist',x.id,{meta_id:m.id,titulo:x.titulo,concluido:!!x.concluido,concluido_em:horarioNovoChecklist(x.concluido_em),created_by:who});
     for(const x of newItems(prev?.comentarios,m.comentarios)) insert('meta_comentarios',x.id,{meta_id:m.id,autor_id:who,texto:x.texto});
     for(const x of newItems(prev?.historico,m.historico)) insert('meta_historico',x.id,{meta_id:m.id,meta_titulo:m.titulo,entidade_tipo:['ordem_servico','projeto','plano'].includes(m.associacao_tipo)?m.associacao_tipo:'avulsa',entidade_id:['ordem_servico','projeto','plano'].includes(m.associacao_tipo)?m.associacao_id:null,acao:x.acao,descricao:x.descricao||'',autor_id:who});
   }

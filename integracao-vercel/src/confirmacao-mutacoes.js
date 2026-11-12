@@ -1,6 +1,7 @@
 import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} from './contrato-financeiro.js';
 import {remapearIdentidades as remapear} from './aliases-tipados.js';
 import {igualSemantico as igual} from './igualdade-semantica.js';
+import {instanteChecklist} from './contrato-checklist.js';
 // Observa o pipeline existente; não grava, repete ou concilia mutações.
 // A auditoria identifica o snapshot enviado, e os campos alterados são conferidos
 // contra a leitura feita depois do recibo. Edições posteriores aguardam outro lote.
@@ -54,6 +55,12 @@ function contem(atual, esperado) {
   return igual(atual, esperado);
 }
 
+function mesmosResponsaveis(atual, esperado) {
+  const valido=lista=>Array.isArray(lista)&&lista.every(id=>typeof id==='string'&&/^(?:erp_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))&&new Set(lista).size===lista.length;
+  if(!valido(atual)||!valido(esperado)||atual.length!==esperado.length)return false;
+  const ids=new Set(atual);return esperado.every(id=>ids.has(id));
+}
+
 function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   return mudancas.every(mudanca => {
     // Presence is device-local; it is deliberately not written by prepararEdicao.
@@ -61,6 +68,17 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
     if (!mudanca.existe) return !atual.existe;
     const campo=mudanca.caminho.at(-1);
+    if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===5&&mudanca.caminho[2]==='checklist'&&campo==='concluido_em'){
+      const id=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
+      const op=operacoes.find(o=>o.table==='meta_checklist'&&!o.action&&!o.insert&&!o.remove&&(aliases[o.key?.id]||o.key?.id)===id&&possui(o.changes,campo));
+      // Reopening clears the form with '', which this column's encoder sends
+      // as NULL. Require the explicit reopen operation and the reopened row.
+      if(op&&mudanca.valor===''&&op.changes[campo]===null&&op.changes.concluido===false&&atual.existe&&atual.valor===null&&lerCaminho(remoto,mudanca.caminho.slice(0,4),aliases).valor?.concluido===false)return true;
+      const instante=instanteChecklist(mudanca.valor);
+      // Only this row's submitted completion time may use the equivalent ISO
+      // representation returned by PostgreSQL. Every other field stays exact.
+      if(op&&op.changes[campo]===mudanca.valor&&instante!==null)return atual.existe&&instante===instanteChecklist(atual.valor);
+    }
     // Only timestamp columns actually submitted to the calendar contract accept
     // equivalent ISO offsets. Dates, text and unrelated paths stay exact.
     if(mudanca.caminho[0]==='eventos'&&mudanca.caminho.length===3&&['inicio','fim'].includes(campo)){
@@ -70,6 +88,9 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       if(op&&Number.isFinite(instante)&&op.changes[campo]===new Date(instante).toISOString())return atual.existe&&instante===Date.parse(atual.valor);
     }
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    // Goal responsibilities are membership rows; their SELECT order carries
+    // no user intent. Never generalize this to ordered lists or invalid IDs.
+    if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===3&&typeof mudanca.caminho[1]==='object'&&campo==='responsaveis')return atual.existe&&mesmosResponsaveis(atual.valor,esperado);
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
       if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;
@@ -111,6 +132,12 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       }
     }
     if(mudanca.parcial&&mudanca.caminho.length===4&&typeof campo==='object'){
+      if(colecao==='metas'&&filhos==='checklist'&&objeto(esperado)&&possui(esperado,'concluido_em')){
+        const metaId=aliases[mudanca.caminho[1].id]||mudanca.caminho[1].id;
+        const op=operacoes.find(o=>o.table==='meta_checklist'&&o.insert&&!o.remove&&!o.action&&(aliases[o.key?.id]||o.key?.id)===esperado.id&&(aliases[o.changes?.meta_id]||o.changes?.meta_id)===metaId);
+        const instante=instanteChecklist(esperado.concluido_em);
+        if(op&&op.changes?.concluido_em===esperado.concluido_em&&instante!==null&&instante===instanteChecklist(atual.valor?.concluido_em))esperado={...esperado,concluido_em:atual.valor.concluido_em};
+      }
       const historicoGerado=(colecao==='nucleos'&&filhos==='historicoEtapas')||(colecao==='metas'&&['historico','comentarios'].includes(filhos));
       // These inserts use created_at DEFAULT now(), not the UI clock. Still
       // require a server timestamp and all submitted business/author fields.
@@ -144,12 +171,16 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     // The same child insert rules apply when the parent itself was just created.
     // Match child identities, never positions; preserve all business comparisons.
     if(mudanca.parcial&&mudanca.caminho.length===2&&objeto(esperado)){
-      const filhosNovos=colecao==='metas'?['historico','comentarios','arquivos']:colecao==='nucleos'?['historicoEtapas','andamentos']:[];
+      const filhosNovos=colecao==='metas'?['checklist','historico','comentarios','arquivos']:colecao==='nucleos'?['historicoEtapas','andamentos']:[];
       esperado={...esperado};
       for(const filho of filhosNovos)if(listaPorId(esperado[filho])){
         if(!conferir(diferencas([],esperado[filho],[...mudanca.caminho,filho]),remoto,aliases,operacoes))return false;
         delete esperado[filho];
       }
+    }
+    if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&typeof mudanca.caminho[1]==='object'&&objeto(esperado)&&possui(esperado,'responsaveis')){
+      if(!mesmosResponsaveis(atual.valor?.responsaveis,esperado.responsaveis))return false;
+      esperado={...esperado};delete esperado.responsaveis;
     }
     // New canonical goals receive their ERP binding on projection. Accept only
     // that exact binding; business nulls and any different identity still differ.
