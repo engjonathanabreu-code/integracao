@@ -82,6 +82,26 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       }
     }
     const [colecao,,filhos]=mudanca.caminho;
+    if(colecao==='eventos'&&mudanca.parcial&&mudanca.caminho.length===2&&atual.valor?.id===esperado?.id){
+      const op=operacoes.find(o=>o.action==='evento'&&(aliases[o.tempId]||o.tempId)===atual.valor.id);
+      if(op?.payload){
+        esperado={...esperado};
+        // The form uses local wall time; the operation and PostgreSQL return
+        // canonical instants. Accept only the exact instant in this request.
+        for(const k of ['inicio','fim']){
+          const enviado=Date.parse(op.payload[k]);
+          if(Number.isFinite(enviado)&&Date.parse(esperado[k])===enviado&&Date.parse(atual.valor[k])===enviado)esperado[k]=atual.valor[k];
+        }
+        // Creation does not transmit the form's default swatch. The ERP
+        // assigns that color; custom choices and explicit color writes remain
+        // reviewable rather than being silently reported as saved.
+        const corExplicita=operacoes.some(o=>o.action==='evento_cor'&&(aliases[o.payload?.id]||o.payload?.id)===atual.valor.id||o.table==='erp_eventos'&&o.key?.id===atual.valor.id&&possui(o.changes||{},'cor'));
+        if(esperado.cor==='#0F5F5B'&&!possui(op.payload,'cor')&&!corExplicita&&/^#[0-9a-f]{6}$/i.test(atual.valor.cor))esperado.cor=atual.valor.cor;
+        // An empty recurrence end on a one-off form is not a persisted date.
+        // Nonempty dates, recurring requests and every business field stay strict.
+        if(esperado.recorrencia==='nenhuma'&&esperado.recorrenciaAte===''&&op.payload.recorrencia==='nenhuma'&&op.payload.repetir_ate==null&&atual.valor.recorrencia==='nenhuma')delete esperado.recorrenciaAte;
+      }
+    }
     if(mudanca.parcial&&mudanca.caminho.length===4&&typeof campo==='object'){
       const historicoGerado=(colecao==='nucleos'&&filhos==='historicoEtapas')||(colecao==='metas'&&['historico','comentarios'].includes(filhos));
       // These inserts use created_at DEFAULT now(), not the UI clock. Still

@@ -1,3 +1,4 @@
+import {exportarCopiaRecuperacao} from './copia-recuperacao.js';
 import {criarDiarioCompartilhado} from './diario-compartilhado.js';
 import {semearOriginais,extrairIntencao} from './intencoes-edicao.js';
 import {selecionarArquivosDaEdicao,arquivosDaIntencao} from './arquivos-intencoes.js';
@@ -488,14 +489,21 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   };
   const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
   const reopen=async()=>{
-    if(busy.current)return;
+    const gen=generation.current;
     try {
-      const snapshot=JSON.stringify({dados:current.current,base:server.current?.db,envio:attempt.current,reservasPreservadas:recuperacoes.current,diario:usarDiario?await diario.current.exportar():undefined},null,2);
-      await storage.set(`${storageKey()}-revisao-${Date.now()}`,snapshot);
-      const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
-      const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-      setStatus('Cópia baixada. Consulte Pendências para conferir quais alterações ainda precisam de ação.');await saveDraft();
-    }catch(e){setError(e.message);}
+      if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
+      const chave=storageKey(),d=diario.current;
+      // Capture local state and queued bytes before awaiting IndexedDB. Export
+      // remains available during a send and cannot mix another account's data.
+      const conteudo=copy({dados:current.current,base:server.current?.db,envio:attempt.current,reservasPreservadas:recuperacoes.current,arquivosPendentes:capturarArquivos()});
+      conteudo.diario=usarDiario?await d.exportar():undefined;conferirGeracao(gen);
+      const resultado=await exportarCopiaRecuperacao({conteudo:JSON.stringify(conteudo,null,2),baixar:snapshot=>{
+        conferirGeracao(gen);const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
+        try{const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
+      },preservar:async snapshot=>{conferirGeracao(gen);await storage.set(`${chave}-revisao-${Date.now()}`,snapshot);conferirGeracao(gen);await saveDraft();}});
+      conferirGeracao(gen);setStatus('Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
+      if(!resultado.copiaInterna)setError('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
+    }catch(e){if(gen===generation.current)setError(e.message);}
   };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);

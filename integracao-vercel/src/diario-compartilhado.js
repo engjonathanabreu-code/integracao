@@ -73,6 +73,13 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   };
   if(draft.attempt){
    const a=draft.attempt;if(!a.id||!a.before||!a.after||!Array.isArray(a.operations))throw Error('Tentativa antiga incompleta; original preservado para revisão.');
+   if(!a.operations.length){
+    // Preserve the raw original; classify only proven absence of business effects.
+    // Do not manufacture a volatile, unsendable files intention for presence.
+    if(a.confirmacao||Object.keys(a.sent||{}).length||extrairIntencao(a.before,a.after).length)throw Error('Tentativa antiga sem operações válidas. Original preservado para revisão.');
+    await fila.classificarLegadoSemEfeito(conta,hash,a.id);conferir();
+    await importar(a.after,draft.db,{}, {id:uuidHash(hash)});conferir();await atualizar();return;
+   }
    await importar(a.before,a.after,a.sent||{},{id:a.id,legado:a});conferir();
    await importar(a.after,draft.db,{}, {id:uuidHash(hash),dependencias:[a.id]});
   }else await importar(draft.baseline,draft.db,{}, {id:uuidHash(hash)});
