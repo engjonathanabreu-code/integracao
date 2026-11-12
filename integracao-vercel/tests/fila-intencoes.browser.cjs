@@ -44,6 +44,12 @@ const assert=require('node:assert/strict');
    const antes=await fila.enfileirar(original);await fila.reservar('presenca',{dono:'worker'});const itens=await fila.listar('presenca'),sinal=itens.find(i=>i.id==='sinal');
    return {negada:itens[0].estado,sinal:sinal.estado,originalPreservado:JSON.stringify(antes.original)===JSON.stringify(sinal.original),checksumPreservado:antes.checksum===sinal.checksum,decisao:sinal.decisao.tipo,outraConta:(await fila.listar('inexistente')).length};
   });assert.deepEqual(presenca,{negada:'bloqueado_validacao',sinal:'dispensado',originalPreservado:true,checksumPreservado:true,decisao:'somente_presenca_ou_acesso_local',outraConta:0});cenarios++;
+  const diagnosticoSeguro=await b.evaluate(async()=>{
+   const antes=await nova('check','check','check-seguro'),r=await fila.reservar('check-seguro',{dono:'worker'});
+   await fila.registrarFalha(r,Object.assign(Error('new row for relation "fin_receb_clientes" violates check constraint "fin_receb_clientes_dia_vencimento_check"'),{status:400,code:'23514',details:'CPF e renda privados'}));
+   await fila.fechar();const depois=(await fila.listar('check-seguro'))[0];
+   return {restricao:depois.erro.restricao,estado:depois.estado,erro:JSON.stringify(depois.erro),originalPreservado:JSON.stringify(antes.original)===JSON.stringify(depois.original),checksumPreservado:antes.checksum===depois.checksum};
+  });assert.equal(diagnosticoSeguro.restricao,'fin_receb_clientes_dia_vencimento_check');assert.equal(diagnosticoSeguro.estado,'bloqueado_validacao');assert.equal(diagnosticoSeguro.originalPreservado,true);assert.equal(diagnosticoSeguro.checksumPreservado,true);assert.doesNotMatch(diagnosticoSeguro.erro,/CPF|renda|details|message|relation/);cenarios++;
   console.log(JSON.stringify({ok:true,cenarios,duasAbasReais:true,indexedDBReal:true,fluxoPrincipalIntegrado:false}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

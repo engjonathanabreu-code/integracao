@@ -1,3 +1,4 @@
+import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {useState} from 'react';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
 import {orientacaoPendencia,revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
@@ -8,10 +9,11 @@ const valor=v=>v===undefined?'Não disponível nesta leitura':v===null?'Ausente'
 export default function PendenciasSincronizacao({sync}){
  const p=sync.previaPendencia,[ocupado,setOcupado]=useState(false);
  const executar=async fn=>{if(ocupado)return;setOcupado(true);try{await fn();}finally{setOcupado(false);}};
- if(!sync.pendencias?.length&&!p)return null;
- return <details style={{padding:'8px 18px'}}><summary>Pendências de sincronização ({sync.pendencias.length})</summary>
+ if(!sync.pendencias?.length&&!p&&!sync.falhasAtualizacao?.length)return null;
+ return <details style={{padding:'8px 18px'}}><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
+  {sync.falhasAtualizacao?.length>0&&<p role="status">{sync.falhasAtualizacao.length} ficha(s) aguardam atualização. As demais foram atualizadas; o conteúdo anterior e as pendências dessas fichas continuam preservados.</p>}
   <p>As alterações permanecem neste aparelho. O botão geral retoma somente tentativas automáticas; itens bloqueados exigem revisão individual.</p>
-  <ul>{sync.pendencias.map(i=><li key={i.id}>{i.original.modulo} · {rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}<p>{orientacaoPendencia(i)}</p><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button></li>)}</ul>
+  <ul>{(sync.pendencias||[]).map(i=><li key={i.id}>{i.original.modulo} · {rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}<p>{orientacaoPendencia(i)}</p><details><summary>Diagnóstico desta alteração</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(sync.diagnosticarPendencia?.(i.id)||diagnosticoOperacao(i),null,2)}</pre><p>A propagação para outros aparelhos exige observação na outra sessão.</p></details><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button></li>)}</ul>
   {p&&<section aria-label="Prévia da recuperação"><strong>Revisão: {p.item.original.modulo}</strong>
    <p>Pedido {p.id.slice(0,8)}. {orientacaoPendencia(p.item)}</p>
    {p.somenteExportar?<p>{p.item.motivo}<button className="btn btn-sm" onClick={sync.reopen}>Baixar original preservado</button></p>:<>

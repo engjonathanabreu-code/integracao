@@ -1,6 +1,8 @@
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao} from './arquivos-intencoes.js';
 import {classificarFalha,revisaoDeRecusa} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
+import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
+import {validarReciboOperacoes} from './recibo-operacoes.js';
 import {pendenciaSomenteLocal} from './intencoes-locais.js';
 
 // Protocol 2 has its own database. Legacy clients cannot write its entries.
@@ -80,7 +82,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    // Append order and dependency capture share the same transaction across tabs.
    const deps=anteriores.filter(x=>!['confirmado','substituido','dispensado'].includes(x.estado)&&(x.original.unidade===unidade||recursosEfetivosDaIntencao(x).some(r=>recursos.includes(r))||x.original.criadas?.some(r=>referencias.includes(r)))).map(x=>x.id);
    const seq=await requisicao(s.sequencias.get(conta));
-   const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',tentativas:0,criadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
+   const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',clienteVersao:VERSAO_CLIENTE,tentativas:0,tentativasTotais:0,criadoEm:agora(),atualizadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
    if(substituida){
     item.dependencias=dependenciasEfetivasDaIntencao(substituida);item.ordem=substituida.ordem;
     substituida.estado='substituido';substituida.substituidaPor=id;
@@ -123,14 +125,15 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   return transacao('readwrite',async s=>{
    const atual=await requisicao(s.intencoes.get([item.conta,item.id]));
    if(!atual||atual.reserva!==item.reserva||atual.dono!==item.dono||atual.leaseAte<=agora())throw erro('A reserva da intenção mudou; consulte o recibo antes de repetir.','RESERVA_EXPIRADA');
-   fn(atual);await requisicao(s.intencoes.put(atual));return atual;
+   fn(atual);atual.atualizadoEm=agora();await requisicao(s.intencoes.put(atual));return atual;
   });
  }
  const soltar=item=>{delete item.dono;delete item.reserva;delete item.leaseAte;};
- const registrarEnvio=item=>alterarReserva(item,atual=>{atual.tentativas++;atual.estado='resultado_desconhecido';atual.enviadoEm=agora();});
+ const registrarEnvio=item=>alterarReserva(item,atual=>{atual.tentativas++;atual.tentativasTotais=(atual.tentativasTotais||0)+1;atual.fase='envio';atual.estado='resultado_desconhecido';atual.enviadoEm=agora();});
  const registrarRecibo=(item,recibo)=>{
   if(!recibo||typeof recibo!=='object'||Array.isArray(recibo))throw erro('Recibo inválido.','RECIBO_INVALIDO');
-  return alterarReserva(item,atual=>{atual.recibo=structuredClone(recibo);atual.estado='confirmado_aguardando_leitura';atual.confirmadoEm=agora();atual.proximaTentativa=0;});
+  validarReciboOperacoes(recibo,item.payload,item.pedido);
+  return alterarReserva(item,atual=>{atual.fase='releitura';atual.recibo=structuredClone(recibo);atual.estado='confirmado_aguardando_leitura';atual.confirmadoEm=agora();atual.proximaTentativa=0;});
  };
  const confirmarLeitura=item=>alterarReserva(item,atual=>{
   if(!atual.recibo)throw erro('A leitura não substitui o recibo de gravação.','RECIBO_AUSENTE');
@@ -144,7 +147,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   else if(rejeicaoConfirmada&&categoria==='conflito')atual.estado='bloqueado_conflito';
   else if(categoria==='sessao'||categoria==='permissao'||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
   else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
-  atual.erro={...falha,rejeicaoConfirmada,fase};
+  atual.fase=fase;atual.erro={...falha,rejeicaoConfirmada,fase};
   atual.falhas=(atual.falhas||0)+1;
   const retry=Number(e.retryAfterMs)||0;
   atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(atual.tentativas,6))*(.5+aleatorio()*.5));

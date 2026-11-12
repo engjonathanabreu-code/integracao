@@ -1,5 +1,7 @@
+import {restricaoDaFalha,orientacaoRestricao} from './diagnostico-validacao.js';
 export const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 export function classificarFalha(e){
+ const restricao=restricaoDaFalha(e);
  const vistos=new Set(),nomes=new Set();let status,codigo;
  while(e&&!vistos.has(e)){vistos.add(e);status??=e.status;codigo??=e.code;nomes.add(e.name);e=e.cause;}
  status=Number(status);codigo=String(codigo||'TRANSPORTE').slice(0,60);
@@ -9,7 +11,7 @@ export function classificarFalha(e){
   :codigo==='LEITURA_DIVERGENTE'?'leitura'
   :status===409||codigo==='PT409'?'conflito'
   :[400,404,422].includes(status)||/^(22|23)/.test(codigo)?'validacao':'transitoria';
- return {status:Number.isFinite(status)?status:null,codigo,categoria};
+ return {status:Number.isFinite(status)?status:null,codigo,categoria,...(restricao?{restricao}:{})};
 }
 // Before phase tracking, a receipt failure could be mistaken for rejection.
 // A previously sent entry without proof remains uncertain, including old queues.
@@ -24,6 +26,6 @@ export function orientacaoPendencia(i){
  if(i.recibo)return 'A gravação tem recibo. A retomada fará somente a leitura de confirmação. Se os valores atuais divergirem, confira a prévia antes de reconhecê-los; o original será preservado.';
  if(i.estado==='resultado_desconhecido')return 'O resultado ainda é desconhecido. A retomada consultará o recibo antes de repetir o mesmo pedido.';
  if(categoria==='conflito')return 'Compare a base original, sua alteração e o valor compartilhado antes de escolher.';
- if(categoria==='validacao')return 'Revise os campos e vínculos do cadastro. Confirme a correção somente nesta alteração.';
+ if(categoria==='validacao')return [orientacaoRestricao(i.erro?.restricao),'Revise os campos e vínculos do cadastro. Confirme a correção somente nesta alteração.'].filter(Boolean).join(' ');
  return 'As alterações continuam preservadas; falhas temporárias têm tentativas limitadas.';
 }
