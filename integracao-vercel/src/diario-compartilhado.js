@@ -1,7 +1,7 @@
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
-import {abrirFilaIntencoes,processarIntencao,checksumIntencao} from './fila-intencoes.js';
+import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
@@ -104,18 +104,25 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
   const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
  }
- async function executar(){
+ async function executar({id=null,validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();await atualizar();
   // Bound each pass; a later pass resumes independently ready entries.
-  const limite=items.filter(i=>!terminal(i)).length;
+  const limite=id?1:items.filter(i=>!terminal(i)).length;
   for(let n=0;n<limite;n++){
    conferir();let resultado;
-   try{resultado=await processarIntencao(fila,{conta,dono,sessaoAtual:ativo,preparar:prepararItem,consultarRecibo,enviar:async item=>enviar(item.payload,item.pedido,item.preparado.depois),reler:async item=>{
+   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
+    await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
    }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}
    await atualizar();if(!resultado)break;sinalizar();
   }
   return items;
+ }
+ async function consultarExistente(id,{modo='consulta',validar=async()=>{},verificar=()=>{}}={}){
+  await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();verificar();await atualizar();
+  try{return await lerIntencaoExistente(fila,{conta,dono,id,modo,sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},reler:async item=>{
+   await validar();verificar();const {remoto}=await lerItem(item);conferir();verificar();await confirmar(item,remoto);conferir();verificar();
+  }});}finally{if(ativo()){await atualizar();sinalizar();}}
  }
  async function previa(id){
   await corrente.catch(()=>{});if(avisos.some(a=>a.id===id)){const a=avisos.find(a=>a.id===id);return {id,item:a,conflitos:[],edicoes:[],dados:{},somenteExportar:true};}if(volateis.has(id)){const p=volateis.get(id);await fila.enfileirar(p);volateis.delete(id);}await atualizar();const item=items.find(i=>i.id===id);if(!item)throw Object.assign(Error('Item não está disponível nesta conta. Atualize a lista de pendências.'),{code:'REVISAO_NECESSARIA'});if(terminal(item)){if(revisao?.id===id)revisao=null;return null;}
@@ -185,9 +192,9 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   await aceitarLeitura({...item,preparado:{...item.preparado,sent:arquivos}},remoto);conferir();
   revisao=null;sinalizar();await atualizar();
  }
- async function retomarAutomaticas(){
+ async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
-  for(const item of items)if(!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
+  for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
   await atualizar();
  }
  async function exportar(){
@@ -196,5 +203,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

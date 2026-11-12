@@ -97,6 +97,7 @@
     "deploymentEnabled": {
       "fix/filas-confirmacao-arquivos-20261111": false,
       "feat/sincronizacao-cinco-acoes-20261111": false,
+      "feat/suporte-remoto-configuracoes-20261112": false,
       "fix/checklist-instantes-20261112": false
     }
   }

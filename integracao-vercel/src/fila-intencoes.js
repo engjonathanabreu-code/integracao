@@ -92,17 +92,19 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));return item;
   });
  }
- async function reservar(conta,{dono,leaseMs=60000}={}){
+ async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false}={}){
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
-   for(const item of items)if(!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
+   for(const item of items)if(!somenteLeitura&&(!somenteId||item.id===somenteId)&&!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
     item.estado='dispensado';item.decisao={tipo:'somente_presenca_ou_acesso_local',em:tempo};
     await requisicao(s.intencoes.put(item));
    }
-   await congelarEscopos(s,items,tempo);
+   if(!somenteLeitura)await congelarEscopos(s,items,tempo);
    for(const item of items){
-    if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||item.proximaTentativa>tempo||item.leaseAte>tempo)continue;
+    if(somenteId&&item.id!==somenteId)continue;
+    const elegivel=['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
+    if(!elegivel||(!somenteLeitura&&item.proximaTentativa>tempo)||item.leaseAte>tempo||somenteLeitura&&(!item.payload||exigirRecibo&&!item.recibo))continue;
     if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;
     const resolver=id=>{let d=items.find(i=>i.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=items.find(i=>i.id===d.substituidaPor);}return d;};
     const escopo=escopoArquivosDaIntencao(item,items);
@@ -114,7 +116,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     }
     if(escopo&&!item.escopoArquivos)item.escopoArquivos=escopo;
     item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
-    if(item.fase==='envio'||item.fase==='recibo')item.estado='resultado_desconhecido';
+    if(!somenteLeitura&&(item.fase==='envio'||item.fase==='recibo'))item.estado='resultado_desconhecido';
     item.dono=dono;item.reserva=crypto.randomUUID();item.leaseAte=tempo+leaseMs;
     await requisicao(s.intencoes.put(item));return item;
    }
@@ -129,6 +131,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   });
  }
  const soltar=item=>{delete item.dono;delete item.reserva;delete item.leaseAte;};
+ const liberarReserva=item=>alterarReserva(item,soltar);
  const registrarEnvio=item=>alterarReserva(item,atual=>{atual.tentativas++;atual.tentativasTotais=(atual.tentativasTotais||0)+1;atual.fase='envio';atual.estado='resultado_desconhecido';atual.enviadoEm=agora();});
  const registrarRecibo=(item,recibo)=>{
   if(!recibo||typeof recibo!=='object'||Array.isArray(recibo))throw erro('Recibo inválido.','RECIBO_INVALIDO');
@@ -222,14 +225,14 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // The application must capture session identity in these callbacks. This processor
 // never obtains a token itself, and never infers a business unit from table names.
-export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler,preparar}){
+export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler,preparar,somenteId=null}){
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
- conferir();let item=await fila.reservar(conta,{dono});if(!item)return null;let fase=item.fase;
+ conferir();let item=await fila.reservar(conta,{dono,somenteId});if(!item)return null;let fase=item.fase;
  try{
   conferir();
   if(!item.payload){fase='preparacao';const pronto=await preparar(item);conferir();item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();}
@@ -244,6 +247,29 @@ export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRe
   // A session change leaves the lease to expire; no callbacks for the new account.
   if(e.code==='SESSAO_ALTERADA')throw e;
   try{await fila.registrarFalha(item,e,{fase});}catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
+  throw e;
+ }
+}
+
+// Support reads share the same account, lease and dependency checks. This path
+// has no preparation/upload/send callback and cannot turn a rejection into a
+// new automatic write. Missing receipts preserve the previous blocked state.
+export async function lerIntencaoExistente(fila,{conta,dono,id,sessaoAtual,consultarRecibo,reler,modo}){
+ const conferir=()=>{if(!sessaoAtual())throw erro('Sessão alterada.','SESSAO_ALTERADA');};
+ if(!['consulta','releitura'].includes(modo))throw erro('Ação indisponível.','REVISAO_NECESSARIA');
+ conferir();let item=await fila.reservar(conta,{dono,somenteId:id,somenteLeitura:true,exigirRecibo:modo==='releitura'});
+ if(!item)return null;
+ try{
+  conferir();
+  if(!item.recibo){const recibo=await consultarRecibo(item);conferir();if(recibo)item=await fila.registrarRecibo(item,recibo);}
+  if(item.recibo&&modo==='releitura'){await reler(item);conferir();return await fila.confirmarLeitura(item);}
+  conferir();return await fila.liberarReserva(item);
+ }catch(e){
+  if(e.code==='SESSAO_ALTERADA')throw e;
+  try{
+   if(item.recibo&&modo==='releitura')await fila.registrarFalha(item,e,{fase:'releitura'});
+   else await fila.liberarReserva(item);
+  }catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
   throw e;
  }
 }

@@ -3,13 +3,20 @@ import {readdir,mkdir,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve,join} from 'node:path';
 import {createServer} from 'vite';
+import {createServer as criarReservaPorta} from 'node:net';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=resolve(process.env.BROWSER_TEST_OUTPUT||join(root,'test-results/browser'));
 const sync=/^(diario-|fila-|sincronizacao-|concorrencia-global|atualizacao-pendente|tempo-real|modulo-sessao|carteira-incremental|ponto-offline)/;
 const names=(await readdir(join(root,'tests'))).filter(n=>n.endsWith('.browser.cjs')&&(!process.argv.includes('--sync')||sync.test(n))).sort();
 if(!names.length)throw Error('Nenhum teste de navegador selecionado.');
 await mkdir(output,{recursive:true});
-const server=await createServer({root,server:{host:'127.0.0.1',port:0,strictPort:true},logLevel:'error'});
+// Vite treats port:0 as its default 5173. Ask the OS for a free port so parallel
+// isolated checkouts do not collide with another developer's running server.
+const reserva=criarReservaPorta();
+await new Promise((resolve,reject)=>{reserva.once('error',reject);reserva.listen(0,'127.0.0.1',resolve);});
+const porta=reserva.address().port;
+await new Promise((resolve,reject)=>reserva.close(e=>e?reject(e):resolve()));
+const server=await createServer({root,server:{host:'127.0.0.1',port:porta,strictPort:true},logLevel:'error'});
 const results=[];
 try{
  await server.listen();const origin=`http://127.0.0.1:${server.httpServer.address().port}`;

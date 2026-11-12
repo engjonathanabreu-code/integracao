@@ -108,6 +108,8 @@ import {useDadosCompartilhados} from './use-dados-compartilhados.js';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
 import PendenciasSincronizacao from './PendenciasSincronizacao.jsx';
 import DiagnosticoSincronizacao from './DiagnosticoSincronizacao.jsx';
+import SuporteRemoto,{useAcessoSuporte} from './SuporteRemoto.jsx';
+import SuporteRemotoExecutor from './SuporteRemotoExecutor.jsx';
 import {useAvisoChat} from './use-aviso-chat.js';
 import {municipioDaRota} from './municipio-rota.js';
 import {importarIntegrado, validarPacote} from './importar-integrado.js';
@@ -6485,8 +6487,10 @@ function ConfigImportarIntegrado({ db, usuario, setToast, recarregar }) {
 
 function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, trocarUsuario, recarregar }) {
   const [confirmar, setConfirmar] = useState(false);
+  const acessoSuporte=useAcessoSuporte(usuario);
   const perm = permissoes(usuario);
   const ABAS = [
+    acessoSuporte.operador && ["suporteRemoto", "Suporte remoto", Lock],
     perm.usuarios && ["usuarios", "Usuários e setores", Users],
     perm.usuarios && ["permissoes", "Permissões atuais", KeyRound],
     ["ponto", "Folha Ponto", Clock],
@@ -6504,9 +6508,9 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
     perm.config && ["requisitos", "Requisitos das etapas", ListTodo],
     (perm.config || perm.modeloPRF) && ["campos", perm.config ? "Campos, checklist e PRF" : "Modelo de PRF", SlidersHorizontal],
     perm.config && ["historico", "Histórico e dados", History],
-  ].filter(Boolean).filter(([id])=>perm.config || perm.modeloPRF || ["ponto", "temas"].includes(id));
+  ].filter(Boolean).filter(([id])=>id === "suporteRemoto" || perm.config || perm.modeloPRF || ["ponto", "temas"].includes(id));
   const pedida = aba === "dados" ? "historico" : aba;
-  const atual = ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
+  const atual = pedida === "suporteRemoto" ? pedida : ABAS.some(([k]) => k === pedida) ? pedida : ABAS[0]?.[0];
   const setAba = (a2) => ir({ pag: "config", aba: a2 });
   return (
     <div className={`contem${atual === "restrito" ? " largo config-restrito" : ""}`}>
@@ -6514,6 +6518,7 @@ function PaginaConfig({ db, usuario, aba, sub, ir, mutar, restaurar, setToast, t
         {ABAS.map(([id, nome, Icone]) => <button key={id} role="tab" className="aba" aria-selected={atual === id} onClick={() => setAba(id)}><Icone size={15} />{nome}</button>)}
       </div>
       <div style={{ marginTop: 16 }}>
+        {atual === "suporteRemoto" && <SuporteRemoto usuario={usuario} acesso={acessoSuporte} />}
         {atual === "restrito" && podeSupervisionarAgentes(usuario) && <RestritoTeste db={db} usuario={usuario} />}
         {atual === "ponto" && <FolhaPonto usuario={usuario} db={db} />}
         {atual === "acessos" && acessoCRM(usuario).admin && <ControleAcessos usuario={usuario} />}
@@ -12535,7 +12540,7 @@ export default function App() {
           </header>
           {!AMBIENTE.DEMO && (compartilhado.error || (compartilhado.status && compartilhado.status !== "Dados compartilhados no Supabase")) && (rota.pag !== "home" || compartilhado.summaryReady || compartilhado.error || compartilhado.summaryError) && <div role={compartilhado.error ? "alert" : "status"} style={{padding:"8px 18px",background:compartilhado.error?"var(--warning-bg)":"var(--card)",color:compartilhado.error?"var(--warning)":"var(--text)",fontSize:13}}>{compartilhado.status}{!compartilhado.error&&compartilhado.tempoReal==='conectado'&&' · Atualizações em tempo real'}{compartilhado.error && <><br />{compartilhado.error}<button className="btn btn-sm" onClick={compartilhado.flush}>{compartilhado.salvamentoConfirmado ? "Atualizar dados" : "Retomar tentativas automáticas"}</button><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das alterações pendentes</button></>}</div>}
 
-          {!AMBIENTE.DEMO && <><PendenciasSincronizacao sync={compartilhado}/><DiagnosticoSincronizacao sync={compartilhado} usuario={usuario} usuarios={db.usuarios||[]}/></>}
+          {!AMBIENTE.DEMO && <><SuporteRemotoExecutor usuario={usuario} sync={compartilhado}/><PendenciasSincronizacao sync={compartilhado}/><DiagnosticoSincronizacao sync={compartilhado} usuario={usuario} usuarios={db.usuarios||[]}/></>}
           {!AMBIENTE.DEMO && compartilhado.reservasPreservadas>0 && <details className="ajuda" style={{padding:"8px 18px"}}><summary>Cópias históricas de reservas ({compartilhado.reservasPreservadas})</summary><p>Estas cópias estão arquivadas para consulta. Confira em Pendências se há alguma alteração ativa que ainda precisa de revisão.</p><button className="btn btn-sm" onClick={compartilhado.reopen}>Baixar cópia das reservas</button></details>}
           {!AMBIENTE.DEMO && compartilhado.conflitos.length>0 && <RevisaoConcorrencia dados={db} conflitos={compartilhado.conflitos} resolver={compartilhado.resolverConflitos}/> }
           <ArquivoCadastros db={db} usuario={usuario} mutar={mutar} carregarMunicipio={carregarMunicipio} etapaDoNucleo={etapaProcesso} pronto={AMBIENTE.DEMO || compartilhado.summaryReady} Modal={Modal} setToast={setToast}>
