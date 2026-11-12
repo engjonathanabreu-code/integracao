@@ -16,7 +16,7 @@ A investigação de um erro 23514 constatou que o diário não preservava o nome
 
 ## Migração e reversão
 
-A migração 20261111192443_recibos_canonicos_operacoes altera apenas o código de public.integracao_gravar(jsonb,uuid). A definição real prévia corresponde a 9afac4a610b268dec4ea50297b0b2fa3; a função é SECURITY INVOKER, search_path vazio, sem EXECUTE para PUBLIC/anon. A tabela de recibos tem RLS e políticas por auth.uid().
+A migração 20261112173052_recibos_canonicos_operacoes altera apenas o código de public.integracao_gravar(jsonb,uuid). A definição real prévia corresponde a 9afac4a610b268dec4ea50297b0b2fa3; a função é SECURITY INVOKER, search_path vazio, sem EXECUTE para PUBLIC/anon. A tabela de recibos tem RLS e políticas por auth.uid().
 
 A cópia exata da função de produção foi preservada fora do repositório e restaurada em PostgreSQL descartável. Aplicar a migração produziu c919c662906a494e6e6caf87311e1bfc; a reversão voltou a 9afac4a610b268dec4ea50297b0b2fa3. Esse backup cobre o objeto alterado; não representa backup integral do banco. Não há atualização de cadastros, arquivos ou recibos existentes na migração.
 
@@ -27,3 +27,5 @@ Advisors anteriores: 36 informações de RLS sem políticas, oito alertas de fun
 ## Limites
 
 Não existe mecanismo remoto de comandos nesta entrega. Não há sessão dos aparelhos afetados disponível para controle de tela. Os aparelhos de funcionários não foram acessados; telemetria antiga ou fila vazia de outra instalação não comprova resolução. Pendências de validação ou perfil não são descartadas nem normalizadas automaticamente. O desenho de suporte remoto contínuo permanece proposta separada, sem implementação.
+
+A aplicação autorizada foi concluída no banco e o nome versionado foi alinhado ao histórico retornado pelo servidor. O checksum posterior corresponde ao ensaiado na cópia descartável; os 4.479 recibos anteriores mantiveram a mesma contagem e checksum, com RLS, políticas e grants preservados. Build local: 1.278 testes aprovados; navegador local estabilizado: 69/69 jornadas aprovadas. A validação remota final do cliente continua necessária antes do merge/publicação.

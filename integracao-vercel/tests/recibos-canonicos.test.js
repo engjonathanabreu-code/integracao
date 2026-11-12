@@ -4,7 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {readFileSync} from 'node:fs';
 import {validarReciboOperacoes} from '../src/recibo-operacoes.js';
 const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
-const migration='../supabase/migrations/20261111192443_recibos_canonicos_operacoes.sql';
+const migration='../supabase/migrations/20261112173052_recibos_canonicos_operacoes.sql';
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 
 test('recibo aditivo: canônico por operação, rebase, duas contas, RLS, atomicidade, perda de resposta e reversão',async t=>{
