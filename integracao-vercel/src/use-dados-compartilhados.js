@@ -1,4 +1,5 @@
 import {exportarCopiaRecuperacao} from './copia-recuperacao.js';
+import {recuperarAnexosMetas} from './recuperacao-anexos-metas.js';
 import {criarDiarioCompartilhado} from './diario-compartilhado.js';
 import {semearOriginais,extrairIntencao} from './intencoes-edicao.js';
 import {selecionarArquivosDaEdicao,arquivosDaIntencao} from './arquivos-intencoes.js';
@@ -501,17 +502,23 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     const gen=generation.current;
     try {
       if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
-      const chave=storageKey(),d=diario.current;
+      const chave=storageKey(),d=diario.current,conta=actor.current.erpRef;
       // Capture local state and queued bytes before awaiting IndexedDB. Export
       // remains available during a send and cannot mix another account's data.
       const conteudo=copy({dados:current.current,base:server.current?.db,envio:attempt.current,reservasPreservadas:recuperacoes.current,arquivosPendentes:capturarArquivos()});
       conteudo.diario=usarDiario?await d.exportar():undefined;conferirGeracao(gen);
+      conteudo.recuperacaoAnexosMetas=await recuperarAnexosMetas({diario:conteudo.diario,envio:conteudo.envio,conta,storage,conferir:()=>conferirGeracao(gen)});conferirGeracao(gen);
       const resultado=await exportarCopiaRecuperacao({conteudo:JSON.stringify(conteudo,null,2),baixar:snapshot=>{
         conferirGeracao(gen);const url=URL.createObjectURL(new Blob([snapshot],{type:'application/json'}));
         try{const a=document.createElement('a');a.href=url;a.download='integracao-rascunho-preservado.json';a.click();}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
       },preservar:async snapshot=>{conferirGeracao(gen);await storage.set(`${chave}-revisao-${Date.now()}`,snapshot);conferirGeracao(gen);await saveDraft();}});
-      conferirGeracao(gen);setStatus('Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
-      if(!resultado.copiaInterna)setError('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
+      conferirGeracao(gen);
+      const parcial=!conteudo.recuperacaoAnexosMetas.completa;
+      setStatus(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
+      const avisos=[];
+      if(parcial)avisos.push(`${conteudo.recuperacaoAnexosMetas.ausentes.length} anexo(s) de Metas não puderam ser incluídos. Preserve este aparelho e revise os arquivos indicados na cópia antes de fechar a tela.`);
+      if(!resultado.copiaInterna)avisos.push('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
+      if(avisos.length)setError(avisos.join(' '));
     }catch(e){if(gen===generation.current)setError(e.message);}
   };
   useEffect(()=>{
