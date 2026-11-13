@@ -3,7 +3,11 @@ export async function buscarREST(url, options = {}) {
   const leitura = (options.method || 'GET').toUpperCase() === 'GET';
   for (let tentativa = 0; ; tentativa++) {
     try {
-      const response = await fetch(url, {signal: AbortSignal.timeout(25000), ...options});
+      // A caller's cancellation must not replace the deadline. Each safe read
+      // attempt gets its own deadline, including while receiving the body.
+      const timeout = AbortSignal.timeout(25000);
+      const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+      const response = await fetch(url, {...options, signal});
       let body = null;
       if (response.status !== 204) {
         const texto = await response.text();
