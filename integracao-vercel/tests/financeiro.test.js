@@ -37,3 +37,15 @@ test('setor Financeiro canônico também funciona e preserva administrador',()=>
  assert.equal(projetar(b,blank()).db.usuarios[0].setor,'financeiro');
  b.profiles[0].tipo='Administrador';assert.equal(projetar(b,blank()).db.usuarios[0].setor,'diretoria');
 });
+
+test('Financeiro usa o perfil ERP para distinguir operação de resumo municipal',()=>{
+ for(const tipoERP of ['Diretor Técnico','Diretor de Projetos']){
+   const p=permissoes({tipoERP,setor:'diretoria',ativo:true});
+   assert.equal(p.financeiro,false);
+   assert.equal(p.financeiroResumo,true);
+ }
+ assert.equal(permissoes({tipoERP:'Administrador',setor:'diretoria',ativo:true}).financeiro,true);
+ assert.equal(permissoes({tipoERP:'Analista',setorERP:'Financeiro',ativo:true}).financeiro,true);
+ assert.equal(permissoes({tipoERP:'Comercial',setor:'diretoria',ativo:true}).financeiroResumo,false);
+ assert.equal(permissoes({tipoERP:'Diretor Técnico',ativo:false}).financeiroResumo,false);
+});

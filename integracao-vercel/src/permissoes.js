@@ -24,13 +24,20 @@ export function permissoes(u) {
   // O setor canônico pode diferir do tipo ERP. Só estas novas capacidades usam
   // o setor Projetos adicional; isso não amplia etapas ou memorial individual.
   const projetos = s === "projeto" || [u?.tipoERP,u?.setorERP].some(v => ['projeto','projetos'].includes(String(v || '').trim().toLowerCase()));
+  const tipoERP = String(u?.tipoERP || '').trim();
+  const setorERP = String(u?.setorERP || '').trim().toLowerCase();
+  const ativo = Boolean(u && u.ativo !== false);
+  const financeiro = ativo && (tipoERP
+    ? tipoERP === 'Administrador' || tipoERP.toLowerCase() === 'financeiro' || setorERP === 'financeiro'
+    : dir || s === 'financeiro');
+  const financeiroResumo = financeiro || (ativo && ['Diretor Técnico','Diretor de Projetos'].includes(tipoERP));
   return {
     setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
     editarClientes: !!u && u.ativo !== false,
     editarEstrutura: !!u && u.ativo !== false,
     criarNucleosRemessas: !!u && u.ativo !== false,
     criarMoradores: !!u && u.ativo !== false,
-    financeiro: !!u && u.ativo !== false && (dir || s === "financeiro"),
+    financeiro, financeiroResumo,
     planos: acaoPermitida(u,"planos","editar",dir || s === "comercial" || s === "financeiro"),
     criarPlanos: acaoPermitida(u,"planos","criar",dir || s === "comercial" || s === "financeiro"),
     acao: (recurso,acao,herdado=true) => acaoPermitida(u,recurso,acao,herdado),

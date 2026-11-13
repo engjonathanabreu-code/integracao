@@ -4701,7 +4701,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["cadastro", "Cadastro", UserPlus, 0, sujo ? "não salvo" : ""],
               ["unidades", "Unidade" + (unidadesDe(p).length > 1 ? "s" : ""), MapPin, unidadesDe(p).length > 1 ? unidadesDe(p).length : 0],
               ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
-              ["financeiro", "Financeiro", Landmark, 0],
+              ...(perm.financeiro ? [["financeiro", "Financeiro", Landmark, 0]] : []),
               ["atendimentosCRM", "Atendimentos", MessageSquare, 0],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
@@ -12508,7 +12508,7 @@ export default function App() {
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
           {navItem(rota.pag === "mailing", <Mail size={18} />, <><span>Mailing</span>{naoLidasMailing>0&&<span className="ml-nav-count" aria-label={`${naoLidasMailing} emails não lidos`}>{naoLidasMailing}</span>}</>, {pag:"mailing"})}
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
-          {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
+          {permissoes(usuario).financeiroResumo && navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
           {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Gestão Técnica", { pag: "agentes" })}
           {navItem(rota.pag === "pessoalIA", <AvatarLateralTeste usuario={usuario} />, usuario.nome+"_IA", { pag: "pessoalIA" })}
