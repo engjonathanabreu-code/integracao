@@ -38,7 +38,7 @@ export async function requisicao(path, options = {}) {
     if (!refreshing) {
       const original=session;
       const job=(async()=>{
-        const r=await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:configERP.chave,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:original.refresh_token}),signal:scope.signal});
+        const r=await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:configERP.chave,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:original.refresh_token}),signal:AbortSignal.any([scope.signal,AbortSignal.timeout(25000)])});
         scope.conferir();
         if(!r.ok){if([400,401,403].includes(r.status))throw Object.assign(new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.'),{status:401,code:'SESSAO_EXPIRADA'});throw Object.assign(new Error('Não foi possível renovar a sessão agora. Tente novamente; suas alterações locais foram preservadas.'),{status:r.status});}
         const dados=await r.json();scope.conferir();
@@ -52,7 +52,7 @@ export async function requisicao(path, options = {}) {
   }
   scope.conferir();
   try{
-    const result=await buscarREST(`${configERP.url}/rest/v1/${path}`,{...options,signal:AbortSignal.any([scope.signal,options.signal||AbortSignal.timeout(25000)]),headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',...options.headers}});
+    const result=await buscarREST(`${configERP.url}/rest/v1/${path}`,{...options,signal:options.signal?AbortSignal.any([scope.signal,options.signal]):scope.signal,headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',...options.headers}});
     scope.conferir();return result;
   }catch(e){scope.conferir();throw e;}
 }
