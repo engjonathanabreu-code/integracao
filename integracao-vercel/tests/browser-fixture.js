@@ -67,7 +67,11 @@ base.fin_receb_parcelas=[{id:id(301),cliente_id:id(4),numero:1,vencimento:'2026-
 let detailReads=[];
 if(new URLSearchParams(location.search).has('duracao'))base.erp_eventos.push({id:id(150),titulo:'Evento de doze horas',inicio:'2026-09-15T08:00:00Z',fim:'2026-09-15T20:00:00Z',status:'ativo',publico:true,participantes:[],created_by:id(1)});
 const perfilFinanceiroTeste=new URLSearchParams(location.search).get('financeiroTeste');
-if(perfilFinanceiroTeste)base.profiles[0].tipo=perfilFinanceiroTeste;
+if(perfilFinanceiroTeste){
+  base.profiles[0].tipo=perfilFinanceiroTeste;
+  base.profiles[0].setor=new URLSearchParams(location.search).get('setorFinanceiroTeste')||perfilFinanceiroTeste;
+  if(new URLSearchParams(location.search).has('financeiroInativo'))base.profiles[0].ativo=false;
+}
 base.integracao_acessos=[];base.integracao_agentes_pessoais_registros=[];
 if(new URLSearchParams(location.search).has('ajustes')) {
   base.meta_setores.push({...base.meta_setores[0],id:id(95)});
@@ -122,7 +126,10 @@ window.fetch=async(input,options={})=>{
   }
   if(url.pathname.endsWith('/rpc/integracao_moradores_carga')){const {municipio,inicio}=JSON.parse(options.body);detailReads.push(municipio);document.getElementById('diagnostico').textContent='Consultas de moradores: '+detailReads.join(', ');return json({clientes:inicio?[]:base.fin_receb_clientes.filter(c=>c.municipio_id===municipio),complementos:inicio?[]:base.integracao_moradores.filter(e=>base.fin_receb_clientes.some(c=>c.id===e.referencia_id&&c.municipio_id===municipio)),total:0});}
   if(url.pathname.endsWith('/rpc/integracao_contagens_clientes'))return json(base.fin_receb_clientes.map(c=>({municipio_id:c.municipio_id,remessa_id:c.remessa_id,total:1,ativos:c.ativo===false?0:1})));
-  if(url.pathname.endsWith('/rpc/integracao_financeiro_resumo'))return json([{municipio_id:id(2),remessa_id:id(3),nucleo_id:id(5),clientes:1,parcelas:1,pagas:base.fin_receb_parcelas[0].status==='Pago'?1:0,previsto:105,recebido:base.fin_receb_parcelas[0].valor_liquidado}]);
+  if(url.pathname.endsWith('/rpc/integracao_financeiro_resumo')){
+    const diretor=perfilFinanceiroTeste?.startsWith('Diretor ');
+    return json([{municipio_id:id(2),remessa_id:diretor?null:id(3),nucleo_id:diretor?'':id(5),clientes:1,parcelas:1,pagas:base.fin_receb_parcelas[0].status==='Pago'?1:0,previsto:105,recebido:base.fin_receb_parcelas[0].valor_liquidado}]);
+  }
   if(url.pathname.endsWith('/rpc/integracao_financeiro_editar_conciliado')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);for(const k of Object.keys(b.p_dados))if(JSON.stringify(p[k]??null)!==JSON.stringify(b.p_anterior[k])&&JSON.stringify(p[k]??null)!==JSON.stringify(b.p_dados[k]))return json({message:'Valores diferentes na parcela',code:'PT409'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/integracao_financeiro_editar')){const b=JSON.parse(options.body),p=base.fin_receb_parcelas.find(p=>p.id===b.p_id);if(p.versao!==b.p_versao)return json({message:'Esta parcela mudou. Atualize antes de salvar.'},409);Object.assign(p,b.p_dados,{versao:p.versao+1});return json(p);}
   if(url.pathname.endsWith('/rpc/integracao_atribuicoes_contrato_ler'))return json(window.contratoFixture||{regras:{},pendencias:[]});

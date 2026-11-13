@@ -4701,7 +4701,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               ["cadastro", "Cadastro", UserPlus, 0, sujo ? "não salvo" : ""],
               ["unidades", "Unidade" + (unidadesDe(p).length > 1 ? "s" : ""), MapPin, unidadesDe(p).length > 1 ? unidadesDe(p).length : 0],
               ["comercial", "Comercial", Wallet, (p.documentosGerados || []).length],
-              ["financeiro", "Financeiro", Landmark, 0],
+              ...(perm.financeiro ? [["financeiro", "Financeiro", Landmark, 0]] : []),
               ["atendimentosCRM", "Atendimentos", MessageSquare, 0],
               ["documentos", "Documentos", Sparkles, (p.docs || []).filter((d) => d.status === "recebido").length],
               ["campo", "Campo", Camera, (p.campo?.fotos || []).length],
@@ -12407,7 +12407,7 @@ export default function App() {
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
-      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
+      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, tipoERP: u.tipoERP ?? q.tipoERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
       else d.usuarios = [...d.usuarios, { ...u, online: true, ultimaAtividade: new Date().toISOString() }];
       return d;
     }, "Entrou no sistema");
@@ -12508,7 +12508,7 @@ export default function App() {
           {navItem(rota.pag === "calendario", <Calendar size={18} />, "Calendário", { pag: "calendario" })}
           {navItem(rota.pag === "mailing", <Mail size={18} />, <><span>Mailing</span>{naoLidasMailing>0&&<span className="ml-nav-count" aria-label={`${naoLidasMailing} emails não lidos`}>{naoLidasMailing}</span>}</>, {pag:"mailing"})}
           {navItem(rota.pag === "chat", <MessageSquare size={18} />, naoLidasChat ? `Chat (${naoLidasChat})` : "Chat", { pag: "chat" })}
-          {navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
+          {permissoes(usuario).financeiroResumo && navItem(rota.pag === "financeiro", <Landmark size={18} />, "Financeiro", { pag: "financeiro" })}
           {perm.campoOffline && navItem(rota.pag === "campoOffline", <Smartphone size={18} />, offline.pendentes + comercial.pendentes ? `Campo offline (${offline.pendentes + comercial.pendentes})` : "Campo offline", { pag: "campoOffline", aba: perm.campo ? "topografia" : "comercial" })}
           {podeUsarAgentes(usuario) && navItem(rota.pag === "agentes", <Bot size={18} />, "Gestão Técnica", { pag: "agentes" })}
           {navItem(rota.pag === "pessoalIA", <AvatarLateralTeste usuario={usuario} />, usuario.nome+"_IA", { pag: "pessoalIA" })}
