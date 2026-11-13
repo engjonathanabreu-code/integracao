@@ -12407,7 +12407,7 @@ export default function App() {
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
-      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
+      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, tipoERP: u.tipoERP ?? q.tipoERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
       else d.usuarios = [...d.usuarios, { ...u, online: true, ultimaAtividade: new Date().toISOString() }];
       return d;
     }, "Entrou no sistema");

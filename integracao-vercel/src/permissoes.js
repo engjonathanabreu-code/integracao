@@ -24,13 +24,15 @@ export function permissoes(u) {
   // O setor canônico pode diferir do tipo ERP. Só estas novas capacidades usam
   // o setor Projetos adicional; isso não amplia etapas ou memorial individual.
   const projetos = s === "projeto" || [u?.tipoERP,u?.setorERP].some(v => ['projeto','projetos'].includes(String(v || '').trim().toLowerCase()));
-  const tipoERP = String(u?.tipoERP || '').trim();
+  const tipoERP = String(u?.tipoERP || '').trim().toLowerCase();
   const setorERP = String(u?.setorERP || '').trim().toLowerCase();
   const ativo = Boolean(u && u.ativo !== false);
-  const financeiro = ativo && (tipoERP
-    ? tipoERP === 'Administrador' || tipoERP.toLowerCase() === 'financeiro' || setorERP === 'financeiro'
-    : dir || s === 'financeiro');
-  const financeiroResumo = financeiro || (ativo && ['Diretor Técnico','Diretor de Projetos'].includes(tipoERP));
+  const perfilCanonico = Boolean(u?.erpRef || u?.origem === 'ERP' || tipoERP || setorERP);
+  const diretorERP = ['diretor técnico','diretor de projetos','diretor de projeto'].includes(tipoERP);
+  const financeiro = ativo && (perfilCanonico
+    ? tipoERP === 'administrador' || (!diretorERP && (tipoERP === 'financeiro' || setorERP === 'financeiro'))
+    : s === 'financeiro');
+  const financeiroResumo = financeiro || (ativo && (perfilCanonico ? diretorERP : dir));
   return {
     setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
     editarClientes: !!u && u.ativo !== false,

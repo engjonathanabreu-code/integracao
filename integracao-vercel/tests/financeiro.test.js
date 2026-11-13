@@ -10,8 +10,12 @@ test('Financeiro possui cadastro, planos e operação financeira sem administra�
  for(const key of ['config','usuarios','importar','nucleos','forcarValidacao','juridico','prf'])assert.equal(p[key],false,key);
  assert.equal(p.etapa('topografia'),false);
 });
-test('nova aba: demais setores leem e diretoria opera; inativos não operam',()=>{
- for(const setor of Object.keys(SETORES))assert.equal(permissoes({setor}).financeiro,['diretoria','financeiro'].includes(setor));
+test('perfil local de Financeiro opera e Diretoria consulta o resumo',()=>{
+ for(const setor of Object.keys(SETORES)){
+   const p=permissoes({setor});
+   assert.equal(p.financeiro,setor==='financeiro');
+   assert.equal(p.financeiroResumo,['diretoria','financeiro'].includes(setor));
+ }
  assert.equal(permissoes(null).financeiro,false);
  assert.equal(permissoes({setor:'financeiro',ativo:false}).financeiro,false);
 });
@@ -39,13 +43,14 @@ test('setor Financeiro canônico também funciona e preserva administrador',()=>
 });
 
 test('Financeiro usa o perfil ERP para distinguir operação de resumo municipal',()=>{
- for(const tipoERP of ['Diretor Técnico','Diretor de Projetos']){
-   const p=permissoes({tipoERP,setor:'diretoria',ativo:true});
+ for(const tipoERP of ['Diretor Técnico','Diretor de Projetos','Diretor de Projeto']){
+   const p=permissoes({tipoERP,setorERP:'Financeiro',setor:'diretoria',ativo:true});
    assert.equal(p.financeiro,false);
    assert.equal(p.financeiroResumo,true);
  }
  assert.equal(permissoes({tipoERP:'Administrador',setor:'diretoria',ativo:true}).financeiro,true);
  assert.equal(permissoes({tipoERP:'Analista',setorERP:'Financeiro',ativo:true}).financeiro,true);
  assert.equal(permissoes({tipoERP:'Comercial',setor:'diretoria',ativo:true}).financeiroResumo,false);
+ assert.equal(permissoes({erpRef:id(1),setor:'financeiro',ativo:true}).financeiroResumo,false);
  assert.equal(permissoes({tipoERP:'Diretor Técnico',ativo:false}).financeiroResumo,false);
 });
