@@ -22,9 +22,10 @@ async function testarOperacao(page, tipo) {
   await page.getByText('Parcela 1', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Editar parcela 1', exact: true }).waitFor();
 
-  await page.getByRole('button', { name: 'Marcar pago', exact: true }).click();
-  await page.getByRole('button', { name: 'Salvar parcela', exact: true }).click();
-  await page.getByRole('button', { name: 'Desmarcar pago', exact: true }).waitFor();
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: 'Registrar baixa manual', exact: true }).click();
+  await page.getByRole('button', { name: 'Estornar baixa manual', exact: true }).waitFor();
+  await page.getByText('Baixa declarada', {exact:true}).waitFor();
   assert.equal(await page.evaluate(() => window.baseFixture.fin_receb_parcelas[0].valor_liquidado), 105);
   await page.evaluate(() => {
     const parcela = window.baseFixture.fin_receb_parcelas[0];
@@ -51,10 +52,11 @@ async function testarOperacao(page, tipo) {
 }
 
 async function verificar() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE_PATH ? {executablePath:process.env.BROWSER_EXECUTABLE_PATH} : {}) });
   try {
     for (const { tipo, setor, acesso, inativo } of perfis) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+      await page.route('**/*', route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const query = new URLSearchParams({ financeiroTeste: tipo });
