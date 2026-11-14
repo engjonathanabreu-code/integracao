@@ -24,6 +24,11 @@ export async function salvarNegociacaoCRM(id,dados,anterior){
  }});
 }
 
+export function registrarBaixaManual(parcela,acao,motivo=null){
+ if(!parcela?.id||!/^\d+$/.test(String(parcela.versao??'')))throw Error('Reabra a parcela para conferir a versão.');
+ return rpcCRM('financeiro_baixa_manual',{p_id:parcela.id,p_versao:parcela.versao,p_status:parcela.status,p_acao:acao,p_motivo:motivo});
+}
+
 export function salvarParcelaConciliada(parcela,dados){
  const numericos=new Set(['valor_previsto','juros','multa','valor_liquidado']);
  const selecionar=x=>Object.fromEntries(Object.keys(dados).map(k=>[k,numericos.has(k)?Number(x[k]??0):k==='linha_digitavel'?(x[k]||null):(x[k]??null)]));
