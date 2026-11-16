@@ -96,12 +96,21 @@ Deno.serve(async (req) => {
     });
   }
 
+  // A solicitação de perfil só se torna autorizada após verificar a sessão de ADM.
+  // Sobrescreve os campos reservados mesmo que tenham vindo no corpo do pedido.
+  const profileType = typeof body.user_metadata?.tipo === "string"
+    ? body.user_metadata.tipo : "Projetos";
+  const appMetadata = {
+    ...body.app_metadata,
+    erp_provisionado: true,
+    erp_tipo: profileType,
+  };
   const { data, error } = await admin.auth.admin.createUser({
     email: body.email,
     password: body.password,
     email_confirm: body.email_confirm ?? true,
     user_metadata: body.user_metadata,
-    app_metadata: body.app_metadata,
+    app_metadata: appMetadata,
   });
 
   if (error) {
