@@ -149,7 +149,11 @@ const sectors = { Administrador:'diretoria', 'Diretor Técnico':'diretoria', 'Di
 // Metadata is kept separately from each rendered entity, so it never becomes app data.
 export function projetar(base, local) {
   base={...base,integracao_complementos:reunirComplementos(base)};
-  const aliases=Object.fromEntries((local.usuarios||[]).filter(u=>uuid(u.erpRef)).map(u=>[u.id,userId(u.erpRef)]));
+  const perfis=new Set(base.profiles.map(p=>p.id));
+  // Canonicalize only users explicitly linked to a real profile, never by name/email.
+  const usuariosExtras=base.integracao_complementos.filter(e=>e.colecao==='usuarios'&&perfis.has(e.dados?.erpRef)&&(!e.referencia_id||e.referencia_id===e.dados.erpRef));
+  const aliases=Object.fromEntries([...usuariosExtras.map(e=>({id:e.registro_id,erpRef:e.dados.erpRef})),...(local.usuarios||[])].filter(u=>uuid(u.erpRef)&&perfis.has(u.erpRef)).map(u=>[u.id,userId(u.erpRef)]));
+  const extrasProjetados=base.integracao_complementos.map(e=>e.colecao==='usuarios'&&aliases[e.registro_id]?{...e,registro_id:aliases[e.registro_id],dados:remapearIdentidades(e.dados,aliases)}:e);
   const relink=value=>remapearIdentidades(value,aliases);
   const db = relink(copy(local)), bindings = [];
   db._contagensClientes=base._contagensClientes??null;
@@ -162,7 +166,7 @@ export function projetar(base, local) {
   }
   for(const c of ['auditoria','notificacoes','regrasIA','tiposDocumento','advogados','camposComercial'])if(Array.isArray(db[c]))db[c]=db[c].filter(r=>!r._compartilhado);
   const names = Object.fromEntries(base.profiles.map(p => [p.id,p.nome]));
-  const extra = new Map(base.integracao_complementos.map(r => [`${r.colecao}:${r.registro_id}`,r]));
+  const extra = new Map(extrasProjetados.map(r => [`${r.colecao}:${r.registro_id}`,r]));
   const bind = (collection, row, view, map, table, parent = null) => {
     const p=parent?(db[parent.collection]||[]).find(x=>x.id===parent.id):null;
     const siblings=parent ? (parent.childId?p?.[parent.field]?.find(x=>x.id===parent.childId)?.[parent.childField]:p?.[parent.field]) : db[collection];
@@ -258,7 +262,7 @@ export function projetar(base, local) {
   merge('eventos',base.erp_eventos.map(r=>bind('eventos',r,{id:r.id,titulo:r.titulo,descricao:r.descricao,inicio:r.inicio,fim:r.fim,agendaId:r.agenda_id||'',entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),publico:r.publico,cor:r.cor,status:r.status,criadoPor:uid(r.created_by),recorrencia:'nenhuma',serieERP:r.serie_id,respostas:Object.fromEntries(group(base.erp_evento_respostas,'evento_id',r.id).map(x=>[uid(x.usuario_id),x.resposta]))},{...direct('titulo,descricao,publico,cor,status'),inicio:{column:'inicio',encode:v=>new Date(v).toISOString()},fim:{column:'fim',encode:v=>new Date(v).toISOString()},agendaId:'agenda_id',participantes:{column:'participantes',encode:v=>v.map(rawUser)}},'erp_eventos')));
   merge('conversas',base.erp_conversas.filter(r=>!r.excluido_em).map(r=>bind('conversas',r,{id:r.id,tipo:r.tipo,titulo:r.titulo,entidade:r.entidade_id?association(r.entidade_tipo,r.entidade_id):null,participantes:r.participantes.map(uid),criadoPor:uid(r.created_by),exclusaoSolicitada:(()=>{const req=(base.erp_exclusoes_chat||[]).find(x=>x.conversa_id===r.id && x.status==='pendente');return req?{id:req.id,por:uid(req.solicitado_por),motivo:req.motivo,data:req.created_at}:null;})(),lidaPor:{},mensagens:group(base.erp_mensagens,'conversa_id',r.id).sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(x=>bind('mensagens',x,{id:x.id,autorId:uid(x.autor_id),texto:x.texto,data:x.created_at,eventoId:x.evento_id,respostaId:x.resposta_id||null,arquivoERP:x.arquivo_path?{caminho:x.arquivo_path,nome:x.arquivo_nome}:null},{texto:'texto',autorId:'autor_id',data:'created_at',eventoId:'evento_id',respostaId:'resposta_id',arquivoERP:'arquivo_path'},'erp_mensagens',{collection:'conversas',id:r.id,field:'mensagens'}))},direct('titulo,tipo'),'erp_conversas')));
   // Additional Integração data is additive and does not replace canonical columns.
-  for (const e of base.integracao_complementos) {
+  for (const e of extrasProjetados) {
     if (e.colecao==='config') { db[e.registro_id]=copy(e.dados.valor); continue; }
     if (!Array.isArray(db[e.colecao])) {if(tabelasProprias.includes(e._tabela)&& !['etapas','entregaveis','mensagens','checklist','arquivos'].includes(e.colecao))db[e.colecao]=[];else continue;}
     const current=db[e.colecao].find(x=>x.id===e.registro_id);
@@ -320,6 +324,12 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
   const insert=(table,id,changes)=>ops.push({table,key:{id},insert:true,changes});
   const newItems=(a,b)=>(b||[]).filter(x=>!(a||[]).some(y=>y.id===x.id));
   const who=actor.erpRef||rawUser(actor.id), name=actor.nome;
+  const perfilResponsavel=id=>{
+    const direto=rawUser(id);
+    if((state.base.profiles||[]).some(p=>p.id===direto))return direto;
+    const refs=new Set([...(before.usuarios||[]),...(after.usuarios||[]),...(state.base.integracao_complementos||[]).filter(e=>e.colecao==='usuarios'&&e.registro_id===id&&(!e.referencia_id||e.referencia_id===e.dados?.erpRef)).map(e=>({...e.dados,id:e.registro_id}))].filter(u=>u.id===id&&uuid(u.erpRef)).map(u=>u.erpRef));
+    return refs.size===1?[...refs][0]:direto;
+  };
   const link=e=> e ? {entidade_tipo:e.tipo==='nucleo'?'processo':e.tipo,entidade_id:after.nucleos.find(n=>n.id===e.id)?.externo?.kanbanId||e.id} : {};
   const requireUuid=id=> {if(!uuid(id)) throw new Error('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.');return id;};
   // Um município sintético (só do kanban) vira o registro real do financeiro quando ele existe com o mesmo nome e UF.
@@ -347,10 +357,10 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const prev=ideiaPlanejamento(anterior) && !(state.base.metas||[]).some(x=>x.id===m.id) ? null : anterior;
     if(!prev) insert('metas',requireUuid(m.id),{titulo:m.titulo,observacoes:m.observacoes||'',semana_inicio:nullText(m.semana_inicio),prazo:nullText(m.prazo),status:m.status,setor_id:after.setoresMeta.find(s=>s.nome===m.setor && uuid(s.id))?.id||null,associacao_tipo:m.associacao_tipo==='nucleo'?'avulsa':m.associacao_tipo,associacao_id:m.associacao_tipo==='nucleo'?null:nullText(m.associacao_id),integracao_nucleo_id:m.associacao_tipo==='nucleo'?(after.nucleos.find(n=>n.id===m.associacao_id)?.externo?.kanbanId||m.associacao_id):null,created_by:who,icone:nullText(m.icone)});
     if(!uuid(m.id)) continue;
-    const removed=(prev?.responsaveis||[]).filter(x=>!(m.responsaveis||[]).includes(x));
-    for(const u of removed) ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:rawUser(u)},expected:{meta_id:m.id,usuario_id:rawUser(u)},remove:true});
-    for(const u of (m.responsaveis||[]).filter(x=>!(prev?.responsaveis||[]).includes(x))){
-      const perfil=(state.base.profiles||[]).find(p=>p.id===rawUser(u));
+    const anteriores=new Set((prev?.responsaveis||[]).map(perfilResponsavel)),proximos=new Set((m.responsaveis||[]).map(perfilResponsavel));
+    for(const u of anteriores)if(!proximos.has(u))ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:u},expected:{meta_id:m.id,usuario_id:u},remove:true});
+    for(const u of [...proximos].filter(x=>!anteriores.has(x))){
+      const perfil=(state.base.profiles||[]).find(p=>p.id===u);
       if(!perfil||perfil.ativo!==true)throw Object.assign(new Error('O responsável escolhido não possui perfil ativo no cadastro atual. Revise a escolha; a alteração foi preservada.'),{status:422,code:'RESPONSAVEL_INDISPONIVEL'});
       ops.push({table:'meta_responsaveis',key:{meta_id:m.id,usuario_id:perfil.id},insert:true,changes:{meta_id:m.id,usuario_id:perfil.id}});
     }
