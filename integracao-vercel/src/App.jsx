@@ -1,3 +1,4 @@
+import {criarConfirmacaoMeta} from './confirmacao-criacao-meta.js';
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
 import {acaoPermitida} from './permissoes-contrato.js';
@@ -10470,6 +10471,22 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const [registroDevId, setRegistroDevId] = useState("");
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
+  const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  const confirmarCriacao = async () => {
+    setSalvando(true); setErroDev("");
+    try {
+      await tentativaMeta.current.executar();
+      setToast(AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.");
+      onFechar(); if (onDetalhe) onDetalhe();
+    } catch (e) {
+      setErroDev(tentativaMeta.current.naoEnviada() ? `${e.message} Nada foi enviado. O formulário continua aberto; depois de resolver o aviso, tente novamente.` : `${e.message || "Não foi possível confirmar a gravação."} Não crie outra meta. Confira Pendências de sincronização ou confirme novamente este mesmo pedido.`);
+    } finally { preparandoMeta.current=false; setSalvando(false); }
+  };
+  const fechar = () => {
+    if (nova && preparandoMeta.current) return;
+    if (nova && tentativaMeta.current && !tentativaMeta.current.naoEnviada() && !window.confirm("Fechar não cancela a criação pendente. Confira Pendências de sincronização antes de criar outra meta. Fechar mesmo assim?")) return;
+    onFechar();
+  };
   const [erroDev, setErroDev] = useState("");
   const addItemChecklist = () => setF((x) => (x.checklistItens.some((y) => !y.titulo.trim()) ? x : { ...x, checklistItens: [...x.checklistItens, { id: uid("c"), titulo: "", concluido: false }] }));
   const erros = [];
@@ -10490,7 +10507,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
-    if (salvando || erros.length) return;
+    if (preparandoMeta.current || salvando) return;
+    if (nova && tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
+    if (erros.length) return;
+    preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
     let novaAnalise = null;
@@ -10508,22 +10528,23 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     } catch (e) {
       await Promise.allSettled(anexos.filter(a => !registroDev || !arquivosOriginaisDevolutiva(registroDev).some(original => original.chave === a.chave)).map(a => armazenamento.del(a.chave)));
       setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
-      setSalvando(false); return;
+      preparandoMeta.current=false; setSalvando(false); return;
     }
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
       devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: uid("mt"), erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
-      mutar((d) => {
+      tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
         d.metas.unshift(m);
         registrarHistoricoMeta(d, m, "Criada", `${m.devolutiva ? `Devolutiva da ${m.devolutiva.origem} recebida em ${dataBR(m.devolutiva.chegada)}` : "Meta"} criada por ${usuario.nome}.`, usuario);
         anexos.forEach(anexo => registrarHistoricoMeta(d, m, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario));
         const outros = m.responsaveis.filter((id) => id !== usuario.id);
         if (outros.length) novaNotificacao(d, { titulo: `Nova meta: ${m.titulo}`, texto: `${usuario.nome} atribuiu a você. Semana de ${dataBR(m.semana_inicio)}${m.prazo ? `, prazo ${dataBR(m.prazo)}` : ""}.`, rota: { pag: "metas" }, usuarios: outros });
         return d;
-      }, "Meta criada", { detalhe: `${m.titulo}, ${rotuloAssociacao(db, m)}` });
-      setToast("Meta criada e atribuída.");
+      }, "Meta criada", { detalhe: `${m.titulo}, ${rotuloAssociacao(db, m)}` }));
+      await confirmarCriacao();
+      return;
     } else {
       const mud = [];
       if (f.titulo !== meta.titulo) mud.push("título");
@@ -10561,8 +10582,11 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     setToast("Sugestão aplicada. Revise e escolha os responsáveis.");
   };
   return (
-    <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || erros.length > 0} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></>}>
+    <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={fechar}
+      rodape={<><button className="btn" disabled={nova && salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
+      {nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
+      {nova && tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha esta mesma criação, sem duplicar a meta.</p>}
+      <fieldset disabled={nova && (salvando || !!tentativaMeta.current)} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <div className={sugerir ? "meta-com-sugestoes" : undefined}>
       <div className="meta-formulario">
       <label className="tag" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, whiteSpace: "normal" }}>
@@ -10636,6 +10660,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       </div>
       {sugerir && <SugestoesMetas setorMeta={f.setor} onUsar={usarSugestao} />}
       </div>
+      </fieldset>
     </Modal>
   );
 }
