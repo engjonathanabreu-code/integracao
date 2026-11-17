@@ -12391,7 +12391,7 @@ export default function App() {
 
   mutar.confirmado = (fn,acao,extra={}) => {
     if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null);
-    return Promise.reject(new Error("Conecte-se ao servidor para confirmar o salvamento."));
+    return Promise.reject(Object.assign(new Error("Conecte-se ao servidor para confirmar o salvamento."), {code:"SESSAO_ENCERRADA"}));
   };
 
   const carregarMunicipio=async(id)=>{if(AMBIENTE.DEMO)return db;return compartilhado.loadMunicipio(id);};

@@ -44,3 +44,16 @@ test('erro após envio com mesmo código usa somente callback de confirmação',
 test('formulário não pode ser fechado enquanto criação aguarda confirmação',async()=>{
  const c=harness(),p=c.save();await Promise.resolve();const view=c.render();view.props.onFechar();assert.equal(c.closed,0);assert.equal(view.props.rodape.props.children[0].props.disabled,true);c.requests.shift().resolve();await p;assert.equal(c.closed,1);
 });
+
+test('ponte real sem sessão pronta identifica falha pré-envio e permite tentar após conexão',async()=>{
+ const start=source.indexOf('  mutar.confirmado = (fn,acao,extra={}) => {');
+ const end=source.indexOf('\n  };',start)+5;
+ assert.ok(start>0&&end>start);
+ let ready=false,writes=0;const mutar={};
+ const compartilhado={ready:()=>ready,mutateConfirmed:async()=>{writes++;}};
+ new Function('mutar','AMBIENTE','compartilhado','entrada',source.slice(start,end))(mutar,{DEMO:false},compartilhado,()=>({}));
+ const attempt=criarConfirmacaoMeta(()=>mutar.confirmado(()=>{},'Meta criada'));
+ await assert.rejects(attempt.executar(),{code:'SESSAO_ENCERRADA'});
+ assert.equal(writes,0);assert.equal(attempt.naoEnviada(),true);assert.equal(attempt.podeRetentar(),true);
+ ready=true;await attempt.executar();assert.equal(writes,1);
+});
