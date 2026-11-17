@@ -52,7 +52,7 @@ for (const [nome, node] of [['aba superior', tab], ['painel de requisitos', pain
 test('aplicar sugestões não altera cadastro nem abandona observação ao cancelar', () => {
   const chamadas = [];
   const mutacao = nome => () => chamadas.push(nome);
-  executar(app, variavel(app, 'PaginaProcesso', 'aplicarIA'), { observacaoPendente: true,
+  executar(app, variavel(app, 'PaginaProcesso', 'aplicarIA'), { observacaoPendente: true, tentativaCadastro: {current:null},
     window: { confirm: () => false }, setObservacaoPendente: mutacao('pendência'), setRascunho: mutacao('cadastro'),
     setIaPaths: mutacao('realce'), mutar: mutacao('auditoria'), setAba: mutacao('aba'), setToast: mutacao('aviso') })([]);
   assert.deepEqual(chamadas, []);
@@ -64,6 +64,7 @@ test('navegação entre moradores e saída manual conservam sessão e editor ao 
     const handler = executar(app, variavel(app, 'App', nome), {
       document: { querySelector: seletor => { assert.ok(seletor.includes('.obs-doc[data-edicao-pendente="true"]')); return {}; } },
       window: { confirm: () => { chamadas.push('confirmar'); return false; } },
+      rotaAtual: {current:{pag:"processo",id:"atual"}}, confirmarSaidaEdicao: () => true, estadoEdicaoAtual: () => undefined,
       navegacao: { current: 0 }, setMenuAberto: () => chamadas.push('menu'), setAbrindoMunicipio: () => chamadas.push('carregar'),
       mutar: () => chamadas.push('mutar'), compartilhado: { close: () => chamadas.push('fechar sessão') },
       setUsuarioId: () => chamadas.push('usuário'), setJanela: () => chamadas.push('janela')

@@ -13,7 +13,7 @@ function harness(){
  const mutar=()=>{throw Error('Produção não deve usar mutação otimista');};
  mutar.confirmado=fn=>{c.creations++;c.db=fn(structuredClone(c.db));return wait();};
  const empty=()=>null;
- const deps={criarConfirmacaoMeta,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
+ const deps={confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
  useState:initial=>{const n=si++;if(!(n in states)){states[n]=typeof initial==='function'?initial():initial;if(n===0)states[n]={...states[n],titulo:'Meta teste',responsaveis:['destinatario']};}return [states[n],v=>states[n]=typeof v==='function'?v(states[n]):v];},useRef:initial=>refs[ri++]??(refs[ri-1]={current:initial}),
  semanaISO:()=> '2026-11-16',podeUsarAgentes:()=>false,uid:()=>String(++seq),dataBR:String,rotuloAssociacao:()=>'',registrarHistoricoMeta:()=>{},novaNotificacao:()=>{},
  Modal:empty,Plus:empty,Trash2:empty,SeletorIcone:empty,sugerirIcone:()=>'',META_STATUS:[],ASSOC_TIPOS:[],setoresUnicos:()=>[]};
@@ -46,7 +46,7 @@ test('formulário não pode ser fechado enquanto criação aguarda confirmação
 });
 
 test('ponte real sem sessão pronta identifica falha pré-envio e permite tentar após conexão',async()=>{
- const start=source.indexOf('  mutar.confirmado = (fn,acao,extra={}) => {');
+ const start=source.indexOf('  mutar.confirmado = (fn,acao,extra={},opcoes) => {');
  const end=source.indexOf('\n  };',start)+5;
  assert.ok(start>0&&end>start);
  let ready=false,writes=0;const mutar={};

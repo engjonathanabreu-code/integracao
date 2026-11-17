@@ -1,3 +1,4 @@
+import {conciliarEdicoes} from './concorrencia.js';
 import {criarConfirmacaoMeta} from './confirmacao-criacao-meta.js';
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
@@ -13,7 +14,7 @@ import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
-import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador } from "./codigo-morador.js";
+import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
@@ -1482,8 +1483,7 @@ const pad3 = (n) => String(n).padStart(3, "0");
 
 
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
-function numeroClienteDe(p) { return p.numeroCliente || parseInt(so(String(p.codigo).split("_")[1] || p.codigo), 10) || 0; }
-function proximoNumeroCliente(db, remessaId) { return (db._baseArquivo || db).processos.filter((p) => p.remessaId === remessaId).reduce((mx, p) => Math.max(mx, numeroClienteDe(p)), 0) + 1; }
+function proximoNumeroCliente(db, remessaId) { return proximoNumeroMorador((db._baseArquivo || db).processos, remessaId); }
 function codigoCliente(db, remessaId, numero) {
   const r = remessaDe(db, remessaId); const m = r ? municipioDe(db, r.municipioId) : null;
   const prefixo = `${m?.prefixo || "MUN"}${pad2(r?.numero || 0)}`;
@@ -2308,6 +2308,18 @@ function Secao({ titulo, children, acao, nota }) {
       {children}
     </section>
   );
+}
+
+function confirmarSaidaEdicao(estado) {
+  if (estado === "enviando") return false;
+  if (estado === "pendente") return window.confirm("A confirmação continua pendente. Sair não cancela a operação. Sair mesmo assim?");
+  if (estado === "rascunho") return window.confirm("Há alterações ainda não enviadas. Descartar o rascunho e sair?");
+  return true;
+}
+
+function estadoEdicaoAtual() {
+  const estados = [...document.querySelectorAll('[data-estado-edicao]')].map(el => el.dataset.estadoEdicao);
+  return ["enviando", "pendente", "rascunho"].find(estado => estados.includes(estado));
 }
 
 function Modal({ titulo, children, onFechar, largura = 480, rodape }) {
@@ -4553,7 +4565,7 @@ function AbaObservacoesProcesso({ p, usuario, mutar, setToast, cancelado, pedido
   const registrar = () => {
     const t = texto.trim(); if (!t) return;
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.observacoes = [...(q.observacoes || []), { id: uid("ob"), autor: usuario.nome, setor: SETORES[usuario.setor]?.nome || "", texto: t, data: new Date().toISOString(), controle: "editavel" }]; return d; }, "Observação no morador", { ...log, detalhe: `${p.codigo}: ${t.slice(0, 60)}` });
-    setTexto(""); setToast("Observação registrada.");
+    setTexto(""); setToast(AMBIENTE.DEMO ? "Observação registrada na demonstração." : "Observação aguardando confirmação.");
   };
   const registrouAgente=useRef(false);
   useEffect(()=>{if(pedidoAgente?.conteudo&&pode&&!registrouAgente.current){registrouAgente.current=true;registrar();}},[]);
@@ -4594,20 +4606,55 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   const [observacaoPendente,setObservacaoPendente] = useState(false);
   const [rascunho, setRascunho] = useState(() => {if(!p)return null;const base=({ ...extrair(p), codigo: p.codigo });if(pedidoAgente?.ajustes&&(perm.cadastro||perm.social)){base.requerente={...base.requerente,...pedidoAgente.ajustes};}return base;});
   const baseFormulario=useRef(p?({ ...extrair(p), codigo: p.codigo }):null);
-  useEffect(()=>{const anterior=baseFormulario.current,proximo=p?({ ...extrair(p), codigo: p.codigo }):null;baseFormulario.current=proximo;setRascunho(atual=>JSON.stringify(atual)===JSON.stringify(anterior)?proximo:atual);},[p]);
+  useEffect(()=>{
+    if (JSON.stringify(rascunho) !== JSON.stringify(baseFormulario.current)) return;
+    const proximo=p ? { ...extrair(p), codigo: p.codigo } : null;
+    baseFormulario.current=proximo;
+    setRascunho(proximo);
+  },[p]); // eslint-disable-line react-hooks/exhaustive-deps
   const [iaPaths, setIaPaths] = useState([]);
   const [modal, setModal] = useState(null);
+
+  const tentativaCadastro = useRef(null), enviandoCadastro = useRef(false), fichaAtual = useRef(p);
+  fichaAtual.current = p;
+  const [confirmandoCadastro, setConfirmandoCadastro] = useState(false);
+  const [erroCadastro, setErroCadastro] = useState("");
 
   if (!p || !rascunho) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Morador não encontrado.</p></div>;
   const r = remessaDe(db, p.remessaId);
   const ctx = contexto(db, p);
   const cancelado = !ativo(p);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
-  const planoAtual = achatar(rascunho); const planoSalvo = achatar(({ ...extrair(p), codigo: p.codigo }));
+  const planoAtual = achatar(rascunho); const planoSalvo = achatar(baseFormulario.current);
   const alterados = Object.keys({ ...planoAtual, ...planoSalvo }).filter((k) => String(planoAtual[k] ?? "") !== String(planoSalvo[k] ?? ""));
   const sujo = alterados.length > 0;
 
-  const salvar = () => {
+  const confirmarCadastro = async () => {
+    if (enviandoCadastro.current) return;
+    enviandoCadastro.current = true;
+    setConfirmandoCadastro(true); setErroCadastro("");
+    try {
+      await tentativaCadastro.current.executar();
+      tentativaCadastro.current = null;
+      const ficha = fichaAtual.current;
+      if (ficha) {
+        baseFormulario.current = { ...extrair(ficha), codigo: ficha.codigo };
+        setRascunho(baseFormulario.current);
+      }
+      setIaPaths([]);
+      setToast(AMBIENTE.DEMO ? "Cadastro salvo na demonstração." : "Cadastro salvo. Gravação confirmada.");
+    } catch (e) {
+      const naoEnviada=tentativaCadastro.current.naoEnviada();
+      if (naoEnviada) tentativaCadastro.current = null;
+      setErroCadastro(naoEnviada ? e.message : `${e.message} Confira Pendências de sincronização ou confirme este mesmo pedido.`);
+    } finally {
+      enviandoCadastro.current = false;
+      setConfirmandoCadastro(false);
+    }
+  };
+  const salvar = async () => {
+    if (enviandoCadastro.current) return;
+    if (tentativaCadastro.current) return confirmarCadastro();
     const invalidos = [];
     // Antes da etapa Contrato o cadastro ainda é comercial: o documento pode ficar em branco, mas, se informado, precisa ser válido.
     const documentoObrigatorio = exigeDocumentoCRM(rascunho.requerente.statusCRM);
@@ -4626,17 +4673,21 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     const vincular = nucleoSel && !nucleoSel.remessaId;
     let alteracaoCodigo;
     try {
-      if (rascunho.codigo !== p.codigo && (cancelado || !(perm.editarClientes || perm.cadastro))) throw new Error("Você não tem permissão para editar o código do morador.");
-      alteracaoCodigo = resolverCodigoMorador({ atual: p, rascunho, processos: (db._baseArquivo || db).processos });
+      if (rascunho.codigo !== baseFormulario.current.codigo && (cancelado || !(perm.editarClientes || perm.cadastro))) throw new Error("Você não tem permissão para editar o código do morador.");
+      alteracaoCodigo = resolverCodigoMorador({ atual: { ...p, codigo: baseFormulario.current.codigo }, rascunho, processos: (db._baseArquivo || db).processos });
     } catch (e) { setToast(e.message); return; }
     const novoCodigo = alteracaoCodigo?.codigo;
     const novoNumero = alteracaoCodigo?.numeroCliente;
     const nomes = Array.from(new Set(alterados.map((k) => (k === "codigo" ? "Código do morador" : rotuloCaminho(k, [...defs, ...CONFRONTANTES])))));
     const viaIA = alterados.filter((k) => iaPaths.includes(k)).length;
     const extrasDetalhe = `${vincular ? `. ${nucleoSel.codigo} colocado em ${nomeRemessa(db, remessaNova)}` : ""}${novoCodigo ? `. Código alterado para ${novoCodigo}` : ""}`;
-    mutar((d) => {
+    tentativaCadastro.current = criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
       const q = d.processos.find((x) => x.id === p.id);
-      SECOES.forEach((k) => { q[k] = clone(rascunho[k]); });
+      if (!q) throw new Error("Este cadastro está indisponível. Reabra a ficha.");
+      const remoto = { ...extrair(q), codigo: q.codigo };
+      const { dados, conflitos } = conciliarEdicoes(baseFormulario.current, rascunho, remoto);
+      if (conflitos.length) throw new Error("A ficha mudou nos mesmos campos. Confira os valores atuais antes de salvar.");
+      SECOES.forEach(k => { q[k] = dados[k]; });
       if (novoCodigo) {
         const erro = erroCodigoMorador(novoCodigo, d.processos, p);
         if (erro) throw new Error(erro);
@@ -4646,11 +4697,11 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       q.qualificacao = atualizarQualificacao(q, usuario);
       if (vincular) d.nucleos.find((x) => x.id === nucleoSel.id).remessaId = rascunho.remessaId;
       return d;
-    }, "Cadastro alterado", { processoId: p.id, municipioId: p.municipioId, remessaId: rascunho.remessaId, detalhe: `${nomes.join(", ")}${viaIA ? `. ${viaIA} sugerido(s) pela IA e revisado(s)` : ""}${extrasDetalhe}` });
-    setIaPaths([]);
-    setToast("Cadastro salvo.");
+    }, "Cadastro alterado", { processoId: p.id, municipioId: p.municipioId, remessaId: rascunho.remessaId, detalhe: `${nomes.join(", ")}${viaIA ? `. ${viaIA} sugerido(s) pela IA e revisado(s)` : ""}${extrasDetalhe}` }, { permitirOffline: true }));
+    await confirmarCadastro();
   };
   const aplicarIA = (linhas) => {
+    if(tentativaCadastro.current)return;
     if(observacaoPendente&&!window.confirm("Há uma observação não salva. Abrir o cadastro e descartar o texto?"))return;
     setObservacaoPendente(false);
     setRascunho((rr) => { const c = clone(rr); linhas.forEach((l) => { const atual = linhaDocumentalAtual(l, c); if (atual) setPath(c, atual.path, atual.sugerido); }); return c; });
@@ -4661,13 +4712,13 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   };
   const salvarSituacao = (situacao, motivo) => {
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.situacao = situacao; q.motivoSituacao = motivo; return d; }, `Situação do morador: ${situacao}`, { processoId: p.id, remessaId: p.remessaId, municipioId: p.municipioId, nucleoId: p.nucleoId || undefined, detalhe: `${p.codigo}, de ${p.situacao} para ${situacao}: ${motivo}` });
-    setModal(null); setToast(`${p.codigo} agora está ${situacao.toLowerCase()}.`);
+    setModal(null); setToast(AMBIENTE.DEMO ? `${p.codigo} agora está ${situacao.toLowerCase()}.` : "Alteração de situação aguardando confirmação.");
   };
-  const irComCuidado = (destino) => { if (sujo) setModal({ tipo: "confirmar", titulo: "Sair sem salvar?", texto: `Há ${alterados.length} ${alterados.length === 1 ? "alteração" : "alterações"} no cadastro que ainda não foram salvas.`, rotuloBotao: "Sair sem salvar", onConfirmar: () => { setModal(null); ir(destino); } }); else ir(destino); };
+  const irComCuidado = ir;
 
   const n = ctx.nucleo;
   return (
-    <div className="contem">
+    <div className="contem" data-estado-edicao={confirmandoCadastro ? "enviando" : tentativaCadastro.current ? "pendente" : sujo ? "rascunho" : undefined}>
       <Migalhas itens={caminho(db, { municipioId: p.municipioId, remessaId: p.remessaId, nucleoId: p.nucleoId || null, semNucleo: p.nucleoId ? null : p.remessaId, final: p.codigo })} ir={irComCuidado} />
       <div className="cabeca">
         <div>
@@ -4718,7 +4769,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </button>
             ))}
           </div>
-          {aba === "cadastro" && <AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} />}
+          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} /></fieldset>}
           {aba === "documentos" && <div data-observacao-pendente={observacaoPendente ? "true" : undefined}><AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} onEdicaoPendente={setObservacaoPendente} recarregar={recarregar} /></div>}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
@@ -4743,13 +4794,14 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
         </aside>
       </div>
 
-      {sujo && (
+      {(sujo || confirmandoCadastro || !!tentativaCadastro.current || erroCadastro) && (
         <div className="barra-salvar">
           <div className="flex flex-wrap items-center justify-between gap-2" style={{ maxWidth: 1320, margin: "0 auto", padding: "12px 26px" }}>
-            <span>{alterados.length} {alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro</span>
+            <span role="status">{confirmandoCadastro ? "Aguardando confirmação do cadastro…" : tentativaCadastro.current ? "Confirmação do cadastro pendente" : `${alterados.length} ${alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro`}</span>
+            {erroCadastro && <span role="alert">{erroCadastro}</span>}
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} onClick={() => { setRascunho(({ ...extrair(p), codigo: p.codigo })); setIaPaths([]); }}>Descartar</button>
-              <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} onClick={salvar}><Check size={16} />Salvar alterações</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => { baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); }}>Descartar</button>
+              <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} disabled={confirmandoCadastro || (tentativaCadastro.current ? !tentativaCadastro.current.podeRetentar() : !sujo)} onClick={salvar}><Check size={16} />{confirmandoCadastro ? "Confirmando…" : tentativaCadastro.current ? "Confirmar mesmo pedido" : "Salvar alterações"}</button>
             </div>
           </div>
         </div>
@@ -7924,7 +7976,7 @@ function AbaUnidades({ db, p, usuario, mutar, setToast }) {
     const ultima = uns[uns.length - 1];
     const codigo = codigoUnidade(p, uns.length - 1);
     mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.unidades = unidadesDe(q).filter((u) => u.id !== ultima.id); return d; }, "Unidade removida do cliente", { ...log, detalhe: `${codigo} removida${ultima.memorial ? ", com memorial descartado" : ""}` });
-    setRemover(false); setToast(`${codigo} removida.`);
+    setRemover(false); setToast(AMBIENTE.DEMO ? `${codigo} removida.` : "Remoção da unidade aguardando confirmação.");
   };
   const completo = (u) => ({ area: (parseNum(u.area) || 0) > 0, memorial: (u.memorial || "").trim().length >= MIN_MEMORIAL, lote: preenchido(u.loteQuadra) });
   return (
@@ -8269,7 +8321,7 @@ function VerArquivoMeta({ arquivo }) {
 
 function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
   const lista = devolutivasDoNucleo(db, n.id).sort((a, b) => (b.devolutiva?.chegada || "").localeCompare(a.devolutiva?.chegada || ""));
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = diaCivilEvento(new Date());
   const [analisando, setAnalisando] = useState(null);
   const [relatorio, setRelatorio] = useState(null);
   const baixar = async (arq) => {
@@ -8483,7 +8535,10 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
 
-  const podeSalvar = autorizado && !!municipioId && !!nucleoId && (!!etapa1 || arquivosEtapa1.length > 0 || !!textoLivre.trim()) && !salvando && !carregando;
+  const envio = useConfirmacaoEdicao(mutar, setToast);
+  const fechar = () => { if (!salvando && envio.fechar()) onFechar(); };
+
+  const podeSalvar = autorizado && !!municipioId && !!nucleoId && (!!etapa1 || arquivosEtapa1.length > 0 || !!textoLivre.trim()) && !salvando && !carregando && !envio.bloqueada;
 
   const salvar = async () => {
     if (!podeSalvar) return;
@@ -8529,30 +8584,29 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
           checklist: [], comentarios: [], historico: [],
           arquivos: [...anexosEtapa1, ...anexosEtapa2],
         };
-        mutar((d) => {
+        await envio.executar((d) => {
           d.metas.unshift(m);
           registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
           if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência do trabalho corrigido) gerada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA", { detalhe: m.titulo });
-        setToast("Devolutiva registrada com o relatório da IA.");
+        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, "Devolutiva registrada com o relatório da IA.", onFechar);
       } else {
-        mutar((d) => {
+        await envio.executar((d) => {
           const q = d.metas.find((x) => x.id === meta.id);
           q.devolutiva = devolutiva;
           q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
           registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo });
-        setToast("Relatório da IA atualizado.");
+        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, "Relatório da IA atualizado.", onFechar);
       }
-      onFechar();
     } catch (e) { setErro(`Não foi possível salvar: ${e.message}`); } finally { setSalvando(false); }
   };
 
   return (
-    <Modal titulo={nova ? "Análise de Devolutivas" : `Análise de Devolutivas — ${meta.titulo}`} largura={720} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={!podeSalvar} onClick={salvar}>{salvando ? <Loader2 size={16} className="girando" /> : null}Salvar</button></>}>
+    <Modal titulo={nova ? "Análise de Devolutivas" : `Análise de Devolutivas — ${meta.titulo}`} largura={720} onFechar={fechar}
+      rodape={<><button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={!podeSalvar} onClick={salvar}>{salvando ? <Loader2 size={16} className="girando" /> : null}Salvar</button></>}>
+      <EstadoConfirmacaoEdicao envio={envio} />
+      <fieldset disabled={salvando || envio.bloqueada} style={{border:0,margin:0,padding:0,minWidth:0}}>
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
         <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>1. Devolutiva recebida</h3>
         {nova ? (
@@ -8611,6 +8665,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         <p className="ajuda">Clique em Salvar para guardar a análise na meta. Depois, abra “Ver relatório da IA” para consultá-la novamente.</p>
       </section>
       {erro && <div className="msg-erro" style={{ marginTop: 12 }}>{erro}</div>}
+      </fieldset>
     </Modal>
   );
 }
@@ -10427,28 +10482,75 @@ function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
   return item;
 }
 
-function ModalSetorMeta({ db, inicial, onSalvar, onFechar }) {
+function useConfirmacaoEdicao(mutar, setToast) {
+  const tentativa = useRef(null), ocupada = useRef(false);
+  const [estado, setEstado] = useState(null);
+  const confirmar = async () => {
+    if (!tentativa.current || ocupada.current) return;
+    ocupada.current = true;
+    setEstado({ fase: "enviando" });
+    const { pedido, mensagem, aoConfirmar } = tentativa.current;
+    try {
+      await pedido.executar();
+      tentativa.current = null;
+      setEstado(null);
+      if (mensagem) setToast(AMBIENTE.DEMO ? "Alteração aplicada na demonstração." : mensagem);
+      aoConfirmar?.();
+    } catch (e) {
+      setEstado({ fase: pedido.naoEnviada() ? "rascunho" : "pendente", mensagem: e.message, retentar: pedido.podeRetentar() });
+      if (pedido.naoEnviada()) tentativa.current = null;
+    } finally {
+      ocupada.current = false;
+    }
+  };
+  const executar = (fn, acao, dados, mensagem, aoConfirmar) => {
+    if (tentativa.current || ocupada.current) return;
+    tentativa.current = { pedido: criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)(fn, acao, dados, { permitirOffline: true })), mensagem, aoConfirmar };
+    return confirmar();
+  };
+  const fechar = () => {
+    if (!confirmarSaidaEdicao(estado?.fase)) return false;
+    tentativa.current = null; setEstado(null); return true;
+  };
+  return { executar, confirmar, fechar, estado, bloqueada: estado?.fase === "enviando" || estado?.fase === "pendente" };
+}
+
+function EstadoConfirmacaoEdicao({ envio }) {
+  const estado = envio.estado;
+  if (!estado) return null;
+  return <div data-estado-edicao={estado.fase}>
+    {estado.fase === "enviando" ? <p role="status">Aguardando confirmação…</p> : <p role="alert">{estado.mensagem}{estado.fase === "pendente" ? " Confira as Pendências de sincronização." : ""}</p>}
+    {estado.fase === "pendente" && estado.retentar && <button type="button" className="btn btn-sm" onClick={envio.confirmar}>Confirmar mesmo pedido</button>}
+  </div>;
+}
+
+function ModalSetorMeta({ db, inicial, onSalvar, onFechar, envio }) {
   const [nome, setNome] = useState(inicial?.nome || "");
   const [cor, setCor] = useState(corSetor(inicial?.nome, db.setoresMeta));
   const [ativo, setAtivo] = useState(inicial ? inicial.ativo !== false : true);
   const dup = (db.setoresMeta || []).some((s) => s.nome !== inicial?.nome && normalizar(s.nome) === normalizar(nome));
   return (
     <Modal titulo={inicial ? "Editar setor" : "Novo setor"} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo, cor })}>Salvar setor</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={envio?.bloqueada || nome.trim().length < 2 || dup} onClick={() => onSalvar({ nome: nome.trim(), ativo, cor })}>Salvar setor</button></>}>
+      {envio && <EstadoConfirmacaoEdicao envio={envio} />}
+      <fieldset disabled={envio?.bloqueada} style={{border:0,margin:0,padding:0,minWidth:0}}>
       <label className="rot" htmlFor="stn">Nome do setor</label>
       <input id="stn" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} /><label className="rot" htmlFor="stcor">Cor do setor (cards e calendário)</label><input id="stcor" type="color" value={cor} onChange={e => setCor(e.target.value)} />
       {dup && <div className="msg-erro">Já existe um setor com esse nome.</div>}
       <label className="flex items-center gap-2" style={{ marginTop: 14 }}><span className="chave"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /><span /></span>Setor ativo</label>
+      </fieldset>
     </Modal>
   );
 }
 
-function ModalOrdemServico({ db, inicial, onSalvar, onFechar }) {
+function ModalOrdemServico({ db, inicial, onSalvar, onFechar, envio }) {
   const [f, setF] = useState(() => inicial ? clone(inicial) : { nome: "", nucleoReferente: "", etapaAtual: "", municipio: "", estado: "SC", observacoes: "" });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   return (
     <Modal titulo={inicial ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"} largura={560} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={f.nome.trim().length < 3} onClick={() => onSalvar({ ...f, nome: f.nome.trim() })}>Salvar</button></>}>
+      rodape={<><button className="btn" onClick={onFechar}>Voltar</button><button className="btn btn-primario" disabled={envio?.bloqueada || f.nome.trim().length < 3} onClick={() => onSalvar({ ...f, nome: f.nome.trim() })}>Salvar</button></>}>
+      {envio && <EstadoConfirmacaoEdicao envio={envio} />}
+      <fieldset disabled={envio?.bloqueada} style={{border:0,margin:0,padding:0,minWidth:0}}>
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="osn">Nome</label><input id="osn" className="inp" value={f.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Ex.: Major Vieira - Alteração NUI Otávio Tabalipa" /></div>
         <div><label className="rot" htmlFor="osm">Município</label><input id="osm" className="inp" value={f.municipio} onChange={(e) => set("municipio", e.target.value)} /></div>
@@ -10457,6 +10559,7 @@ function ModalOrdemServico({ db, inicial, onSalvar, onFechar }) {
         <div><label className="rot" htmlFor="oset">Etapa atual</label><select id="oset" className="inp" value={f.etapaAtual} onChange={(e) => set("etapaAtual", e.target.value)}><option value="">Não definida</option>{ETAPAS_PROCESSO.map((s) => <option key={s}>{s}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="oso">Observações</label><textarea id="oso" className="inp" rows={3} value={f.observacoes} onChange={(e) => set("observacoes", e.target.value)} /></div>
       </div>
+      </fieldset>
     </Modal>
   );
 }
@@ -10466,26 +10569,27 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const [f, setF] = useState(() => nova
     ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: semanaISO(1), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
+  const camposIniciais = useRef(f);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [arquivosDev, setArquivosDev] = useState([]);
   const [registroDevId, setRegistroDevId] = useState("");
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
   const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  const rascunhoSujo = JSON.stringify(camposIniciais.current) !== JSON.stringify(f) || arquivosDev.length > 0 || !!registroDevId;
   const confirmarCriacao = async () => {
     setSalvando(true); setErroDev("");
     try {
       await tentativaMeta.current.executar();
-      setToast(AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.");
-      onFechar(); if (onDetalhe) onDetalhe();
+      setToast(nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada."));
+      onFechar(); if (nova && onDetalhe) onDetalhe();
     } catch (e) {
-      setErroDev(tentativaMeta.current.naoEnviada() ? `${e.message} Nada foi enviado. O formulário continua aberto; depois de resolver o aviso, tente novamente.` : `${e.message || "Não foi possível confirmar a gravação."} Não crie outra meta. Confira Pendências de sincronização ou confirme novamente este mesmo pedido.`);
+      setErroDev(tentativaMeta.current.naoEnviada() ? `${e.message} Nada foi enviado. O formulário continua aberto; depois de resolver o aviso, tente novamente.` : `${e.message || "Não foi possível confirmar a gravação."} ${nova ? "Não crie outra meta. " : ""}Confira Pendências de sincronização ou confirme novamente este mesmo pedido.`);
     } finally { preparandoMeta.current=false; setSalvando(false); }
   };
+  const estadoEdicao = salvando ? "enviando" : tentativaMeta.current && !tentativaMeta.current.naoEnviada() ? "pendente" : rascunhoSujo ? "rascunho" : undefined;
   const fechar = () => {
-    if (nova && preparandoMeta.current) return;
-    if (nova && tentativaMeta.current && !tentativaMeta.current.naoEnviada() && !window.confirm("Fechar não cancela a criação pendente. Confira Pendências de sincronização antes de criar outra meta. Fechar mesmo assim?")) return;
-    onFechar();
+    if (!preparandoMeta.current && confirmarSaidaEdicao(estadoEdicao)) onFechar();
   };
   const [erroDev, setErroDev] = useState("");
   const addItemChecklist = () => setF((x) => (x.checklistItens.some((y) => !y.titulo.trim()) ? x : { ...x, checklistItens: [...x.checklistItens, { id: uid("c"), titulo: "", concluido: false }] }));
@@ -10508,7 +10612,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
     if (preparandoMeta.current || salvando) return;
-    if (nova && tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
+    if (tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
     if (erros.length) return;
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
@@ -10553,7 +10657,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       if (f.semana_inicio !== meta.semana_inicio) mud.push(`semana de ${dataBR(f.semana_inicio)}`);
       if (f.setor !== (meta.setor || "")) mud.push(`setor ${f.setor || "sem setor"}`);
       if (JSON.stringify(f.responsaveis) !== JSON.stringify(meta.responsaveis || [])) mud.push("responsáveis");
-      mutar((d) => {
+      tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
         const q = d.metas.find((x) => x.id === meta.id);
         if (q.status === "Aguardando aprovação" && base.status === "Em andamento") recusarConclusaoMeta(q,usuario,"Conclusão devolvida para ajustes pela edição da meta.",uid("h"),new Date().toISOString(),d.usuarios);
         if (base.status !== "Aguardando aprovação") q.solicitacaoConclusao = null;
@@ -10566,11 +10670,9 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
         return d;
-      }, "Meta editada", { detalhe: `${meta.titulo}: ${mud.join(", ") || "sem mudanças"}` });
-      setToast("Dados da meta atualizados.");
+      }, "Meta editada", { detalhe: `${meta.titulo}: ${mud.join(", ") || "sem mudanças"}` }, { permitirOffline: true }));
+      await confirmarCriacao();
     }
-    onFechar();
-    if (onDetalhe && nova) onDetalhe();
   };
   // Directors creating a goal get three suggestions from the AI agent beside the form.
   const sugerir = nova && podeUsarAgentes(usuario);
@@ -10583,10 +10685,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   };
   return (
     <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={fechar}
-      rodape={<><button className="btn" disabled={nova && salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
-      {nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
-      {nova && tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha esta mesma criação, sem duplicar a meta.</p>}
-      <fieldset disabled={nova && (salvando || !!tentativaMeta.current)} style={{border:0,padding:0,margin:0,minWidth:0}}>
+      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
+      {erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
+      {tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha este mesmo pedido.</p>}
+      <fieldset data-estado-edicao={estadoEdicao} disabled={salvando || !!tentativaMeta.current} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <div className={sugerir ? "meta-com-sugestoes" : undefined}>
       <div className="meta-formulario">
       <label className="tag" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 12, whiteSpace: "normal" }}>
@@ -10677,6 +10779,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [confirmarRevisao, setConfirmarRevisao] = useState(false);
   const [relatorioIA, setRelatorioIA] = useState(false);
   const entradaArquivo = useRef(null);
+  const envio = useConfirmacaoEdicao(mutar, setToast);
+  const fechar = () => { if (!enviando && confirmarSaidaEdicao(envio.estado?.fase || ((item || comentario || motivoRecusa) && "rascunho"))) onFechar(); };
   const m = (db.metas || []).find((x) => x.id === metaId);
   if (!m) return null;
   const gerencia = gerenciaMetas(usuario);
@@ -10685,24 +10789,30 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const alterar = (fn, acao, descricao) => mutar((d) => { const q = d.metas.find((x) => x.id === m.id); fn(q, d); registrarHistoricoMeta(d, q, acao, descricao, usuario); return d; }, `Meta: ${acao.toLowerCase()}`, { detalhe: `${m.titulo}${descricao ? `: ${descricao}` : ""}` });
   const concluir = (semRevisao = false) => {
     if (m.devolutiva && semRevisao !== true) {setConfirmarRevisao(true);return;}
+    setConfirmarRevisao(false);
     const id = uid("h"), data = new Date().toISOString();
-    mutar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !solicitarConclusaoMeta(q,usuario,id,data)) return d;
+    envio.executar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !solicitarConclusaoMeta(q,usuario,id,data)) return d;
       novaNotificacao(d,{titulo:`Conclusão solicitada: ${q.titulo}`,texto:`${usuario.nome} enviou para aprovação.`,rota:{pag:"metas"},setores:["diretoria"]});return d;
-    }, "Meta: conclusão solicitada", {detalhe:m.titulo});
-    setToast("Meta enviada para aprovação."); onFechar();
+    }, "Meta: conclusão solicitada", {detalhe:m.titulo}, "Meta enviada para aprovação.", onFechar);
   };
   const recusar = () => {
     const id = uid("h"), data = new Date().toISOString();
-    mutar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !recusarConclusaoMeta(q,usuario,motivoRecusa,id,data,d.usuarios)) return d;
+    envio.executar(d => { const q=d.metas.find(x=>x.id===m.id); if (!q || !recusarConclusaoMeta(q,usuario,motivoRecusa,id,data,d.usuarios)) return d;
       const solicitante=q.recusasConclusao.at(-1).solicitanteId;
       novaNotificacao(d,{titulo:`Conclusão recusada: ${q.titulo}`,texto:motivoRecusa.trim(),rota:{pag:"metas"},usuarios:[...new Set([...(q.responsaveis||[]),...(solicitante?[solicitante]:[])])]});return d;
-    }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`});
-    setToast("Recusa registrada. A meta voltou para Em andamento."); onFechar();
+    }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`}, "Recusa registrada. A meta voltou para Em andamento.", onFechar);
   };
-  const aprovar = () => { alterar((q) => { q.status = "Concluído"; q.solicitacaoConclusao = null; }, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`); mutar((d) => { novaNotificacao(d, { titulo: `Conclusão aprovada: ${m.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: m.responsaveis }); return d; }); setToast("Conclusão aprovada."); onFechar(); };
+  const aprovar = () => envio.executar(d => {
+    const q = d.metas.find(x => x.id === m.id);
+    if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
+    q.status = "Concluído"; q.solicitacaoConclusao = null;
+    registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
+    novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
+    return d;
+  }, "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
-    if (!arq) return;
+    if (!arq || enviando || envio.bloqueada) return;
     if (m.devolutiva && (m.arquivos || []).length >= 5) { setErroArquivo("Cada devolutiva permite até 5 arquivos."); return; }
     if (arq.size > MAX_ARQUIVO) { setErroArquivo(`"${arq.name}" passa do tamanho permitido.`); return; }
     setEnviando(true);
@@ -10711,7 +10821,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       const anexo = { id: uid("ar"), nome: arq.name, tipo: arq.type || "application/octet-stream", tamanho: arq.size, chave: `${PREFIXO_ARQ_META}${uid("k")}`, por: usuario.nome, data: new Date().toISOString() };
       await armazenamento.set(anexo.chave, `data:${anexo.tipo};base64,${base64}`);
       alterar((q) => { q.arquivos = [...(q.arquivos || []), anexo]; }, "Arquivo enviado", `${arq.name}, ${(arq.size / 1024).toFixed(0)} KB`);
-      setToast("Arquivo enviado.");
+      setToast(AMBIENTE.DEMO ? "Arquivo anexado na demonstração." : "Anexo preparado neste aparelho. Acompanhe a confirmação do envio.");
     } catch (e) { setErroArquivo(`Não foi possível enviar: ${e.message}.`); }
     finally { setEnviando(false); if (entradaArquivo.current) entradaArquivo.current.value = ""; }
   };
@@ -10727,20 +10837,21 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     // Earlier durable intentions can still reference this local payload.
     // Remove metadata only; preserve bytes until reachability can be proven.
     alterar((q) => { q.arquivos = (q.arquivos || []).filter((x) => x.id !== a.id); }, "Arquivo removido", a.nome);
-    setToast("Arquivo removido.");
+    setToast(AMBIENTE.DEMO ? "Anexo removido na demonstração." : "Remoção do anexo aguardando confirmação.");
   };
   const nucleo = nucleoDaMeta(db, m);
-  const acaoConclusao = podeSolicitarConclusao(m, usuario) ? <button className="btn btn-primario" onClick={concluir}>Concluir</button>
-    : podeAprovarConclusao(m, usuario) ? <button className="btn btn-primario" onClick={aprovar}><Check size={15} />Aprovar conclusão</button>
+  const acaoConclusao = podeSolicitarConclusao(m, usuario) ? <button className="btn btn-primario" disabled={envio.bloqueada} onClick={concluir}>Concluir</button>
+    : podeAprovarConclusao(m, usuario) ? <button className="btn btn-primario" disabled={envio.bloqueada} onClick={aprovar}><Check size={15} />Aprovar conclusão</button>
     : vePendenteAprovacao(m) && respMeta(m, usuario) ? <Tag tipo="pend">Aguardando aprovação</Tag> : null;
   return (
-    <Modal titulo={m.titulo} largura={680} onFechar={onFechar}
-      rodape={<><button className="btn" onClick={onFechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
+    <Modal titulo={m.titulo} largura={680} onFechar={fechar}
+      rodape={<><button className="btn" onClick={fechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" disabled={envio.bloqueada} onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
+      <EstadoConfirmacaoEdicao envio={envio} />
       {recusando && <section className="bloco-modal" aria-label="Recusar conclusão">
         <label className="rot" htmlFor="motivo-recusa-meta">Motivo da recusa</label>
         <textarea id="motivo-recusa-meta" className="inp" rows={3} autoFocus value={motivoRecusa} onChange={e=>setMotivoRecusa(e.target.value)} />
         <p className="ajuda">A meta voltará para Em andamento. Esta recusa contará uma vez para a meta e para quem solicitou a aprovação.</p>
-        <div className="flex gap-2"><button className="btn" onClick={()=>setRecusando(false)}>Cancelar recusa</button><button className="btn btn-perigo" disabled={!motivoRecusa.trim()} onClick={recusar}>Confirmar recusa</button></div>
+        <div className="flex gap-2"><button className="btn" onClick={()=>setRecusando(false)}>Cancelar recusa</button><button className="btn btn-perigo" disabled={envio.bloqueada || !motivoRecusa.trim()} onClick={recusar}>Confirmar recusa</button></div>
       </section>}
       <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
         <Tag>{rotuloAssociacao(db, m)}</Tag><Tag tipo={TAG_META[m.status]}>{m.status}</Tag><Tag>{m.setor || "Sem setor"}</Tag><Tag tipo={totalRecusasMeta(m) ? "pend" : "neutra"}>{totalRecusasMeta(m)} recusa(s) de aprovação</Tag>
@@ -10846,7 +10957,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </section>
       {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
       {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
-      {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast("Meta excluída do planejamento."); }} />}
+      {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta excluída na demonstração." : "Exclusão da meta aguardando confirmação."); }} />}
     </Modal>
   );
 }
@@ -10902,6 +11013,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
 function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [] }) {
   const timbradoOficios = useTimbrado(db);
   const arrasteMeta = useRef(null);
+  const envioSetor = useConfirmacaoEdicao(mutar, setToast), envioOS = useConfirmacaoEdicao(mutar, setToast);
   const [tela, setTela] = useState(() => gerenciaPlanejamento(usuario) && !metaInicial ? "planejamento" : "home");
   const [buscaDevolutiva, setBuscaDevolutiva] = useState("");
   const [buscaTitulo, setBuscaTitulo] = useState("");
@@ -10917,7 +11029,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const [colaborador, setColaborador] = useState(null);
   const [compacto, setCompacto] = useState(true);
   const [mostrarSemMetas, setMostrarSemMetas] = useState(false);
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = diaCivilEvento(new Date());
   const gerencia = gerenciaMetas(usuario);
   const todasVisiveis = (db.metas || []).filter((m) => podeVerMeta(m, usuario));
   const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
@@ -10945,14 +11057,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   };
   const salvarSetor = (dados) => {
     const inicial = setorModal?.id ? setorModal : null;
-    mutar((d) => { d.setoresMeta = inicial ? d.setoresMeta.map((s) => (s.nome === inicial.nome ? { ...s, ...dados } : s)) : [...(d.setoresMeta || []), { id: uid("st"), ...dados }]; return d; }, inicial ? "Setor de metas alterado" : "Setor de metas criado", { detalhe: dados.nome });
-    setSetorModal(null); setToast("Setor salvo.");
+    envioSetor.executar((d) => { d.setoresMeta = inicial ? d.setoresMeta.map((s) => (s.nome === inicial.nome ? { ...s, ...dados } : s)) : [...(d.setoresMeta || []), { id: uid("st"), ...dados }]; return d; }, inicial ? "Setor de metas alterado" : "Setor de metas criado", { detalhe: dados.nome }, "Setor salvo.", () => setSetorModal(null));
   };
   const salvarOS = (dados) => {
     const inicial = osModal?.id ? osModal : null;
     const o = inicial ? { ...inicial, ...dados } : { id: uid("os"), ...dados, comentarios: [], criadoEm: new Date().toISOString() };
-    mutar((d) => { d.ordensServico = inicial ? d.ordensServico.map((x) => (x.id === o.id ? o : x)) : [...(d.ordensServico || []), o]; return d; }, inicial ? "Ordem de serviço alterada" : "Ordem de serviço criada", { detalhe: o.nome });
-    setOsModal(null); setToast("Ordem de serviço salva.");
+    envioOS.executar((d) => { d.ordensServico = inicial ? d.ordensServico.map((x) => (x.id === o.id ? o : x)) : [...(d.ordensServico || []), o]; return d; }, inicial ? "Ordem de serviço alterada" : "Ordem de serviço criada", { detalhe: o.nome }, "Ordem de serviço salva.", () => setOsModal(null));
   };
   const metasDaOS = (id) => visiveis.filter((m) => m.associacao_tipo === "ordem_servico" && m.associacao_id === id);
   const podeComentarOS = (id) => gerenciaOS(usuario) || metasDaOS(id).some((m) => respMeta(m, usuario));
@@ -11134,8 +11244,8 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = db.metas.find((x) => x.id === detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
-      {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} onFechar={() => setSetorModal(null)} />}
-      {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} onFechar={() => setOsModal(null)} />}
+      {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} envio={envioSetor} onFechar={() => { if (envioSetor.fechar()) setSetorModal(null); }} />}
+      {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} envio={envioOS} onFechar={() => { if (envioOS.fechar()) setOsModal(null); }} />}
     </div>
   );
 }
@@ -12322,6 +12432,13 @@ export default function App() {
   const rotaAtual = useRef(rota);
   const [abrindoMunicipio,setAbrindoMunicipio]=useState('');
   const navegacao=useRef(0);
+  useEffect(() => {
+    const protegerFormulario = e => {
+      if (estadoEdicaoAtual()) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", protegerFormulario);
+    return () => window.removeEventListener("beforeunload", protegerFormulario);
+  }, []);
   const [toast, setToast] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
   const ultimoUso = useRef(Date.now());
@@ -12389,13 +12506,14 @@ export default function App() {
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
 
-  mutar.confirmado = (fn,acao,extra={}) => {
-    if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null);
+  mutar.confirmado = (fn,acao,extra={},opcoes) => {
+    if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null,opcoes);
     return Promise.reject(Object.assign(new Error("Conecte-se ao servidor para confirmar o salvamento."), {code:"SESSAO_ENCERRADA"}));
   };
 
   const carregarMunicipio=async(id)=>{if(AMBIENTE.DEMO)return db;return compartilhado.loadMunicipio(id);};
   const ir = async (r, voltando = false) => {
+    if (JSON.stringify(rotaAtual.current) !== JSON.stringify(r) && !confirmarSaidaEdicao(estadoEdicaoAtual())) return;
     if (document.querySelector('[data-observacao-pendente="true"], .obs-doc[data-edicao-pendente="true"]') && !window.confirm("Há uma observação não salva. Sair e descartar o texto?")) return;
     const vez=++navegacao.current;setMenuAberto(false);setAbrindoMunicipio('');
     const municipio=municipioDaRota(db,r);
@@ -12438,6 +12556,7 @@ export default function App() {
     }, "Entrou no sistema");
   };
   const sair = async () => {
+    if (!confirmarSaidaEdicao(estadoEdicaoAtual())) return;
     if(compartilhado.pendencias?.some(i=>i.estado==='persistencia_falhou')&&!window.confirm("Há alterações que o navegador não conseguiu guardar. Baixe uma cópia em Pendências antes de sair. Sair mesmo assim?"))return;
     if(document.querySelector('.obs-doc[data-edicao-pendente="true"]')&&!window.confirm("Há uma observação não salva. Sair do sistema e descartar o texto?"))return;
     let falhaRegistro=false;
@@ -12505,14 +12624,21 @@ export default function App() {
     if(task.tipo==='Ofício'){try{const seq=await listarOficios(Number(new Date().toISOString().slice(0,4)));task={...task,proximo:seq.ultimo?seq.ultimo+1:null}}catch(e){setToast(e.message);return}}
     setTarefaAgente({...task,userId:usuario.id});
   };
-  const mutarAgente=(fn,action,extra={})=>{
-    let before,after;mutar(d=>{before=clone(d);after=fn(d);return after;},action+' · '+usuario.nome+'_IA',{...extra,agente:usuario.nome+'_IA',solicitante:usuario.id});
+  const registrarMudancaAgente=(before,after,action,extra)=>{
     if(!before||!after)return;
     const changes=[];for(const collection of ['processos','nucleos','eventos','metas'])for(const row of after[collection]||[]){const old=before[collection]?.find(x=>x.id===row.id);if(JSON.stringify(old)!==JSON.stringify(row))changes.push({collection,id:row.id,before:old||null,after:row})}
     registrarAcaoNativa(usuario,action,extra.processoId?'Clientes':extra.nucleoId?'Processos / Núcleo':tarefaAgente?.tipo==='Evento'?'Calendário':tarefaAgente?.tipo==='Devolutiva'?'Metas / Devolutivas':'Integração',changes.map(c=>({collection:c.collection,id:c.id,values:c.before})),changes.map(c=>({collection:c.collection,id:c.id,values:c.after})),{status:'solicitada · acompanhe a sincronização oficial'});
     if(tarefaAgente?.tipo==='Devolutiva'){const changed=changes.find(c=>c.collection==='metas');if(changed)registrarArquivoNativo(usuario,{type:'Análise',title:changed.after.titulo,content:JSON.stringify(changed.after.devolutiva,null,2),destination:'Metas / Devolutivas',nucleoId:changed.after.associacao_id}).catch(e=>setToast(e.message))}
   };
-  mutarAgente.confirmado=(fn,acao,extra={})=>mutar.confirmado(fn,acao + " · " + usuario.nome + "_IA",{...extra,agente:usuario.nome+"_IA",solicitante:usuario.id});
+  const salvarPorAgente=(gravar,fn,acao,extra,opcoes)=>{
+    let before,after;
+    const resultado=gravar(d=>{before=clone(d);after=fn(d);return after;},acao+" · "+usuario.nome+"_IA",
+      {...extra,agente:usuario.nome+"_IA",solicitante:usuario.id},opcoes);
+    registrarMudancaAgente(before,after,acao,extra);
+    return resultado;
+  };
+  const mutarAgente=(fn,acao,extra={})=>salvarPorAgente(mutar,fn,acao,extra);
+  mutarAgente.confirmado=(fn,acao,extra={},opcoes)=>salvarPorAgente(mutar.confirmado,fn,acao,extra,opcoes);
   const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:db.metas.filter(metaOperacional)}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 

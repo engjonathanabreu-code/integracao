@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { erroCodigoMorador, resolverCodigoMorador } from '../src/codigo-morador.js';
+import { erroCodigoMorador, resolverCodigoMorador, numeroDoCodigoMorador, proximoNumeroMorador } from '../src/codigo-morador.js';
 const atual = {id:'a',codigo:'ITA01_212',remessaId:'r1',numeroCliente:212};
 const processos = [atual,{id:'b',codigo:'ITA01_213'}];
 const resolver = rascunho => resolverCodigoMorador({atual,rascunho,processos,codigoAutomatico:'ITA02_010',numeroAutomatico:10});
@@ -31,4 +31,16 @@ test('identidade normalizada e referência canônica não são falsos duplicados
  assert.equal(erroCodigoMorador('A01_001',[{id:' ABC ',codigo:'A01_001'}],'abc'),'');
  assert.equal(erroCodigoMorador('A01_001',[{id:'alias',financeiroRef:'UUID-A',codigo:'A01_001'}],{id:'uuid-a'}),'');
  assert.match(erroCodigoMorador('A01_001',[{id:'uuid-b',codigo:'A01_001'}],{id:'uuid-a'}),/outro morador/);
+});
+
+test('sufixos acima do inteiro seguro permanecem distintos na edição, releitura e sequência',()=>{
+ const a=resolver({...atual,codigo:'ITA01_9007199254740992'});
+ const b=resolver({...atual,codigo:'ITA01_9007199254740993'});
+ assert.equal(a.numeroCliente,'9007199254740992');
+ assert.equal(b.numeroCliente,'9007199254740993');
+ assert.equal(numeroDoCodigoMorador(b.codigo),b.numeroCliente);
+ assert.equal(proximoNumeroMorador([{remessaId:'r1',...a},{remessaId:'r1',...b}], 'r1'),'9007199254740994');
+ assert.equal(proximoNumeroMorador([{remessaId:'r1',...b,numeroCliente:9007199254740992}], 'r1'),'9007199254740994');
+ assert.equal(proximoNumeroMorador([atual,{remessaId:'fora',...b}],'r1'),213);
+ assert.equal(numeroDoCodigoMorador('ITA01_007'),7);
 });

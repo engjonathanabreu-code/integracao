@@ -13,7 +13,7 @@ export function criarConfirmacaoMeta(criar) {
     ultimoErro=e;retentar=typeof e?.retentarConfirmacao==='function'?e.retentarConfirmacao:null;
     // These three guards in mutateConfirmed run before mutate/enqueue.
     // Never reset an uncertain request or a failure carrying its retry callback.
-    if(!retentar&&['SEM_CONEXAO','SESSAO_ENCERRADA','CONFLITO_EDICAO'].includes(e?.code))iniciada=false;
+    if(!retentar&&(e?.naoEnviada===true||['SEM_CONEXAO','SESSAO_ENCERRADA','CONFLITO_EDICAO'].includes(e?.code)))iniciada=false;
     throw e;
    }).finally(()=>{emCurso=null;});
    return emCurso;

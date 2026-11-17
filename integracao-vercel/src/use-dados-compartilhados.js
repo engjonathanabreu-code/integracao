@@ -418,13 +418,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     else saveDraft().catch(e=>setError(e.message));
     clearTimeout(timer.current);timer.current=setTimeout(flush,250);
   };
-  const mutateConfirmed=async(fn,entry)=>{
+  const mutateConfirmed=async(fn,entry,{permitirOffline=false}={})=>{
     if(!current.current||!server.current||!actor.current||!temSessao())throw erroConfirmacao('Entre em uma sessão conectada para salvar.','SESSAO_ENCERRADA');
-    if(!temConexao())throw erroConfirmacao('Conecte-se para salvar. O texto digitado deve permanecer aberto para tentar novamente.','SEM_CONEXAO');
+    if(!permitirOffline&&!temConexao())throw erroConfirmacao('Conecte-se para salvar. O texto digitado deve permanecer aberto para tentar novamente.','SEM_CONEXAO');
     if(revisao.current)throw erroConfirmacao('Revise as alterações concorrentes antes de salvar.','CONFLITO_EDICAO');
     const antes=copy(current.current);
     const identificada={...(entry||{}),id:entry?.id||crypto.randomUUID()};
-    mutate(fn,identificada);
+    mutate(dados=>{
+      try { return fn(dados); }
+      catch(e) { throw Object.assign(erroConfirmacao(e.message,e.code||"VALIDACAO_LOCAL",e),{naoEnviada:true}); }
+    },identificada);
     const gen=generation.current;
     const primeira=confirmacoes.current.aguardar(identificada.id,antes,current.current);
     const acompanhar=async(repetir=false)=>{
