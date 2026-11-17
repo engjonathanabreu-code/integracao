@@ -10609,7 +10609,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
             setErroDev(""); setArquivosDev(atuais => [...atuais, ...novos]);
           }} />
           {arquivosDev.map((a, i) => <div key={i} className="flex items-center gap-2" style={{marginTop:6}}><span style={{flex:1}}>{a.name}</span><button className="btn-icone" disabled={salvando} aria-label={`Remover ${a.name}`} onClick={() => {setArquivosDev(atual => atual.filter((_,j) => j !== i));setErroDev("");}}><Trash2 size={14} /></button></div>)}
-          {erroDev && <div className="msg-erro">{erroDev}</div>}
+          {!nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
           <div className="ajuda">Os arquivos ficam guardados com a meta e aparecem na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
           {meta && (meta.arquivos || []).length > 0 && <div className="ajuda">Já anexado: {(meta.arquivos || []).map((a) => a.nome).join(", ")}</div>}
         </div>
