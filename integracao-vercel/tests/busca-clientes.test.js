@@ -41,7 +41,7 @@ test('directory uses session, narrow projections and paging; orphan detail uses 
  global.fetch=async(url,options)=>{
   const u=new URL(url); requests.push([u,options]);
   assert.equal(options.headers.Authorization,'Bearer test-token');
-  if(u.pathname.endsWith('fin_receb_clientes'))return Response.json(u.searchParams.get('select')==='*'?[clientes[2]]:clientes);
+  if(u.pathname.endsWith('fin_receb_clientes'))return Response.json(u.searchParams.has('id')?[clientes[2]]:clientes);
   return Response.json(u.searchParams.get('select') ? [{registro_id:'pj',referencia_id:'b',nome:'João Comércio Ltda',tipoPessoa:'juridica'}] : complementos);
  };
  try {
@@ -49,5 +49,8 @@ test('directory uses session, narrow projections and paging; orphan detail uses 
   assert(!requests[1][0].searchParams.get('select').includes('cpf'));
   const ficha=await lerFichaCliente({id:'c',financeiroRef:'c'});assert.equal(ficha.clientes[0].id,'c');
   assert.equal(requests[2][0].searchParams.get('id'),'eq.c');
+  const campos = requests[2][0].searchParams.get('select').split(',');
+  assert(!campos.includes('*'));
+  assert(campos.includes('cpf_cnpj') && campos.includes('valor_global'), 'preserva os campos requeridos pela ficha');
  } finally {global.fetch=original;definirSessao(null);}
 });

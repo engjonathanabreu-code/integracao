@@ -1,3 +1,4 @@
+import {numeroDoCodigoMorador} from './codigo-morador.js';
 import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} from './contrato-financeiro.js';
 import {colecaoDerivada} from './projecoes-derivadas.js';
 import {remapearIdentidades} from './aliases-tipados.js';
@@ -23,7 +24,17 @@ export function capturarSessao(){
 }
 let indiceClientes = null, indiceJob = null, indiceGeracao = 0, indiceCarregadoEm = 0, indiceSessao = 0;
 const VALIDADE_INDICE_MS = 5 * 60 * 1000;
-export function invalidarIndiceClientes() { indiceGeracao++; indiceClientes = null; indiceCarregadoEm = 0; }
+const ouvintesIndice = new Set();
+export const versaoIndiceClientes = () => indiceGeracao;
+export const sessaoIndiceClientes = () => indiceSessao;
+export function observarIndiceClientes(ouvinte) {
+  ouvintesIndice.add(ouvinte);
+  return () => ouvintesIndice.delete(ouvinte);
+}
+export function invalidarIndiceClientes() {
+  indiceGeracao++; indiceClientes = null; indiceCarregadoEm = 0;
+  ouvintesIndice.forEach(ouvinte => ouvinte());
+}
 export function obterIndiceClientes() { return session ? indiceClientes : null; }
 export function definirSessao(dados) {
   sessaoEpoch++;sessaoAbort.abort();sessaoAbort=new AbortController();refreshing=null;
@@ -212,7 +223,7 @@ export function projetar(base, local) {
   merge('processos',(base.fin_receb_clientes||[]).map(r=>{
     const found=(db.processos||[]).find(p=>p.id===r.id || p.financeiroRef===r.id);
     const old=found?._resumo?{id:found.id}:found||{id:residentsByReference.get(r.id)||r.id};
-    return bind('processos',r,{id:old?.id||r.id,financeiroRef:r.id,municipioId:r.municipio_id,remessaId:r.remessa_id,codigo:r.codigo,nucleoId:old?.nucleoId||'',etapa:old?.etapa||0,situacao:r.ativo?'Ativo':'Inativo',motivoSituacao:old?.motivoSituacao||'',requerente:{...pessoa(),...old?.requerente,nome:r.nome,cpf:r.cpf_cnpj||''},conjuge:old?.conjuge||pessoa(),endereco:old?.endereco||{logradouro:'',numero:'',complemento:'',bairro:'',municipio:'',uf:'',cep:''},imovel:old?.imovel||{area:'',comprovantePosse:''},social:old?.social||{ocupantes:'',rendaFamiliar:'',possuiImovel:'',modalidade:''},extras:old?.extras||{},docs:old?.docs||[],checks:old?.checks||{},campos:old?.campos||{},campo:old?.campo||{respostas:{},fotos:[],data:'',por:'',geo:null},numeroCliente:Number(text(r.codigo).match(/\d+$/)?.[0])||0,unidades:old?.unidades||[{id:`unidade_${r.id}`,area:'',memorial:'',loteQuadra:''}]}, {codigo:'codigo',municipioId:'municipio_id',remessaId:'remessa_id','requerente.nome':'nome','requerente.cpf':'cpf_cnpj',situacao:{column:'ativo',encode:v=>v==='Ativo'}},'fin_receb_clientes');
+    return bind('processos',r,{id:old?.id||r.id,financeiroRef:r.id,municipioId:r.municipio_id,remessaId:r.remessa_id,codigo:r.codigo,nucleoId:old?.nucleoId||'',etapa:old?.etapa||0,situacao:r.ativo?'Ativo':'Inativo',motivoSituacao:old?.motivoSituacao||'',requerente:{...pessoa(),...old?.requerente,nome:r.nome,cpf:r.cpf_cnpj||''},conjuge:old?.conjuge||pessoa(),endereco:old?.endereco||{logradouro:'',numero:'',complemento:'',bairro:'',municipio:'',uf:'',cep:''},imovel:old?.imovel||{area:'',comprovantePosse:''},social:old?.social||{ocupantes:'',rendaFamiliar:'',possuiImovel:'',modalidade:''},extras:old?.extras||{},docs:old?.docs||[],checks:old?.checks||{},campos:old?.campos||{},campo:old?.campo||{respostas:{},fotos:[],data:'',por:'',geo:null},numeroCliente:numeroDoCodigoMorador(r.codigo),unidades:old?.unidades||[{id:`unidade_${r.id}`,area:'',memorial:'',loteQuadra:''}]}, {codigo:'codigo',municipioId:'municipio_id',remessaId:'remessa_id','requerente.nome':'nome','requerente.cpf':'cpf_cnpj',situacao:{column:'ativo',encode:v=>v==='Ativo'}},'fin_receb_clientes');
   }));
   // Municípios sintéticos (criados só a partir do nome no kanban, id "municipio_...") são substituídos pelo registro real
   // do financeiro quando ele passa a existir, e tudo que apontava para o sintético é religado ao id real.
@@ -640,15 +651,17 @@ async function carregarIndiceClientes() {
   return {clientes, complementos};
 }
 
+const COLUNAS_FICHA_CLIENTE = 'id,nome,codigo,municipio_id,remessa_id,cpf_cnpj,ativo,valor_global,valor_entrada,numero_parcelas,valor_parcela,primeiro_vencimento,dia_vencimento';
+
 export async function lerFichaCliente(cliente,{permitirAusente=false}={}) {
   const filtro = cliente.financeiroRef ? `referencia_id=eq.${encodeURIComponent(cliente.financeiroRef)}` : `registro_id=eq.${encodeURIComponent(cliente.id)}`;
   const referencia=cliente.financeiroRef||(uuid(cliente.id)?cliente.id:null);
   let [clientes, complementos] = await Promise.all([
-    referencia ? lerTabela('fin_receb_clientes', '*', `&id=eq.${encodeURIComponent(referencia)}`) : [],
+    referencia ? lerTabela('fin_receb_clientes', COLUNAS_FICHA_CLIENTE, `&id=eq.${encodeURIComponent(referencia)}`) : [],
     requisicao(`integracao_moradores?colecao=eq.processos&${filtro}`),
   ]);
   const vinculo=complementos.find(e=>e.referencia_tabela==='fin_receb_clientes'&&e.referencia_id);
-  if(!clientes.length&&vinculo&&vinculo.referencia_id!==referencia)clientes=await lerTabela('fin_receb_clientes','*',`&id=eq.${encodeURIComponent(vinculo.referencia_id)}`);
+  if(!clientes.length&&vinculo&&vinculo.referencia_id!==referencia)clientes=await lerTabela('fin_receb_clientes',COLUNAS_FICHA_CLIENTE,`&id=eq.${encodeURIComponent(vinculo.referencia_id)}`);
   if (!clientes.length && !complementos.length) {
     if(permitirAusente)return {clientes,complementos,indisponivel:true};
     throw Object.assign(new Error('Cliente indisponível para esta conta.'),{code:'CLIENTE_INDISPONIVEL'});
