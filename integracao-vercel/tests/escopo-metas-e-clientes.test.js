@@ -102,6 +102,8 @@ test('políticas preservam o fluxo de autor, responsável e direção e isolam t
     assert.deepEqual((await linhas('select id from metas order by id')).map(x=>x.id),[id(10),id(11),id(21)]);
     assert.equal((await linhas("select name from storage.objects where name like '%/metas/%'")).length,2);
     await assert.rejects(linhas("update metas set status='Concluído' where id=$1",[id(10)]),{code:'42501'});
+    await assert.rejects(linhas("update metas set titulo='Edição sem autorização' where id=$1",[id(10)]),{code:'42501'});
+    await assert.rejects(linhas("update metas set status='Cancelado' where id=$1",[id(10)]),{code:'42501'});
     await assert.rejects(linhas('insert into meta_responsaveis values ($1,$2)',[id(10),id(3)]),{code:'42501'});
     assert.equal((await linhas("update metas set status='Aguardando aprovação' where id=$1 returning id",[id(10)])).length,1);
     assert.equal((await linhas('insert into meta_checklist values ($1,$2,$3,null,false) returning id',[id(25),id(10),id(2)])).length,1);

@@ -10,7 +10,7 @@ async function iniciar(browser, mobile) {
   const context = await browser.newContext({viewport:mobile ? {width:390,height:844} : {width:1440,height:1000}});
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
-  await page.goto((process.env.TEST_ORIGIN || 'http://127.0.0.1:5178') + '/tests/browser.html?busca&mobile');
+  await page.goto((process.env.TEST_ORIGIN || 'http://127.0.0.1:5178') + '/tests/browser.html?busca&mobile&confrontantes');
   await page.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');
   await page.getByLabel('Senha',{exact:true}).fill('fixture');
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
@@ -83,6 +83,33 @@ async function testeCadastro(page,mobile) {
   assert.equal(await page.getByLabel(/Nome completo/).first().inputValue(),'João da Silva');
 }
 
+async function testeConfirmacaoCadastro(page) {
+  await page.evaluate(()=>{
+    const servidor = window.fetch;
+    window.escritasCadastro = 0;
+    window.fetch = async (input,opcoes)=>{
+      const url = new URL(typeof input==='string' ? input : input.url,location.href);
+      if (url.pathname.endsWith('/integracao_gravar')) {
+        const operacoes = JSON.parse(opcoes.body).operacoes;
+        if (operacoes.some(o=>o.table==='fin_receb_clientes' && o.changes?.nome==='Morador sintético revisado')) {
+          window.escritasCadastro++;
+          await new Promise(resolve=>{window.liberarCadastro=resolve;});
+        }
+      }
+      return servidor(input,opcoes);
+    };
+  });
+  await page.getByLabel(/Nome completo/).first().fill('Morador sintético revisado');
+  await page.getByRole('button',{name:'Salvar alterações',exact:true}).click();
+  await page.waitForFunction(()=>window.escritasCadastro===1);
+  const sucesso = page.getByText('Cadastro salvo. Gravação confirmada.',{exact:true});
+  assert.equal(await sucesso.count(),0);
+  assert.equal(await page.getByRole('button',{name:'Confirmando…',exact:true}).isDisabled(),true);
+  await page.evaluate(()=>window.liberarCadastro());
+  await sucesso.waitFor();
+  assert.equal(await page.evaluate(()=>window.escritasCadastro),1);
+}
+
 async function testeMeta(page,mobile) {
   await abrir(page,mobile,'Metas');
   await page.getByRole('button',{name:'Nova Meta',exact:true}).click();
@@ -113,8 +140,9 @@ async function testeMeta(page,mobile) {
       const {context,page} = await iniciar(browser,mobile);
       await testeBusca(page);
       await testeCadastro(page,mobile);
+      await testeConfirmacaoCadastro(page);
       await testeMeta(page,mobile);
-      console.log(mobile?'Móvel':'Desktop','busca revisada, seleção preservada, descarte explícito e formulário protegido.');
+      console.log(mobile?'Móvel':'Desktop','busca revisada, seleção preservada, descarte explícito e cadastro confirmado após a resposta.');
       await context.close();
     }
   } finally { await browser.close(); }

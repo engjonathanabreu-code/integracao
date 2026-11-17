@@ -131,6 +131,18 @@ begin
       and not integracao_atribuicoes_privado.permitido('metas', 'aprovar', integracao_metas_privado.gerencia()) then
       raise exception 'Aprovação de meta não autorizada' using errcode = '42501';
     end if;
+    if tg_op = 'UPDATE' and not integracao_metas_privado.visivel(old.id, true)
+      and not integracao_atribuicoes_privado.permitido('metas', 'editar', false) then
+      if (to_jsonb(new) - array['status', 'updated_at', 'ordem_coluna'])
+        is distinct from (to_jsonb(old) - array['status', 'updated_at', 'ordem_coluna']) then
+        raise exception 'Somente a gestão ou o autor pode editar os dados da meta' using errcode = '42501';
+      end if;
+      if new.status is distinct from old.status
+        and not coalesce(new.status = 'Aguardando aprovação' and old.status = 'Em andamento', false)
+        and not integracao_atribuicoes_privado.permitido('metas', 'aprovar', false) then
+        raise exception 'Transição de meta não autorizada' using errcode = '42501';
+      end if;
+    end if;
   elsif tg_table_name = 'meta_responsaveis' then
     if new is distinct from old then raise exception 'Use a operação de atribuição' using errcode = '42501'; end if;
   elsif tg_table_name = 'meta_checklist' then
