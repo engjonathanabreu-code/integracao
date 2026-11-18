@@ -110,6 +110,14 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
         }
       }
     }
+    // Step comments use the database clock. Only normalize a newly inserted
+    // child with an exact operation for this plan, step, identity and text.
+    if(mudanca.parcial&&mudanca.caminho.length===6&&mudanca.caminho[0]==='planos'&&mudanca.caminho[2]==='etapas'&&mudanca.caminho[4]==='comentarios'&&typeof campo==='object'){
+      const planoId=aliases[mudanca.caminho[1].id]||mudanca.caminho[1].id;
+      const etapaId=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
+      const op=operacoes.find(o=>o.table==='comentarios_plano'&&!o.action&&o.insert===true&&!o.remove&&(aliases[o.key?.id]||o.key?.id)===esperado?.id&&(aliases[o.changes?.plano_id]||o.changes?.plano_id)===planoId&&(aliases[o.changes?.integracao_etapa_id]||o.changes?.integracao_etapa_id)===etapaId&&o.changes?.texto===esperado?.texto&&!possui(o.changes,'created_at'));
+      if(op&&typeof atual.valor?.data==='string'&&Number.isFinite(Date.parse(atual.valor.data))){esperado={...esperado};delete esperado.data;}
+    }
     const [colecao,,filhos]=mudanca.caminho;
     if(colecao==='eventos'&&mudanca.parcial&&mudanca.caminho.length===2&&atual.valor?.id===esperado?.id){
       const op=operacoes.find(o=>o.action==='evento'&&(aliases[o.tempId]||o.tempId)===atual.valor.id);
