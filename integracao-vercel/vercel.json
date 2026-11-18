@@ -103,7 +103,8 @@
       "codex/auditoria-metas-clientes-20261117": false,
       "fix/ana-offline-nucleos": false,
       "fix/exportacao-aviso-20261118": false,
-      "codex/pendencias-causas-20261118": false
+      "codex/pendencias-causas-20261118": false,
+      "fix/campo-offline-homonimos": false
     }
   }
 }

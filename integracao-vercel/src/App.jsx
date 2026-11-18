@@ -86,7 +86,7 @@ import { MODELO_MEMORIAL_NUCLEO } from "../memoriais/memorialNucleo.js";
 import { filtrarProcessos, municipiosDosProcessos, etapasDosProcessos } from "./processos-filtros.js";
 import ArquivoCadastros, { BotaoArquivar, BotaoArquivo } from "./ArquivoCadastros.jsx";
 import { dadosVisiveis, mapaArquivamento, pacotesVisiveis } from "./arquivamento.js";
-import { nucleosParaCampoOffline, dadosParaPacoteOffline } from "./campo-offline-catalogo.js";
+import { nucleosParaCampoOffline, dadosParaPacoteOffline, municipioCompletoParaCampo, contagemMoradoresPorNucleo } from "./campo-offline-catalogo.js";
 import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
 import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
 import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
@@ -6639,6 +6639,8 @@ const unidadeCompleta = (pk, un) => (un.campo?.fotos || []).some((f) => f.tipo =
 
 function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicipio }) {
   const [pacotes, setPacotesEstado] = useState({});
+  const [municipiosCarregados, setMunicipiosCarregados] = useState([]);
+  useEffect(() => setMunicipiosCarregados([]), [usuario?.id]);
   const [carregado, setCarregado] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const pacotesRef = useRef({});
@@ -6701,7 +6703,11 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
     let dados;
     try {
       if (!n) throw new Error("Selecione um núcleo disponível.");
-      dados = dadosParaPacoteOffline(await carregarMunicipio(n.municipioId), n.id);
+      const carga = await carregarMunicipio(n.municipioId);
+      if (municipioCompletoParaCampo(carga, n.municipioId)) {
+        setMunicipiosCarregados(ids => [...new Set([...ids, n.municipioId])]);
+      }
+      dados = dadosParaPacoteOffline(carga, n.id);
     } catch(e) { setToast(e.message || "Não foi possível carregar o núcleo. Tente novamente com internet."); return false; }
     const novoPk = montarPacote(dados, nucleoDe(dados, n.id), usuario);
     const antigo = pacotesRef.current[n.id];
@@ -6748,7 +6754,7 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
   const lista = Object.values(pacotes);
   const pendentes = lista.reduce((s, pk) => s + pk.unidades.filter((u) => u.alterado && !u.conflito).length, 0);
   const conflitos = lista.reduce((s, pk) => s + pk.unidades.filter((u) => u.conflito).length, 0);
-  return { pacotes, carregado, sincronizando, pendentes, conflitos, baixar, remover, gravarUnidade, sincronizar, resolver };
+  return { pacotes, carregado, municipiosCarregados, sincronizando, pendentes, conflitos, baixar, remover, gravarUnidade, sincronizar, resolver };
 }
 
 function StatusConexao({ conexao, offline, compacto }) {
@@ -6885,8 +6891,9 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   }
 
   // Lista de núcleos no aparelho e pré-carregamento
-  const candidatos = nucleosParaCampoOffline(db)
-    .sort((a, b) => (a.etapa === 1 ? 0 : 1) - (b.etapa === 1 ? 0 : 1) || rotuloNucleo(db, a).localeCompare(rotuloNucleo(db, b)));
+  const contagensCampo = contagemMoradoresPorNucleo(db);
+  const candidatos = nucleosParaCampoOffline(db, offline.municipiosCarregados)
+    .sort((a, b) => Number(!!b.remessaId) - Number(!!a.remessaId) || (a.etapa === 1 ? 0 : 1) - (b.etapa === 1 ? 0 : 1) || rotuloNucleo(db, a).localeCompare(rotuloNucleo(db, b)));
   const encontrados = candidatos.filter((n) => normalizar(`${n.nome || ""} ${n.nomeIntegrado || ""} ${n.codigo || ""} ${rotuloNucleo(db, n)}`).includes(normalizar(buscaNucleo)));
   const naoBaixados = candidatos.filter((n) => !pacotes[n.id]);
   return (
@@ -6936,9 +6943,9 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
               <div className="flex flex-wrap gap-2">
                 <select className="inp" style={{ flex: "1 1 260px", minHeight: 48, fontSize: 16 }} value={escolha} onChange={(e) => setEscolha(e.target.value)} aria-label="Núcleo para pré-carregar">
                   <option value="">Escolha o núcleo que vai visitar</option>
-                  {encontrados.map((n) => <option key={n.id} value={n.id} disabled={!!pacotes[n.id]}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{pacotes[n.id] ? " — já baixado" : n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
+                  {encontrados.map((n) => <option key={n.id} value={n.id} disabled={!!pacotes[n.id]}>{rotuloNucleo(db, n)}{n.nomeIntegrado || n.nome ? `, ${n.nomeIntegrado || n.nome}` : ""}{pacotes[n.id] ? " — já baixado" : n.etapa === 1 ? " (em Topografia)" : ""}{(contagensCampo.get(n.id) || 0) > 0 ? ` · ${(contagensCampo.get(n.id) || 0)} moradores` : ""}</option>)}
                 </select>
-                <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); try { const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } } catch(e) { setToast(e.message || "Não foi possível salvar o núcleo no aparelho. Tente novamente."); } finally { setBaixando(false); } }}>
+                <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); try { const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } else { setEscolha(""); } } catch(e) { setToast(e.message || "Não foi possível salvar o núcleo no aparelho. Tente novamente."); } finally { setBaixando(false); } }}>
                   {baixando ? <Loader2 size={16} className="girando" /> : <HardDriveDownload size={18} />}Pré-carregar
                 </button>
               </div>
