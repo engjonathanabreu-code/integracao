@@ -138,6 +138,16 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
         const instante=instanteChecklist(esperado.concluido_em);
         if(op&&op.changes?.concluido_em===esperado.concluido_em&&instante!==null&&instante===instanteChecklist(atual.valor?.concluido_em))esperado={...esperado,concluido_em:atual.valor.concluido_em};
       }
+      // Service-order comment inserts omit created_at: the database, not the
+      // browser clock, owns this timestamp. Require the exact submitted child
+      // and parent, and keep author/text/other fields under the normal checks.
+      if(colecao==='ordensServico'&&filhos==='comentarios'){
+        const ordemId=aliases[mudanca.caminho[1].id]||mudanca.caminho[1].id;
+        const op=operacoes.find(o=>o.table==='ordem_servico_comentarios'&&!o.action&&o.insert===true&&!o.remove&&o.key?.id===esperado?.id&&o.changes?.ordem_servico_id===ordemId&&o.changes?.texto===esperado?.texto&&!possui(o.changes,'created_at'));
+        if(op&&typeof atual.valor?.data==='string'&&Number.isFinite(Date.parse(atual.valor.data))){
+          esperado={...esperado};delete esperado.data;
+        }
+      }
       const historicoGerado=(colecao==='nucleos'&&filhos==='historicoEtapas')||(colecao==='metas'&&['historico','comentarios'].includes(filhos));
       // These inserts use created_at DEFAULT now(), not the UI clock. Still
       // require a server timestamp and all submitted business/author fields.
