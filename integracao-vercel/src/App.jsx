@@ -1,3 +1,5 @@
+import {projetarViagensCalendario,conflitosViagens} from './calendario-viagens.js';
+import {useViagensCalendario} from './use-viagens-calendario.js';
 import {conciliarEdicoes} from './concorrencia.js';
 import {criarConfirmacaoMeta} from './confirmacao-criacao-meta.js';
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
@@ -11519,7 +11521,7 @@ function itensDoCalendario(db, usuario, filtros = {}) {
     if (estaOculto(usuario, chave) || !podeVerEventoCalendario(e, db, usuario) || (gestaoCalendario(usuario) && !eventoDoFiltro(e, db, filtros))) return;
 
     ocorrenciasDoEvento(e).forEach((dia) => {
-      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: hhmm(e.fim), titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
+      itens.push({ tipo: "evento", id: `${e.id}_${dia}`, chave, evento: e, dia, hora: e.diaInteiro ? "Dia inteiro" : hhmm(e.fim), titulo: e.titulo, cor: (db.agendas || []).find(a => a.id === e.agendaId)?.cor || e.cor, cancelado: e.status === "cancelado" });
     });
   });
   itens.push(...prazosDoCalendario(db, {...filtros, ator: usuario}).filter(i => !estaOculto(usuario, i.chave)));
@@ -11668,7 +11670,9 @@ function ModalGoogleAgenda({ usuario, onFechar, setToast }) {
   );
 }
 
-function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
+function PaginaCalendario({ db: baseDb, usuario, ir, mutar, setToast, eventoInicial }) {
+  const viagens=useViagensCalendario(usuario.id);
+  const db=projetarViagensCalendario(baseDb,viagens.rows);
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
   const [filtroMetas, setFiltroMetas] = useState("");
@@ -11684,6 +11688,9 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
   const [ref, setRef] = useState({ ano: dataRef.getFullYear(), mes: dataRef.getMonth(), dia: dataRef.getDate() });
   const [dia, setDia] = useState(agora.toISOString().slice(0, 10));
   const [evento, setEvento] = useState(() => (db.eventos||[]).find(e=>e.id===eventoInicial&&podeVerEventoCalendario(e,db,usuario))||null);
+  useEffect(() => {
+    setEvento(atual => atual?.origemFinanceiro ? (db.eventos.find(e => e.id === atual.id) || null) : atual);
+  }, [viagens.rows]);
   const [agendasOcultas, setAgendasOcultas] = useState([]);
   const [verOcultos, setVerOcultos] = useState(false);
   const [novoEm, setNovoEm] = useState(null);
@@ -11700,6 +11707,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
   const rotuloSetor = valor => SETORES[valor]?.nome || (db.metas || []).find(m => setorCalendario(m.setor) === valor)?.setor || valor;
   const periodo = periodoDaVisao(visao, ref);
   const dias = diasDoPeriodo(periodo.ini, periodo.fim);
+  const conflitos=conflitosViagens(db.eventos).filter(e => todos.some(i => i.evento?.id === e.id && i.dia >= periodo.ini.toLocaleDateString("en-CA") && i.dia <= periodo.fim.toLocaleDateString("en-CA")));
   const noPeriodo = (d) => d >= periodo.ini && d <= periodo.fim;
   const colunas = 7;
   const horaEmMinutos = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
@@ -11743,7 +11751,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
         </span>
         <span className="flex flex-wrap gap-2" style={{ marginLeft: "auto" }}>
           {(db.agendas || []).map((a) => (
-            <span key={a.id} className="flex items-center gap-1"><button className={`btn btn-sm${agendasOcultas.includes(a.id) ? "" : " btn-primario"}`} style={agendasOcultas.includes(a.id) ? {} : { background: a.cor, borderColor: a.cor }} onClick={() => setAgendasOcultas((o) => (o.includes(a.id) ? o.filter((x) => x !== a.id) : [...o, a.id]))} aria-pressed={!agendasOcultas.includes(a.id)}>{a.nome}</button>{podeGerenciar && <button className="btn-icone" aria-label={`Editar agenda ${a.nome}`} title={`Editar agenda ${a.nome}`} onClick={() => setAgendaEditando(a)}><Pencil size={14} /></button>}</span>
+            <span key={a.id} className="flex items-center gap-1"><button className={`btn btn-sm${agendasOcultas.includes(a.id) ? "" : " btn-primario"}`} style={agendasOcultas.includes(a.id) ? {} : { background: a.cor, borderColor: a.cor }} onClick={() => setAgendasOcultas((o) => (o.includes(a.id) ? o.filter((x) => x !== a.id) : [...o, a.id]))} aria-pressed={!agendasOcultas.includes(a.id)}>{a.nome}</button>{podeGerenciar && !a.somenteLeitura && <button className="btn-icone" aria-label={`Editar agenda ${a.nome}`} title={`Editar agenda ${a.nome}`} onClick={() => setAgendaEditando(a)}><Pencil size={14} /></button>}</span>
           ))}
         </span>
       </div>
@@ -11755,6 +11763,10 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
         {(filtroSetor || filtroUsuario || filtroMetas) && <button className="btn btn-sm" onClick={() => { setFiltroSetor(""); setFiltroUsuario(""); setFiltroMetas(""); }}>Limpar filtros</button>}
       </div>
       : <div className="flex flex-wrap items-end gap-3" style={{ marginBottom: 12 }}><div><label className="rot" htmlFor="cal-metas">Metas</label><select id="cal-metas" className="inp" value={filtroMetas} onChange={(e) => setFiltroMetas(e.target.value)}><option value="">Ativas e atrasadas</option><option value="ativas">Ativas no prazo</option><option value="atrasadas">Atrasadas</option></select></div><p className="ajuda">Você está vendo seu calendário e as agendas compartilhadas.</p></div>}
+      {viagens.carregando && <p role="status">Atualizando viagens do Financeiro…</p>}
+      {viagens.erro && <Aviso tipo="pend">{viagens.erro}</Aviso>}
+      {conflitos.length>0 && <Aviso tipo="pend">Há {conflitos.length} viagem(ns) com sobreposição na agenda do veículo. Confira as solicitações no Financeiro antes de usar o carro.</Aviso>}
+      <p className="ajuda">Viagens aprovadas: atualização automática a cada minuto. Datas sem horário aparecem como dia inteiro; alterações e cancelamentos são feitos no Financeiro. A exibição não substitui a conferência de disponibilidade do veículo.</p>
       <p className="ajuda">Metas ativas com prazo e etapas atribuídas em andamento. Itens concluídos ou cancelados ficam fora do calendário. Os filtros mostram os dados disponíveis para sua conta.</p>
       <div className="cal-cores-setores">
         <button className="btn btn-sm" aria-expanded={coresAbertas} onClick={() => setCoresAbertas(v => !v)}>Cores das metas por setor</button>
@@ -11786,7 +11798,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
                 const iso = d.toISOString().slice(0, 10);
                 return (
                   <span key={iso} className="celula-prazo">
-                    {todos.filter((i) => ocorreNoDia(i, iso) && i.tipo !== "evento" && i.tipo !== "meta").map((i) => (
+                    {todos.filter((i) => ocorreNoDia(i, iso) && (i.evento?.diaInteiro || (i.tipo !== "evento" && i.tipo !== "meta"))).map((i) => (
                       <button key={i.id} className="chip-prazo" style={{ background: i.cor }} onClick={() => abrirItem(i)} title={rotuloPrazo(i)}>{rotuloPrazo(i)}</button>
                     ))}
                   </span>
@@ -11799,7 +11811,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
               </div>
               {diasSemana.map((d) => {
                 const iso = d.toISOString().slice(0, 10);
-                const eventos = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo === "evento");
+                const eventos = todos.filter((i) => ocorreNoDia(i, iso) && i.tipo === "evento" && !i.evento.diaInteiro);
                 return (
                   <div key={iso} className={`coluna-dia${iso === hoje ? " hoje" : ""}`} onClick={() => abrirDia(iso)}
                     onDoubleClick={(ev) => {
@@ -11877,7 +11889,7 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
                 </span>
               </span>
               <span className="flex items-center gap-1" style={{ flex: "none" }}>
-                <span role="button" tabIndex={0} className="btn-icone" title={naMinhaAgenda(usuario, i.chave) ? "Remover da minha agenda" : "Adicionar à minha agenda"} onClick={(ev) => { ev.stopPropagation(); alternarAgenda(i.chave); }} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.stopPropagation(); alternarAgenda(i.chave); } }}><CalendarDays size={14} /></span>
+                {!i.evento?.origemFinanceiro && <span role="button" tabIndex={0} className="btn-icone" title={naMinhaAgenda(usuario, i.chave) ? "Remover da minha agenda" : "Adicionar à minha agenda"} onClick={(ev) => { ev.stopPropagation(); alternarAgenda(i.chave); }} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.stopPropagation(); alternarAgenda(i.chave); } }}><CalendarDays size={14} /></span>}
                 <span role="button" tabIndex={0} className="btn-icone" title="Ocultar do meu calendário" onClick={(ev) => { ev.stopPropagation(); ocultar(i.chave, i.titulo); }} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.stopPropagation(); ocultar(i.chave, i.titulo); } }}><EyeOff size={14} /></span>
                 <ChevronRight size={16} style={{ color: "var(--muted)" }} />
               </span>
@@ -11892,9 +11904,10 @@ function PaginaCalendario({ db, usuario, ir, mutar, setToast, eventoInicial }) {
         mutar(d => { Object.assign(d.agendas.find(a => a.id === agendaEditando.id), dados); return d; }, "Agenda editada", {detalhe: dados.nome});
         setAgendaEditando(null); setToast("Agenda atualizada. Acompanhe a confirmação de gravação.");
       }} />}
-      {evento && <ModalEvento db={db} usuario={usuario} inicial={evento === "novo" ? null : evento} diaPadrao={dia} mutar={mutar} setToast={setToast} onFechar={() => setEvento(null)} />}
+      {evento?.origemFinanceiro && <Modal titulo={evento.titulo} onFechar={() => setEvento(null)} rodape={<button className="btn" onClick={() => setEvento(null)}>Fechar</button>}><p>Solicitante: {evento.solicitanteNome}</p><p>Período: {dataBR(evento.periodoInicio)} a {dataBR(evento.periodoFim)} · dia inteiro (horário não informado).</p><p>Solicitação: {evento.solicitacaoId} · {evento.status === "concluido" ? "Concluída" : "Aprovada"}</p><p className="ajuda">Informação do Financeiro, somente leitura. Altere ou cancele a solicitação na origem.</p></Modal>}
+      {evento && !evento.origemFinanceiro && <ModalEvento db={baseDb} usuario={usuario} inicial={evento === "novo" ? null : evento} diaPadrao={dia} mutar={mutar} setToast={setToast} onFechar={() => setEvento(null)} />}
       {googleAgenda && <ModalGoogleAgenda usuario={usuario} setToast={setToast} onFechar={() => setGoogleAgenda(false)} />}
-      {novoEm && <ModalEvento key={`${novoEm.dia}_${novoEm.hora}`} db={db} usuario={usuario} inicial={null} diaPadrao={novoEm.dia} horaPadrao={novoEm.hora} mutar={mutar} setToast={setToast} onFechar={() => setNovoEm(null)} />}
+      {novoEm && <ModalEvento key={`${novoEm.dia}_${novoEm.hora}`} db={baseDb} usuario={usuario} inicial={null} diaPadrao={novoEm.dia} horaPadrao={novoEm.hora} mutar={mutar} setToast={setToast} onFechar={() => setNovoEm(null)} />}
       {verOcultos && (
         <Modal titulo="Itens ocultados" onFechar={() => setVerOcultos(false)} rodape={<button className="btn" onClick={() => setVerOcultos(false)}>Fechar</button>}>
           {!ocultos.length && <p className="ajuda" style={{ margin: 0 }}>Nada oculto no seu calendário.</p>}
