@@ -10,8 +10,9 @@ const assert=require('node:assert/strict');
    await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
    if(workaround)await page.route('**/src/App.jsx*',async route=>{
     const response=await route.fetch(),body=await response.text();
-    assert(body.includes('const candidatos = nucleosParaCampoOffline(db)'));
-    await route.fulfill({response,body:body.replace('const candidatos = nucleosParaCampoOffline(db)','const candidatos = db.nucleos.filter(n => db.processos.some(p => p.nucleoId === n.id && ativo(p)))')});
+    const catalogo=/const candidatos = nucleosParaCampoOffline\((\w+)\)/;
+    assert(catalogo.test(body));
+    await route.fulfill({response,body:body.replace(catalogo,(_,db)=>`const candidatos = ${db}.nucleos.filter(n => ${db}.processos.some(p => p.nucleoId === n.id && ativo(p)))`)});
    });
    await page.goto((process.env.BROWSER_TEST_ORIGIN||'http://127.0.0.1:5186')+'/tests/browser.html?mobile');
    await page.evaluate(()=>{
