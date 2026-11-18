@@ -11,6 +11,9 @@ export function ocorrenciasDoEvento(e) {
   const inicio=new Date(e.inicio),fim=new Date(e.fim);
   if(!Number.isFinite(inicio.getTime())||!Number.isFinite(fim.getTime())||fim<inicio)return [];
   const limite=e.recorrenciaAte?.slice(0,10),primeiro=diaCivilEvento(e.inicio),termino=diaCivilEvento(e.fim);
+  if(e.origemFinanceiro&&e.diaInteiro){
+    const dias=[];for(let dia=primeiro;dia<=termino&&dias.length<3660;dia=somarDias(dia,1))dias.push(dia);return dias;
+  }
   const passo=e.recorrencia==='semanal'?7:e.recorrencia==='quinzenal'?14:e.recorrencia==='mensal'?30:0;
   const dias=new Set();
   for(let k=0;k<(passo?60:1);k++){
