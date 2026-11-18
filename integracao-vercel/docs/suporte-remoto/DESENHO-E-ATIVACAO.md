@@ -62,9 +62,9 @@ Autorizar é uma transição única. Antes de preparar, consultar, enviar ou rel
 
 Auditoria somente de acréscimo registra solicitação, ator, evento, horário e motivo técnico permitido. Clientes não editam/apagam o histórico. A administração do banco permanece uma fronteira privilegiada de confiança, como no restante do sistema.
 
-## Indicação visível ao funcionário
+## Interface do funcionário
 
-O aplicativo habilitado mostra uma indicação não modal de que solicitações de Jonathan podem ser recebidas, com ações registradas e sem acesso à tela. Tentativas seguras não exigem confirmação repetida do funcionário. O painel de operação continua exclusivo do proprietário. A solicitação de atualização permanece uma decisão local explícita.
+O aplicativo não mostra um aviso informativo permanente de suporte. O executor em segundo plano, as permissões e os registros de auditoria permanecem ativos quando o suporte está habilitado, sem acesso à tela. Tentativas seguras não exigem confirmação repetida do funcionário. O painel de operação continua exclusivo do proprietário. A solicitação de atualização permanece uma decisão local explícita.
 
 ## Atualização e preservação local
 

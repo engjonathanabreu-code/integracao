@@ -1,0 +1,8 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Executor sem aviso permanente</title><body><div id="root"></div><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import SuporteRemotoExecutor from '../src/SuporteRemotoExecutor.jsx';
+const root=createRoot(document.getElementById('root'));
+window.renderizarExecutor=owner=>root.render(React.createElement(SuporteRemotoExecutor,{usuario:{erpRef:owner},sync:{}}));
+window.renderizarExecutor('conta-fixture');
+</script></body></html>
