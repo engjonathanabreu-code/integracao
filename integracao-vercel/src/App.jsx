@@ -86,6 +86,7 @@ import { MODELO_MEMORIAL_NUCLEO } from "../memoriais/memorialNucleo.js";
 import { filtrarProcessos, municipiosDosProcessos, etapasDosProcessos } from "./processos-filtros.js";
 import ArquivoCadastros, { BotaoArquivar, BotaoArquivo } from "./ArquivoCadastros.jsx";
 import { dadosVisiveis, mapaArquivamento, pacotesVisiveis } from "./arquivamento.js";
+import { nucleosParaCampoOffline, dadosParaPacoteOffline } from "./campo-offline-catalogo.js";
 import FormularioDadosPRF from "../municipio-prf/FormularioDadosPRF.jsx";
 import { pendencias as pendenciasMunicipioPRF } from "../municipio-prf/camposPRF.js";
 import { marcadoresPRF, lacunasPRF } from "../municipio-prf/marcadoresPRF.js";
@@ -6697,8 +6698,12 @@ function useCampoOffline({ db, usuario, mutar, setToast, online, carregarMunicip
   }, [online, carregado, usuario?.id]); // eslint-disable-line
   const baixar = async (n) => {
     if (!onlineRef.current) { setToast("Precisa de internet para pré-carregar um núcleo."); return false; }
-    let dados;try{dados=await carregarMunicipio(n.municipioId);}catch(e){setToast(e.message);return false;}
-    const novoPk = montarPacote(dados||dbRef.current, n, usuario);
+    let dados;
+    try {
+      if (!n) throw new Error("Selecione um núcleo disponível.");
+      dados = dadosParaPacoteOffline(await carregarMunicipio(n.municipioId), n.id);
+    } catch(e) { setToast(e.message || "Não foi possível carregar o núcleo. Tente novamente com internet."); return false; }
+    const novoPk = montarPacote(dados, nucleoDe(dados, n.id), usuario);
     const antigo = pacotesRef.current[n.id];
     if (antigo) {
       novoPk.unidades = novoPk.unidades.map((u) => { const velha = antigo.unidades.find((x) => x.id === u.id); return velha && (velha.alterado || velha.conflito) ? velha : u; });
@@ -6880,7 +6885,7 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
   }
 
   // Lista de núcleos no aparelho e pré-carregamento
-  const candidatos = db.nucleos.filter((n) => db.processos.some((p) => p.nucleoId === n.id && ativo(p)))
+  const candidatos = nucleosParaCampoOffline(db)
     .sort((a, b) => (a.etapa === 1 ? 0 : 1) - (b.etapa === 1 ? 0 : 1) || rotuloNucleo(db, a).localeCompare(rotuloNucleo(db, b)));
   const encontrados = candidatos.filter((n) => normalizar(`${n.nome || ""} ${n.nomeIntegrado || ""} ${n.codigo || ""} ${rotuloNucleo(db, n)}`).includes(normalizar(buscaNucleo)));
   const naoBaixados = candidatos.filter((n) => !pacotes[n.id]);
@@ -6927,13 +6932,13 @@ function PaginaCampoOffline({ db, usuario, nucleoId, aba, ir, setToast, offline,
           <label className="flex items-center gap-2" style={{ marginBottom: 10 }}><Search size={18} /><input className="inp" aria-label="Buscar núcleo por nome ou código" placeholder="Buscar núcleo por nome ou código" value={buscaNucleo} onChange={(e) => { setBuscaNucleo(e.target.value); setEscolha(""); }} /></label>
           {!encontrados.length && <p role="status">Nenhum núcleo encontrado.</p>}
           <div className="card" style={{ padding: 16 }}>
-            {!conexao.online ? <p style={{ margin: 0, color: "var(--warning)", fontWeight: 600 }}>Precisa de internet para pré-carregar. Faça isso antes de sair para o campo.</p> : !naoBaixados.length ? <p className="ajuda" style={{ margin: 0 }}>Todos os núcleos com moradores ativos já estão no aparelho.</p> : (
+            {!conexao.online ? <p style={{ margin: 0, color: "var(--warning)", fontWeight: 600 }}>Precisa de internet para pré-carregar. Faça isso antes de sair para o campo.</p> : !candidatos.length ? <p className="ajuda" style={{ margin: 0 }}>Nenhum núcleo disponível para pré-carregar. Confira sua conexão e atualize os dados.</p> : !naoBaixados.length ? <p className="ajuda" style={{ margin: 0 }}>Todos os núcleos disponíveis já estão no aparelho.</p> : (
               <div className="flex flex-wrap gap-2">
                 <select className="inp" style={{ flex: "1 1 260px", minHeight: 48, fontSize: 16 }} value={escolha} onChange={(e) => setEscolha(e.target.value)} aria-label="Núcleo para pré-carregar">
                   <option value="">Escolha o núcleo que vai visitar</option>
                   {encontrados.map((n) => <option key={n.id} value={n.id} disabled={!!pacotes[n.id]}>{rotuloNucleo(db, n)}{n.nome ? `, ${n.nome}` : ""}{pacotes[n.id] ? " — já baixado" : n.etapa === 1 ? " (em Topografia)" : ""}</option>)}
                 </select>
-                <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } setBaixando(false); }}>
+                <button className="btn btn-primario" style={{ minHeight: 48 }} disabled={!escolha || baixando} onClick={async () => { setBaixando(true); try { const n = nucleoDe(db, escolha); if (await offline.baixar(n)) { setEscolha(""); ir({ pag: "campoOffline", nucleoId: n.id }); } } catch(e) { setToast(e.message || "Não foi possível salvar o núcleo no aparelho. Tente novamente."); } finally { setBaixando(false); } }}>
                   {baixando ? <Loader2 size={16} className="girando" /> : <HardDriveDownload size={18} />}Pré-carregar
                 </button>
               </div>
