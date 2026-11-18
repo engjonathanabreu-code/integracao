@@ -8,7 +8,8 @@
       "codex/francine-meta-confirmacao-20261116": false,
       "codex/auditoria-metas-clientes-20261117": false,
       "codex/remover-aviso-suporte-20261118": false,
-      "fix/ana-offline-nucleos": false
+      "fix/ana-offline-nucleos": false,
+      "fix/exportacao-aviso-20261118": false
     }
   }
 }
