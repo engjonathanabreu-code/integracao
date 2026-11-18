@@ -94,3 +94,27 @@ A reversão preparada em `supabase/operacoes/suporte-remoto-desativar.sql` desat
 6. Validar com duas contas e dois navegadores autorizados de teste, incluindo a leitura da segunda conta. Sessões reais e pendências existentes exigem evidência própria; fixtures não comprovam sua resolução.
 
 Não habilitar o módulo enquanto essas condições não forem revisadas e autorizadas. A entrega não restaura, recria ou modifica registros de funcionários para demonstrar funcionamento.
+
+## Suporte em segundo plano — 18/11/2026
+
+O executor pode contatar, receber e executar as ações já autorizadas com a aba
+oculta, desde que o aplicativo continue aberto, autenticado, conectado e capaz de
+executar JavaScript. Não é necessário manter a janela visível. `pageshow`,
+`visibilitychange` e `online` antecipam uma nova verificação, além do intervalo
+existente. Não há atualização/recarregamento automático da página.
+
+Continuam obrigatórios: vínculo/prova da instalação, sessão e conta corretas,
+autorização no servidor, prazo/lease do comando, exclusão entre abas, proteção de
+edições e do diário, revalidação antes de efeitos e confirmação sanitizada. O
+limite de contato recente de 120 segundos não mudou. Não se alteram RLS, tabelas,
+permissões, identidades ou filas com esta mudança.
+
+Limite real: navegadores podem reduzir timers, congelar ou descartar abas; o
+sistema operacional pode suspender o processo. Uma sessão salva ou computador
+ligado não garante execução. Enquanto suspenso, o aparelho pode aparecer como
+indisponível. Ao retornar, comandos expirados continuam recusados, sem repetição
+automática de efeitos incertos. A mudança só passa a valer quando o cliente novo
+for carregado, sem forçar recarga de quem possui edição ou dados pendentes.
+
+Referências primárias: https://developer.chrome.com/docs/web-platform/page-lifecycle-api
+ e https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API .

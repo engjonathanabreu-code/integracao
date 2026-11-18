@@ -115,7 +115,7 @@ export default function SuporteRemoto({usuario,acesso,api=suporteRemotoApi}){
  }
  return <section className="suporte-remoto" aria-label="Suporte remoto">
   <div className="suporte-cabecalho"><div><h2>Suporte remoto</h2><p>Diagnóstico e solicitações limitados às filas do Integração.</p></div><button className="btn" disabled={ocupado} onClick={()=>carregar()}>Atualizar suporte</button></div>
-  <p>O aplicativo do funcionário precisa estar atualizado, ativo, autenticado e conectado. Relato antigo ou sem contato significa estado desconhecido.</p>
+  <p>O aplicativo do funcionário precisa estar atualizado, aberto, autenticado e conectado, mas pode ficar em segundo plano. Abas suspensas pelo navegador ou pelo sistema podem ficar indisponíveis. Relato antigo ou sem contato significa estado desconhecido.</p>
   {!habilitado&&<p role="status" className="suporte-aviso">O suporte remoto está desativado. A ativação depende da revisão e autorização específicas.</p>}
   {erro&&<p role="alert" className="msg-erro">{erro}</p>}{aviso&&<p role="status">{aviso}</p>}
   {!dados&&<p role="status">Aguardando consulta autorizada.</p>}

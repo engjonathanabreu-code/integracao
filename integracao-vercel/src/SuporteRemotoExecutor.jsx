@@ -4,7 +4,7 @@ import {SUPORTE_REMOTO_HABILITADO} from './suporte-remoto-api.js';
 
 export function IndicacaoSuporteRemoto(){
  return <aside role="note" aria-label="Suporte de sincronização" style={{padding:'6px 18px',fontSize:12}}>
-  Suporte de sincronização: solicitações de Jonathan podem ser recebidas neste aplicativo. As ações são registradas e não acessam sua tela. Tentativas seguras não interrompem seu trabalho.
+  Suporte de sincronização: solicitações de Jonathan podem ser recebidas neste aplicativo. As ações podem ocorrer em segundo plano, são registradas e não acessam sua tela. Tentativas seguras não interrompem seu trabalho.
  </aside>;
 }
 
@@ -19,8 +19,8 @@ export default function SuporteRemotoExecutor({usuario,sync}){
    onAtualizacao:()=>{if(atual.current.usuario?.erpRef===owner)setAviso({owner,erro:false});}});
   const passo=()=>{executor.passo().catch(()=>{});};
   passo();const timer=setInterval(passo,30000);
-  globalThis.window?.addEventListener('online',passo);globalThis.document?.addEventListener('visibilitychange',passo);
-  return()=>{executor.fechar();clearInterval(timer);globalThis.window?.removeEventListener('online',passo);globalThis.document?.removeEventListener('visibilitychange',passo);};
+  globalThis.window?.addEventListener('online',passo);globalThis.window?.addEventListener('pageshow',passo);globalThis.document?.addEventListener('visibilitychange',passo);
+  return()=>{executor.fechar();clearInterval(timer);globalThis.window?.removeEventListener('online',passo);globalThis.window?.removeEventListener('pageshow',passo);globalThis.document?.removeEventListener('visibilitychange',passo);};
  },[owner]);
  if(!SUPORTE_REMOTO_HABILITADO||!owner)return null;
  const atualizar=async()=>{

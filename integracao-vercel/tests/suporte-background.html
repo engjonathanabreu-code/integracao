@@ -1,0 +1,10 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Teste isolado suporte background</title><body><h1>Suporte em segundo plano: teste isolado</h1><p>Dados sintéticos. Nenhuma conexão com produção.</p><p id="estado">Aguardando ocultação real da aba.</p><pre id="resultado"></pre><script type="module">
+import {criarExecutorSuporte} from '/src/suporte-remoto-executor.js';
+const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
+const saida=document.querySelector('#resultado'),estado=document.querySelector('#estado');let efeitos=0,rodou=false;const chamadas=[];const visibilidadeInicial=document.visibilityState;
+const api={chamar:async(acao,args)=>{chamadas.push({acao,visibilidade:document.visibilityState});return acao==='contatar'?{habilitado:true}:acao==='receber'?{habilitado:true,comando:{id:id(4),usuario_id:id(1),instalacao_id:id(2),tipo:'diagnostico',pedido:null,expira_em:new Date(Date.now()+300000).toISOString()}}:['autorizar','validar_execucao'].includes(acao)?{autorizado:true}:{aceito:true};}};
+const executor=criarExecutorSuporte({usuario:id(1),habilitado:true,api,sync:{diagnosticoPronto:()=>true,executarSuporte:async(c,conferir,revalidar)=>{conferir();await revalidar();efeitos++;return {codigo:'DIAGNOSTICO',itens:[]};}},capturarSessao:()=>({owner:id(1),signal:new AbortController().signal,conferir:()=>{}}),obterVinculo:async()=>({conta:id(1),instalacao_id:id(2),prova_instalacao:'a'.repeat(64)}),diagnosticoInstalacao:id(9),consumidor:id(3)});
+const executarOculta=async()=>{if(document.visibilityState!=='hidden'||rodou)return;rodou=true;try{const r=await executor.passo();await executor.passo();const ok=r?.estado==='concluida'&&efeitos===1&&chamadas.every(c=>c.visibilidade==='hidden');estado.textContent=ok?'PASSOU: execução única com aba realmente oculta.':'FALHOU';saida.textContent=JSON.stringify({visibilidadeInicial,resultado:r,efeitos,chamadas},null,2);}catch(e){estado.textContent='FALHOU: '+e.message;}};
+document.addEventListener('visibilitychange',executarOculta);
+document.body.dataset.ready='1';executarOculta();
+</script></body></html>
