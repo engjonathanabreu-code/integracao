@@ -30,6 +30,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const [tempoReal,setTempoReal]=useState('desconectado');
   const [falhasAtualizacao,setFalhasAtualizacao]=useState([]);
   const [status,setStatus]=useState(''),[error,setError]=useState('');
+  // Recovery warnings survive routine synchronization updates until another
+  // export or a session change. Never let a queue refresh hide a partial copy.
+  const [avisoExportacao,setAvisoExportacao]=useState('');
   const recuperacoes=useRef([]),[reservasPreservadas,setReservasPreservadas]=useState(0);
   const [conflitos,setConflitos]=useState([]),revisao=useRef(null);
   const [summaryReady,setSummaryReady]=useState(false),[summaryError,setSummaryError]=useState('');
@@ -295,6 +298,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     } finally {if(gen===generation.current)busy.current=false;}
   };
   const open=async (user,legacy)=>{
+    setAvisoExportacao('');
     rejeitarConfirmacoes('A sessão foi reaberta antes da confirmação. Confira a sincronização do rascunho.','SESSAO_ALTERADA');
     vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
     diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);actor.current=user;generation.current++;server.current=null;municipioAtivo.current=null;desatualizados.current.clear();municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');
@@ -502,8 +506,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     if(manual)invalidarIndiceClientes();
     return true;
   };
-  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');};
+  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');};
   const reopen=async()=>{
+    setAvisoExportacao('');
     const gen=generation.current;
     try {
       if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
@@ -523,7 +528,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       const avisos=[];
       if(parcial)avisos.push(`${conteudo.recuperacaoAnexosMetas.ausentes.length} anexo(s) de Metas não puderam ser incluídos. Preserve este aparelho e revise os arquivos indicados na cópia antes de fechar a tela.`);
       if(!resultado.copiaInterna)avisos.push('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
-      if(avisos.length)setError(avisos.join(' '));
+      setAvisoExportacao(avisos.join(' '));
     }catch(e){if(gen===generation.current)setError(e.message);}
   };
   useEffect(()=>{
@@ -590,5 +595,5 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       return await prepararRecuperacaoAtualizacao({conta,storage,snapshot:()=>({protocolo:1,conta,dados:current.current,base:server.current,diario:diarioPreservado}),seguro,conferir:()=>conferirGeracao(gen),esperar:async()=>{await d.esperar();await saveDraft();}});
     }catch{return false;}finally{if(gen===generation.current){busy.current=false;if(pending.current){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
-  return {executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error,reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  return {executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[error,avisoExportacao].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
