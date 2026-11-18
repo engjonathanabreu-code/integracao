@@ -7,7 +7,7 @@ import {configERP} from '../src/dados-compartilhados.js';
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const privado='CPF 123.456.789-00 renda segredo token';
 const item={id:id(7),pedido:id(7),estado:'confirmado_aguardando_leitura',codigo:'LEITURA_DIVERGENTE',fase:'releitura',tentativas:2,temRecibo:true,dependencias:[id(8)],restricao:null,espera:'retomada_manual'};
-function fixture({tipo='diagnostico',pedido=null,patch={},aoChamar=async()=>{},aoExecutar=async()=>{}}={}){
+function fixture({tipo='diagnostico',pedido=null,patch={},ambientePadrao=false,aoChamar=async()=>{},aoExecutar=async()=>{}}={}){
  let tempo=10000,geracao=0,online=true,visivel=true,pronto=true,execucoes=0,avisos=0;
  const controller=new AbortController(),calls=[];
  const comando={id:id(4),usuario_id:id(1),instalacao_id:id(2),tipo,pedido,expira_em:new Date(tempo+300000).toISOString(),...patch};
@@ -20,7 +20,7 @@ function fixture({tipo='diagnostico',pedido=null,patch={},aoChamar=async()=>{},a
   execucoes++;conferir();await revalidar();conferir();await aoExecutar(ctx,c);
   return {codigo:c.tipo==='solicitar_atualizacao'?'ATUALIZACAO_SOLICITADA':'DIAGNOSTICO',itens:[{...item,payload:{cpf:privado},message:privado}]};
  }};
- const executor=criarExecutorSuporte({usuario:{erpRef:id(1)},habilitado:true,api,sync,capturarSessao,obterVinculo:async()=>({conta:id(1),instalacao_id:id(2),prova_instalacao:'a'.repeat(64)}),diagnosticoInstalacao:id(9),consumidor:id(3),agora:()=>tempo,ambiente:()=>online&&visivel,onAtualizacao:()=>avisos++});
+ const executor=criarExecutorSuporte({usuario:{erpRef:id(1)},habilitado:true,api,sync,capturarSessao,obterVinculo:async()=>({conta:id(1),instalacao_id:id(2),prova_instalacao:'a'.repeat(64)}),diagnosticoInstalacao:id(9),consumidor:id(3),agora:()=>tempo,...(ambientePadrao?{}:{ambiente:()=>online}),onAtualizacao:()=>avisos++});
  const ctx={executor,api,sync,capturarSessao,comando,calls,controller,get execucoes(){return execucoes;},get avisos(){return avisos;},get tempo(){return tempo;},set tempo(v){tempo=v;},trocar:()=>geracao++,offline:()=>online=false,ocultar:()=>visivel=false,indisponivel:()=>pronto=false};
  return ctx;
 }
@@ -84,15 +84,15 @@ test('troca de conta em cada await interrompe efeitos e não relata na nova cont
   if(etapa!=='concluir')assert.equal(f.calls.filter(c=>c.acao==='concluir').length,0,etapa);
  }
 });
-test('expiração, sinal abortado, aba oculta, offline e aplicação sem diário impedem execução',async()=>{
- for(const alterar of [f=>f.tempo=Date.parse(f.comando.expira_em),f=>f.controller.abort(),f=>f.ocultar(),f=>f.offline(),f=>f.indisponivel()]){
+test('expiração, sinal abortado, offline e aplicação sem diário impedem execução',async()=>{
+ for(const alterar of [f=>f.tempo=Date.parse(f.comando.expira_em),f=>f.controller.abort(),f=>f.offline(),f=>f.indisponivel()]){
   const f=fixture();alterar(f);await f.executor.passo();assert.equal(f.execucoes,0);
  }
  for(const etapa of ['contatar','receber','autorizar','validar_execucao']){
   const f=fixture({aoChamar:async(a,args,c)=>{if(a===etapa)c.tempo=Date.parse(c.comando.expira_em);}});
   await f.executor.passo();assert.equal(f.execucoes,0,etapa);
  }
- const f=fixture({aoChamar:async(a,args,c)=>{if(a==='autorizar')c.ocultar();}});await f.executor.passo();assert.equal(f.execucoes,0);
+
 });
 test('IDs de outra conta/instalação, pedidos ausentes e ação genérica são recusados antes de autorizar',async()=>{
  for(const patch of [{usuario_id:id(9)},{instalacao_id:id(9)},{id:'invalido'},{tipo:'sql',payload:privado},{tipo:'consultar_recibo',pedido:null},{tipo:'reler_confirmacao',pedido:privado}]){
@@ -146,4 +146,45 @@ test('solicitação de atualização apenas avisa e recarga exige uma ação loc
  assert.equal(reloads,0);
  const g=fixture();assert.equal(await atualizarSuporteComSeguranca({owner:id(1),sync:{prepararAtualizacaoSuporte:async()=>false},capturarSessao:g.capturarSessao,emEdicao:()=>false,recarregar:()=>reloads++}),false);
  assert.equal(await atualizarSuporteComSeguranca({owner:id(1),sync:{prepararAtualizacaoSuporte:async()=>true},capturarSessao:g.capturarSessao,emEdicao:()=>false,recarregar:()=>reloads++}),true);assert.equal(reloads,1);
+});
+
+ test('aba oculta antes e durante autorização mantém execução única e auditada',async()=>{
+ for(const etapa of ['antes','contatar','receber','autorizar','validar_execucao']){
+  const f=fixture({aoChamar:async(a,args,c)=>{if(a===etapa)c.ocultar();}});
+  if(etapa==='antes')f.ocultar();
+  assert.equal((await f.executor.passo()).estado,'concluida');
+  assert.equal(f.execucoes,1);assert.equal(f.calls.at(-1).acao,'concluir');
+  await f.executor.passo();assert.equal(f.execucoes,1);
+ }
+});
+test('ambiente padrão permite documento oculto mas bloqueia rede offline',async t=>{
+ const anteriores=Object.fromEntries(['document','navigator'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
+ for(const [k,v] of Object.entries({document:{visibilityState:'hidden'},navigator:{onLine:true}}))Object.defineProperty(globalThis,k,{value:v,configurable:true});
+ t.after(()=>{for(const [k,d] of Object.entries(anteriores)){if(d)Object.defineProperty(globalThis,k,d);else delete globalThis[k];}});
+ const f=fixture();
+ const e=criarExecutorSuporte({usuario:id(1),habilitado:true,api:f.api,sync:f.sync,capturarSessao:f.capturarSessao,
+ obterVinculo:async()=>({conta:id(1),instalacao_id:id(2),prova_instalacao:'a'.repeat(64)}),diagnosticoInstalacao:id(9),consumidor:id(3),agora:()=>f.tempo});
+ assert.equal((await e.passo()).estado,'concluida');assert.equal(f.execucoes,1);
+ globalThis.navigator.onLine=false;const antes=f.calls.length;await e.passo();assert.equal(f.calls.length,antes);
+});
+test('retorno de suspensão após autorização recusa prazo expirado sem efeito ou ACK de sucesso',async()=>{
+ const f=fixture({aoChamar:async(a,args,c)=>{if(a==='autorizar'){c.ocultar();c.tempo=Date.parse(c.comando.expira_em)+1;}}});
+ assert.equal(await f.executor.passo(),null);assert.equal(f.execucoes,0);assert.equal(f.calls.some(c=>c.acao==='concluir'),false);
+});
+test('perda de conexão após autorização em segundo plano não inicia efeito',async()=>{
+ const f=fixture({aoChamar:async(a,args,c)=>{if(a==='autorizar'){c.ocultar();c.offline();}}});
+ assert.equal(await f.executor.passo(),null);assert.equal(f.execucoes,0);assert.equal(f.calls.some(c=>c.acao==='concluir'),false);
+});
+
+test('predicado real tolera visible para hidden entre cada await do comando',async t=>{
+ const anteriores=Object.fromEntries(['document','navigator'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
+ for(const [k,v] of Object.entries({document:{visibilityState:'visible'},navigator:{onLine:true}}))Object.defineProperty(globalThis,k,{value:v,configurable:true});
+ t.after(()=>{for(const [k,d] of Object.entries(anteriores)){if(d)Object.defineProperty(globalThis,k,d);else delete globalThis[k];}});
+ for(const etapa of ['contatar','receber','autorizar','validar_execucao','efeito','concluir']){
+  globalThis.document.visibilityState='visible';
+  const f=fixture({ambientePadrao:true,aoChamar:async a=>{if(a===etapa)globalThis.document.visibilityState='hidden';},aoExecutar:async()=>{if(etapa==='efeito')globalThis.document.visibilityState='hidden';}});
+  assert.equal((await f.executor.passo()).estado,'concluida',etapa);assert.equal(f.execucoes,1);
+  assert.equal(globalThis.document.visibilityState,'hidden');
+  await f.executor.passo();assert.equal(f.execucoes,1);
+ }
 });

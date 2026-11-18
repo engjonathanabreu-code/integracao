@@ -31,7 +31,7 @@ export function sanitizarResultadoSuporte(resultado){
 
 export function criarExecutorSuporte({usuario,api=suporteRemotoApi,sync,capturarSessao=capturarSessaoReal,agora=Date.now,
  habilitado=SUPORTE_REMOTO_HABILITADO,obterVinculo=obterVinculoSuporte,diagnosticoInstalacao=()=>instalacaoDiagnostico(),consumidor=crypto.randomUUID(),
- versao=VERSAO_CLIENTE,ativo=()=>true,ambiente=()=>globalThis.navigator?.onLine!==false&&globalThis.document?.visibilityState!=='hidden',onAtualizacao=()=>{}}={}){
+ versao=VERSAO_CLIENTE,ativo=()=>true,ambiente=()=>globalThis.navigator?.onLine!==false,onAtualizacao=()=>{}}={}){
  const owner=typeof usuario==='string'?usuario:usuario?.erpRef;
  const obterSync=typeof sync==='function'?sync:()=>sync;
  let encerrado=false,emCurso=false,vinculo;
