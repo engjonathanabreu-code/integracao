@@ -8,6 +8,16 @@ const assert=require('node:assert/strict');
   await page.locator('body[data-ready="1"]').waitFor();
   // Use duas abas de uma janela real (Xvfb no CI), sem redefinir document.visibilityState.
   const outra=await context.newPage();await outra.bringToFront();
+  // Playwright 1.57 enables focus emulation by default (crPage.ts:529).
+  // Prove the baseline masks tab visibility, then remove that override.
+  // This restores Chromium's native visibility; it does not mock document.
+  const comEmulacao=await page.evaluate(()=>document.visibilityState);
+  assert.equal(comEmulacao,'visible','baseline Playwright mantém foco emulado');
+  const cdp=await context.newCDPSession(page);
+  await cdp.send('Emulation.setFocusEmulationEnabled',{enabled:false});
+  await page.waitForFunction(()=>document.visibilityState==='hidden',null,{polling:100,timeout:10000});
+  const semEmulacao=await page.evaluate(()=>document.visibilityState);
+  console.log(JSON.stringify({focusEmulationEvidence:{comEmulacao,semEmulacao}}));
   try{await page.getByText('PASSOU: execução única com aba realmente oculta.',{exact:true}).waitFor({timeout:10000});}catch(e){console.error(await page.locator('body').innerText());throw e;}
   const evidence=JSON.parse(await page.locator('#resultado').innerText());
   assert.equal(evidence.efeitos,1);assert.equal(evidence.resultado.estado,'concluida');
