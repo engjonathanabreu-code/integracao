@@ -28,7 +28,7 @@ jobs:
       - name: Verify bundled Chromium
         run: node -e "const {chromium}=require('playwright'); chromium.launch({headless:true}).then(async b=>{console.log(await b.version());await b.close()}).catch(e=>{console.error(e);process.exit(1)})"
       - run: npm run build
-      - run: npm run test:browser
+      - run: xvfb-run --auto-servernum npm run test:browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
