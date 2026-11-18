@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
  try{
   const context=await browser.newContext(),page=await context.newPage();
   await page.goto('http://127.0.0.1:5178/tests/suporte-background.html');
-  await page.getByText('Aguardando ocultação real da aba.',{exact:true}).waitFor();
+  await page.locator('body[data-ready="1"]').waitFor();
   const cdp=await context.newCDPSession(page);
   // Chromium changes the real lifecycle/visibility; do not redefine document properties.
   await cdp.send('Page.setWebLifecycleState',{state:'frozen'});
