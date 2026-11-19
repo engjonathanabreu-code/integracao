@@ -192,6 +192,12 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   await aceitarLeitura({...item,preparado:{...item.preparado,sent:arquivos}},remoto);conferir();
   revisao=null;sinalizar();await atualizar();
  }
+ async function rearmarCadastro(auditoriaId){
+  await corrente.catch(()=>{});conferir();
+  const rearmado=await fila.rearmarCadastro(conta,auditoriaId);conferir();
+  if(rearmado){await atualizar();sinalizar();}
+  return rearmado;
+ }
  async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
   for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
@@ -203,5 +209,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

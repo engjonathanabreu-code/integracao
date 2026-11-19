@@ -1,5 +1,5 @@
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
@@ -162,6 +162,18 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   if(atual.payload)throw erro('Payload já fixado.','PAYLOAD_IMUTAVEL');
   atual.payload=structuredClone(payload);atual.preparado=structuredClone(preparado);atual.estado='resultado_desconhecido';
  });
+ async function rearmarCadastro(conta,auditoriaId){
+  contaValida(conta);
+  return transacao('readwrite',async s=>{
+   const items=await requisicao(s.intencoes.index('conta').getAll(conta)),tempo=agora();
+   const candidatos=items.filter(i=>podeRearmarCadastro(i,auditoriaId,tempo));
+   if(candidatos.length!==1)return false;
+   // All original bytes, receipt state, identifier and retry counters remain.
+   // The normal lease/receipt/dependency checks still govern this next pass.
+   const [item]=candidatos;item.proximaTentativa=0;item.atualizadoEm=tempo;
+   await requisicao(s.intencoes.put(item));return true;
+  });
+ }
  async function retomar(conta,id){
   contaValida(conta);return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
@@ -225,7 +237,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,fixarPayload,retomar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,fixarPayload,retomar,rearmarCadastro,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // The application must capture session identity in these callbacks. This processor
