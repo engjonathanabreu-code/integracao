@@ -1,0 +1,7 @@
+.ap-trabalho { min-width: 0; padding: 14px; margin-top: 14px; }
+.ap-trabalho h3 { margin-top: 0; }
+.ap-trabalho-lista { max-height: 240px; overflow-y: auto; overflow-wrap: anywhere; }
+.ap-trabalho .ap-log > div { min-width: 0; }
+.ap-trabalho textarea { box-sizing: border-box; display: block; width: 100%; max-width: 100%; resize: vertical; }
+.ap-trabalho .ap-actions { margin: 10px 0; }
+.ap-small .ap-trabalho-lista { max-height: 150px; }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw, AlertTriangle, MessageSquare, ListChecks, ArrowRight, CalendarClock, UserRound, MapPin } from 'lucide-react';
 import { separarAcoes } from './panorama-acoes.js';
 import { SETORES_PAINEL, destaquesSetor, dinheiro } from './agentes-ia.js';
+import BriefingDiretoria from './BriefingDiretoria.jsx';
 import { pedirAgentes } from './agentes-api.js';
 import { BarrasH, Colunas, Empilhada, Grafico, Vazio } from './agentes-graficos.jsx';
 
@@ -88,7 +89,7 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
     let vivo = true;
     setEstado(e => ({ ...e, ocupado: true, erro: '' }));
     pedirAgentes({ modo: 'setor', setor, paradoDias }, 60000)
-      .then(dados => { if (vivo) setEstado({ ocupado: false, erro: '', dados }); })
+      .then(dados => { if (vivo) setEstado({ ocupado: false, erro: '', dados, consulta: `${setor}-${paradoDias}-${recarga}` }); })
       .catch(e => { if (vivo) setEstado(x => ({ ...x, ocupado: false, erro: e.message })); });
     return () => { vivo = false; };
   }, [setor, paradoDias, recarga]);
@@ -122,6 +123,7 @@ export default function AgentesPanorama({ setor, onSetor, onConversar }) {
       </div>
 
       {estado.erro && <div className="msg-erro"><AlertTriangle size={15} />{estado.erro}</div>}
+      {atual && <BriefingDiretoria key={`${setor}-${paradoDias}-${recarga}`} dados={atual} indisponivel={estado.ocupado || Boolean(estado.erro) || estado.consulta !== `${setor}-${paradoDias}-${recarga}`} />}
       <section className="agente-acoes" aria-live="polite" aria-busy={acoes.ocupado}>
         <h3><ListChecks size={18} aria-hidden="true" />Ações prioritárias sugeridas</h3>
         {acoes.ocupado && <p className="ajuda">Analisando movimentações recentes e urgências…</p>}
