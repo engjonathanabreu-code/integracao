@@ -2,12 +2,19 @@ import React, {useEffect, useState} from 'react';
 import './trabalho-pessoal.css';
 import {atalhoTrabalhoPessoal, diaTrabalho, filaTrabalhoPessoal, resumoTrabalhoPessoal} from './trabalho-pessoal.js';
 
-export default function PainelTrabalhoPessoal({metas,usuario,ir}) {
+export default function PainelTrabalhoPessoal(props) {
+  const {usuario} = props;
+  if (!usuario?.id || usuario.ativo === false) return null;
+  // A nova identidade recebe outra instância, antes de qualquer efeito.
+  // Promessas de cópia antigas só podem atualizar a instância desmontada.
+  return <TrabalhoPessoalDaIdentidade key={JSON.stringify([usuario.id, usuario.erpRef || null])} {...props}/>;
+}
+
+function TrabalhoPessoalDaIdentidade({metas,usuario,ir}) {
   const [hoje,setHoje] = useState(diaTrabalho);
   const [aberto,setAberto] = useState(false);
   const [copia,setCopia] = useState('');
   useEffect(() => {const id=setInterval(()=>setHoje(diaTrabalho()),30000);return()=>clearInterval(id)},[]);
-  useEffect(() => {setAberto(false);setCopia('')},[usuario?.id]);
   const fila=filaTrabalhoPessoal(metas,usuario,hoje), resumo=resumoTrabalhoPessoal(fila,hoje), atalho=atalhoTrabalhoPessoal(usuario);
   useEffect(()=>setCopia(''),[resumo]);
   if (!usuario?.id || usuario.ativo === false) return null;
