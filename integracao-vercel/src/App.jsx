@@ -4698,7 +4698,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       q.qualificacao = atualizarQualificacao(q, usuario);
       if (vincular) d.nucleos.find((x) => x.id === nucleoSel.id).remessaId = rascunho.remessaId;
       return d;
-    }, "Cadastro alterado", { processoId: p.id, municipioId: p.municipioId, remessaId: rascunho.remessaId, detalhe: `${nomes.join(", ")}${viaIA ? `. ${viaIA} sugerido(s) pela IA e revisado(s)` : ""}${extrasDetalhe}` }, { permitirOffline: true }));
+    }, "Cadastro alterado", { processoId: p.id, municipioId: p.municipioId, remessaId: rascunho.remessaId, detalhe: `${nomes.join(", ")}${viaIA ? `. ${viaIA} sugerido(s) pela IA e revisado(s)` : ""}${extrasDetalhe}` }, { permitirOffline: true, retomarTransporteCadastro: true }));
     await confirmarCadastro();
   };
   const aplicarIA = (linhas) => {

@@ -16,6 +16,20 @@ export function classificarFalha(e){
 // Before phase tracking, a receipt failure could be mistaken for rejection.
 // A previously sent entry without proof remains uncertain, including old queues.
 export const revisaoDeRecusa=i=>['bloqueado_conflito','bloqueado_validacao'].includes(i.estado)&&i.erro?.rejeicaoConfirmada!==false&&i.erro?.categoria!=='sessao'&&!(i.enviadoEm&&i.erro&&!Object.hasOwn(i.erro,'rejeicaoConfirmada'));
+// An explicit confirmation click may reopen only the same exhausted client
+// request after a transport failure. Existing leases, cooldowns, receipts,
+// definitive failures and all other intents retain their original behavior.
+export function podeRearmarCadastro(i, auditoriaId, agora){
+ const e=i?.erro;
+ return typeof auditoriaId==='string'&&!!auditoriaId&&i?.original?.modulo==='processos'&&
+  i.estado==='resultado_desconhecido'&&!i.recibo&&!(i.leaseAte>agora)&&
+  i.proximaTentativa===Number.MAX_SAFE_INTEGER&&e?.categoria==='transitoria'&&
+  e.codigo==='TRANSPORTE'&&e.rejeicaoConfirmada===false&&
+  (e.status===null||[408,500,502,503,504].includes(e.status))&&
+  i.original.intencao?.edicoes?.some(a=>a.colecao==='auditoria'&&a.id===auditoriaId&&
+   a.antes?.existe===false&&a.depois?.existe===true&&a.depois.valor?.id===auditoriaId&&
+   a.depois.valor?.acao==='Cadastro alterado')===true;
+}
 export function orientacaoPendencia(i){
  if(i.estado==='legado_revisao')return 'O rascunho antigo precisa de análise. Baixe o original preservado; ele não será reenviado automaticamente.';
  const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;

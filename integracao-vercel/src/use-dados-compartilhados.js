@@ -422,7 +422,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     else saveDraft().catch(e=>setError(e.message));
     clearTimeout(timer.current);timer.current=setTimeout(flush,250);
   };
-  const mutateConfirmed=async(fn,entry,{permitirOffline=false}={})=>{
+  const mutateConfirmed=async(fn,entry,{permitirOffline=false,retomarTransporteCadastro=false}={})=>{
     if(!current.current||!server.current||!actor.current||!temSessao())throw erroConfirmacao('Entre em uma sessão conectada para salvar.','SESSAO_ENCERRADA');
     if(!permitirOffline&&!temConexao())throw erroConfirmacao('Conecte-se para salvar. O texto digitado deve permanecer aberto para tentar novamente.','SEM_CONEXAO');
     if(revisao.current)throw erroConfirmacao('Revise as alterações concorrentes antes de salvar.','CONFLITO_EDICAO');
@@ -439,6 +439,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
         if(gen!==generation.current||!actor.current||!temSessao())throw erroConfirmacao('A sessão mudou. Reabra o registro para conferir a gravação.','SESSAO_ALTERADA');
         if(repetir&&!confirmacoes.current.confirmada(identificada.id)){
           if(!temConexao())throw erroConfirmacao('Sem conexão para confirmar a tentativa anterior. O rascunho continua preservado.','SEM_CONEXAO');
+          if(retomarTransporteCadastro&&usarDiario&&diario.current){
+            await diario.current.rearmarCadastro(identificada.id);conferirGeracao(gen);
+          }
           if(!pending.current&&!attempt.current)throw erroConfirmacao('A tentativa anterior exige revisão. Confira os dados atuais antes de salvar uma nova alteração.','REVISAO_NECESSARIA');
           clearTimeout(timer.current);timer.current=setTimeout(flush,0);
         }

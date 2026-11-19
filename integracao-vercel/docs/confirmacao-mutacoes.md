@@ -19,3 +19,7 @@ Alterar o conteúdo cria uma nova intenção: limpe o callback anterior e faça 
 - Regressão `recuperacao-ciclo.test.js`: 14 cenários existentes de sincronização, incluindo metas, chat, calendário, concorrência e recibos perdidos.
 
 Nenhuma validação deste conjunto escreve em produção.
+
+### Retomada de cadastro após falha de transporte
+
+Em Clientes, **Confirmar mesmo pedido** pode rearmar uma tentativa explícita quando a fila deixou de tentar aquele cadastro por falhas recorrentes de transporte. Isso é diferente de passar por cima do intervalo normal de espera. O clique identifica a entrada de auditoria do mesmo pedido local, não cria outro pedido e não altera a versão preservada nem o contador de tentativas. Se já houve envio, a fila consulta seu recibo antes de tentar qualquer gravação; com recibo, resta apenas a leitura. Conflitos, permissões, validações, outro pedido e reservas em atividade continuam intocados.
