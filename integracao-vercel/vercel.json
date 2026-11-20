@@ -105,7 +105,8 @@
       "fix/exportacao-aviso-20261118": false,
       "codex/pendencias-causas-20261118": false,
       "fix/campo-offline-homonimos": false,
-      "codex/josimar-cadastro-transporte-20261119": false
+      "codex/josimar-cadastro-transporte-20261119": false,
+      "fix/cadeia-apenas-recibos": false
     }
   }
 }
