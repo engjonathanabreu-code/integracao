@@ -1,3 +1,4 @@
+import {arquivoRecusado,prepararRevisaoArquivo,protegerOperacoesArquivo,resumoBytes} from './revisao-arquivo-recusado.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
@@ -10,7 +11,7 @@ import {arquivosDaIntencao} from './arquivos-intencoes.js';
 import {revisarLeitura,snapshotLeitura} from './revisao-leitura.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
-export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
+export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},lerConteudoArquivo=async()=>{throw Error("Leitura de arquivo indisponível.");},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
  const canal=typeof BroadcastChannel==='function'?new BroadcastChannel('integracao-diario-v2:'+conta):null;
  if(canal)canal.onmessage=()=>{if(ativo())notificar();};
  const sinalizar=()=>canal?.postMessage({protocolo:2});
@@ -40,6 +41,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const recursos=[...recursosIntencao(edicoes),...Object.keys(arquivos).map(k=>'arquivo:'+k)];
   const payload={conta,id,unidade:recursos[0]||'auditoria:'+id,recursos,modulo:edicoes.find(e=>e.colecao!=='auditoria')?.colecao||'arquivos',dependencias:opcoes.dependencias||[],referencias:referenciasIdentidades(edicoes),criadas:edicoes.filter(e=>e.id&&!e.antes.existe).map(e=>e.id),operacoes:opcoes.legado?.operations||[],preparar:!opcoes.legado,base:{},intencao:{edicoes,arquivos},legado:opcoes.legado||null};
   if(opcoes.substituirId)payload.substituirId=opcoes.substituirId;
+  if(opcoes.recuperacaoArquivo)payload.intencao.recuperacaoArquivo=structuredClone(opcoes.recuperacaoArquivo);
   volateis.set(id,payload);
   // Serialization stays local to this controller; the database also orders other tabs.
   const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar(payload);}catch(e){if(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA')volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
@@ -102,7 +104,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  async function prepararItem(item){
   const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
-  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
+  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,operacoes:protegerOperacoesArquivo(pronto.operacoes,item.original.intencao.recuperacaoArquivo),antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
  }
  async function executar({id=null,validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();await atualizar();
@@ -131,7 +133,32 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   // to recognize current values after a receipt. Never rewrite a sent request.
   const r=aplicarIntencao(remoto.db,edicoes,{preservarDerivadas:preservarDerivadasFixadas(item)});
   const leitura=await revisarLeitura(item,remoto);conferir();
-  revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos,leitura,snapshot:snapshotLeitura(item,remoto,edicoes)};return {...revisao,dados:r.dados};
+  const alvo=arquivoRecusado(item,conta,remoto);
+  const arquivo=alvo?{...alvo,local:await resumoBytes(alvo.arquivo.value)}:null;conferir();
+  revisao={id,item,arquivo,remoto:remoto.db,edicoes,conflitos:r.conflitos,leitura,snapshot:snapshotLeitura(item,remoto,edicoes)};return {...revisao,dados:r.dados};
+ }
+ async function substituirArquivo(id){
+  const mostrada=revisao;
+  if(!mostrada||mostrada.id!==id||!mostrada.arquivo)throw Error('Abra a prévia do arquivo recusado antes de confirmar.');
+  await atualizar();const item=items.find(i=>i.id===id);
+  const {remoto}=await lerItem(item),alvo=arquivoRecusado(item,conta,remoto);
+  if(!alvo||!igualSemantico(alvo,mostrada.arquivo&&{id:mostrada.arquivo.id,arquivo:mostrada.arquivo.arquivo,row:mostrada.arquivo.row}))throw Error('O arquivo mudou. Abra novamente a prévia.');
+  // PT409 can also mean a reused request UUID. The original receipt query must
+  // succeed and prove absence; errors or an existing receipt never authorize a
+  // replacement, even when this device recorded a definitive rejection.
+  const recibo=await consultarRecibo(item);conferir();
+  if(recibo)throw Error('Este pedido já tem recibo. Retome a consulta e a leitura, sem substituir o arquivo.');
+  const auditoria=await prepararRevisaoArquivo({item,conta,state:remoto,lerConteudo:lerConteudoArquivo,checksum:checksumIntencao,conferir});
+  // Preserve both complete versions in a separate durable archive BEFORE making
+  // anything eligible to send. Read back through a new IndexedDB transaction.
+  const texto=JSON.stringify(auditoria),guardado=await fila.preservarLegado(conta,texto);conferir();
+  const backup=await fila.exportar(conta);conferir();
+  if(!backup.originais.some(o=>o.checksum===guardado.checksum&&o.texto===texto))throw Error('Não foi possível verificar a cópia de segurança. Nenhuma substituição foi enfileirada.');
+  const fresco=await lerItem(item),atual=arquivoRecusado(item,conta,fresco.remoto);
+  if(!atual||!igualSemantico(atual,alvo))throw Error('O arquivo mudou durante a cópia. Abra novamente a prévia.');
+  const arquivos={[alvo.id]:{...alvo.arquivo,expected:structuredClone(alvo.row.dados)}};
+  await adicionar(fresco.remoto.db,fresco.remoto.db,arquivos,{substituirId:id,recuperacaoArquivo:auditoria});conferir();
+  if(revisao===mostrada)revisao=null;await atualizar();
  }
  async function reconhecerLeitura(id){
   if(!revisao||revisao.id!==id||!revisao.item.recibo)throw Error('Abra a prévia de uma gravação com recibo antes de reconhecer os valores atuais.');
@@ -209,5 +236,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,substituirArquivo,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }
