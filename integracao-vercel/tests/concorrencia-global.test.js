@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
+import {validarReciboOperacoes} from '../src/recibo-operacoes.js';
+import {protegerOperacoesArquivo} from '../src/revisao-arquivo-recusado.js';
 import {conciliarEdicoes} from '../src/concorrencia.js';
 const read=p=>fs.readFileSync(new URL(p,import.meta.url),'utf8');
 const owner='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002';
@@ -59,6 +61,51 @@ test('global reconciliation: all shared tables, idempotence, real conflicts, RLS
  await t.test('conflict rolls back every operation and its receipt',async()=>{
   const request=crypto.randomUUID();await assert.rejects(()=>db.query('select integracao_gravar($1,$2)',[JSON.stringify([{table:'metas',key:{id:owner},expected:{titulo:'Local'},changes:{titulo:'Rollback'}},{table:'meta_checklist',key:{id:owner},expected:{titulo:'Antes'},changes:{titulo:'Diferente'}}]),request]),e=>e.code==='PT409');
   assert.equal((await db.query('select titulo from metas')).rows[0].titulo,'Local');assert.equal((await db.query('select count(*)::int n from integracao_pedidos where pedido=$1',[request])).rows[0].n,0);
+ });
+ await t.test('arquivo revisado: guarda exata, três operações ordenadas, RLS, rollback e idempotência',async()=>{
+  await db.exec('reset role;create role anon;create role service_role;alter table integracao_arquivos add column updated_at timestamptz;');
+  for(const name of ['20261110144604_aliases_tipados_gravacao','20261110152928_consulta_recibo_intencao_v2','20261112173052_recibos_canonicos_operacoes'])await db.exec(read('../supabase/migrations/'+name+'.sql'));
+  await db.exec(`create table revisao_fixture(n int);insert into revisao_fixture values(0);grant select,update on revisao_fixture to authenticated;
+   create function revisao_fixture_fn() returns trigger language plpgsql as $$begin update public.revisao_fixture set n=n+1;return null;end$$;
+   create trigger revisao_fixture after update on integracao_arquivos for each statement execute function revisao_fixture_fn();`);
+  await login(owner);
+  const k={colecao:'test',registro_id:'record'},before={hash:'b',bytes:2};
+  await db.query('update integracao_arquivos set dados=$1,updated_at=$2',[JSON.stringify(before),'2026-11-20T00:00:00Z']);
+  const row=(await db.query('select to_jsonb(t) r from (select dados,updated_at from integracao_arquivos) t')).rows[0].r;
+  // Use actual formatter then retain the synthetic fixture primary key.
+  const {abrirArquivos,prepararArmazenamento,fecharArquivos}=await import('../src/arquivos-compartilhados.js');
+  const {definirSessao}=await import('../src/dados-compartilhados.js');const fetchOriginal=globalThis.fetch;
+  let preparado;
+  try{
+   globalThis.fetch=async()=>Response.json({});definirSessao({access_token:'fixture',expires_in:3600});
+   await abrirArquivos({erpRef:owner},{integracao_arquivos:[]},{get:async()=>null,set:async()=>{}});
+   preparado=await prepararArmazenamento({db:{},bindings:[]},{},{record:{key:'integracao-campo-offline-v1',value:'local fixture',version:'v',expected:before}});
+  }finally{globalThis.fetch=fetchOriginal;fecharArquivos();definirSessao(null);}
+  const after=preparado.operations[0].changes.dados;
+  const ops=protegerOperacoesArquivo(preparado.operations,{id:'record',anterior:{row}});
+  ops.forEach(op=>op.key=k);
+  const send=pedido=>db.query('select integracao_gravar($1,$2)',[JSON.stringify(ops),pedido]);
+  await db.query('update integracao_arquivos set dados=$1',[JSON.stringify({...before,unrelated:true})]);
+  const failed=crypto.randomUUID();await assert.rejects(send(failed),e=>e.code==='PT409');
+  assert.equal((await db.query('select count(*)::int n from integracao_pedidos where pedido=$1',[failed])).rows[0].n,0);
+  assert.deepEqual((await db.query('select dados from integracao_arquivos')).rows[0].dados,{...before,unrelated:true});
+  await db.query('update integracao_arquivos set dados=$1',[JSON.stringify(before)]);
+  await db.query('update integracao_arquivos set updated_at=$1',['2026-11-20T00:01:00Z']);
+  const sinalAntes=(await db.query('select n from revisao_fixture')).rows[0].n;
+  const aba=crypto.randomUUID();await assert.rejects(send(aba),e=>e.code==='PT409');
+  assert.equal((await db.query('select n from revisao_fixture')).rows[0].n,sinalAntes);
+  assert.equal(new Date((await db.query('select updated_at from integracao_arquivos')).rows[0].updated_at).getTime(),Date.parse('2026-11-20T00:01:00Z'));
+  assert.equal((await db.query('select count(*)::int n from integracao_pedidos where pedido=$1',[aba])).rows[0].n,0);
+  assert.deepEqual((await db.query('select dados from integracao_arquivos')).rows[0].dados,before);
+  await db.query('update integracao_arquivos set updated_at=$1',[row.updated_at]);
+  const sinalSucesso=(await db.query('select n from revisao_fixture')).rows[0].n;
+  const pedido=crypto.randomUUID(),result=await send(pedido);await send(pedido);
+  assert.equal(validarReciboOperacoes(result.rows[0].integracao_gravar,ops,pedido),true);
+  assert.equal((await db.query('select n from revisao_fixture')).rows[0].n,sinalSucesso+3);
+  const atual=(await db.query('select dados,updated_at from integracao_arquivos')).rows[0];
+  assert.deepEqual(atual.dados,after);assert.equal(new Date(atual.updated_at).getTime(),Date.parse(preparado.operations[0].changes.updated_at));
+  assert.equal((await db.query('select count(*)::int n from integracao_pedidos where pedido=$1',[pedido])).rows[0].n,1);
+  await login(other);await assert.rejects(send(crypto.randomUUID()),/sem permissão/);await login(owner);
  });
  }finally{await db.close();}
 });

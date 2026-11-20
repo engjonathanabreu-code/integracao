@@ -63,8 +63,18 @@ export function arquivosDaIntencao(item,items){
   const baseOriginal=arquivo.expected??null;
   for(const dep of deps){
    const anterior=dep.original.intencao.arquivos?.[id];
-   const op=dep.payload?.find(o=>o.table==='integracao_arquivos'&&o.key?.registro_id===id);
-   if(!anterior||(!igualSemantico(baseOriginal,anterior.expected??null)&&!(op?.expected&&igualSemantico(baseOriginal,op.expected.dados??null))))continue;
+   const op=dep.payload?.find(o=>o.table==='integracao_arquivos'&&o.key?.registro_id===id&&(o.remove||o.changes?.dados));
+   const revisao=dep.original.intencao.recuperacaoArquivo,origem=revisao&&porId.get(revisao.origem);
+   // Only a reciprocal, preserved replacement can bridge the original base A
+   // to the explicitly reviewed base B. A receipt/current-server acceptance alone
+   // must never provide this authorization.
+   const linhagem=revisao?.versao===1&&revisao.id===id&&dep.original.substitui===origem?.id&&
+    origem?.substituidaPor===dep.id&&origem.checksum===revisao.checksumOriginal&&
+    igualSemantico(origem.original.intencao.arquivos?.[id],revisao.arquivoOriginal)&&
+    anterior?.value===revisao.arquivoOriginal.value&&anterior?.version===revisao.arquivoOriginal.version&&
+    igualSemantico(anterior?.expected,revisao.anterior.row.dados)&&
+    igualSemantico(baseOriginal,revisao.arquivoOriginal.expected??null);
+   if(!anterior||(!linhagem&&!igualSemantico(baseOriginal,anterior.expected??null)&&!(op?.expected&&igualSemantico(baseOriginal,op.expected.dados??null))))continue;
    // Recognizing somebody else's current file is not permission to overwrite it.
    if(Object.hasOwn(dep.decisao?.arquivosAtual||{},id)&&!igualSemantico(dep.decisao.arquivosAtual[id],op?.remove?null:op?.changes?.dados))continue;
    if(op?.remove)arquivo.expected=null;
