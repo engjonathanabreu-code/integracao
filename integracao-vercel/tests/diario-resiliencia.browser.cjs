@@ -13,9 +13,26 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
     const rows=await fila.listar('a');return {quantidade:rows.length,estado:rows.find(i=>i.id===item.id).estado,arquivo:rows.find(i=>i.id!==item.id).original.intencao.arquivos.arquivo.value};
    }
    if(caso==='arquivo_sequencia'||caso==='arquivo_intercalado'){
-    let metadata=null;const enviados=[];
-    const d=criarDiarioCompartilhado({conta:'f',ativo:()=>true,fila,carregar:async()=>({db:{}}),preparar:async(r,db,files)=>({operacoes:[{table:'integracao_arquivos',key:{registro_id:'arquivo'},expected:{dados:files.arquivo.expected},changes:{dados:{hash:files.arquivo.value}}}],sent:files}),enviar:async ops=>{if(JSON.stringify(ops[0].expected.dados)!==JSON.stringify(metadata))throw Object.assign(Error('base divergente'),{status:409});metadata=ops[0].changes.dados;enviados.push(metadata.hash);return {aliases:{}};},consultarRecibo:async()=>null,confirmar:async()=>{if(caso==='arquivo_intercalado'&&enviados.length===1)await d.adicionar({},{},{arquivo:{expected:{hash:'primeiro'},value:'terceiro'}});},atualizou:()=>{}});
-    try{for(const value of (caso==='arquivo_intercalado'?['primeiro','segundo']:['primeiro','segundo','terceiro']))await d.adicionar({},{},{arquivo:{expected:null,value}});await d.executar();await d.executar();return {enviados,estados:(await fila.listar('f')).map(i=>i.estado)};}finally{d.fechar();}
+    const {abrirArquivos,prepararArmazenamento,fecharArquivos}=await import('/src/arquivos-compartilhados.js'),{definirSessao}=await import('/src/dados-compartilhados.js');
+    const conta='f',asset='arquivo',key='integracao-foto-v4-fixture',enviados=[],values=['primeiro','segundo','terceiro'];
+    const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),x=>x.toString(16).padStart(2,'0')).join('');
+    const names=new Map(await Promise.all(values.map(async v=>[await hash(v),v])));
+    const file=(value,expected=null)=>({[asset]:{key,value,expected,version:value}});
+    const fetchOriginal=globalThis.fetch;let metadata=null;
+    // Real asset preparation; no outside service is used in this browser test.
+    globalThis.fetch=async()=>Response.json({});definirSessao({access_token:'resiliencia-fixture',expires_in:3600});
+    const d=criarDiarioCompartilhado({conta,ativo:()=>true,fila,carregar:async()=>({db:{},bindings:[]}),
+     preparar:async(r,db,files)=>{const {operations,sent}=await prepararArmazenamento(r,db,files);return {operacoes:operations,sent};},
+     enviar:async ([op])=>{
+      const expected=op?.insert===true?null:op?.expected?.dados;
+      if(JSON.stringify(expected)!==JSON.stringify(metadata))throw Object.assign(Error('base divergente'),{status:409});
+      metadata=op.changes.dados;enviados.push(names.get(metadata.hash));return {aliases:{}};
+     },consultarRecibo:async()=>null,confirmar:async()=>{if(caso==='arquivo_intercalado'&&enviados.length===1)await d.adicionar({},{},file('terceiro',metadata));},atualizou:()=>{}});
+    try{
+     await abrirArquivos({erpRef:conta},{integracao_arquivos:[]},{get:async()=>null});
+     for(const value of (caso==='arquivo_intercalado'?values.slice(0,2):values))await d.adicionar({},{},file(value));
+     await d.executar();await d.executar();return {enviados,estados:(await fila.listar(conta)).map(i=>i.estado)};
+    }finally{d.fechar();fecharArquivos();definirSessao(null);globalThis.fetch=fetchOriginal;}
    }
    if(caso==='previa_alterada'){
     const item=await diario.adicionar(before,after),claim=await fila.reservar('a',{dono:'fixture'});await fila.registrarFalha(claim,{status:409});await diario.previa(item.id);remote.metas[0].titulo='outro usuário';let erro=false;try{await diario.resolver(item.id,{});}catch{erro=true;}return {erro,quantidade:(await fila.listar('a')).length};
