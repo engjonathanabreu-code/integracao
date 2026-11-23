@@ -106,7 +106,8 @@
       "codex/pendencias-causas-20261118": false,
       "fix/campo-offline-homonimos": false,
       "codex/josimar-cadastro-transporte-20261119": false,
-      "fix/cadeia-apenas-recibos": false
+      "fix/cadeia-apenas-recibos": false,
+      "fix/retomada-sincronizacao-20261123": false
     }
   }
 }

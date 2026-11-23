@@ -6,7 +6,7 @@ import {selecionarArquivosDaEdicao,arquivosDaIntencao} from './arquivos-intencoe
 import {remapearIdentidades as remap} from './aliases-tipados.js';
 import {separarCriacoesPendentes,recuperarCorDeAgenda,mensagemRejeicao} from './recuperacao-sincronizacao.js';
 import {temConexao} from './conexao-rede.js';
-import {criarConfirmacoesMutacoes,erroConfirmacao,alteracoesConfirmadas} from './confirmacao-mutacoes.js';
+import {criarConfirmacoesMutacoes,erroConfirmacao,alteracoesConfirmadas,verificarReleituraNotificacoesLegadas} from './confirmacao-mutacoes.js';
 import {erroConcorrencia} from './concorrencia.js';
 import {conciliarMaisRecentes as conciliarEdicoes,atualizarAutomaticamente as atualizarComRascunho,preservarRegistrosAusentes,separarReservasConflitantes} from './conciliacao-automatica.js';
 import {rejeicaoDefinitiva} from './atualizacao-rascunho.js';
@@ -17,7 +17,7 @@ import {filaRascunho} from './fila-rascunho.js';
 import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisiveis,atualizarFichas,preservarFichaAnterior} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
-import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos} from './arquivos-compartilhados.js';
+import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos,visualizarCopiaCampoConferida} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {diagnosticosSuporte,prepararRecuperacaoAtualizacao,edicaoVisivelParaAtualizar} from './suporte-remoto-local.js';
@@ -125,11 +125,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       preparar:async(state,depois,arquivos)=>{
         const ops=prepararEdicao(state.db,depois,state,user),files=await prepararArquivos(state.db,depois,storage,user);conferirGeracao(gen);
         const assets=await prepararArmazenamento(state,depois,arquivos||{});conferirGeracao(gen);
-        return {operacoes:[...ops,...files,...assets.operations],sent:assets.sent};
+        return {operacoes:[...ops,...files,...assets.operations],sent:assets.sent,identicos:assets.identicos};
       },enviar:gravarOperacoes,consultarRecibo:consultarReciboOperacao,
       confirmar:async(item,state)=>{
         conferirGeracao(gen);server.current=state;
-        if(item.preparado&&!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,item.recibo?.aliases||{},item.payload||[]))throw Object.assign(Error('O recibo existe, mas a leitura ainda diverge. Nenhuma gravação será repetida.'),{code:'LEITURA_DIVERGENTE',status:409});await confirmarArquivos(item.preparado?.sent,state.base);conferirGeracao(gen);
+        if(item.preparado&&!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,item.recibo?.aliases||{},item.payload||[])){
+          const reciboVerificado=await verificarReleituraNotificacoesLegadas(item,state.base,user.erpRef,consultarReciboOperacao);
+          conferirGeracao(gen);
+          if(!reciboVerificado)throw Object.assign(Error('O recibo existe, mas a leitura ainda diverge. Nenhuma gravação será repetida.'),{code:'LEITURA_DIVERGENTE',status:409});
+        }
+        await confirmarArquivos(item.preparado?.sent,state.base);conferirGeracao(gen);
         confirmacoes.current.confirmar(item.preparado?.depois||state.db,state.db,{...item.recibo,operacoes:item.payload||[]});
       },
       aceitarLeitura:async(item,state)=>{
@@ -138,9 +143,17 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     });
     return diario.current;
   };
+  const reconciliarCopiasCampoConfirmadas=async(d,gen)=>{
+    for(const item of d.itens().filter(i=>i.estado==='dispensado'&&i.decisao?.tipo==='campo_ja_presente_no_servidor')){
+      const p=item.decisao.prova;
+      if(p&&capturarArquivos([p.id])[p.id]?.version===p.version){
+        visualizarCopiaCampoConferida(p,item.original.intencao.arquivos[p.id]);conferirGeracao(gen);
+      }
+    }
+  };
   const recuperarArquivosDiario=async()=>{
     const gen=generation.current,d=diario.current;if(!d||!server.current)return;
-    await d.atualizar();conferirGeracao(gen);
+    await d.atualizar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);
     // A review can be archived before a local cache write is interrupted.
     // Complete only that same version; never turn the archived upload into a
     // fresh write or consume a newer local file when the app opens again.
@@ -153,7 +166,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const flushDiario=async()=>{
     if(busy.current||opening.current||!diario.current||!server.current||!temSessao()||!temConexao())return;
     busy.current=true;const gen=generation.current,d=diario.current;
-    try{await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);publish(d.materializar(server.current.db));await saveDraft();}
+    try{await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);publish(d.materializar(server.current.db));await saveDraft();}
     catch(e){if(gen===generation.current){setError(e.message);setStatus(e.code?.startsWith('PERSISTENCIA')?'Não foi possível guardar as alterações. Baixe uma cópia antes de sair.':'Alterações pendentes — consulte a revisão.');rejeitarConfirmacoes(e.message,e.code||'CONFIRMACAO_FALHOU',e);}}
     finally{if(gen===generation.current){busy.current=false;const itens=d.itens().filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));if(itens.some(i=>!i.estado.startsWith('bloqueado')&&!['persistencia_falhou','legado_revisao'].includes(i.estado)&&i.proximaTentativa!==Number.MAX_SAFE_INTEGER)){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
@@ -536,7 +549,18 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);
-    const online=()=>{if(!actor.current)return;if(temConexao()){if(!vivo.current)iniciarTempoReal();else vivo.current.reconectar();if(pending.current)flush();avisar(null);}else{vivo.current?.fechar();vivo.current=null;setTempoReal('offline');}};
+    let conexaoAnterior=temConexao();
+    const online=()=>{
+      const conectada=temConexao(),reconectou=conectada&&!conexaoAnterior;
+      conexaoAnterior=conectada;
+      if(!actor.current)return;
+      if(!conectada){vivo.current?.fechar();vivo.current=null;setTempoReal('offline');return;}
+      if(!vivo.current)iniciarTempoReal();else vivo.current.reconectar();
+      const d=diario.current,gen=generation.current;
+      const verificar=reconectou&&usarDiario&&d&&temSessao()?d.verificarPreparacoesAoReconectar().catch(()=>{}):Promise.resolve();
+      void verificar.then(()=>{if(gen===generation.current&&pending.current&&temConexao())flush();});
+      avisar(null);
+    };
     const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){if(pending.current)flush();avisar(null);}};
     const filePending=evento=>{if(!actor.current)return;if(usarDiario&&current.current){const gen=generation.current;diario.current.adicionarArquivos(current.current,evento.detail?.arquivos||capturarArquivos()).catch(e=>{if(gen===generation.current)setError(e.message);});}pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,250);};
     const protegerSaida=e=>{if(pending.current){e.preventDefault();e.returnValue='';}};

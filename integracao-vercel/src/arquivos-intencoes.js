@@ -1,5 +1,6 @@
 import {validarReciboOperacoes} from './recibo-operacoes.js';
 import {igualSemantico} from './igualdade-semantica.js';
+export const chaveCopiaCampo='integracao-campo-offline-v1';
 // A data edit owns only attachments referenced by its changed records. Include
 // both sides so removals remain atomic; audit text is not a business reference.
 export function selecionarArquivosDaEdicao(edicoes,arquivos){
@@ -140,4 +141,19 @@ export async function divergenciasArquivos(sent,base,owner){
   if(esperado?!(atual?.chave===esperado.chave&&atual.path===esperado.path&&atual.hash===esperado.hash&&Number(atual.bytes)===esperado.bytes):atual!==null)divergencias.push({id,chave:item.key,esperado,atual:structuredClone(atual)});
  }
  return divergencias;
+}
+
+// A proof is local journal evidence for a no-op, never a server receipt.
+export function provaCampoSemEscrita(item,pronto){
+ const o=item.original,arquivos=o?.intencao?.arquivos;
+ if(o?.modulo!=='arquivos'||o.preparar!==true||o.legado||o.substitui||o.operacoes?.length||
+    o.intencao?.edicoes?.length!==0||item.payload!=null||item.preparado!=null||item.recibo!=null||
+    item.fase!=='preparacao'||item.enviadoEm!=null||item.confirmadoEm!=null||item.lidoEm!=null||item.tentativasTotais!==0||!Array.isArray(pronto.operacoes)||pronto.operacoes.length||
+    Object.keys(arquivos||{}).length!==1||Object.keys(pronto.sent||{}).length!==1||
+    Object.keys(pronto.identicos||{}).length!==1)return null;
+ const id=item.conta+'|'+chaveCopiaCampo,arquivo=arquivos[id],enviado=pronto.sent[id],prova=pronto.identicos[id],d=prova?.dados;
+ if(arquivo?.key!==chaveCopiaCampo||typeof arquivo.value!=='string'||!arquivo.version||!enviado||
+    enviado.key!==arquivo.key||enviado.value!==arquivo.value||enviado.version!==arquivo.version||prova?.version!==arquivo.version||d?.chave!==chaveCopiaCampo||
+    !/^[a-f0-9]{64}$/.test(d.hash)||d.path!==item.conta+'/'+d.hash||d.bytes!==new TextEncoder().encode(arquivo.value).length)return null;
+ return {id,version:prova.version,dados:d};
 }

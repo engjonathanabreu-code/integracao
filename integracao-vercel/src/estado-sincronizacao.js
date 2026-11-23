@@ -19,18 +19,36 @@ export const revisaoDeRecusa=i=>['bloqueado_conflito','bloqueado_validacao'].inc
 // An explicit confirmation click may reopen only the same exhausted client
 // request after a transport failure. Existing leases, cooldowns, receipts,
 // definitive failures and all other intents retain their original behavior.
+const alteracaoCadastro=(i,auditoriaId=null)=>i.original?.modulo==='processos'&&
+ i.original?.intencao?.edicoes?.some(a=>a.colecao==='auditoria'&&typeof a.id==='string'&&!!a.id&&
+   (auditoriaId===null||a.id===auditoriaId)&&a.antes?.existe===false&&a.depois?.existe===true&&
+   a.depois.valor?.id===a.id&&a.depois.valor?.acao==='Cadastro alterado')===true;
 export function podeRearmarCadastro(i, auditoriaId, agora){
  const e=i?.erro;
  return typeof auditoriaId==='string'&&!!auditoriaId&&i?.original?.modulo==='processos'&&
   i.estado==='resultado_desconhecido'&&!i.recibo&&!(i.leaseAte>agora)&&
   i.proximaTentativa===Number.MAX_SAFE_INTEGER&&e?.categoria==='transitoria'&&
   e.codigo==='TRANSPORTE'&&e.rejeicaoConfirmada===false&&
-  (e.status===null||[408,500,502,503,504].includes(e.status))&&
-  i.original.intencao?.edicoes?.some(a=>a.colecao==='auditoria'&&a.id===auditoriaId&&
-   a.antes?.existe===false&&a.depois?.existe===true&&a.depois.valor?.id===auditoriaId&&
-   a.depois.valor?.acao==='Cadastro alterado')===true;
+  (e.status===null||[408,500,502,503,504].includes(e.status))&&alteracaoCadastro(i,auditoriaId);
 }
+// Distinguish a failed preparation from a save with no confirmed outcome.
+export function falhaPreparacaoSemEnvio(i){
+ const e=i?.erro,o=i?.original;
+ return !!(i?.estado==='resultado_desconhecido'&&(!i.fase||i.fase==='preparacao')&&
+  e?.fase==='preparacao'&&e.codigo==='TRANSPORTE'&&e.categoria==='transitoria'&&
+  e.rejeicaoConfirmada===false&&(e.status===null||[408,500,502,503,504].includes(e.status))&&
+  o?.preparar===true&&!o.legado&&Array.isArray(o.operacoes)&&o.operacoes.length===0&&
+  i.tentativas===0&&i.tentativasTotais===0&&i.payload==null&&i.preparado==null&&
+  i.enviadoEm==null&&i.recibo==null&&i.confirmadoEm==null&&i.lidoEm==null);
+}
+// Only the diagnosed pre-send Cadastro flow needs a progressively longer
+// pause. Other modules retain their existing retry and review timing.
+export const ciclosBackoffIntencao=i=>falhaPreparacaoSemEnvio(i)&&alteracaoCadastro(i)?i.falhas:i.tentativas;
+export const podeVerificarPreparacaoAoReconectar=(i,agora)=>
+ falhaPreparacaoSemEnvio(i)&&!i.verificadaAoReconectar&&
+ i.original?.intencao?.edicoes?.some(e=>podeRearmarCadastro(i,e.id,agora))===true;
 export function orientacaoPendencia(i){
+ if(falhaPreparacaoSemEnvio(i))return 'O sistema falhou antes de enviar esta alteração. O rascunho continua preservado neste aparelho.';
  if(i.estado==='legado_revisao')return 'O rascunho antigo precisa de análise. Baixe o original preservado; ele não será reenviado automaticamente.';
  const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;
  if(categoria==='sessao')return 'Entre novamente na mesma conta e retome este pedido. As alterações continuam preservadas.';

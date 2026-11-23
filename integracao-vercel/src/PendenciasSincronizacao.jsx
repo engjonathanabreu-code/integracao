@@ -1,10 +1,10 @@
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {useState} from 'react';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
-import {orientacaoPendencia,revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
+import {orientacaoPendencia,revisaoDeRecusa,classificarFalha,falhaPreparacaoSemEnvio} from './estado-sincronizacao.js';
 const estados={persistencia_falhou:'Ainda não guardada — exporte antes de sair',legado_revisao:'Original preservado para revisão',pendente_local:'Guardada no aparelho',resultado_desconhecido:'Resultado desconhecido',confirmado_aguardando_leitura:'Confirmada; aguardando leitura',bloqueado_conflito:'Valores diferentes — revisar',bloqueado_validacao:'Campos ou vínculos — revisar',falha_transitoria:'Aguardando nova tentativa'};
 const motivos={RESPONSAVEL_INDISPONIVEL:'O responsável escolhido não está ativo no cadastro atual.',IDENTIDADE_OUTRA_META:'Um item pertence a outra meta. Preserve o histórico.',23503:'Uma referência está indisponível.',ARQUIVO_LOCAL_AUSENTE:'O arquivo original não está disponível neste aparelho.'};
-const rotulo=i=>{const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;return categoria==='sessao'?'Sessão expirada — autenticar novamente':categoria==='permissao'?'Permissão insuficiente — solicitar revisão':estados[i.estado]||i.estado;};
+const rotulo=i=>{if(falhaPreparacaoSemEnvio(i))return 'Falhou antes de enviar';const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;return categoria==='sessao'?'Sessão expirada — autenticar novamente':categoria==='permissao'?'Permissão insuficiente — solicitar revisão':estados[i.estado]||i.estado;};
 const valor=v=>v===undefined?'Não disponível nesta leitura':v===null?'Ausente':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 export default function PendenciasSincronizacao({sync}){
  const p=sync.previaPendencia,[ocupado,setOcupado]=useState(false);

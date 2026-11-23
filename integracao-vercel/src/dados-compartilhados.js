@@ -577,7 +577,7 @@ export async function lerArquivoERP(chave) {
 }
 
 // Immutable objects: replacing a template creates a new object and CAS-updates its pointer.
-export async function conteudoStorage(path,bytes) {
+export async function conteudoStorage(path,bytes,{bruto=false}={}) {
   const scope=capturarSessao();scope.conferir();
   await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
   scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/${bytes?'':'authenticated/'}integracao/${path.split('/').map(encodeURIComponent).join('/')}`,{method:bytes?'POST':'GET',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,...(bytes?{'Content-Type':'text/plain;charset=utf-8','x-upsert':'false'}:{})},...(bytes?{body:bytes}:{})});
@@ -587,7 +587,7 @@ export async function conteudoStorage(path,bytes) {
     return path;
   }
   if(!response.ok)throw Object.assign(new Error('Arquivo indisponível para esta conta.'),{status:response.status,code:'STORAGE_READ'});
-  const value=await response.text();scope.conferir();return value;
+  const value=await (bruto?response.arrayBuffer():response.text());scope.conferir();return value;
 }
 
 // Only files explicitly attached after loading are uploaded. Existing ERP files stay in place.

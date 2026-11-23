@@ -210,6 +210,65 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   });
 }
 
+// A lista antiga cortava notificações localmente; o encoder nunca enviava
+// essas remoções. Só validar INSERTs realmente gravados, não autorizar envio.
+export function estruturaReleituraNotificacoesLegadas(item, conta) {
+  const {recibo,payload,preparado,original}=item||{};
+  const vazio=v=>v==null||(objeto(v)&&Object.keys(v).length===0);
+  const soChaves=(v,chaves)=>objeto(v)&&Object.keys(v).length===chaves.length&&chaves.every(k=>possui(v,k));
+  if(!conta||item.conta!==conta||!soChaves(recibo,['aliases'])||!objeto(recibo.aliases)||!vazio(recibo.aliases)||
+    !Array.isArray(payload)||!payload.length||original?.modulo!=='notificacoes'||
+    !vazio(original.intencao?.arquivos)||!vazio(preparado?.sent)||!vazio(preparado?.identicos))return false;
+  const {antes,depois}=preparado||{};
+  if(!objeto(antes)||!objeto(depois)||!listaPorId(antes.notificacoes)||!listaPorId(depois.notificacoes)||
+    !igual(antes.auditoria,depois.auditoria))return false;
+  const mudancas=diferencas(antes,depois);
+  if(!mudancas.some(m=>!m.existe)||mudancas.some(m=>m.caminho.length!==2||m.caminho[0]!=='notificacoes'||!objeto(m.caminho[1])))return false;
+  const edicoes=original.intencao?.edicoes;
+  if(!Array.isArray(edicoes)||edicoes.length!==mudancas.length||
+    new Set(edicoes.map(e=>e?.id)).size!==edicoes.length||
+    edicoes.some(e=>e?.colecao!=='notificacoes'||typeof e.antes?.existe!=='boolean'||typeof e.depois?.existe!=='boolean'||
+      e.antes.existe===e.depois.existe||!mudancas.some(m=>m.caminho[1].id===e.id&&m.existe===e.depois.existe&&
+      igual(e.depois.valor,m.existe?m.valor:undefined))))return false;
+  const insercoes=new Map(mudancas.filter(m=>m.existe).map(m=>[m.caminho[1].id,m.valor]));
+  if(insercoes.size!==payload.length)return false;
+  const vistos=new Set();
+  return payload.every(op=>{
+    if(!soChaves(op,['table','key','insert','changes'])||op.insert!==true||
+      !['integracao_notificacoes','integracao_complementos'].includes(op.table)||
+      !soChaves(op.key,['colecao','registro_id'])||op.key.colecao!=='notificacoes'||
+      !soChaves(op.changes,['dados','criado_por','referencia_tabela','referencia_id']))return false;
+    const id=op.key.registro_id,{dados,criado_por,referencia_tabela,referencia_id}=op.changes;
+    if(typeof id!=='string'||!insercoes.has(id)||vistos.has(id)||!objeto(dados)||dados.id!==id||
+      criado_por!==conta||!igual(dados,insercoes.get(id)))return false;
+    vistos.add(id);
+    return true;
+  });
+}
+
+export function releituraNotificacoesLegadas(item, base, conta) {
+  if(!estruturaReleituraNotificacoesLegadas(item,conta)||!Array.isArray(base?.integracao_notificacoes)||
+    !Array.isArray(base?.integracao_complementos))return false;
+  return item.payload.every(op=>{
+    const id=op.key.registro_id,{dados,criado_por,referencia_tabela,referencia_id}=op.changes;
+    const rows=base.integracao_notificacoes.filter(r=>r.colecao==='notificacoes'&&r.registro_id===id);
+    // A row from a historical complement may have moved to the dedicated
+    // table. The merged projection may also contain a marked copy of it.
+    const velhos=base.integracao_complementos.filter(r=>r.colecao==='notificacoes'&&r.registro_id===id&&(!r._tabela||r._tabela==='integracao_complementos'));
+    const achados=op.table==='integracao_notificacoes'?rows:[...rows,...velhos];
+    if(achados.length!==1||(op.table==='integracao_notificacoes'&&velhos.length))return false;
+    const row=achados[0];
+    return row.criado_por===criado_por&&row.referencia_tabela===referencia_tabela&&row.referencia_id===referencia_id&&igual(row.dados,dados);
+  });
+}
+
+// Legacy aliases alone contain no request identity. Require a fresh authorized
+// lookup for this exact item/payload before the existing queue CAS may confirm.
+export async function verificarReleituraNotificacoesLegadas(item,base,conta,consultarRecibo){
+  if(!releituraNotificacoesLegadas(item,base,conta))return false;
+  return igual(await consultarRecibo(item),item.recibo);
+}
+
 export function alteracoesConfirmadas(antes, depois, remoto, aliases = {}, operacoes = []) {
   return conferir(diferencas(antes, depois), remoto, aliases, operacoes);
 }
