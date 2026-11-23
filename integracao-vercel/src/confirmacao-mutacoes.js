@@ -2,6 +2,7 @@ import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} 
 import {remapearIdentidades as remapear} from './aliases-tipados.js';
 import {igualSemantico as igual} from './igualdade-semantica.js';
 import {instanteChecklist} from './contrato-checklist.js';
+import {validarReciboOperacoes} from './recibo-operacoes.js';
 // Observa o pipeline existente; não grava, repete ou concilia mutações.
 // A auditoria identifica o snapshot enviado, e os campos alterados são conferidos
 // contra a leitura feita depois do recibo. Edições posteriores aguardam outro lote.
@@ -216,7 +217,9 @@ export function estruturaReleituraNotificacoesLegadas(item, conta) {
   const {recibo,payload,preparado,original}=item||{};
   const vazio=v=>v==null||(objeto(v)&&Object.keys(v).length===0);
   const soChaves=(v,chaves)=>objeto(v)&&Object.keys(v).length===chaves.length&&chaves.every(k=>possui(v,k));
-  if(!conta||item.conta!==conta||!soChaves(recibo,['aliases'])||!objeto(recibo.aliases)||!vazio(recibo.aliases)||
+  const tipado=recibo?.protocoloRecibo===1;
+  if(!conta||item?.conta!==conta||!soChaves(recibo,tipado?['aliases','protocoloRecibo','pedido','confirmadoEm','resultados']:['aliases'])||
+    !objeto(recibo.aliases)||!vazio(recibo.aliases)||
     !Array.isArray(payload)||!payload.length||original?.modulo!=='notificacoes'||
     !vazio(original.intencao?.arquivos)||!vazio(preparado?.sent)||!vazio(preparado?.identicos))return false;
   const {antes,depois}=preparado||{};
@@ -230,6 +233,14 @@ export function estruturaReleituraNotificacoesLegadas(item, conta) {
     edicoes.some(e=>e?.colecao!=='notificacoes'||typeof e.antes?.existe!=='boolean'||typeof e.depois?.existe!=='boolean'||
       e.antes.existe===e.depois.existe||!mudancas.some(m=>m.caminho[1].id===e.id&&m.existe===e.depois.existe&&
       igual(e.depois.valor,m.existe?m.valor:undefined))))return false;
+  if(tipado){
+    // An old UI trim may only be ignored for this proven, dedicated insert.
+    if(typeof item.pedido!=='string'||!item.pedido||payload.length!==1||payload[0]?.table!=='integracao_notificacoes'||mudancas.length!==2)return false;
+    const corte=edicoes.find(e=>!e.depois.existe);
+    if(!objeto(corte?.antes.valor)||corte.antes.valor.id!==corte.id||corte.antes.valor._compartilhado!==true||
+      !igual(antes.notificacoes.find(n=>n.id===corte.id),corte.antes.valor))return false;
+    try{if(!validarReciboOperacoes(recibo,payload,item.pedido))return false;}catch{return false;}
+  }
   const insercoes=new Map(mudancas.filter(m=>m.existe).map(m=>[m.caminho[1].id,m.valor]));
   if(insercoes.size!==payload.length)return false;
   const vistos=new Set();
@@ -258,12 +269,16 @@ export function releituraNotificacoesLegadas(item, base, conta) {
     const achados=op.table==='integracao_notificacoes'?rows:[...rows,...velhos];
     if(achados.length!==1||(op.table==='integracao_notificacoes'&&velhos.length))return false;
     const row=achados[0];
-    return row.criado_por===criado_por&&row.referencia_tabela===referencia_tabela&&row.referencia_id===referencia_id&&igual(row.dados,dados);
+    if(row.criado_por!==criado_por||row.referencia_tabela!==referencia_tabela||row.referencia_id!==referencia_id||!igual(row.dados,dados))return false;
+    if(item.recibo.protocoloRecibo!==1)return true;
+    const r=item.recibo.resultados[0],atualizado=row.updated_at;
+    return r.disponivel===true&&typeof atualizado==='string'&&Number.isFinite(Date.parse(atualizado))&&
+      igual(r.canonico,{...op.key,...op.changes,updated_at:atualizado});
   });
 }
 
-// Legacy aliases alone contain no request identity. Require a fresh authorized
-// lookup for this exact item/payload before the existing queue CAS may confirm.
+// Require a fresh authorized lookup for the exact item/payload, in both
+// receipt formats, before the existing queue CAS may confirm.
 export async function verificarReleituraNotificacoesLegadas(item,base,conta,consultarRecibo){
   if(!releituraNotificacoesLegadas(item,base,conta))return false;
   return igual(await consultarRecibo(item),item.recibo);

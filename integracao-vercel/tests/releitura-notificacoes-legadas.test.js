@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {alteracoesConfirmadas,estruturaReleituraNotificacoesLegadas,releituraNotificacoesLegadas,verificarReleituraNotificacoesLegadas} from '../src/confirmacao-mutacoes.js';
+import {aplicarIntencao,extrairIntencao,recortarIntencao} from '../src/intencoes-edicao.js';
+import {complementos} from '../src/dados-compartilhados.js';
 const dono='dono-original';
 const antiga={id:'antiga',rota:{pag:'metas'},titulo:'Conteúdo antigo'};
 const avisos=[{id:'nova-1',rota:{pag:'metas',ref:'meta'},titulo:'Conteúdo 1'}, {id:'nova-2',titulo:'Conteúdo 2',lidaPor:[]}];
@@ -65,4 +67,59 @@ test('consulta autorizada recebe pedido e payload exatos; sem retorno igual não
  assert.equal(await verificarReleituraNotificacoesLegadas(item,base,'outra',lookup({aliases:{}})),false);
  assert.equal(chamadas,3);
  await assert.rejects(verificarReleituraNotificacoesLegadas(item,base,dono,async()=>{throw Error('Rede');}),/Rede/);
+});
+
+function fixtureTipada(){
+ const antigaCompartilhada={...antiga,_compartilhado:true};
+ const antes={notificacoes:[...Array.from({length:299},(_,i)=>({id:`anterior-${i}`})),antigaCompartilhada]};
+ const nova=avisos[0];
+ const edicoes=extrairIntencao(antes,{notificacoes:[nova,...antes.notificacoes].slice(0,300)});
+ const {dados:depois,conflitos}=aplicarIntencao(antes,edicoes);
+ assert.deepEqual(conflitos,[]);
+ const payload=complementos(antes,depois,{base:{integracao_complementos:[]},bindings:[]},{erpRef:dono});
+ assert.equal(payload.length,1);
+ assert.equal(payload[0].insert,true);
+ const op=payload[0],pedido='pedido-original';
+ const row={...op.key,...op.changes,updated_at:'2026-11-23T15:04:12.58888+00:00'};
+ const recibo={protocoloRecibo:1,aliases:{},pedido,confirmadoEm:row.updated_at,resultados:[{
+   indice:0,versao:'a'.repeat(32),tipo:'registro',tabela:op.table,chave:structuredClone(op.key),removido:false,disponivel:true,canonico:structuredClone(row)
+ }]};
+ return {item:{conta:dono,pedido,payload,recibo,original:{modulo:'notificacoes',intencao:{edicoes,arquivos:{}}},
+   preparado:{antes:recortarIntencao(antes,edicoes),depois:recortarIntencao(depois,edicoes),sent:{}}},
+   base:{integracao_notificacoes:[row],integracao_complementos:[{...row,_tabela:'integracao_notificacoes'}]},
+   remoto:{notificacoes:[antigaCompartilhada,nova]}};
+}
+
+test('recibo tipado confirma somente a inserção do corte local preservado, sem reenviar',async()=>{
+ const {item,base,remoto}=fixtureTipada();
+ assert.equal(alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,remoto,item.recibo.aliases,item.payload),false);
+ assert.equal(estruturaReleituraNotificacoesLegadas(item,dono),true);
+ assert.equal(await verificarReleituraNotificacoesLegadas(item,base,dono,async atual=>{
+   assert.equal(atual.pedido,item.pedido);assert.equal(atual.payload,item.payload);
+   return structuredClone(item.recibo);
+ }),true);
+ assert.equal(await verificarReleituraNotificacoesLegadas(item,base,dono,async()=>null),false);
+ assert.equal(await verificarReleituraNotificacoesLegadas(item,base,dono,async()=>({...item.recibo,confirmadoEm:'2026-11-23T15:09:10+00:00'})),false);
+});
+
+test('recibo tipado não libera corte sem prova integral de pedido, escopo e linha atual',()=>{
+ const casos=[
+  c=>{c.item.recibo.pedido='outro';},
+  c=>{c.item.recibo.aliases={antiga:'outra'};},
+  c=>{c.item.recibo.resultados[0].disponivel=false;},
+  c=>{c.item.recibo.resultados[0].removido=true;},
+  c=>{c.item.recibo.resultados[0].versao='errada';},
+  c=>{c.item.recibo.resultados[0].canonico.criado_por='outra';},
+  c=>{c.item.recibo.resultados.push(c.item.recibo.resultados[0]);},
+  c=>{c.item.original.intencao.edicoes.find(e=>!e.depois.existe).antes.valor._compartilhado=false;},
+  c=>{c.item.original.intencao.arquivos.foto={};},
+  c=>{c.item.preparado.antes.metas=[{id:'meta'}];c.item.preparado.depois.metas=[];},
+  c=>{c.item.payload.push({table:'integracao_notificacoes',key:{colecao:'notificacoes',registro_id:'antiga'},remove:true});},
+  c=>{c.base.integracao_notificacoes[0].criado_por='outra';},
+  c=>{c.base.integracao_notificacoes[0].updated_at='2026-11-23T15:09:10+00:00';},
+  c=>{c.base.integracao_notificacoes[0].dados.titulo='mudou';},
+  c=>{c.base.integracao_notificacoes=[];},
+  c=>{c.base.integracao_notificacoes.push(c.base.integracao_notificacoes[0]);},
+ ];
+ for(const change of casos){const ctx=fixtureTipada();change(ctx);assert.equal(releituraNotificacoesLegadas(ctx.item,ctx.base,dono),false,change.toString());}
 });
