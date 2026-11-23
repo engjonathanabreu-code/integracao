@@ -6,6 +6,7 @@ import {acaoPermitida} from './permissoes-contrato.js';
 import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoResidencia, limiteResidencia, diaReferenciaResidencia} from './prazo-residencia.js';
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
+import {documentoPorDeclarante,opcoesDeclaracao} from './declarantes-comerciais.js';
 import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
@@ -47,7 +48,7 @@ import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
-import {atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
+import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
 import {documentoHtml} from './documento-formato.js';
 import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
@@ -55,7 +56,7 @@ import {ConfigModeloOficio} from './GeradorOficio.jsx';
 import {SincronizadorPonto} from './use-ponto-local.js';
 import {tipoDistrato,validarDistrato,textoAcertoDistrato} from './distrato.js';
 import FolhaPonto, {BaterPonto,JornadaPonto} from './FolhaPonto.jsx';
-import {responsavelMeta,podeAnalisarDevolutiva,arquivosOriginaisDevolutiva} from './metas-identidade.js';
+import {responsavelMeta,podeAnalisarDevolutiva,arquivosOriginaisDevolutiva,podeGerirDevolutivaPosProtocolo,podeAnexarDevolutivaPosProtocolo,comEdicaoDevolutiva,validarLoteDevolutiva} from './metas-identidade.js';
 import {Landmark} from 'lucide-react';
 import {SETORES, FUNCOES, SETOR_DA_ETAPA, permissoes, setorDoPerfilERP} from './permissoes.js';
 import DadosNUI from './DadosNUI.jsx';
@@ -8335,6 +8336,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
   const lista = devolutivasDoNucleo(db, n.id).sort((a, b) => (b.devolutiva?.chegada || "").localeCompare(a.devolutiva?.chegada || ""));
   const hoje = diaCivilEvento(new Date());
   const [analisando, setAnalisando] = useState(null);
+  const [editandoDev, setEditandoDev] = useState(null);
   const [relatorio, setRelatorio] = useState(null);
   const baixar = async (arq) => {
     try {
@@ -8384,15 +8386,95 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
               {!(m.arquivos || []).length && <span className="ajuda" style={{ margin: 0 }}>Sem arquivo anexado.</span>}
               {etapa1 && <button className="btn btn-sm" onClick={() => setRelatorio(m)}><Sparkles size={13} />Ver relatório da IA</button>}
               {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnalisando(m)}><Sparkles size={13} />{!etapa1 ? "Analisar devolutiva" : etapa2 ? "Conferir de novo" : "Conferir trabalho corrigido"}</button>}
+              {podeGerirDevolutivaPosProtocolo(m,usuario) && <button className="btn btn-sm" onClick={() => setEditandoDev(m)}>Editar devolutiva</button>}
               <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "metas" })}>Abrir a meta</button>
             </div>
           </div>
         );
       })}
       {analisando && <ModalAnaliseDevolutiva db={db} meta={analisando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnalisando(null)} />}
+      {editandoDev && <ModalCadastroDevolutiva db={db} meta={editandoDev} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditandoDev(null)} />}
       {relatorio && <ModalRelatorioDevolutiva meta={relatorio} onFechar={() => setRelatorio(null)} />}
     </Secao>
   );
+}
+
+function ModalCadastroDevolutiva({db,meta,usuario,mutar,setToast,onFechar}) {
+  const [form,setForm]=useState(()=>({
+    origem:meta?.devolutiva?.origem||"Prefeitura",chegada:meta?.devolutiva?.chegada||diaCivilEvento(new Date()),
+    prazo:meta?.devolutiva?.prazo||"",textoOriginal:meta?.devolutiva?.textoOriginal??meta?.observacoes??"",
+    nucleoId:meta?.associacao_id||"",municipioId:(db.nucleos||[]).find(n=>n.id===meta?.associacao_id)?.municipioId||""
+  }));
+  const inicial=useRef(form);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const [arquivos,setArquivos]=useState([]);
+  const [erro,setErro]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const emSalvamento=useRef(false);
+  const envio=useConfirmacaoEdicao(mutar,setToast);
+  const permitido=podeGerirDevolutivaPosProtocolo(meta,usuario);
+  const anexar=podeAnexarDevolutivaPosProtocolo(meta,usuario);
+  const nucleo=(db.nucleos||[]).find(n=>n.id===form.nucleoId&&n.municipioId===form.municipioId);
+  const travado=salvando||envio.bloqueada;
+  const fechar=()=>{if(!salvando&&envio.fechar())onFechar();};
+  const salvar=async()=>{
+    if(emSalvamento.current||travado||!permitido||!nucleo||!form.chegada||(!meta&&!arquivos.length&&!form.textoOriginal.trim())||(arquivos.length&&!anexar))return;
+    const campos={origem:form.origem,chegada:form.chegada,prazo:form.prazo,textoOriginal:form.textoOriginal.trim()};
+    const mudancas=Object.fromEntries(Object.entries(campos).filter(([k,v])=>v!==inicial.current[k]));
+    if(meta&&!arquivos.length&&!Object.keys(mudancas).length)return;
+    emSalvamento.current=true;setSalvando(true);setErro("");
+    try {
+      const anexos=[];
+      for(const arq of arquivos){
+        const base64=await lerBase64(arq);
+        const a={id:uid("ar"),nome:arq.name,tipo:arq.type||"application/octet-stream",tamanho:arq.size,chave:`${PREFIXO_ARQ_DEV}${uid("k")}`,por:usuario.nome,data:new Date().toISOString()};
+        await armazenamento.set(a.chave,`data:${a.tipo};base64,${base64}`);anexos.push(a);
+      }
+      const titulo=meta?.titulo||`Devolutiva - ${rotuloNucleo(db,nucleo)} - ${dataBR(form.chegada)}`;
+      const acao=meta?"Devolutiva editada":"Devolutiva registrada";
+      const metaId=meta?.id||uid("mt");
+      const registro={id:uid("h"),acao,descricao:"",autor:usuario.nome,autorId:usuario.id,data:new Date().toISOString()};
+      await envio.executar(d=>{
+        const atual=(d.nucleos||[]).find(n=>n.id===nucleo.id&&n.municipioId===form.municipioId);
+        const q=meta ? d.metas.find(m=>m.id===meta.id) : null;
+        if(!atual||(meta&&(!q||q.associacao_id!==nucleo.id))||!podeGerirDevolutivaPosProtocolo(q,usuario)||
+          (anexos.length&&!podeAnexarDevolutivaPosProtocolo(q,usuario)))throw Error("A devolutiva ou o acesso mudou. Reabra antes de salvar.");
+        if(q){
+          if(Object.keys(mudancas).some(k=>q.devolutiva[k]!==meta.devolutiva[k]))throw Error("A devolutiva mudou. Reabra antes de salvar.");
+          Object.assign(q,comEdicaoDevolutiva(q,mudancas,anexos));
+          q.historico=[registro,...(q.historico||[])];
+        } else {
+          if(d.metas.some(m=>m.id===metaId))throw Error("Esta devolutiva já está registrada. Reabra o cadastro.");
+          const m={id:metaId,erpId:null,titulo,observacoes:campos.textoOriginal,semana_inicio:semanaISO(),prazo:campos.prazo,status:META_STATUS[0],setor:"",
+            associacao_tipo:"nucleo",associacao_id:nucleo.id,nucleos:[nucleo.id],criadoPor:usuario.id,icone:"",responsaveis:[],checklist:[],comentarios:[],historico:[registro],arquivos:anexos,devolutiva:campos};
+          d.metas.unshift(m);
+        }
+        return d;
+      },acao,{detalhe:titulo},meta?"Devolutiva atualizada.":"Devolutiva registrada.",onFechar);
+    } catch(e){setErro(e.message);} finally{emSalvamento.current=false;setSalvando(false);}
+  };
+  return <Modal titulo={meta?"Editar devolutiva":"Cadastrar devolutiva"} largura={650} onFechar={fechar}
+    rodape={<><button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={!permitido||travado||!nucleo||!form.chegada||(!meta&&!arquivos.length&&!form.textoOriginal.trim())} onClick={salvar}>Salvar</button></>}>
+    <EstadoConfirmacaoEdicao envio={envio}/>
+    <fieldset disabled={!permitido||travado} style={{border:0,margin:0,padding:0,minWidth:0}}>
+      {meta?<p className="ajuda">Núcleo: {nucleo?rotuloNucleo(db,nucleo):"indisponível"}</p>:<>
+        <BuscaItem id="dcmun" rotulo="Município (obrigatório)" mostrarTodos itens={(db.municipios||[]).map(m=>[m.id,m.nome])} valor={form.municipioId} onEscolher={id=>setForm(f=>({...f,municipioId:id,nucleoId:""}))}/>
+        <BuscaItem id="dcnu" rotulo="Núcleo (obrigatório)" mostrarTodos itens={(db.nucleos||[]).filter(n=>n.municipioId===form.municipioId).map(n=>[n.id,rotuloNucleo(db,n)])} valor={form.nucleoId} onEscolher={id=>set("nucleoId",id)}/>
+      </>}
+      <label className="rot" htmlFor="dcor">Origem</label><select id="dcor" className="inp" value={form.origem} onChange={e=>set("origem",e.target.value)}>{[...new Set([...ORIGENS_DEVOLUTIVA,inicial.current.origem])].map(o=><option key={o}>{o}</option>)}</select>
+      <div className="fg" style={{gridTemplateColumns:"1fr 1fr"}}>
+        <div><label className="rot" htmlFor="dcdata">Data de chegada</label><input id="dcdata" className="inp" type="date" value={form.chegada} onChange={e=>set("chegada",e.target.value)}/></div>
+        <div><label className="rot" htmlFor="dcprazo">Prazo final (opcional)</label><input id="dcprazo" className="inp" type="date" value={form.prazo} onChange={e=>set("prazo",e.target.value)}/></div>
+      </div>
+      <label className="rot" htmlFor="dctexto">Texto da devolutiva</label><textarea id="dctexto" className="inp" rows={4} value={form.textoOriginal} onChange={e=>set("textoOriginal",e.target.value)}/>
+      {anexar&&<><label className="rot" htmlFor="dcarq">Arquivos da devolutiva (PDF ou imagem)</label><input id="dcarq" className="inp" type="file" multiple accept={EXTENSOES_ACEITAS} onChange={e=>{
+        const lista=Array.from(e.target.files);
+        const mensagem=lista.length?validarLoteDevolutiva(lista,(meta?.arquivos||[]).length,EXTENSOES_ACEITAS.split(","),MAX_ARQUIVO):"";
+        setErro(mensagem);setArquivos(mensagem?[]:lista);if(mensagem)e.target.value="";
+      }}/><p className="ajuda">Até 5 arquivos ao todo. Os anexos existentes serão preservados.</p></>}
+      {erro&&<div className="msg-erro" role="alert">{erro}</div>}
+    </fieldset>
+  </Modal>;
 }
 
 function ModalRelatorioDevolutiva({ meta, onFechar }) {
@@ -8683,13 +8765,13 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
 }
 
 /* ---------------- documentos comerciais ---------------- */
-const MODALIDADES_VENDA = ["À vista", "Entrada e parcelas", "Parcelado sem entrada", "Isento (REURB-S)", "Custeado pela prefeitura"];
+const MODALIDADES_VENDA = ["À vista", "Entrada e parcelas", ENTRADA_PARCELADA, "Parcelado sem entrada", "Isento (REURB-S)", "Custeado pela prefeitura"];
 const REAJUSTES = ["Sem reajuste", "IPCA anual", "IGP-M anual", "INPC anual"];
 const condicoesVazias = () => ({ modalidade: "Entrada e parcelas", valorTotal: "", entrada: "", entradaTipo: "valor", entradaPercentual: "", parcelas: "", valorParcela: "", diaVencimento: "10", primeiroVencimento: "", reajuste: "Sem reajuste", observacoes: "" });
 const condicoesDoCliente = (db, p) => {
   const n = nucleoDe(db, p.nucleoId);
-  if (p.comercial) return { ...p.comercial, origem: "cliente" };
-  if (n?.comercial) return { ...n.comercial, origem: "nucleo" };
+  if (condicaoVendaRegistrada(p)) return { ...condicaoVendaRegistrada(p), origem: "cliente" };
+  if (condicaoVendaRegistrada(n)) return { ...condicaoVendaRegistrada(n), origem: "nucleo" };
   return null;
 };
 // Valor em reais a partir do texto digitado ("2.400,00")
@@ -8703,6 +8785,10 @@ const porExtensoReais = (v) => {
 };
 function resumoCondicoes(c) {
   if (!c) return "Sem condição definida";
+  if (c.modalidade === ENTRADA_PARCELADA) {
+    const {itens, total, entrada, saldo} = calcularEntradaParcelada(c);
+    return `${reais(total / 100)}, entrada de ${reais(entrada / 100)} em ${itens.length}x e saldo de ${reais(saldo / 100)}`;
+  }
   if (c.modalidade === "À vista") return `À vista, ${reais(c.valorTotal)}`;
   if (c.modalidade.startsWith("Isento") || c.modalidade.startsWith("Custeado")) return c.modalidade;
   const partes = [];
@@ -8712,6 +8798,7 @@ function resumoCondicoes(c) {
 }
 function textoPagamento(c) {
   if (!c) return "____________";
+  if (c.modalidade === ENTRADA_PARCELADA) return descreverEntradaParcelada(c) || "Preencha as parcelas da entrada e do saldo para gerar o contrato.";
   const venc = c.primeiroVencimento ? `, com o primeiro vencimento em ${dataBR(c.primeiroVencimento)}` : "";
   const dia = c.diaVencimento ? ` e vencimento todo dia ${c.diaVencimento}` : "";
   const reaj = c.reajuste && c.reajuste !== "Sem reajuste" ? ` As parcelas são corrigidas pelo ${c.reajuste.replace(" anual", "")}, uma vez por ano.` : "";
@@ -8728,6 +8815,7 @@ const DOCS_COMERCIAIS = [
   { id: "requerimento", nome: "Requerimento de REURB", precisa: ["nome", "cpf", "endereco", "nucleo"] },
   { id: "dec_estado_civil", nome: "Declaração de estado civil", precisa: ["nome", "cpf"] },
   { id: "dec_renda", nome: "Declaração de renda", precisa: ["nome", "cpf", "renda"] },
+  { id: "termo_veracidade", nome: "Termo de responsabilidade pela veracidade das informações", precisa: ["nome", "cpf", "nucleo"] },
   { id: "dec_endereco", nome: "Declaração de residência", precisa: ["nome", "cpf", "endereco"] },
   { id: "dec_posse", nome: "Declaração de posse mansa e pacífica", precisa: ["nome", "cpf", "endereco"] },
   { id: "distrato", nome: "Distrato do contrato", precisa: ["nome", "cpf", "distrato"] },
@@ -8804,13 +8892,30 @@ function dadosDocumento(db, p, usuario) {
     emitidoPor: usuario.nome,
   };
 }
-function faltandoPara(doc, d, p) {
+function dadosDeclaranteComercial(d, op) {
+  const x=op.pessoa, pj=ehPJ(x), cpf=pj?fmtCNPJ(x.cnpj):fmtCPF(x.cpf);
+  const tipoDocumento=pj?"CNPJ":"CPF";
+  const rep=op.representante;
+  const firma=rep ? {nome:rep.nome,cpf:fmtCPF(rep.cpf),tipoDocumento:"CPF",papel:"Representante"} : {nome:x.nome,cpf,tipoDocumento};
+  const identificacao=cpf?`${tipoDocumento} nº ${cpf}`:"sem CPF informado";
+  const qual=[x.nome,pj?"pessoa jurídica":x.nacionalidade,op.estadoCivil,x.profissao,identificacao,x.rg?`RG nº ${x.rg}`:"",
+    rep?.nome?`neste ato representado(a) por ${rep.nome}${firma.cpf?`, CPF nº ${firma.cpf}`:""}`:""].filter(Boolean).join(", ");
+  return {...d,nome:x.nome,cpf,tipoDocumento,rg:x.rg||"",nacionalidade:x.nacionalidade||"",estadoCivil:op.estadoCivil,
+    profissao:x.profissao||"",telefone:x.telefone||"",qualificacaoCompleta:qual,conjuge:"",cpfConjuge:"",conjugeBeneficiario:false,
+    requerentes:x.nome,assinantes:[[firma.nome,firma.cpf]],firmaDeclarante:firma};
+}
+function faltandoPara(doc, d, p, declarante) {
   const falta = [];
-  if (doc.precisa.includes("nome") && !preenchido(p.requerente.nome)) falta.push("nome do requerente");
-  if (doc.precisa.includes("cpf") && !(!ehPJ(p.requerente) && cpfDispensado(p.requerente)) && !preenchido(ehPJ(p.requerente) ? p.requerente.cnpj : p.requerente.cpf)) falta.push(ehPJ(p.requerente) ? "CNPJ" : "CPF");
+  if(documentoPorDeclarante(doc.id)){
+    if(!declarante)falta.push("declarante no cadastro");
+    else falta.push(...declarante.falta);
+  }else{
+    if (doc.precisa.includes("nome") && !preenchido(p.requerente.nome)) falta.push("nome do requerente");
+    if (doc.precisa.includes("cpf") && !(!ehPJ(p.requerente) && cpfDispensado(p.requerente)) && !preenchido(ehPJ(p.requerente) ? p.requerente.cnpj : p.requerente.cpf)) falta.push(ehPJ(p.requerente) ? "CNPJ" : "CPF");
+  }
   if (doc.precisa.includes("endereco") && !preenchido(p.endereco?.logradouro)) falta.push("endereço");
   if (doc.precisa.includes("nucleo") && !p.nucleoId) falta.push("núcleo");
-  if (doc.precisa.includes("condicoes") && !d.condicoes) falta.push("forma de pagamento");
+  if (doc.precisa.includes("condicoes") && (!d.condicoes || (d.condicoes.modalidade === ENTRADA_PARCELADA && validarCondicoesVenda(d.condicoes)))) falta.push("forma de pagamento");
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
   if (doc.precisa.includes("procurador") && !(d.advogados || []).length) falta.push("representante cadastrado em Configurações");
   if (doc.precisa.includes("distrato") && !p.distrato?.registradoEm) falta.push("distrato registrado na seção acima");
@@ -8855,8 +8960,15 @@ const MODELOS_DOC = {
   dec_renda: {
     nome: "Declaração de renda",
     corpo: `{{titulo:DECLARAÇÃO DE RENDA FAMILIAR}}
-{{p:{{qualificacao}}, <strong>DECLARA</strong>, sob as penas da lei, que a renda mensal do seu grupo familiar é de aproximadamente <strong>{{renda}}</strong>, proveniente de {{profissao}}.}}
+{{p:{{qualificacao}}, <strong>DECLARA</strong>, sob as penas da lei, que a renda mensal do seu grupo familiar é de aproximadamente <strong>{{renda}}</strong>.}}
 {{p:A declaração é apresentada para fins de enquadramento na modalidade {{modalidade}} da regularização fundiária, nos termos da Lei 13.465/2017, ciente de que a falsidade da informação implica as sanções previstas em lei.}}
+{{assinatura}}`,
+  },
+  termo_veracidade: {
+    nome: "Termo de responsabilidade pela veracidade das informações",
+    corpo: `{{titulo:TERMO DE RESPONSABILIDADE PELA VERACIDADE DAS INFORMAÇÕES}}
+{{p:{{qualificacao}}, declara, para instrução do processo de regularização fundiária urbana referente à unidade {{unidades}}, no núcleo {{nucleo}}, em {{municipio}}, que as informações prestadas e os documentos apresentados por si correspondem à realidade, conforme seu conhecimento na data deste termo.}}
+{{p:Compromete-se a comunicar ao responsável pelo atendimento qualquer correção ou alteração relevante de que tenha conhecimento e está ciente de que informações ou documentos falsos podem acarretar as consequências previstas em lei.}}
 {{assinatura}}`,
   },
   dec_endereco: {
@@ -8924,10 +9036,11 @@ const qualificacaoAdvogado = (a) => [
   a.endereco ? `com endereço profissional na ${a.endereco}` : "",
 ].filter(Boolean).join(", ");
 function blocoAssinatura(d, comConjuge) {
+  const pessoa=d.firmaDeclarante||d;
   return `
 <p style="margin:36px 0 6px;text-align:center">${escaparHtml(d.dataExtenso)}.</p>
 <table data-assinaturas="true" style="width:100%;margin-top:40px"><tr>
-<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.nome)}<br/>${d.tipoDocumento || "CPF"} ${escaparHtml(d.cpf)}</div></td>
+<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(pessoa.nome)}${pessoa.cpf?`<br/>${pessoa.tipoDocumento || "CPF"} ${escaparHtml(pessoa.cpf)}`:""}${pessoa.papel?`<br/>${escaparHtml(pessoa.papel)}`:""}</div></td>
 ${comConjuge && d.conjuge && d.conjugeBeneficiario !== false ? `<td style="text-align:center;padding:0 12px"><div style="border-top:1px solid #000;padding-top:4px">${escaparHtml(d.conjuge)}<br/>CPF ${escaparHtml(d.cpfConjuge || "____________")}</div></td>` : ""}
 </tr></table>`;
 }
@@ -8976,7 +9089,8 @@ function montarDocumentoComercial(tipo, d, db, extras) {
   const expandido = expandirLacos(condicional, dados);
   const valores = valoresDocumento(d, extras);
   if (tipo === "termo_compromisso") valores.qualificacao = escaparHtml(d.qualificacaoCompromisso || "{{qualificacao}}");
-  return preencherModelo(expandido, valores);
+  const html=preencherModelo(expandido, valores);
+  return tipo==="contrato"?`<div data-documento="contrato">${html}</div>`:html;
 }
 
 function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
@@ -8984,6 +9098,9 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
   useEffect(() => { setF({ ...condicoesVazias(), ...(valor || {}) }); }, [JSON.stringify(valor)]); // eslint-disable-line
   const [erro,setErro] = useState("");
   const set = (k, v) => { setErro(""); setF((x) => atualizarCondicoes(x,k,v)); };
+  const entradaParcelada = f.modalidade === ENTRADA_PARCELADA;
+  const parcelasEntrada = f.parcelasEntrada || [];
+  const planoEntrada = entradaParcelada ? calcularEntradaParcelada(f) : null;
   const semValores = f.modalidade.startsWith("Isento") || f.modalidade.startsWith("Custeado");
   const semParcelas = semValores || f.modalidade === "À vista";
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...condicoesVazias(), ...(valor || {}) });
@@ -8996,16 +9113,24 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
           <div><label className="rot" htmlFor={`${titulo}-tipo-ent`}>Informar entrada em</label><select id={`${titulo}-tipo-ent`} className="inp" value={f.entradaTipo} disabled={!pode} onChange={e=>set("entradaTipo",e.target.value)}><option value="valor">Valor (R$)</option><option value="percentual">Porcentagem (%)</option></select></div>
           <div><label className="rot" htmlFor={`${titulo}-ent`}>{f.entradaTipo === "percentual" ? "Entrada (%)" : "Entrada (R$)"}</label><input id={`${titulo}-ent`} className="inp" inputMode="decimal" value={f.entradaTipo === "percentual" ? f.entradaPercentual : f.entrada} disabled={!pode} onChange={e=>set(f.entradaTipo === "percentual" ? "entradaPercentual" : "entrada",e.target.value)} />{f.entradaTipo === "percentual" && <small className="ajuda">Equivale a {reais(f.entrada)}</small>}</div>
         </>}
-        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-par`}>Parcelas</label><input id={`${titulo}-par`} className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} /></div>}
-        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-vp`}>Valor da parcela (R$)</label><input id={`${titulo}-vp`} className="inp" inputMode="decimal" value={f.valorParcela} disabled={!pode} onChange={(e) => set("valorParcela", e.target.value)} /></div>}
-        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-dia`}>Dia de vencimento</label><input id={`${titulo}-dia`} className="inp" inputMode="numeric" value={f.diaVencimento} disabled={!pode} onChange={(e) => set("diaVencimento", e.target.value)} /></div>}
-        {!semValores && <div><label className="rot" htmlFor={`${titulo}-pv`}>Primeiro vencimento</label><input id={`${titulo}-pv`} type="date" className="inp" value={f.primeiroVencimento} disabled={!pode} onChange={(e) => set("primeiroVencimento", e.target.value)} /></div>}
+        {entradaParcelada && <>
+          <div><label className="rot" htmlFor={`${titulo}-qtd-ent`}>Parcelas da entrada</label><select id={`${titulo}-qtd-ent`} className="inp" disabled={!pode} value={parcelasEntrada.length || 1} onChange={e=>set("parcelasEntrada",Array.from({length:Number(e.target.value)},(_,i)=>parcelasEntrada[i]||entradaParcelaVazia()))}>{[1,2,3].map(i=><option key={i} value={i}>{i}</option>)}</select></div>
+          {parcelasEntrada.map((parcela,i)=><div key={i}>
+            <label className="rot" htmlFor={`${titulo}-ent-${i}`}>{i+1}ª parcela da entrada (R$)</label><input id={`${titulo}-ent-${i}`} className="inp" inputMode="decimal" value={parcela.valor} disabled={!pode} onChange={e=>set("parcelasEntrada",parcelasEntrada.map((p,j)=>j===i?{...p,valor:e.target.value}:p))} />
+            <label className="rot" htmlFor={`${titulo}-ent-venc-${i}`}>Vencimento da {i+1}ª parcela da entrada</label><input id={`${titulo}-ent-venc-${i}`} className="inp" type="date" value={parcela.vencimento} disabled={!pode} onChange={e=>set("parcelasEntrada",parcelasEntrada.map((p,j)=>j===i?{...p,vencimento:e.target.value}:p))} />
+          </div>)}
+          <div className="ajuda">Entrada total: {reais(planoEntrada.entrada / 100)}<br />Saldo do contrato: {reais(planoEntrada.saldo / 100)}<br />Esta condição é usada no contrato, sem gerar cobranças.</div>
+        </>}
+        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-par`}>{entradaParcelada ? "Parcelas do saldo" : "Parcelas"}</label><input id={`${titulo}-par`} className="inp" inputMode="numeric" value={f.parcelas} disabled={!pode} onChange={(e) => set("parcelas", e.target.value)} /></div>}
+        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-vp`}>{entradaParcelada ? "Valor da parcela do saldo (R$)" : "Valor da parcela (R$)"}</label><input id={`${titulo}-vp`} className="inp" inputMode="decimal" value={f.valorParcela} disabled={!pode} onChange={(e) => set("valorParcela", e.target.value)} /></div>}
+        {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-dia`}>{entradaParcelada ? "Dia de vencimento do saldo" : "Dia de vencimento"}</label><input id={`${titulo}-dia`} className="inp" inputMode="numeric" value={f.diaVencimento} disabled={!pode} onChange={(e) => set("diaVencimento", e.target.value)} /></div>}
+        {!semValores && <div><label className="rot" htmlFor={`${titulo}-pv`}>{entradaParcelada ? "Primeiro vencimento do saldo" : "Primeiro vencimento"}</label><input id={`${titulo}-pv`} type="date" className="inp" value={f.primeiroVencimento} disabled={!pode} onChange={(e) => set("primeiroVencimento", e.target.value)} /></div>}
         {!semParcelas && <div><label className="rot" htmlFor={`${titulo}-rea`}>Reajuste</label><select id={`${titulo}-rea`} className="inp" value={f.reajuste} disabled={!pode} onChange={(e) => set("reajuste", e.target.value)}>{REAJUSTES.map((x) => <option key={x}>{x}</option>)}</select></div>}
       </div>
       <label className="rot" htmlFor={`${titulo}-obs`} style={{ marginTop: 12 }}>Observações que entram no contrato</label>
       <textarea id={`${titulo}-obs`} className="inp" rows={2} value={f.observacoes} disabled={!pode} onChange={(e) => set("observacoes", e.target.value)} />
       <div className="faixa-especifica" style={{ marginTop: 12 }}>
-        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
+        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
         {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => { const mensagem=validarCondicoesVenda(f); setErro(mensagem); if(!mensagem)onSalvar(f); }}><Check size={15} />Salvar</button>}
       </div>
       {erro && <p role="alert" className="msg-erro">{erro}</p>}
@@ -9143,23 +9268,23 @@ function AbaComercialNucleo({ db, n, usuario, mutar, setToast }) {
   const perm = permissoes(usuario);
   const pode = perm.diretor || perm.setor === "comercial";
   const ativos = db.processos.filter((p) => p.nucleoId === n.id && ativo(p));
-  const proprios = ativos.filter((p) => p.comercial);
+  const proprios = ativos.filter((p) => condicaoVendaRegistrada(p));
   return (
     <div className="flex flex-col gap-3">
       <FormaDeVenda titulo="Forma de venda do núcleo" pode={pode}
         nota="Vale para todos os moradores deste núcleo. Cada morador pode ter uma condição diferente, e o contrato dele muda junto."
-        valor={n.comercial} onSalvar={(f) => {
-          mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); q.comercial = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome }; return d; },
+        valor={condicaoVendaRegistrada(n)} onSalvar={(f) => {
+          mutar((d) => { const q = d.nucleos.find((x) => x.id === n.id); gravarCondicaoVenda(q, f, { atualizadoEm: new Date().toISOString(), por: usuario.nome }); return d; },
             "Forma de venda do núcleo definida", { nucleoId: n.id, remessaId: n.remessaId || undefined, municipioId: n.municipioId, detalhe: `${n.codigo}: ${resumoCondicoes(f)}` });
           setToast("Forma de venda salva. Os contratos passam a sair com ela.");
         }}
-        rodape={<p className="ajuda" style={{ marginTop: 10 }}>{n.comercial ? `Definida por ${n.comercial.por} em ${dataBR(n.comercial.atualizadoEm)}. ${ativos.length - proprios.length} de ${ativos.length} moradores seguem esta regra.` : "Ainda não definida. Sem ela o contrato sai com os campos de pagamento em branco."}</p>} />
+        rodape={<p className="ajuda" style={{ marginTop: 10 }}>{condicaoVendaRegistrada(n) ? `Definida por ${condicaoVendaRegistrada(n).por} em ${dataBR(condicaoVendaRegistrada(n).atualizadoEm)}. ${ativos.length - proprios.length} de ${ativos.length} moradores seguem esta regra.` : "Ainda não definida. Sem ela o contrato sai com os campos de pagamento em branco."}</p>} />
       {proprios.length > 0 && (
         <Secao titulo={`Moradores com condição própria (${proprios.length})`} nota="Estes não seguem a regra do núcleo.">
           {proprios.map((p, i) => (
             <div key={p.id} className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
               <span><strong style={{ color: "var(--titulo)" }}>{p.codigo}</strong> {p.requerente.nome}</span>
-              <span className="ajuda" style={{ margin: 0 }}>{resumoCondicoes(p.comercial)}</span>
+              <span className="ajuda" style={{ margin: 0 }}>{resumoCondicoes(condicaoVendaRegistrada(p))}</span>
             </div>
           ))}
         </Secao>
@@ -9179,26 +9304,35 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const [gerandoArquivo,setGerandoArquivo]=useState(false);
   const [confirmarProprio, setConfirmarProprio] = useState(false);
   const [escolherProc, setEscolherProc] = useState(null);
+  const [escolhaDeclarante,setEscolhaDeclarante] = useState({});
   const timbrado = useTimbrado(db, p.municipioId);
-  const gerar = (doc, procuradoresEscolhidos) => {
+  const declarantes = doc=>opcoesDeclaracao(p,doc.id);
+  const declaranteAtual = (doc, lista=declarantes(doc)) => {
+    const escolhido=escolhaDeclarante[p.id]?.[doc.id];
+    return lista.find(x=>x.id===(escolhido||"requerente"));
+  };
+  const gerar = (doc, procuradoresEscolhidos, declarante) => {
     const lista = (procuradoresEscolhidos || []).map((id) => (db.advogados || []).find((a) => a.id === id)).filter(Boolean);
     const texto = lista.length ? lista.map(qualificacaoAdvogado).join("; ") : "";
-    const html = montarDocumentoComercial(doc.id, dados, db, { procuradores: texto });
-    setPrevia({ doc, html, procuradores: lista.map((a) => a.nome) });
+    const falta=faltandoPara(doc,dados,p,declarante);
+    if(falta.length){setToast(`Falta preencher: ${falta.join(", ")}.`);return;}
+    const html = montarDocumentoComercial(doc.id, declarante?dadosDeclaranteComercial(dados,declarante):dados, db, { procuradores: texto });
+    setPrevia({ doc, html, processoId:p.id, declarante:declarante?.pessoa?.nome, procuradores: lista.map((a) => a.nome) });
   };
-  const abrirDoc = (doc) => {
+  const abrirDoc = (doc, declarante) => {
     if (doc.id === "procuracao") { setEscolherProc({ doc, ids: (db.advogados || []).filter((a) => a.ativo !== false).map((a) => a.id).slice(0, 1) }); return; }
-    gerar(doc);
+    gerar(doc,undefined,declarante);
   };
   const baixar = async (doc, html, formato) => {
-    if(gerandoArquivo)return;
+    if(gerandoArquivo||previa?.processoId!==p.id)return;
     setGerandoArquivo(true);
     try {
-    const nomeArq = `${p.codigo}-${doc.id}`;
+    const sufixo=previa.declarante?`-${normalizar(previa.declarante).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,55)}`:"";
+    const nomeArq = `${p.codigo}-${doc.id}${sufixo}`;
     await baixarDocumentoCliente(html,`${doc.nome} ${p.codigo}`,timbrado,nomeArq,formato);
     mutar((d) => {
       const q = d.processos.find((x) => x.id === p.id);
-      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, formato: formato === "pdf" ? "pdf" : "docx", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : "" }];
+      q.documentosGerados = [...(q.documentosGerados || []), { id: uid("dg"), tipo: doc.id, formato: formato === "pdf" ? "pdf" : "docx", nome: doc.nome, por: usuario.nome, data: new Date().toISOString(), timbrado: timbrado.temTimbre, condicoes: doc.id === "contrato" ? resumoCondicoes(condicoes) : doc.id === "procuracao" && previa?.procuradores?.length ? `para ${previa.procuradores.join(", ")}` : previa?.declarante ? `Declarante: ${previa.declarante}` : "" }];
       return d;
     }, "Documento comercial gerado", { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${doc.nome}${doc.id === "contrato" ? `, ${resumoCondicoes(condicoes)}` : ""}` });
     setToast(`${doc.nome} baixado.`);
@@ -9207,18 +9341,18 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
   const gerados = p.documentosGerados || [];
   return (
     <div className="flex flex-col gap-3">
-      <FormaDeVenda titulo={p.comercial ? "Forma de pagamento deste morador" : "Forma de pagamento"} pode={pode && !!p.comercial}
-        nota={p.comercial ? "Esta condição vale só para este morador. O contrato é gerado com ela." : n?.comercial ? `Seguindo a regra do núcleo ${n.codigo}. O contrato sai com esta condição.` : "Nenhuma condição definida no núcleo. Defina no núcleo ou crie uma só para este morador."}
+      <FormaDeVenda titulo={condicaoVendaRegistrada(p) ? "Forma de pagamento deste morador" : "Forma de pagamento"} pode={pode && !!condicaoVendaRegistrada(p)}
+        nota={condicaoVendaRegistrada(p) ? "Esta condição vale só para este morador. O contrato é gerado com ela." : condicaoVendaRegistrada(n) ? `Seguindo a regra do núcleo ${n.codigo}. O contrato sai com esta condição.` : "Nenhuma condição definida no núcleo. Defina no núcleo ou crie uma só para este morador."}
         valor={condicoes} onSalvar={(f) => {
-          mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.comercial = { ...f, atualizadoEm: new Date().toISOString(), por: usuario.nome }; return d; },
+          mutar((d) => { const q = d.processos.find((x) => x.id === p.id); gravarCondicaoVenda(q, f, { atualizadoEm: new Date().toISOString(), por: usuario.nome }); return d; },
             "Forma de pagamento do morador alterada", { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId, detalhe: `${p.codigo}: ${resumoCondicoes(f)}` });
           setToast("Forma de pagamento salva. O contrato já sai com ela.");
         }}
         rodape={(
           <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
-            {p.comercial ? <Tag tipo="ok">Condição própria</Tag> : <Tag>Regra do núcleo</Tag>}
-            {pode && !p.comercial && <button className="btn btn-sm" onClick={() => { mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.comercial = { ...(condicoes || condicoesVazias()), atualizadoEm: new Date().toISOString(), por: usuario.nome }; return d; }, "Forma de pagamento própria criada", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: `${p.codigo}: passou a ter condição própria` }); setToast("Agora dá para alterar só para este morador."); }}><Pencil size={13} />Alterar só para este morador</button>}
-            {pode && p.comercial && <button className="btn btn-sm" onClick={() => setConfirmarProprio(true)}><Undo2 size={13} />Voltar à regra do núcleo</button>}
+            {condicaoVendaRegistrada(p) ? <Tag tipo="ok">Condição própria</Tag> : <Tag>Regra do núcleo</Tag>}
+            {pode && !condicaoVendaRegistrada(p) && <button className="btn btn-sm" onClick={() => { mutar((d) => { const q = d.processos.find((x) => x.id === p.id); gravarCondicaoVenda(q, condicoes || condicoesVazias(), { atualizadoEm: new Date().toISOString(), por: usuario.nome }); return d; }, "Forma de pagamento própria criada", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: `${p.codigo}: passou a ter condição própria` }); setToast("Agora dá para alterar só para este morador."); }}><Pencil size={13} />Alterar só para este morador</button>}
+            {pode && condicaoVendaRegistrada(p) && <button className="btn btn-sm" onClick={() => setConfirmarProprio(true)}><Undo2 size={13} />{p.planoEntradaParcelada && p.comercial ? "Remover entrada parcelada" : "Voltar à regra do núcleo"}</button>}
             {n && <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "nucleo", id: n.id, aba: "comercial" })}>Ver a regra do núcleo</button>}
           </div>
         )} />
@@ -9229,7 +9363,8 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
         acao={<Tag tipo={timbrado.temTimbre ? "ok" : "pend"}>{timbrado.temTimbre ? <><Check size={12} />Com papel timbrado</> : "Sem papel timbrado"}</Tag>}>
         <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
           {DOCS_COMERCIAIS.map((doc) => {
-            const falta = faltandoPara(doc, dados, p);
+            const opcoes=declarantes(doc), declarante=declaranteAtual(doc,opcoes);
+            const falta = faltandoPara(doc, dados, p,declarante);
             const sugerido = sugeridos[doc.id];
             const jaGerado = gerados.filter((g) => g.tipo === doc.id).slice(-1)[0];
             return (
@@ -9239,8 +9374,15 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
                   {sugerido ? <Tag tipo="pend">Sugerido</Tag> : <Tag>Opcional</Tag>}
                 </div>
                 <div className="ajuda" style={{ margin: "3px 0 8px" }}>{sugerido || "Gere quando for necessário."}</div>
+                {opcoes.length>0 && <label className="rot" style={{display:"block",marginBottom:8}}>Declarante
+                  <select className="inp" aria-label={`Declarante para ${doc.nome}`} value={declarante?.id||""}
+                    onChange={e=>{const id=e.target.value;setEscolhaDeclarante(x=>({...x,[p.id]:{...x[p.id],[doc.id]:id}}));}}>
+                    <option value="" disabled>Selecione o declarante</option>
+                    {opcoes.map(x=><option key={x.id} value={x.id}>{x.rotulo}: {x.pessoa.nome}</option>)}
+                  </select>
+                </label>}
                 {falta.length > 0 ? <div style={{ fontSize: 13, color: "var(--warning)" }}>Falta preencher: {falta.join(", ")}.</div> : (
-                  <button className="btn btn-sm btn-primario" onClick={() => abrirDoc(doc)}><FileText size={13} />Ver e baixar</button>
+                  <button className="btn btn-sm btn-primario" onClick={() => abrirDoc(doc,declarante)}><FileText size={13} />Ver e baixar</button>
                 )}
                 {jaGerado && <div className="ajuda" style={{ margin: "8px 0 0" }}>Último: {dataBR(jaGerado.data)}, por {jaGerado.por}{jaGerado.condicoes ? `, ${jaGerado.condicoes}` : ""}</div>}
               </div>
@@ -9276,18 +9418,19 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
           </div>
         </Modal>
       )}
-      {previa && (
+      {previa?.processoId===p.id && (
         <Modal titulo={previa.doc.nome} largura={920} onFechar={() => setPrevia(null)}
           rodape={<><button className="btn" onClick={() => setPrevia(null)}>Fechar</button><button className="btn" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar(previa.doc, previa.html, "docx")}><Download size={15} />Baixar Word</button><button className="btn btn-primario" disabled={gerandoArquivo || !acaoPermitida(usuario,"documentos","exportar")} onClick={() => baixar(previa.doc, previa.html, "pdf")}><Download size={15} />{gerandoArquivo ? "Gerando…" : "Baixar PDF"}</button></>}>
           {previa.doc.id === "procuracao" && previa.procuradores?.length > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">Representantes: {previa.procuradores.join(", ")}</Tag></div>}
+          {previa.declarante && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">Declarante: {previa.declarante}</Tag></div>}
           {lacunasDoDocumento(previa.html).tracos > 0 && <div style={{ marginBottom: 10 }}><Tag tipo="pend"><AlertTriangle size={12} />{lacunasDoDocumento(previa.html).tracos} campo(s) em branco no texto</Tag></div>}
-          {previa.doc.id === "contrato" && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">{resumoCondicoes(condicoes)}</Tag> <span className="ajuda" style={{ margin: 0 }}>{p.comercial ? "condição própria deste morador" : `regra do núcleo ${n?.codigo || ""}`}</span></div>}
+          {previa.doc.id === "contrato" && <div style={{ marginBottom: 10 }}><Tag tipo="neutra">{resumoCondicoes(condicoes)}</Tag> <span className="ajuda" style={{ margin: 0 }}>{condicaoVendaRegistrada(p) ? "condição própria deste morador" : `regra do núcleo ${n?.codigo || ""}`}</span></div>}
           <PreviaDocumento html={previa.html} titulo={previa.doc.nome} timbrado={timbrado} />
         </Modal>
       )}
-      {confirmarProprio && <ModalConfirmar titulo="Voltar à regra do núcleo?" texto={`A condição própria deste morador será apagada e ele volta a seguir ${n ? `a regra do ${n.codigo}` : "a regra do núcleo"}. O contrato muda junto.`} rotuloBotao="Voltar à regra" onFechar={() => setConfirmarProprio(false)} onConfirmar={() => {
-        mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.comercial = null; return d; }, "Morador voltou à forma de pagamento do núcleo", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: p.codigo });
-        setConfirmarProprio(false); setToast("Voltou a seguir a regra do núcleo.");
+      {confirmarProprio && <ModalConfirmar titulo={p.planoEntradaParcelada && p.comercial ? "Remover entrada parcelada?" : "Voltar à regra do núcleo?"} texto={p.planoEntradaParcelada && p.comercial ? "O contrato volta a usar a condição anterior do morador. Não altera os dados do Financeiro." : `A condição própria deste morador será apagada e ele volta a seguir ${n ? `a regra do ${n.codigo}` : "a regra do núcleo"}. O contrato muda junto.`} rotuloBotao={p.planoEntradaParcelada && p.comercial ? "Remover entrada parcelada" : "Voltar à regra"} onFechar={() => setConfirmarProprio(false)} onConfirmar={() => {
+        mutar((d) => { const q = d.processos.find((x) => x.id === p.id); if(q.planoEntradaParcelada)q.planoEntradaParcelada=null;else q.comercial=null; return d; }, "Morador voltou à forma de pagamento do núcleo", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: p.codigo });
+        setConfirmarProprio(false); setToast(p.planoEntradaParcelada && p.comercial ? "Voltou à condição anterior, sem mudar o Financeiro." : "Voltou a seguir a regra do núcleo.");
       }} />}
     </div>
   );
@@ -10463,7 +10606,7 @@ const TAG_META = { Concluído: "ok", Cancelado: "bloq", "Aguardando aprovação"
 const SETORES_META_PADRAO = ["Atendimentos", "Topografia", "Projetos", "Pós-protocolo", "Jurídico", "Diligencia Documental", "Diligencia Topografia", "Diligencia Projetos", "Diligencia Pós Protocolo", "Diligencia Jurídico"];
 const ASSOC_TIPOS = [["plano", "Plano de Trabalho"], ["nucleo", "Processo"], ["ordem_servico", "Ordem de Serviço"], ["avulsa", "Meta avulsa"]];
 // No ERP quem gerencia e aprova metas são Administrador, Diretor Técnico, Diretor de Projetos e Pós-protocolo
-// No Integração só a Diretoria cria e aprova metas; o Pós-protocolo recebe e executa as suas
+// A gerência geral de Metas não inclui a edição específica de devolutivas.
 const gerenciaMetas = (u) => u.setor === "diretoria";
 const aprovaMetas = (u) => acaoPermitida(u,"metas","aprovar",gerenciaMetas(u));
 const gerenciaOS = (u) => ["diretoria", "posprotocolo"].includes(u.setor);
@@ -11033,6 +11176,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const [detalhe, setDetalhe] = useState(() => (db.metas||[]).find(m=>m.id===metaInicial&&podeVerMeta(m,usuario))?.id||null);
   const [editando, setEditando] = useState(null);
   const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
+  const [cadastroDevolutiva, setCadastroDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
   const [osModal, setOsModal] = useState(null);
   const [osAberta, setOsAberta] = useState(null);
@@ -11108,9 +11252,23 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {barra}
       {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
 
-      {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia && <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button>}>
+      {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia ? <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button> : podeGerirDevolutivaPosProtocolo(null,usuario) && <button className="btn btn-primario" onClick={() => setCadastroDevolutiva("nova")}>Cadastrar devolutiva</button>}>
         <input className="inp" aria-label="Buscar devolutivas" placeholder="Município, núcleo ou título" value={buscaDevolutiva} onChange={e => setBuscaDevolutiva(e.target.value)} />
-        {catalogoDevolutivas(todasVisiveis).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => <div key={m.id} className="card" style={{padding:14,marginTop:10}}><strong>{m.titulo}</strong><p className="ajuda">{rotuloAssociacao(db,m)}</p><p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p><p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>{vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}<div className="flex flex-wrap gap-2"><button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>{podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}{gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}</div></div>)}
+        {catalogoDevolutivas((db.metas||[]).filter(m=>podeVerMeta(m,usuario)||podeGerirDevolutivaPosProtocolo(m,usuario))).filter(({meta:m}) => normalizar(`${m.titulo} ${rotuloAssociacao(db,m)}`).includes(normalizar(buscaDevolutiva))).map(({meta:m,vinculadas}) => (
+          <div key={m.id} className="card" style={{padding:14,marginTop:10}}>
+            <strong>{m.titulo}</strong>
+            <p className="ajuda">{rotuloAssociacao(db,m)}{m.devolutiva.chegada ? ` · Recebida em ${dataBR(m.devolutiva.chegada)}` : ""}{m.devolutiva.prazo ? ` · Prazo da devolutiva: ${dataBR(m.devolutiva.prazo)}` : ""}</p>
+            <p>{m.devolutiva.analiseIA?.etapa1?.resumo || "Resumo de IA pendente"}</p>
+            <p className="ajuda">{vinculadas.length} meta(s) vinculada(s)</p>
+            {vinculadas.filter(v => v.id !== m.id).map(v => <button key={v.id} className="btn btn-sm" onClick={() => abrir(v)}>{v.titulo}</button>)}
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-sm" onClick={() => abrir(m)}>Abrir devolutiva</button>
+              {podeAnalisarDevolutiva(m,usuario) && <button className="btn btn-sm" onClick={() => setAnaliseDevolutiva(m)}>Analisar / revisar material</button>}
+              {gerencia && <button className="btn btn-sm" onClick={() => setEditando(m)}>Atribuir / editar meta</button>}
+              {podeGerirDevolutivaPosProtocolo(m,usuario) && <button className="btn btn-sm" onClick={() => setCadastroDevolutiva(m)}>Editar devolutiva</button>}
+            </div>
+          </div>
+        ))}
       </Secao>}
       {tela === "oficios" && <><BibliotecaTeste tipo="Ofício"/><Oficios usuario={usuario} modelo={db.modelosDoc?.oficio} timbrado={timbradoOficios} municipios={db.municipios} resolverTimbrado={id => carregarTimbradoDocumento(db,id)}/></>}
       {tela === "home" && !colaborador && (
@@ -11256,6 +11414,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = db.metas.find((x) => x.id === detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
+      {cadastroDevolutiva && <ModalCadastroDevolutiva db={db} meta={cadastroDevolutiva === "nova" ? null : cadastroDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setCadastroDevolutiva(null)} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} envio={envioSetor} onFechar={() => { if (envioSetor.fechar()) setSetorModal(null); }} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} envio={envioOS} onFechar={() => { if (envioOS.fechar()) setOsModal(null); }} />}
     </div>

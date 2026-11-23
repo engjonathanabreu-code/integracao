@@ -32,3 +32,16 @@ test('não relaxa comparação de campos comerciais sem encoder',()=>{
  c.depois.processos[0].comercial.observacoes='0500';c.remoto.processos[0].comercial.observacoes='500';
  assert.equal(alteracoesConfirmadas(c.antes,c.depois,c.remoto,{},c.ops),false);
 });
+
+test('entrada parcelada do contrato não escreve plano antigo ou cobranças no Financeiro',async()=>{
+ const {gravarCondicaoVenda,condicaoVendaRegistrada}=await import('../src/condicoes-venda.js');
+ const b=fixture(), s=projetar(b,blank()), d=structuredClone(s.db);
+ const f={modalidade:'Com Entrada Parcelada',valorTotal:'1.500',parcelas:'5',valorParcela:'225,00',diaVencimento:'15',primeiroVencimento:'2026-12-15',parcelasEntrada:[{valor:'300',vencimento:'2026-11-30'},{valor:'75',vencimento:'2026-12-01'}]};
+ gravarCondicaoVenda(d.processos[0],f,{atualizadoEm:'2026-11-27T12:00:00Z',por:'Teste'});
+ assert.deepEqual(d.processos[0].comercial,s.db.processos[0].comercial);
+ assert.equal(condicaoVendaRegistrada(d.processos[0]).valorTotal,'1500,00');
+ const ops=prepararEdicao(s.db,d,s,s.db.usuarios[0]);
+ assert.equal(ops.length,1);assert.equal(ops[0].table,'integracao_moradores');assert.deepEqual(ops[0].changes.dados.planoEntradaParcelada,d.processos[0].planoEntradaParcelada);
+ const remontado=structuredClone(b);remontado.integracao_complementos.push({...ops[0].key,...ops[0].changes});
+ assert.deepEqual(condicaoVendaRegistrada(projetar(remontado,blank()).db.processos[0]),d.processos[0].planoEntradaParcelada);
+});

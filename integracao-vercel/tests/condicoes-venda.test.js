@@ -26,3 +26,12 @@ test('contrato contém nove cláusulas, assinaturas e nenhum dado do morador ori
  const d=dadosContrato({condicoes:base,nome:'Nome teste',cpf:'000',dataExtenso:'Data teste',pagamento:'Texto teste'});assert.match(d.valorAlteracaoContrato,/1.050,00/);assert.match(d.precoContrato,/cláusula quinta/);
  assert.doesNotMatch(dadosContrato({nome:'<img src=x>',condicoes:base}).assinatura_contrato,/<img/);
 });
+
+test('entrada parcelada valida parcelas e datas independentes e fecha saldo em centavos',()=>{
+ const f=editar({...base,parcelas:'3',primeiroVencimento:'2026-12-20'},'modalidade','Com Entrada Parcelada');
+ const forma=editar(f,'parcelasEntrada',[{valor:'100,01',vencimento:'2026-11-29'},{valor:'400,00',vencimento:'2026-12-05'},{valor:'200,01',vencimento:'2026-12-10'}]);
+ assert.equal(forma.valorParcela,'933,32');assert.equal(ultimaParcela(forma),'933,34');assert.equal(validar(forma),'');
+ const clause=dadosContrato({condicoes:forma}).pagamentoContrato;
+ for(const label of ['700,02','2.799,98','933,32','933,34','29/11/2026','05/12/2026','10/12/2026','20/12/2026'])assert.ok(clause.includes(label),label);
+ for(const invalida of [{...forma,valorTotal:'3.500,001'},{...forma,primeiroVencimento:'2026-12-09'},{...forma,parcelasEntrada:[]},{...forma,parcelasEntrada:[...forma.parcelasEntrada,...forma.parcelasEntrada]},{...forma,parcelasEntrada:[{valor:'5.000,00',vencimento:'2026-12-07'}]},{...forma,parcelasEntrada:[{valor:'500',vencimento:'2026-11-31'}]}])assert.ok(validar(invalida));
+});
