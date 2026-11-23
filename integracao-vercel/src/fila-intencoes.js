@@ -1,5 +1,5 @@
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,ciclosBackoffIntencao} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
@@ -171,7 +171,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   atual.fase=fase;atual.erro={...falha,rejeicaoConfirmada,fase};
   atual.falhas=(atual.falhas||0)+1;
   const retry=Number(e.retryAfterMs)||0;
-  const ciclos=fase==='preparacao'?atual.falhas:atual.tentativas;
+  const ciclos=ciclosBackoffIntencao(atual);
   atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(ciclos,6))*(.5+aleatorio()*.5));
   // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
   if(['sessao','permissao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
