@@ -95,6 +95,10 @@ Os intervalos são estimativas por bootstrap de seis blocos inteiros, com um ún
 
 [Dados finais sem polling](evidencias/otimizacao-sincronizacao-20261123/campo-confirmacao-sem-polling.json) · [Relatório da reanálise](reanalise-p95-campo-20261123.md).
 
+## Investigação complementar do CI de duas abas
+
+O primeiro CI da reanálise aprovou build/1.476 testes e 95/96 jornadas; houve timeout em `diario-integrado`. A revisão encontrou uma precondição fraca: `mutate` retorna antes da captura durável, portanto lista inicialmente vazia não basta para fechar a aba. O coordenador reproduziu essa fronteira na base e na correção e passou a exigir os dois originais exatos no IndexedDB. A reprodução controlada da outra frente também comprovou sobrescrita de snapshot no backend simulado entre abas: duas respostas 200 podiam perder um efeito/recibo. O controle atômico preservou ambos. O wrapper de atomicidade fica somente no teste de duas abas, sem alterar o processador ou a fixture da medição. Não se atribui causa exata ao timeout remoto sem seu trace. Consulte a [evidência e procedimento](reanalise-p95-campo-20261123.md#investigação-da-falha-de-navegador-no-primeiro-ci).
+
 ## Resultados executados
 
 - Node: `recibos-canonicos.test.js`, `estado-sincronizacao.test.js` e `fila-intencoes.test.js`: 10/10 passaram na revisão intermediária.

@@ -66,6 +66,21 @@ node scripts/medir-campo-p95.mjs BASE_APP CORRECAO_APP /tmp/campo.json ORIGINAL_
 
 Os parâmetros, ordem completa, aquecimentos, amostras, hashes e análises estão nos [dados finais](evidencias/otimizacao-sincronizacao-20261123/campo-confirmacao-sem-polling.json). O [estudo exploratório com polling](evidencias/otimizacao-sincronizacao-20261123/campo-exploratorio-polling.json) e a [coleta histórica](otimizacao-sincronizacao-20261123.md) permanecem disponíveis, sem misturar seus endpoints. A [revisão independente](qa-otimizacao-sincronizacao-20261123.md) registra a conferência de segurança e consistência. O CI do commit publicado deve ser conferido no PR.
 
+## Investigação da falha de navegador no primeiro CI
+
+O CI de `99de991` aprovou 1.476 testes e build, mas terminou com 95/96 jornadas: timeout no cenário de duas abas de `diario-integrado`. A execução isolada passou 12/12 e 20 repetições naturais desse cenário não reproduziram a falha. Sem trace do primeiro timeout, sua causa exata não foi comprovada. A investigação dirigida identificou duas condições incorretas do teste:
+
+1. `mutate` não aguarda a captura IndexedDB. Pausar seu checksum demonstrou, tanto na base quanto na correção, que a lista inicialmente vazia não prova persistência e não autoriza fechar a aba. A jornada agora exerce essa fronteira e exige os dois originais exatos persistidos antes do fechamento.
+2. O backend da fixture lê um snapshot de `localStorage`, modifica uma cópia e sobrescreve todo o snapshot, recibos e contador. Com duas abas e barreiras após a cópia, B confirmou primeiro; A confirmou depois e apagou o efeito e recibo de B, apesar de ambos receberem HTTP 200. A reprodução usa os callbacks reais da fixture, sem montar o hook da aplicação. No controle com Web Lock envolvendo somente o RPC simulado **antes** da leitura, A aguardou B, leu seu resultado e preservou ambos os efeitos, recibos e duas gravações.
+
+Foi corrigido somente o cenário de duas abas: seus commits de backend simulado agora são atômicos entre abas. As travas dos itens da aplicação continuam independentes; não foi acrescentado lock global ao processamento de produção. Permanecem os asserts dos dois efeitos após fechar A e recarregar B, sem retry adicional nem timeout ampliado. O teste também registra pedidos, estados e efeitos sintéticos se voltar a falhar. A fixture em disco e as fontes medidas permaneceram idênticas; a medição de Campo não depende desse wrapper. A jornada corrigida passou em uma execução isolada e em três repetições adicionais previamente fixadas (12/12 cenários em cada), sem descarte de falhas. O reprodutor final passou nos controles negativo e positivo.
+
+A [evidência controlada](evidencias/otimizacao-sincronizacao-20261123/duas-abas-fixture.json) preserva snapshots, ordem dos commits e controle positivo. Reprodução local:
+
+```sh
+node scripts/reproduzir-fixture-duas-abas.mjs . /tmp/fixture-duas-abas.json
+```
+
 ## Limites e piloto reversível
 
 Um host, transporte sintético e seis blocos dão intervalos estimados, não garantia de desempenho em todos os aparelhos/cargas. Não foi definida margem arbitrária de equivalência. Abas antigas, suspensão real do sistema e navegadores sem Web Locks mantêm os limites já registrados no PR. Não houve recuperação granular nova de fotos nem validação em aparelho físico ou filas reais.
