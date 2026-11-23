@@ -27,7 +27,9 @@ export function lerImagem(src) {
   return { src, tipo, data, largura, altura };
 }
 
-export function formatoDocumento(timbrado) {
+// Only newly generated, explicitly tagged contracts opt into the compact layout.
+export const perfilDocumento = html => /<[^>]+\bdata-documento\s*=\s*["']contrato["'][^>]*>/i.test(html || '') ? 'contrato' : '';
+export function formatoDocumento(timbrado, perfil = '') {
   const ativo = timbrado?.ativo !== false;
   const imagens = {};
   for (const k of ['cabecalho','rodape']) {
@@ -47,7 +49,7 @@ export function formatoDocumento(timbrado) {
   const topo = Math.max(PAGINA.topo, (imagens.cabecalho?.alturaMm || 0) + (legado ? 2 : gap('topo')));
   const base = Math.max(PAGINA.base, (imagens.rodape?.alturaMm || 0) + Math.max(8, legado ? 2 : gap('base')));
   const lateral = legado ? 0 : Math.max(0, Math.min(20, Number(margem.lateral) || 0));
-  return { ...PAGINA, topo, base, esquerda: PAGINA.esquerda + lateral, direita: PAGINA.direita + lateral, imagens };
+  return { ...PAGINA, topo, base, esquerda: (perfil === 'contrato' ? 20 : PAGINA.esquerda) + lateral, direita: PAGINA.direita + lateral, imagens };
 }
 
 const estilo = el => Object.fromEntries((el?.getAttribute?.('style') || '').split(';').map(s => { const i=s.indexOf(':'); return [s.slice(0,i).trim().toLowerCase(),s.slice(i+1).trim()]; }).filter(([k])=>k));
@@ -74,13 +76,15 @@ function trechos(el, herdado={}) {
 
 export function analisarDocumento(html, {parse=texto=>new DOMParser().parseFromString(texto,'text/html')}={}) {
   const doc=parse(html);
+  const compacto=!!doc.querySelector('[data-documento="contrato"]');
   function ler(parent, contexto={}) {
     const out=[]; let pendentes=[];
     const paragrafo=(el, runs, extra={})=>{
       const s=estilo(el), h=/^H[1-6]$/.test(el?.tagName||'')?Number(el.tagName[1]):0;
       const alignment=s['text-align']||contexto.alignment||(h?'center':contexto.tabela?'left':'justify');
-      const assinatura=contexto.assinatura||/border-top/.test(el?.getAttribute?.('style')||'');
-      return {type:'p',runs,h,alignment,size:contexto.tabela&&!contexto.assinatura?10:12,line:contexto.tabela?1:1.5,before:margemPt(s,'top')??(h?12:0),after:margemPt(s,'bottom')??(h?18:8),indent:!h&&!contexto.tabela&&alignment==='justify'?mmPt(12.5):0,borderTop:assinatura&&!!s['border-top'],keepNext:!!h,keepTogether:!!assinatura,pageBreak:/always|page/.test(s['page-break-before']||s['break-before']||''),...extra};
+      const assinatura=contexto.assinatura||/border-top/.test(el?.getAttribute?.('style')||'')||(compacto&&/^_{10}/.test(runs.map(r=>r.text||'').join('')));
+      const tituloClausula=compacto&&runs.length>0&&runs.every(r=>r.bold||!r.text?.trim())&&runs.map(r=>r.text||'').join('').length<120;
+      return {type:'p',runs,h,alignment,compacto,size:contexto.tabela&&!contexto.assinatura?10:compacto?11:12,line:contexto.tabela?1:compacto?1.1:1.5,before:compacto?Math.min(margemPt(s,'top')??(h?8:0),12):margemPt(s,'top')??(h?12:0),after:compacto?Math.min(margemPt(s,'bottom')??(h?8:2),h?8:2):margemPt(s,'bottom')??(h?18:8),indent:!compacto&&!h&&!contexto.tabela&&alignment==='justify'?mmPt(12.5):0,borderTop:assinatura&&!!s['border-top'],keepNext:!!h||tituloClausula,keepTogether:!!assinatura,pageBreak:/always|page/.test(s['page-break-before']||s['break-before']||''),...extra};
     };
     const flush=()=>{if(pendentes.some(r=>r.imagem||r.text?.trim()))out.push(paragrafo(parent,pendentes));pendentes=[];};
     for(const el of parent.childNodes){
@@ -109,13 +113,15 @@ export function analisarDocumento(html, {parse=texto=>new DOMParser().parseFromS
   }
   const blocks=ler(doc.body||doc);
   // Keep the date with the signature block, not alone at the foot of a page.
+  // Keep each contract's date and consecutive signature paragraphs together.
+  if(compacto)blocks.forEach((b,i)=>{if(b.type==='p'&&/^_{10}/.test(b.runs.map(r=>r.text||'').join(''))&&blocks[i-1]?.type==='p')blocks[i-1].keepNext=true;});
   blocks.forEach((b,i)=>{if(b.type==='table'&&b.assinatura&&blocks[i-1]?.type==='p')blocks[i-1].keepNext=true;});
   return blocks;
 }
 
 export function documentoHtml(corpo,titulo,timbrado) {
-  const f=formatoDocumento(timbrado);
+  const f=formatoDocumento(timbrado,perfilDocumento(corpo));
   const imagem=k=>f.imagens[k]?`<img class="timbre ${k}" src="${f.imagens[k].src}" alt=""/>`:'';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escaparDocumento(titulo)}</title><style>
-  *{box-sizing:border-box}body{margin:0;background:#e8e8e8;color:#000;font:12pt '${FONTE_DOCUMENTO}',serif;line-height:1.5}.folha{position:relative;background:white;width:210mm;min-height:297mm;margin:0 auto;padding:${f.topo}mm ${f.direita}mm ${f.base}mm ${f.esquerda}mm}.timbre{position:absolute;left:0;width:210mm;height:auto}.cabecalho{top:0}.rodape{bottom:0}h1,h2,h3,h4,h5,h6{font-size:12pt!important;color:#000;text-align:center;line-height:1.5;margin:12pt 0 18pt;break-after:avoid}p{font-size:12pt;text-align:justify;text-indent:12.5mm;margin:0 0 8pt;orphans:2;widows:2}p[style*="text-align:center"],p[style*="text-align: center"],p[style*="text-align:right"]{text-indent:0}table{width:100%;border-collapse:collapse;font-size:10pt}td,th{border:1px solid #bbb;padding:5pt;vertical-align:top}th{background:#eee}td p,th p{text-indent:0;font-size:inherit;line-height:1.0}table[data-assinaturas]{break-inside:avoid}table[data-assinaturas] td{border:0;font-size:12pt}img{max-width:100%}mark{background:#ffff00;color:#000}@media print{body{background:white}.folha{margin:0}@page{size:A4;margin:0}}</style></head><body><main class="folha">${imagem('cabecalho')}${corpo}${imagem('rodape')}</main></body></html>`;
+  *{box-sizing:border-box}body{margin:0;background:#e8e8e8;color:#000;font:12pt '${FONTE_DOCUMENTO}',serif;line-height:1.5}.folha{position:relative;background:white;width:210mm;min-height:297mm;margin:0 auto;padding:${f.topo}mm ${f.direita}mm ${f.base}mm ${f.esquerda}mm}.timbre{position:absolute;left:0;width:210mm;height:auto}.cabecalho{top:0}.rodape{bottom:0}h1,h2,h3,h4,h5,h6{font-size:12pt!important;color:#000;text-align:center;line-height:1.5;margin:12pt 0 18pt;break-after:avoid}p{font-size:12pt;text-align:justify;text-indent:12.5mm;margin:0 0 8pt;orphans:2;widows:2}p[style*="text-align:center"],p[style*="text-align: center"],p[style*="text-align:right"]{text-indent:0}table{width:100%;border-collapse:collapse;font-size:10pt}td,th{border:1px solid #bbb;padding:5pt;vertical-align:top}th{background:#eee}td p,th p{text-indent:0;font-size:inherit;line-height:1.0}table[data-assinaturas]{break-inside:avoid}table[data-assinaturas] td{border:0;font-size:12pt}[data-documento="contrato"]{font-size:11pt;line-height:1.1}[data-documento="contrato"] p{font-size:11pt;line-height:1.1;text-indent:0;margin-bottom:2pt!important}[data-documento="contrato"] p[style*="margin-top"]{margin-top:12pt!important;break-inside:avoid}[data-documento="contrato"] h1{font-size:11pt!important;line-height:1.1;margin:0 0 8pt!important}img{max-width:100%}mark{background:#ffff00;color:#000}@media print{body{background:white}.folha{margin:0}@page{size:A4;margin:0}}</style></head><body><main class="folha">${imagem('cabecalho')}${corpo}${imagem('rodape')}</main></body></html>`;
 }

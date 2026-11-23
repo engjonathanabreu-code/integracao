@@ -115,6 +115,14 @@ test('políticas preservam o fluxo de autor, responsável e direção e isolam t
     assert.equal((await linhas('select id from metas')).length,3,'Pós-protocolo preserva gerência no ERP');
     assert.equal((await linhas('insert into meta_setores values ($1,$2) returning id',[id(40),id(6)])).length,1);
     assert.equal((await linhas("select name from storage.objects where name like '%/metas/%'")).length,2);
+    await db.exec('begin');
+    try {
+      assert.equal((await linhas('insert into metas values ($1,$2,$3,$4) returning id',[id(41),id(6),'Devolutiva fictícia','Em andamento'])).length,1);
+      const anexoPos=id(6)+'/metas/'+id(11)+'/devolutiva.pdf';
+      await linhas("insert into storage.objects values ('documentos',$1)",[anexoPos]);
+      assert.equal((await linhas('insert into meta_arquivos values ($1,$2,$3,$4) returning id',[id(42),id(11),anexoPos,id(6)])).length,1);
+      assert.equal((await linhas('insert into meta_historico values ($1,$2,$3,$4) returning id',[id(43),id(11),id(6),'Devolutiva editada'])).length,1);
+    } finally { await db.exec('rollback'); }
     await como(4);
     assert.equal((await linhas("update metas set status='Concluído' where id=$1 returning id",[id(10)])).length,1);
     assert.equal((await linhas("select name from storage.objects where name like '%/metas/%'")).length,2);

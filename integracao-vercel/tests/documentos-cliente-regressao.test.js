@@ -6,8 +6,10 @@ import vm from 'node:vm';
 import {parseHTML} from 'linkedom';
 import {montar,dadosExemplo} from './documentos-comerciais.fixture.js';
 import {preenchido,ehPJ} from '../src/requisitos-moradores.js';
+import {documentoPorDeclarante} from '../src/declarantes-comerciais.js';
+import {ENTRADA_PARCELADA,validarCondicoesVenda} from '../src/condicoes-venda.js';
 const source=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
-const ctx={preenchido,ehPJ,cpfDispensado};vm.createContext(ctx);
+const ctx={preenchido,ehPJ,cpfDispensado,documentoPorDeclarante,ENTRADA_PARCELADA,validarCondicoesVenda};vm.createContext(ctx);
 vm.runInContext(source.slice(source.indexOf('function faltandoPara('),source.indexOf('const paragrafo ='))+';this.verificar=faltandoPara;',ctx);
 test('CNPJ satisfaz identificação de PJ sem exigir CPF, endereço ausente vira pendência',()=>{
  const doc={precisa:['nome','cpf','endereco']},p={requerente:{tipoPessoa:'juridica',nome:'Empresa',cnpj:'29212382000107'}};
@@ -16,7 +18,7 @@ test('CNPJ satisfaz identificação de PJ sem exigir CPF, endereço ausente vira
 });
 test('todos os modelos preservam texto especial sem interpretá-lo como HTML',()=>{
  const nome='Maria & Filhos <Teste>',d={...dadosExemplo,nome,qualificacaoCompleta:nome,qualificacaoCompromisso:nome,assinantes:[[nome,'123']],historicoPosse:'Área <frente> & fundos'};
- for(const tipo of ['contrato','procuracao','requerimento','dec_estado_civil','dec_renda','dec_endereco','dec_posse','distrato','termo_compromisso']){
+ for(const tipo of ['contrato','procuracao','requerimento','dec_estado_civil','dec_renda','termo_veracidade','dec_endereco','dec_posse','distrato','termo_compromisso']){
   const html=montar(tipo,d,{}, {procuradores:nome}),doc=parseHTML('<html><body>'+html+'</body></html>').document;
   assert.ok(doc.body.textContent.includes(nome),tipo);assert.equal(doc.querySelector('teste'),null,tipo);assert.ok(!html.includes('&amp;amp;'),tipo);
  }

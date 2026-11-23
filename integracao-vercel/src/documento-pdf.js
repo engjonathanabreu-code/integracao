@@ -1,11 +1,11 @@
 import {jsPDF} from 'jspdf';
-import {analisarDocumento,formatoDocumento} from './documento-formato.js';
+import {analisarDocumento,formatoDocumento,perfilDocumento} from './documento-formato.js';
 const pt=mm=>mm*72/25.4;
 
 // Text is written directly into the PDF (selectable/searchable), not a screenshot.
 export async function gerarPdf(html,titulo,timbrado,options={}){
 
- const f=formatoDocumento(timbrado),doc=new jsPDF({unit:'pt',format:'a4',compress:true});
+ const f=formatoDocumento(timbrado,perfilDocumento(html)),doc=new jsPDF({unit:'pt',format:'a4',compress:true});
  doc.setProperties({title:titulo,author:timbrado?.empresa?.razaoSocial || 'Integral Soluções em Engenharia'});
  const left=pt(f.esquerda),right=pt(f.largura-f.direita),top=pt(f.topo),bottom=pt(f.altura-f.base),width=right-left;
  const blocks=analisarDocumento(html,options);let y=top;
@@ -83,7 +83,8 @@ export async function gerarPdf(html,titulo,timbrado,options={}){
  const planned=layout(blocks,width);page();
  for(let bi=0;bi<planned.length;bi++){
   const b=planned[bi];if(b.type==='break'||b.pageBreak){if(y>top+.1)nova();if(b.type==='break')continue;}
-  if(b.keepNext){const next=planned[bi+1];const need=b.height+(next?.type==='table'&&next.assinatura?next.height:(next?.before||0)+(next?.lines?.[0]?.height||0));ensure(Math.min(need,bottom-top));}
+  if(b.compacto&&b.keepNext){let need=b.height,j=bi;while(planned[j]?.keepNext&&planned[j+1]){need+=planned[++j].height;}ensure(Math.min(need,bottom-top));}
+  else if(b.keepNext){const next=planned[bi+1];const need=b.height+(next?.type==='table'&&next.assinatura?next.height:(next?.before||0)+(next?.lines?.[0]?.height||0));ensure(Math.min(need,bottom-top));}
   if(b.type==='p'){
    if(b.keepTogether||b.h)ensure(b.height);else ensure(b.before+b.lines.slice(0,2).reduce((s,l)=>s+l.height,0));
    y+=b.before;if(b.borderTop){doc.setDrawColor(0);doc.setLineWidth(.5);doc.line(left,y,right,y);y+=5;}

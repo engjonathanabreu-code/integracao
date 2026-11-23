@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import {Document,Packer,Paragraph,TextRun,ImageRun,Table,TableRow,TableCell,Header,Footer,PageNumber,WidthType,AlignmentType,BorderStyle,VerticalAlign,HeadingLevel} from 'docx';
-import {analisarDocumento,formatoDocumento,PAGINA,FONTE_DOCUMENTO,mmTwip} from './documento-formato.js';
+import {analisarDocumento,formatoDocumento,perfilDocumento,PAGINA,FONTE_DOCUMENTO,mmTwip} from './documento-formato.js';
 
 export const FORMATO_RELATORIO=Object.fromEntries(Object.entries(PAGINA).map(([k,v])=>[k,mmTwip(v)]));
 const borda={style:BorderStyle.SINGLE,size:4,color:'B7B7B7'};
@@ -22,11 +22,11 @@ function converter(blocks,largura){
    return [ ...(b.before?[new Paragraph({text:'',spacing:{line:20,before:0,after:Math.round(b.before*20)},keepNext:true})]:[]),table,new Paragraph({text:'',spacing:{line:20,after:Math.round(b.after*20)}}) ];
   }
   const children=b.runs.flatMap(r=>r.imagem?[imagem(r.imagem,largura/15)]:String(r.text).split('\n').map((text,i)=>new TextRun({text,...(i?{break:1}:{}),font:FONTE_DOCUMENTO,size:b.size*2,bold:r.bold||!!b.h,italics:r.italics,underline:r.underline?{}:undefined,highlight:r.highlight?'yellow':undefined,superScript:r.superScript,subScript:r.subScript})));
-  return [new Paragraph({children,heading:b.h?HeadingLevel['HEADING_'+b.h]:undefined,alignment:alinhamento[b.alignment]||AlignmentType.JUSTIFIED,keepNext:b.keepNext,keepLines:b.keepTogether,widowControl:true,pageBreakBefore:b.pageBreak,indent:{firstLine:Math.round(b.indent*20)},border:b.borderTop?{top:{style:BorderStyle.SINGLE,size:4,color:'000000',space:4}}:undefined,spacing:{line:Math.round(b.line*240),before:Math.round(b.before*20),after:Math.round(b.after*20)}})];
+  return [new Paragraph({children,heading:b.h?HeadingLevel['HEADING_'+b.h]:undefined,alignment:alinhamento[b.alignment]||AlignmentType.JUSTIFIED,keepNext:b.keepNext,keepLines:b.keepTogether,widowControl:true,pageBreakBefore:b.pageBreak,indent:{firstLine:Math.round(b.indent*20)},border:b.borderTop?{top:{style:BorderStyle.SINGLE,size:4,color:'000000',space:4}}:undefined,spacing:{line:Math.round(b.compacto?b.size*b.line*20:b.line*240),...(b.compacto?{lineRule:'exact'}:{}),before:Math.round(b.before*20),after:Math.round(b.after*20)}})];
  });
 }
 export async function gerarDocx(html,titulo,timbrado,options={}){
- const f=formatoDocumento(timbrado),largura=mmTwip(f.largura-f.esquerda-f.direita);
+ const f=formatoDocumento(timbrado,perfilDocumento(html)),largura=mmTwip(f.largura-f.esquerda-f.direita);
  const children=converter(analisarDocumento(html,options),largura);
  const header=f.imagens.cabecalho?[new Paragraph({children:[imagem(f.imagens.cabecalho,FORMATO_RELATORIO.largura/15,Infinity,{y:0})],spacing:{before:0,after:0,line:20}})]:[];
  const rod=f.imagens.rodape;
