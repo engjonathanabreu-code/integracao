@@ -14,7 +14,8 @@
       "fix/campo-offline-homonimos": false,
       "codex/josimar-cadastro-transporte-20261119": false,
       "fix/cadeia-apenas-recibos": false,
-      "fix/retomada-sincronizacao-20261123": false
+      "fix/retomada-sincronizacao-20261123": false,
+      "codex/otimizar-sincronizacao-confirmacao": false
     }
   }
 }
