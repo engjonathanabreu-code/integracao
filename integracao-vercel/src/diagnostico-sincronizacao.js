@@ -45,7 +45,15 @@ function esperaOperacao(i,itens,agora){
  const bloqueios=dependencias.map(id=>({id:identificador(id),item:resolver(id)})).filter(d=>!d.item||!['confirmado','dispensado'].includes(d.item.estado));
  return bloqueios.length?{motivo:'dependencia',pedidos:bloqueios.map(d=>({id:d.id,estado:d.item?(estados.has(d.item.estado)||terminal(d.item)?d.item.estado:'desconhecido'):'ausente'}))}:{motivo:'pronto_para_verificacao'};
 }
-export function diagnosticoOperacao(i,agora=Date.now(),itens=null){
+// Only enumerated local guards are reported. No DOM values, tokens, account
+// names, server messages or edit contents enter this diagnostic.
+export function motivoEsperaLocal({diarioPronto=true,abrindo=false,basePronta=true,sessaoPronta=true,processando=false,editando=false}={}){
+ if(!diarioPronto||abrindo||!basePronta||!sessaoPronta)return 'sessao_nao_pronta';
+ if(processando)return 'processamento_local';
+ if(editando)return 'edicao_ativa';
+ return null;
+}
+export function diagnosticoOperacao(i,agora=Date.now(),itens=null,contexto=null){
  const fase=fases.has(i.fase)?i.fase:fases.has(i.erro?.fase)?i.erro.fase:null;
  const bruto=String(i.erro?.codigo||'SEM_ERRO');
  const codigo=bruto==='SEM_ERRO'||codigos.has(bruto)||/^[0-9A-Z]{5}$/.test(bruto)?bruto:'OUTRO';
@@ -56,5 +64,5 @@ export function diagnosticoOperacao(i,agora=Date.now(),itens=null){
   criadoEm:numero(i.criadoEm),atualizadoEm:numero(i.atualizadoEm),enviadoEm:numero(i.enviadoEm),confirmadoEm:numero(i.confirmadoEm),lidoEm:numero(i.lidoEm),
   tempoMs:numero(i.criadoEm)!==null?Math.max(0,(numero(i.lidoEm)||agora)-i.criadoEm):null,tentativas:numero(i.tentativas)||0,tentativasTotais:numero(i.tentativasTotais),
   dependencias:(i.escopoArquivos?.dependencias||i.dependencias||[]).map(identificador).filter(Boolean),
-  propagacao:i.lidoEm?'confirmada_neste_aparelho':'nao_verificada',outrosAparelhos:'nao_verificado',restricao:restricaoPermitida(i.erro?.restricao),espera:esperaOperacao(i,itens,agora)};
+  propagacao:i.lidoEm?'confirmada_neste_aparelho':'nao_verificada',outrosAparelhos:'nao_verificado',restricao:restricaoPermitida(i.erro?.restricao),espera:!terminal(i)&&contexto&&motivoEsperaLocal(contexto)?{motivo:motivoEsperaLocal(contexto)}:esperaOperacao(i,itens,agora)};
 }

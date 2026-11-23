@@ -20,7 +20,7 @@ const assert=require('node:assert/strict');
    await nova(2,'a','meta-1');
    const bloqueado=await processarIntencao(f,{conta:'a',dono:'normal',somenteId:id(2),sessaoAtual:()=>true,enviar:async()=>{envios++;return {aliases:{}};},reler:async()=>{}});
    if(bloqueado!==null)throw Error('dependência foi ignorada');
-   const lido=await lerIntencaoExistente(f,{conta:'a',dono:'suporte',id:id(1),modo:'releitura',sessaoAtual:()=>true,consultarRecibo:async()=>{throw Error('não consultar recibo local');},reler:async()=>{leituras++;}});
+   const lido=await lerIntencaoExistente(f,{conta:'a',dono:'suporte',id:id(1),modo:'releitura',sessaoAtual:()=>true,consultarRecibo:async()=>({aliases:{}}),reler:async()=>{leituras++;}});
    if(lido.estado!=='confirmado')throw Error('releitura não confirmou');
    await processarIntencao(f,{conta:'a',dono:'normal',somenteId:id(2),sessaoAtual:()=>true,enviar:async()=>{envios++;return {aliases:{}};},reler:async()=>{leituras++;}});
    const lista=await f.listar('a');
@@ -28,8 +28,8 @@ const assert=require('node:assert/strict');
    // Concurrent connections cannot consume the same receipt read.
    await nova(3);let t=await f.reservar('a',{dono:'normal',somenteId:id(3)});t=await f.registrarRecibo(t,{aliases:{}});await f.liberarReserva(t);
    let liberar;const barreira=new Promise(r=>liberar=r),f2=abrirFilaIntencoes({nome:'suporte-core',agora:()=>tempo});
-   const leitura1=lerIntencaoExistente(f,{conta:'a',dono:'um',id:id(3),modo:'releitura',sessaoAtual:()=>true,reler:async()=>{await barreira;}});
-   await new Promise(r=>setTimeout(r,30));const leitura2=await lerIntencaoExistente(f2,{conta:'a',dono:'dois',id:id(3),modo:'releitura',sessaoAtual:()=>true,reler:async()=>{throw Error('dupla execução');}});liberar();await leitura1;await f2.fechar();
+   const leitura1=lerIntencaoExistente(f,{conta:'a',dono:'um',id:id(3),modo:'releitura',sessaoAtual:()=>true,consultarRecibo:async()=>({aliases:{}}),reler:async()=>{await barreira;}});
+   await new Promise(r=>setTimeout(r,30));const leitura2=await lerIntencaoExistente(f2,{conta:'a',dono:'dois',id:id(3),modo:'releitura',sessaoAtual:()=>true,consultarRecibo:async()=>({aliases:{}}),reler:async()=>{throw Error('dupla execução');}});liberar();await leitura1;await f2.fechar();
    return {envios,leituras,consultaFalhou,outra:outra===null,duasAbas:leitura2===null,preservado:JSON.stringify(lista[0].original)===original&&lista[0].checksum===checksum&&JSON.stringify(lista[0].payload)===payload,dependente:lista[1].estado};
   }finally{await f.fechar();}
  });

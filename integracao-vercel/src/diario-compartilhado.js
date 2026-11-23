@@ -112,9 +112,10 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();await atualizar();
   // Bound each pass; a later pass resumes independently ready entries.
   const limite=id?1:items.filter(i=>!terminal(i)).length;
+  const tentados=[];
   for(let n=0;n<limite;n++){
    conferir();let resultado;
-   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
+   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
     await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
    }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}
@@ -208,6 +209,12 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(total){await atualizar();sinalizar();}
   return total;
  }
+ async function verificarReleiturasTemporarias(){
+  await corrente.catch(()=>{});conferir();
+  const total=await fila.reabrirReleiturasTemporarias(conta);conferir();
+  if(total){await atualizar();sinalizar();}
+  return total;
+ }
  async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
   for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
@@ -219,5 +226,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,verificarPreparacoesAoReconectar,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

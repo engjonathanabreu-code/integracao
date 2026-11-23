@@ -1,4 +1,5 @@
 import {igualSemantico} from './igualdade-semantica.js';
+import {edicaoDerivada} from './projecoes-derivadas.js';
 const acessos=new Set(['Entrou no sistema','Saiu do sistema','Sessão encerrada por inatividade']);
 const semPresenca=registro=>{const r={...registro};delete r.online;delete r.ultimaAtividade;return r;};
 // Same exclusions as complementos(): these fields/events never produce a write.
@@ -11,5 +12,5 @@ export function edicaoSomenteLocal(e){
 }
 export function pendenciaSomenteLocal(item){
  const o=item.original,edicoes=o?.intencao?.edicoes;
- return item.estado==='pendente_local'&&item.tentativas===0&&!item.payload&&!item.recibo&&!o?.legado&&o?.preparar===true&&o.operacoes?.length===0&&Object.keys(o.intencao?.arquivos||{}).length===0&&Array.isArray(edicoes)&&edicoes.length>0&&edicoes.every(edicaoSomenteLocal);
+ return item.estado==='pendente_local'&&item.tentativas===0&&(item.tentativasTotais??0)===0&&!item.payload&&!item.recibo&&item.preparado==null&&item.enviadoEm==null&&item.confirmadoEm==null&&item.lidoEm==null&&!o?.legado&&o?.preparar===true&&o.operacoes?.length===0&&Object.keys(o.intencao?.arquivos||{}).length===0&&Array.isArray(edicoes)&&edicoes.length>0&&edicoes.every(e=>edicaoSomenteLocal(e)||edicaoDerivada(e));
 }

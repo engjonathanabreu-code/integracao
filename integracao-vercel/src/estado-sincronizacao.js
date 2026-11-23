@@ -9,6 +9,7 @@ export function classificarFalha(e){
   :status===403||codigo==='42501'?'permissao'
   :codigo.startsWith('PERSISTENCIA')||['QuotaExceededError','InvalidStateError'].some(n=>nomes.has(n))?'armazenamento'
   :codigo==='LEITURA_DIVERGENTE'?'leitura'
+  :['P0001','INTENCAO_SEM_OPERACOES'].includes(codigo)?'validacao'
   :status===409||codigo==='PT409'?'conflito'
   :[400,404,422].includes(status)||/^(22|23)/.test(codigo)?'validacao':'transitoria';
  return {status:Number.isFinite(status)?status:null,codigo,categoria,...(restricao?{restricao}:{})};
@@ -47,7 +48,18 @@ export const ciclosBackoffIntencao=i=>falhaPreparacaoSemEnvio(i)&&alteracaoCadas
 export const podeVerificarPreparacaoAoReconectar=(i,agora)=>
  falhaPreparacaoSemEnvio(i)&&!i.verificadaAoReconectar&&
  i.original?.intencao?.edicoes?.some(e=>podeRearmarCadastro(i,e.id,agora))===true;
+// A bounded repair of exhausted read-back only. It cannot prepare or resend a
+// payload, waive dependencies, change the original, or accept a divergent read.
+export function podeRetomarReleitura(i,agora){
+ return i?.estado==='confirmado_aguardando_leitura'&&!!i.recibo&&
+  Array.isArray(i.payload)&&i.payload.length>0&&i.proximaTentativa===Number.MAX_SAFE_INTEGER&&
+  !(i.leaseAte>agora)&&!i.releituraTemporariaVerificada&&
+  i.erro?.fase==='releitura'&&i.erro.categoria==='transitoria'&&
+  i.erro.codigo==='TRANSPORTE'&&(i.erro.status==null||[408,429,500,502,503,504].includes(i.erro.status));
+}
 export function orientacaoPendencia(i){
+ if(i.erro?.codigo==='INTENCAO_SEM_OPERACOES')return 'A preparação não produziu operações de gravação verificáveis. Não há confirmação do servidor para esta alteração; o original permanece preservado para revisão.';
+ if(!i.recibo&&i.erro?.codigo==='P0001')return 'Este pedido exige revisão. O código P0001 não identifica sozinho a regra ou o campo; o original continua preservado.';
  if(falhaPreparacaoSemEnvio(i))return 'O sistema falhou antes de enviar esta alteração. O rascunho continua preservado neste aparelho.';
  if(i.estado==='legado_revisao')return 'O rascunho antigo precisa de análise. Baixe o original preservado; ele não será reenviado automaticamente.';
  const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;

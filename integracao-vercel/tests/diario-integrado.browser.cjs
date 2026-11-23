@@ -21,8 +21,24 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
  await concluir(p);assert.equal(await p.evaluate(()=>syncHarness.base().integracao_moradores[0].dados.etapa),1);cenarios++;console.log('cenário aprovado',cenarios);await c.close();
  // Two tabs of one account append independent actions; closing the oldest cannot erase either.
  c=await contexto();const a=await abrir(c);await concluir(a);const b=await abrir(c);await concluir(b);
- await Promise.all([a.evaluate(()=>syncHarness.sync.mutate(d=>{d.metas[0].titulo='Aba A';return d;})),b.evaluate(()=>syncHarness.sync.mutate(d=>{d.planos[0].titulo='Aba B';return d;}))]);
- await a.waitForFunction(()=>!syncHarness.sync.pendencias.length);await a.close();await b.waitForFunction(()=>{const s=JSON.parse(localStorage.getItem('harness-server'));return s.metas[0].titulo==='Aba A'&&s.planos_trabalho[0].titulo==='Aba B';});
+ // The fixture stores its entire simulated backend in localStorage. Serialize
+ // its read/modify/write commits across tabs; application item locks remain
+ // independent. A real backend commits row changes without replacing a snapshot.
+ for(const tab of [a,b])await tab.evaluate(()=>{const fetchServidor=window.fetch;window.fetch=(input,options)=>new URL(typeof input==='string'?input:input.url,location.href).pathname.endsWith('/rpc/integracao_gravar')?navigator.locks.request('fixture-backend-rpc-atomic',()=>fetchServidor(input,options)):fetchServidor(input,options);});
+ // mutate returns before durable capture. An initially empty UI list cannot
+ // authorize closing the tab. Hold the checksum to exercise that boundary.
+ await a.evaluate(()=>{const digest=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=async(...args)=>{crypto.subtle.digest=digest;window.capturaPausada=true;await new Promise(r=>window.liberarCaptura=r);return digest(...args);};syncHarness.sync.mutate(d=>{d.metas[0].titulo='Aba A';return d;});});
+ await a.waitForFunction(()=>window.capturaPausada);assert.equal(await a.evaluate(()=>syncHarness.sync.pendencias.length),0);
+ await b.evaluate(async()=>{window.filaDuplas=(await import('/src/fila-intencoes.js')).abrirFilaIntencoes();window.originalDuplas=async(colecao,titulo)=>(await filaDuplas.listar('00000000-0000-4000-8000-000000000001')).find(i=>i.original.intencao.edicoes?.some(e=>e.colecao===colecao&&e.depois?.valor?.titulo===titulo));});
+ assert.equal(await b.evaluate(async()=>!!await originalDuplas('metas','Aba A')),false);
+ await b.evaluate(()=>syncHarness.sync.mutate(d=>{d.planos[0].titulo='Aba B';return d;}));await a.evaluate(()=>window.liberarCaptura());
+ try{
+  await b.waitForFunction(async()=>!!await originalDuplas('metas','Aba A')&&!!await originalDuplas('planos','Aba B'));
+  await a.waitForFunction(()=>!syncHarness.sync.pendencias.length);await a.close();await b.waitForFunction(()=>{const s=JSON.parse(localStorage.getItem('harness-server'));return s.metas[0].titulo==='Aba A'&&s.planos_trabalho[0].titulo==='Aba B';});
+ }catch(e){
+  const diagnostico=await b.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('harness-server'));return {itens:(await filaDuplas.listar('00000000-0000-4000-8000-000000000001')).map(i=>({id:i.id,pedido:i.pedido,estado:i.estado,erro:i.erro?.codigo,recibo:!!i.recibo,edicoes:i.original.intencao.edicoes?.map(e=>({colecao:e.colecao,titulo:e.depois?.valor?.titulo}))})),posts:syncHarness.stats.postIds,servidor:{meta:s.metas[0].titulo,plano:s.planos_trabalho[0].titulo,pedidos:Object.keys(JSON.parse(localStorage.getItem('harness-receipts')))}};});
+  console.error('diagnóstico sintético de duas abas',JSON.stringify(diagnostico));throw e;
+ }finally{await b.evaluate(()=>filaDuplas.fechar());}
  await b.reload();await b.waitForFunction(()=>syncHarness.ready&&!syncHarness.sync.pendencias.length);assert.equal(await b.evaluate(()=>syncHarness.db.metas[0].titulo),'Aba A');cenarios++;console.log('cenário aprovado',cenarios);await c.close();
 
  // Lost write response is recovered by receipt, without a second committed write.

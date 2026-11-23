@@ -1,10 +1,11 @@
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,ciclosBackoffIntencao} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarReleitura,ciclosBackoffIntencao} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
 import {estruturaReleituraNotificacoesLegadas} from './confirmacao-mutacoes.js';
 import {pendenciaSomenteLocal} from './intencoes-locais.js';
+import {edicaoDerivada} from './projecoes-derivadas.js';
 
 // Protocol 2 has its own database. Legacy clients cannot write its entries.
 // An entry is one explicitly defined atomic business operation, never one table.
@@ -93,17 +94,18 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));return item;
   });
  }
- async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false}={}){
+ async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false,ignorarIds=[]}={}){
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
    for(const item of items)if(!somenteLeitura&&(!somenteId||item.id===somenteId)&&!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
-    item.estado='dispensado';item.decisao={tipo:'somente_presenca_ou_acesso_local',em:tempo};
+    item.estado='dispensado';item.decisao={tipo:item.original.intencao.edicoes.some(edicaoDerivada)?'somente_projecao_derivada_local':'somente_presenca_ou_acesso_local',em:tempo};
     await requisicao(s.intencoes.put(item));
    }
    if(!somenteLeitura)await congelarEscopos(s,items,tempo);
    for(const item of items){
     if(somenteId&&item.id!==somenteId)continue;
+    if(ignorarIds.includes(item.id))continue;
     const elegivel=['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
     if(!elegivel||item.leaseAte>tempo||somenteLeitura&&(!item.payload||exigirRecibo&&!item.recibo))continue;
     // One read-only retry after this repair, even when the old code exhausted
@@ -140,6 +142,23 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  }
  const soltar=item=>{delete item.dono;delete item.reserva;delete item.leaseAte;};
  const liberarReserva=item=>alterarReserva(item,soltar);
+ const renovarReserva=(item,{leaseMs=60000}={})=>{
+  if(leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
+  return transacao('readwrite',async s=>{
+   const atual=await requisicao(s.intencoes.get([item.conta,item.id]));
+   // Expiry alone does not transfer ownership. Renew only the same immutable
+   // reservation token; a different consumer can never be renewed or released.
+   if(!atual||atual.reserva!==item.reserva||atual.dono!==item.dono)throw erro('A reserva da intenção mudou; consulte o recibo antes de repetir.','RESERVA_EXPIRADA');
+   atual.leaseAte=agora()+leaseMs;await requisicao(s.intencoes.put(atual));return atual;
+  });
+ };
+ // Same injected clock as reservation/renewal, with no IndexedDB transaction.
+ // An absent/retrograde observation or an unknown deadline never skips renewal.
+ const observarPrazoReserva=(item,{leaseMs=60000,ultimoAgora=null}={})=>{
+  const tempo=agora(),prazo=item?.leaseAte;
+  return {agora:tempo,comFolga:Number.isFinite(tempo)&&Number.isFinite(prazo)&&Number.isFinite(ultimoAgora)&&
+   tempo>=ultimoAgora&&tempo>=prazo-leaseMs&&prazo-tempo>leaseMs/3};
+ };
  const registrarEnvio=item=>alterarReserva(item,atual=>{atual.tentativas++;atual.tentativasTotais=(atual.tentativasTotais||0)+1;atual.fase='envio';atual.estado='resultado_desconhecido';atual.enviadoEm=agora();});
  const registrarRecibo=(item,recibo)=>{
   if(!recibo||typeof recibo!=='object'||Array.isArray(recibo))throw erro('Recibo inválido.','RECIBO_INVALIDO');
@@ -166,7 +185,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   // Only statuses received from the server prove rejection. A lost response does not.
   if(atual.recibo)atual.estado='confirmado_aguardando_leitura';
   else if(rejeicaoConfirmada&&categoria==='conflito')atual.estado='bloqueado_conflito';
-  else if(categoria==='sessao'||categoria==='permissao'||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
+  else if(['sessao','permissao','validacao'].includes(categoria)||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
   else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
   atual.fase=fase;atual.erro={...falha,rejeicaoConfirmada,fase};
   atual.falhas=(atual.falhas||0)+1;
@@ -174,11 +193,12 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   const ciclos=ciclosBackoffIntencao(atual);
   atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(ciclos,6))*(.5+aleatorio()*.5));
   // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
-  if(['sessao','permissao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  if(['sessao','permissao','validacao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
   soltar(atual);
  });
  const fixarPayload=(item,payload,preparado)=>alterarReserva(item,atual=>{
   if(atual.payload)throw erro('Payload já fixado.','PAYLOAD_IMUTAVEL');
+  if(!Array.isArray(payload)||!payload.length)throw erro('Esta intenção não gerou operações de gravação verificáveis. O original foi preservado para revisão.','INTENCAO_SEM_OPERACOES');
   atual.payload=structuredClone(payload);atual.preparado=structuredClone(preparado);atual.estado='resultado_desconhecido';
  });
  async function rearmarCadastro(conta,auditoriaId){
@@ -202,6 +222,20 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    let total=0;
    for(const i of items)if(podeVerificarPreparacaoAoReconectar(i,tempo)){
     i.proximaTentativa=0;i.verificadaAoReconectar=true;i.atualizadoEm=tempo;
+    await requisicao(s.intencoes.put(i));total++;
+   }
+   return total;
+  });
+ }
+ // Reopen exhausted temporary read-backs once, without changing the receipt,
+ // payload, attempts or dependencies. The processor revalidates this old receipt
+ // with the current account before it can confirm any row or file.
+ async function reabrirReleiturasTemporarias(conta){
+  contaValida(conta);
+  return transacao('readwrite',async s=>{
+   const tempo=agora(),items=await requisicao(s.intencoes.index('conta').getAll(conta));let total=0;
+   for(const i of items)if(podeRetomarReleitura(i,tempo)){
+    i.proximaTentativa=0;i.releituraTemporariaVerificada=true;i.atualizadoEm=tempo;
     await requisicao(s.intencoes.put(i));total++;
    }
    return total;
@@ -270,50 +304,129 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+}
+
+// Web Locks outlive timer throttling while a tab is waiting on an upload/read.
+// The IDB lease still owns every mutation and permits recovery after a crash.
+// Without Web Locks the existing lease protocol remains available, with renewal;
+// strict exclusion during suspended tabs requires a supporting browser.
+async function consumirReserva(fila,opcoes,reserva,executar){
+ const {conta,dono,sessaoAtual,leaseMs=60000,renovarCadaMs=20000,travas=globalThis.navigator?.locks}=opcoes;
+ const ignorarIds=[...(opcoes.ignorarIds||[])];
+ const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
+ for(;;){
+  conferir();const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
+  const rodar=async(comWebLock=false)=>{
+   let falhaRenovacao,corrente=Promise.resolve(),prazoConhecido=item;
+   let ultimoAgora=Number.isFinite(item.leaseAte)?item.leaseAte-leaseMs:null;
+   const verificar=()=>{conferir();if(falhaRenovacao)throw falhaRenovacao;};
+   const renovar=({forcar=false}={})=>{
+    corrente=corrente.then(async()=>{
+     verificar();
+     // Only the actual exclusive Web Lock protects this short fast path.
+     // All durable mutations still validate owner/token/expiry transactionally.
+     if(!forcar&&comWebLock&&fila.observarPrazoReserva){
+      const observacao=fila.observarPrazoReserva(prazoConhecido,{leaseMs,ultimoAgora});
+      ultimoAgora=Number.isFinite(observacao.agora)?observacao.agora:null;
+      if(observacao.comFolga)return;
+     }
+     const atual=await fila.renovarReserva?.(item,{leaseMs});
+     const conhecido=atual?.reserva===item.reserva&&atual?.dono===item.dono&&Number.isFinite(atual?.leaseAte);
+     prazoConhecido=conhecido?atual:null;ultimoAgora=conhecido?atual.leaseAte-leaseMs:null;
+    });
+    corrente.catch(e=>{falhaRenovacao=e;});return corrente;
+   };
+   const passo=async fn=>{verificar();await renovar();verificar();const result=await fn();verificar();await renovar();verificar();return result;};
+   const timer=setInterval(()=>{renovar({forcar:true}).catch(()=>{});},Math.max(50,Math.min(renovarCadaMs,leaseMs/3)));
+   try{return await executar(item,{conferir:verificar,passo});}
+   finally{clearInterval(timer);await corrente.catch(()=>{});}
+  };
+  if(!travas?.request)return rodar();
+  let obtida=false;
+  const nome=fila.nomeTrava?.(item)||JSON.stringify(['integracao-intencao-v2',conta,item.id]);
+  const result=await travas.request(nome,{ifAvailable:true},lock=>{
+   if(!lock)return null;obtida=true;
+   return rodar(travas===globalThis.navigator?.locks&&lock.name===nome&&lock.mode==='exclusive');
+  });
+  if(obtida)return result;
+  // Contention is neither an attempted write nor a failure. Skip this item in
+  // this pass and allow an independently ready request to use the consumer.
+  try{await fila.liberarReserva(item);}catch(e){if(e.code!=='RESERVA_EXPIRADA')throw e;}
+  ignorarIds.push(item.id);if(reserva.somenteId)return null;
+ }
 }
 
 // The application must capture session identity in these callbacks. This processor
 // never obtains a token itself, and never infers a business unit from table names.
-export async function processarIntencao(fila,{conta,dono,sessaoAtual,consultarRecibo,enviar,reler,preparar,somenteId=null}){
- const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
- conferir();let item=await fila.reservar(conta,{dono,somenteId});if(!item)return null;let fase=item.fase;
+export async function processarIntencao(fila,opcoes){
+ const {consultarRecibo,enviar,reler,preparar,somenteId=null,aoReservar=()=>{}}=opcoes;
+ return consumirReserva(fila,opcoes,{somenteId},async(reservado,{conferir,passo})=>{
+ let item=reservado,fase=item.fase;
  try{
+  aoReservar(item.id);
   conferir();
   if(!item.payload){
-   fase='preparacao';const pronto=await preparar(item);conferir();
+   fase='preparacao';const pronto=await passo(()=>preparar(item));conferir();
    if(provaCampoSemEscrita(item,pronto))return await fila.dispensarCampoIdentico(item,pronto);
    if(Object.keys(pronto.identicos||{}).length&&!pronto.operacoes.length)
     throw erro('Não foi possível encerrar a cópia sem mudar a intenção original.','CAMPO_COPIA_LEITURA_INCONCLUSIVA');
+   if(!Array.isArray(pronto.operacoes)||!pronto.operacoes.length)throw erro('Esta intenção não gerou operações de gravação verificáveis. O original foi preservado para revisão.','INTENCAO_SEM_OPERACOES');
    item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();
   }
+  // Empty historical payloads cannot acquire a synthetic receipt from the
+  // no-op write adapter. Only the proven local/Campo paths above may dispense
+  // an intention without a server write; they never mark it confirmed.
+  if(!Array.isArray(item.payload)||!item.payload.length)throw erro('Esta intenção não gerou operações de gravação verificáveis. O original foi preservado para revisão.','INTENCAO_SEM_OPERACOES');
   if(!item.recibo){
    let recibo;
-   if(item.fase==='recibo'){fase='recibo';recibo=await consultarRecibo(item);conferir();}
-   if(!recibo){fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await enviar(item);conferir();}
+   if(item.fase==='recibo'){
+    fase='recibo';recibo=await passo(()=>consultarRecibo(item));conferir();
+    // The receipt RPC returns JSON null only after an authorized lookup proves
+    // absence. An inconclusive/empty transport result is never permission to send.
+    if(recibo!==null&&(!recibo||typeof recibo!=='object'||Array.isArray(recibo)))throw erro('A consulta do recibo não foi concluída. O pedido original permanece preservado.','RECIBO_INCONCLUSIVO');
+   }
+   if(!recibo){fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await passo(()=>enviar(item));conferir();}
    item=await fila.registrarRecibo(item,recibo);conferir();
+  }else{
+   // A receipt already present in local storage (including imported queues)
+   // is not proof of its author. Revalidate the same request/payload through
+   // the caller-token RPC before an automatic read-back can close it. A receipt
+   // received from this pass's send or lookup needs no additional request.
+   fase='recibo';const verificado=await passo(()=>consultarRecibo(item));conferir();
+   if(!verificado||canonico(verificado)!==canonico(item.recibo))throw erro('O recibo antigo ainda não pôde ser verificado nesta conta. O original permanece preservado.','RECIBO_INCONCLUSIVO');
   }
-  fase='releitura';await reler(item);conferir();return await fila.confirmarLeitura(item);
+  fase='releitura';await passo(()=>reler(item));conferir();return await fila.confirmarLeitura(item);
  }catch(e){
   // A session change leaves the lease to expire; no callbacks for the new account.
   if(e.code==='SESSAO_ALTERADA')throw e;
   try{await fila.registrarFalha(item,e,{fase});}catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
   throw e;
  }
+ });
 }
 
 // Support reads share the same account, lease and dependency checks. This path
 // has no preparation/upload/send callback and cannot turn a rejection into a
 // new automatic write. Missing receipts preserve the previous blocked state.
-export async function lerIntencaoExistente(fila,{conta,dono,id,sessaoAtual,consultarRecibo,reler,modo}){
- const conferir=()=>{if(!sessaoAtual())throw erro('Sessão alterada.','SESSAO_ALTERADA');};
+export async function lerIntencaoExistente(fila,opcoes){
+ const {id,consultarRecibo,reler,modo}=opcoes;
  if(!['consulta','releitura'].includes(modo))throw erro('Ação indisponível.','REVISAO_NECESSARIA');
- conferir();let item=await fila.reservar(conta,{dono,somenteId:id,somenteLeitura:true,exigirRecibo:modo==='releitura'});
- if(!item)return null;
+ return consumirReserva(fila,opcoes,{somenteId:id,somenteLeitura:true,exigirRecibo:modo==='releitura'},async(reservado,{conferir,passo})=>{
+ let item=reservado;
  try{
   conferir();
-  if(!item.recibo){const recibo=await consultarRecibo(item);conferir();if(recibo)item=await fila.registrarRecibo(item,recibo);}
-  if(item.recibo&&modo==='releitura'){await reler(item);conferir();return await fila.confirmarLeitura(item);}
+  if(modo==='releitura'&&(!Array.isArray(item.payload)||!item.payload.length))throw erro('Esta intenção não gerou operações de gravação verificáveis. O original foi preservado para revisão.','INTENCAO_SEM_OPERACOES');
+  if(!item.recibo){
+   const recibo=await passo(()=>consultarRecibo(item));conferir();
+   if(recibo!==null&&(!recibo||typeof recibo!=='object'||Array.isArray(recibo)))throw erro('A consulta do recibo não foi concluída. O pedido original permanece preservado.','RECIBO_INCONCLUSIVO');
+   if(recibo)item=await fila.registrarRecibo(item,recibo);
+  }
+  else if(modo==='releitura'){
+   const verificado=await passo(()=>consultarRecibo(item));conferir();
+   if(!verificado||canonico(verificado)!==canonico(item.recibo))throw erro('O recibo antigo ainda não pôde ser verificado nesta conta. O original permanece preservado.','RECIBO_INCONCLUSIVO');
+  }
+  if(item.recibo&&modo==='releitura'){await passo(()=>reler(item));conferir();return await fila.confirmarLeitura(item);}
   conferir();return await fila.liberarReserva(item);
  }catch(e){
   if(e.code==='SESSAO_ALTERADA')throw e;
@@ -323,4 +436,5 @@ export async function lerIntencaoExistente(fila,{conta,dono,id,sessaoAtual,consu
   }catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
   throw e;
  }
+ });
 }

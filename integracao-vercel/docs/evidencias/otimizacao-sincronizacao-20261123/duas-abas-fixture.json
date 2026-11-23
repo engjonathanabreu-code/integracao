@@ -1,0 +1,106 @@
+{
+  "fixtureFileUnchanged": true,
+  "inMemoryViteLoadOnly": true,
+  "logs": [
+    {
+      "mode": "unlocked-fixture",
+      "requestOrder": [
+        "B",
+        "A"
+      ],
+      "commitOrder": [
+        "B",
+        "A"
+      ],
+      "snapshotsBeforeBCommit": {
+        "a": [
+          {
+            "pedido": "00000000-0000-4000-8000-000000000101",
+            "meta": "Meta Teste",
+            "plano": "Plano Teste",
+            "recibos": []
+          }
+        ],
+        "b": [
+          {
+            "pedido": "00000000-0000-4000-8000-000000000102",
+            "meta": "Meta Teste",
+            "plano": "Plano Teste",
+            "recibos": []
+          }
+        ]
+      },
+      "aBlockedBeforeRead": false,
+      "snapshotA": {
+        "pedido": "00000000-0000-4000-8000-000000000101",
+        "meta": "Meta Teste",
+        "plano": "Plano Teste",
+        "recibos": []
+      },
+      "responseStatus": {
+        "b": 200,
+        "a": 200
+      },
+      "bLocalReceipt": {
+        "pedido": "00000000-0000-4000-8000-000000000102",
+        "reciboRecebido": true
+      },
+      "final": {
+        "meta": "Meta A independente",
+        "plano": "Plano Teste",
+        "recibos": [
+          "00000000-0000-4000-8000-000000000101"
+        ],
+        "writes": 1
+      }
+    },
+    {
+      "mode": "atomic-lock-control",
+      "requestOrder": [
+        "B",
+        "A"
+      ],
+      "commitOrder": [
+        "B",
+        "A"
+      ],
+      "snapshotsBeforeBCommit": {
+        "a": [],
+        "b": [
+          {
+            "pedido": "00000000-0000-4000-8000-000000000102",
+            "meta": "Meta Teste",
+            "plano": "Plano Teste",
+            "recibos": []
+          }
+        ]
+      },
+      "aBlockedBeforeRead": true,
+      "snapshotA": {
+        "pedido": "00000000-0000-4000-8000-000000000101",
+        "meta": "Meta Teste",
+        "plano": "Plano B independente",
+        "recibos": [
+          "00000000-0000-4000-8000-000000000102"
+        ]
+      },
+      "responseStatus": {
+        "b": 200,
+        "a": 200
+      },
+      "bLocalReceipt": {
+        "pedido": "00000000-0000-4000-8000-000000000102",
+        "reciboRecebido": true
+      },
+      "final": {
+        "meta": "Meta A independente",
+        "plano": "Plano B independente",
+        "recibos": [
+          "00000000-0000-4000-8000-000000000101",
+          "00000000-0000-4000-8000-000000000102"
+        ],
+        "writes": 2
+      }
+    }
+  ]
+}

@@ -19,7 +19,8 @@ import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos,visualizarCopiaCampoConferida} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
-import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
+import {diagnosticoOperacao,motivoEsperaLocal} from './diagnostico-sincronizacao.js';
+import {podeRetomarReleitura} from './estado-sincronizacao.js';
 import {diagnosticosSuporte,prepararRecuperacaoAtualizacao,edicaoVisivelParaAtualizar} from './suporte-remoto-local.js';
 import {configERP,consultarReciboOperacao,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
@@ -166,9 +167,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const flushDiario=async()=>{
     if(busy.current||opening.current||!diario.current||!server.current||!temSessao()||!temConexao())return;
     busy.current=true;const gen=generation.current,d=diario.current;
-    try{await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);publish(d.materializar(server.current.db));await saveDraft();}
+    try{if(!temEdicaoEmAndamento()&&d.itens().some(i=>podeRetomarReleitura(i,Date.now())))await d.verificarReleiturasTemporarias();conferirGeracao(gen);await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);publish(d.materializar(server.current.db));await saveDraft();}
     catch(e){if(gen===generation.current){setError(e.message);setStatus(e.code?.startsWith('PERSISTENCIA')?'Não foi possível guardar as alterações. Baixe uma cópia antes de sair.':'Alterações pendentes — consulte a revisão.');rejeitarConfirmacoes(e.message,e.code||'CONFIRMACAO_FALHOU',e);}}
-    finally{if(gen===generation.current){busy.current=false;const itens=d.itens().filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));if(itens.some(i=>!i.estado.startsWith('bloqueado')&&!['persistencia_falhou','legado_revisao'].includes(i.estado)&&i.proximaTentativa!==Number.MAX_SAFE_INTEGER)){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
+    finally{if(gen===generation.current){busy.current=false;const itens=d.itens().filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));if(itens.some(i=>!i.estado.startsWith('bloqueado')&&!['persistencia_falhou','legado_revisao'].includes(i.estado)&&i.proximaTentativa!==Number.MAX_SAFE_INTEGER)||!temEdicaoEmAndamento()&&itens.some(i=>podeRetomarReleitura(i,Date.now()))){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
 
   const atualizarPreservando=async(base,remoto,gen,obter=()=>current.current)=>{
@@ -564,25 +565,37 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){if(pending.current)flush();avisar(null);}};
     const filePending=evento=>{if(!actor.current)return;if(usarDiario&&current.current){const gen=generation.current;diario.current.adicionarArquivos(current.current,evento.detail?.arquivos||capturarArquivos()).catch(e=>{if(gen===generation.current)setError(e.message);});}pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,250);};
     const protegerSaida=e=>{if(pending.current){e.preventDefault();e.returnValue='';}};
+    // Ending an edit may release a previously deferred read-back. Only
+    // exhausted receipts with a bounded repair qualify; never create a write.
+    let releituraTimer;
+    const retomarReleitura=()=>{
+      clearTimeout(releituraTimer);
+      if(!pending.current||!usarDiario||!diario.current?.itens().some(i=>podeRetomarReleitura(i,Date.now())))return;
+      releituraTimer=setTimeout(()=>{if(actor.current&&!opening.current&&!busy.current&&!temEdicaoEmAndamento()&&temSessao()&&temConexao())void flushDiario();},250);
+    };
+    const observador=typeof MutationObserver==='function'?new MutationObserver(retomarReleitura):null;
+    observador?.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-edicao-pendente','open']});
+    window.addEventListener('focusout',retomarReleitura);
     window.addEventListener('beforeunload',protegerSaida);
     window.addEventListener('integracao:arquivo-pendente',filePending);
     window.addEventListener('integracao:conexao',online);window.addEventListener('online',online);window.addEventListener('offline',online);window.addEventListener('focus',foco);window.addEventListener('visibilitychange',foco);
-    return()=>{generation.current++;diario.current?.fechar();rejeitarConfirmacoes('A tela de sincronização foi encerrada antes da confirmação.','TELA_ENCERRADA');vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
+    return()=>{clearTimeout(releituraTimer);observador?.disconnect();window.removeEventListener('focusout',retomarReleitura);generation.current++;diario.current?.fechar();rejeitarConfirmacoes('A tela de sincronização foi encerrada antes da confirmação.','TELA_ENCERRADA');vivo.current?.fechar();clearTimeout(avisoTimer.current);window.removeEventListener('offline',online);window.removeEventListener('visibilitychange',foco);window.removeEventListener('beforeunload',protegerSaida);clearInterval(tick);clearTimeout(timer.current);window.removeEventListener('integracao:arquivo-pendente',filePending);window.removeEventListener('integracao:conexao',online);window.removeEventListener('online',online);window.removeEventListener('focus',foco);};
   },[]);
   const abrirPendencia=async id=>{const gen=generation.current;try{const previa=await diario.current.previa(id);conferirGeracao(gen);setPreviaPendencia(previa);}catch(e){if(gen===generation.current)setError(e.message);}};
   const resolverPendencia=async escolhas=>{const gen=generation.current;try{await diario.current.resolver(previaPendencia.id,escolhas);conferirGeracao(gen);setPreviaPendencia(null);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const reconhecerPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.reconhecerLeitura(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const descartarPendencia=async()=>{const gen=generation.current;try{const d=diario.current;await d.descartar(previaPendencia.id);conferirGeracao(gen);setPreviaPendencia(null);publish(d.materializar(server.current.db));await saveDraft();conferirGeracao(gen);await flush();}catch(e){if(gen===generation.current)setError(e.message);}};
   const tentarNovamente=async()=>{const gen=generation.current;retentativas.current=0;if(usarDiario&&diario.current){try{await diario.current.retomarAutomaticas();conferirGeracao(gen);}catch(e){if(gen===generation.current)setError(e.message);return;}}return flush();};
-  const diagnosticarPendencia=id=>{const itens=diario.current?.itens()||[],item=itens.find(i=>i.id===id);return item?diagnosticoOperacao(item,Date.now(),itens):null;};
+  const contextoEspera=()=>({diarioPronto:usarDiario&&!!diario.current,abrindo:opening.current,basePronta:!!server.current,sessaoPronta:temSessao(),processando:busy.current,editando:temEdicaoEmAndamento()});
+  const diagnosticarPendencia=id=>{const itens=diario.current?.itens()||[],item=itens.find(i=>i.id===id);return item?diagnosticoOperacao(item,Date.now(),itens,contextoEspera()):null;};
   const executarSuporte=async({tipo,pedido=null},conferirComando=()=>{},revalidar=async()=>{})=>{
     const gen=generation.current,d=diario.current;
     const verificar=()=>{conferirGeracao(gen);try{conferirComando();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}};
     const validar=async()=>{verificar();try{await revalidar();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}verificar();};
-    const resultado=codigo=>({codigo,itens:diagnosticosSuporte(d?.itens()||[],pedido)});
+    const resultado=(codigo,motivo=null)=>({codigo,itens:diagnosticosSuporte(d?.itens()||[],pedido).map(i=>motivo?{...i,espera:motivo}:i)});
     verificar();
-    if(!usarDiario||!d||opening.current||!server.current||!temSessao())return resultado('EM_ANDAMENTO');
-    if(busy.current||temEdicaoEmAndamento())return resultado('EM_ANDAMENTO');
+    const motivo=motivoEsperaLocal(contextoEspera());
+    if(motivo)return resultado('EM_ANDAMENTO',motivo);
     busy.current=true;clearTimeout(timer.current);
     try{
       await d.esperar();verificar();await d.atualizar();verificar();
