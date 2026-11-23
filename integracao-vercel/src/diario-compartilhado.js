@@ -35,7 +35,11 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   return db;
  }
  function adicionar(antes,depois,arquivos={},opcoes={}){
-  const edicoes=extrairIntencao(antes,depois),id=opcoes.id||crypto.randomUUID();
+  // Notification retention is local; the encoder never sends these removals.
+  // Do not make a new sync entry or dependency out of unsent changes.
+  const edicoes=extrairIntencao(antes,depois).filter(e=>opcoes.legado||opcoes.substituirId||
+   !(e.colecao==='notificacoes'&&e.id&&e.antes?.existe===true&&e.antes.valor?.id===e.id&&e.depois?.existe===false));
+  const id=opcoes.id||crypto.randomUUID();
   if(!edicoes.length&&!Object.keys(arquivos).length&&!opcoes.legado)return Promise.resolve(null);
   const recursos=[...recursosIntencao(edicoes),...Object.keys(arquivos).map(k=>'arquivo:'+k)];
   const payload={conta,id,unidade:recursos[0]||'auditoria:'+id,recursos,modulo:edicoes.find(e=>e.colecao!=='auditoria')?.colecao||'arquivos',dependencias:opcoes.dependencias||[],referencias:referenciasIdentidades(edicoes),criadas:edicoes.filter(e=>e.id&&!e.antes.existe).map(e=>e.id),operacoes:opcoes.legado?.operations||[],preparar:!opcoes.legado,base:{},intencao:{edicoes,arquivos},legado:opcoes.legado||null};
@@ -198,6 +202,12 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   if(rearmado){await atualizar();sinalizar();}
   return rearmado;
  }
+ async function verificarPreparacoesAoReconectar(){
+  await corrente.catch(()=>{});conferir();
+  const total=await fila.reabrirPreparacoesAoReconectar(conta);conferir();
+  if(total){await atualizar();sinalizar();}
+  return total;
+ }
  async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
   for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
@@ -209,5 +219,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,verificarPreparacoesAoReconectar,esperar:()=>Promise.all([corrente,capturas]),exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }
