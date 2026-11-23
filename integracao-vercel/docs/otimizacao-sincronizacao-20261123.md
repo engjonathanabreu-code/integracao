@@ -25,10 +25,12 @@ O medidor registra espera, preparação, upload, gravação, releitura, idade at
 - **Recibo apenas local:** podia bastar para avançar até a baixa. Agora a RPC da mesma conta verifica autoria/pedido/resumo do payload e devolve o recibo, que deve ser integralmente igual. Ausência ou divergência não baixa nem reenvia o item.
 - **Releitura antiga temporária esgotada:** uma retomada adicional e durável pode ocorrer após sessão/processamento/edição serem liberados. É somente leitura; não reabre conflito, permissão, validação ou leitura divergente. O marcador não é zerado por foco/reconexão.
 - **Diagnóstico insuficiente:** `EM_ANDAMENTO` anterior a qualquer consulta podia significar sessão/base não pronta, edição ativa ou processamento local. Esses motivos agora são enumerados no diagnóstico local, mantendo também reserva de outra aba e dependência da fila. O contrato remoto atual não aceita os três novos motivos: a sanitização os transmite como `nao_verificado`, preservando a API e sem fingir outra causa. Um teste executa o validador SQL existente em PGlite para comprovar essa compatibilidade. A discriminação adicional remota depende de uma evolução futura autorizada do contrato. Não são gravados valores de formulário, mensagens brutas ou credenciais.
-- **Reserva expirada durante operação longa:** o lease fixo de 60 segundos não cobria todos os uploads/preparos. Agora o consumidor usa Web Lock por conta/pedido, renova o mesmo token transacionalmente antes/depois de callbacks e por heartbeat, e drena o heartbeat ao encerrar. Contenção não executa callbacks nem aumenta tentativas; permite selecionar um independente. Perda da reserva não confirma o item antigo. Sem Web Locks, ou com abas antigas que não participam do bloqueio, permanece o protocolo de lease com renovação e CAS; não há garantia estrita durante suspensão. Esses ambientes bloqueiam ampliação do piloto até validação específica.
+- **Reserva expirada durante operação longa:** o lease fixo de 60 segundos não cobria todos os uploads/preparos. Agora o consumidor usa Web Lock por conta/pedido, confere sessão e prazo antes/depois dos callbacks e renova o mesmo token quando necessário; o heartbeat permanece forçado, e drena o heartbeat ao encerrar. Contenção não executa callbacks nem aumenta tentativas; permite selecionar um independente. Perda da reserva não confirma o item antigo. Sem Web Locks, ou com abas antigas que não participam do bloqueio, permanece o protocolo de lease com renovação e CAS; não há garantia estrita durante suspensão. Esses ambientes bloqueiam ampliação do piloto até validação específica.
 - **Leitura ampla de Calendário:** preparação e confirmação buscavam grupos alheios à operação. Intenções compostas somente por eventos/agendas/auditoria agora relêem Calendário, usuários/contrato e auxiliares. Operações mistas ou desconhecidas mantêm a leitura completa. O processamento por aba continua sequencial: não foi introduzido paralelismo na projeção/cache compartilhada nem timeout que abandone um upload em voo. A correção permite avançar após falha/bloqueio, e outro consumidor pode selecionar um independente durante uma operação longa. Eventos continuam vindo da RPC autorizada; respostas, agenda, complemento e arquivos continuam atuais. A evidência de confirmação não mudou.
 
 ## Medição sintética
+
+**Histórico da entrega inicial `a44e718`.** A coleta antiga de Campo incluía polling e o campo chamado releitura incluía espera local. A [reanálise de Campo](reanalise-p95-campo-20261123.md) separa os marcos, testa três versões e documenta a correção posterior; seus resultados substituem a interpretação provisória abaixo. Os dados históricos foram preservados.
 
 Execução sequencial no mesmo host, sem outras suítes concorrentes: 20 operações por fluxo em cada versão (120 operações ao todo), mesmas fixtures, Node v24.22.3, Chromium 143.0.7499.4. Cada chamada de transporte recebe atraso sintético de 15 ms; a leitura alheia de mensagens recebe 80 ms. O medidor bloqueia rede externa e recusa uma amostra normal com escrita duplicada, consulta extra de recibo ou pendência residual.
 
@@ -38,15 +40,15 @@ Execução sequencial no mesmo host, sem outras suítes concorrentes: 20 operaç
 | Calendário | 542.5 → 380.9 | 546.1 → 389.4 | 94 → 24 | 546 → 389 |
 | Campo offline | 591.2 → 591.4 | 591.5 → 600.9 | 95 → 95 | 586 → 586 |
 
-| Fluxo | Espera p95 | Preparação p95 | Upload p95 | Gravação p95 | Releitura p95 |
+| Fluxo | Espera p95 | Preparação p95 | Upload p95 | Gravação p95 | Pós-resposta p95 (método antigo) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Metas | 261.7 → 260.5 | 59.6 → 58.1 | 0 → 0 | 17.5 → 17 | 57.5 → 56 |
 | Calendário | 260.6 → 261.3 | 136.5 → 55.9 | 0 → 0 | 17.2 → 17 | 134.8 → 55.1 |
 | Campo offline | 260.2 → 260.2 | 159.3 → 160.2 | 17.2 → 17.1 | 17.8 → 17.5 | 145 → 153.1 |
 
-Calendário: redução de 74.5% nas chamadas e 28.7% no p95 total dessa fixture. Metas manteve 37 chamadas. Campo manteve 95 chamadas e a idade p95 durável de 586 ms; seu p95 total observado aumentou 9,4 ms (591,5 → 600,9), com mediana praticamente igual. A coleta de conclusão de Campo usa polling de 10 ms, mas isso não comprova a causa da variação. Não foi demonstrado ganho de latência em Campo, e uma piora reproduzida no piloto impede ampliação.
+Calendário: redução de 74.5% nas chamadas e 28.7% no p95 total dessa fixture. Metas manteve 37 chamadas. Campo manteve 95 chamadas e a idade p95 durável de 586 ms; seu p95 total observado aumentou 9,4 ms (591,5 → 600,9), com mediana praticamente igual. A coleta de conclusão de Campo usa polling de 10 ms, mas isso não comprova a causa da variação. Naquela coleta não foi demonstrado ganho de latência em Campo. A reanálise posterior sem polling encontrou p95 durável 591,1 / 592,0 / 590,2 ms (base / PR original / correção), com contraste original/base inconclusivo e melhora frente ao original; veja intervalos e limites no relatório vinculado. Uma piora reproduzida no piloto impede ampliação.
 
-Nas duas versões, as 60 operações normais de cada rodada terminaram com uma única gravação por pedido, zero consultas extras de recibo, zero pendências residuais e zero avisos falsos conhecidos das fixtures. Esse resultado não estima pendências ou avisos falsos em produção. A renovação da reserva acrescenta transações locais de IndexedDB; não acrescenta uma consulta HTTP de confirmação ao caminho normal.
+Nas duas versões, as 60 operações normais de cada rodada terminaram com uma única gravação por pedido, zero consultas extras de recibo, zero pendências residuais e zero avisos falsos conhecidos das fixtures. Esse resultado não estima pendências ou avisos falsos em produção. Na entrega inicial, a renovação da reserva acrescentava seis transações locais de IndexedDB. A correção posterior evita essas renovações redundantes somente sob Web Lock real e prazo com folga, mantendo heartbeat, CAS e as mesmas chamadas HTTP; veja a reanálise.
 
 [Dados brutos da base](evidencias/otimizacao-sincronizacao-20261123/base-1205203.json) · [Dados brutos da branch](evidencias/otimizacao-sincronizacao-20261123/branch.json).
 
@@ -68,8 +70,8 @@ Não se substitui o pacote de Campo para destravar um item. Permanecem as verifi
 ## Verificações
 
 - Base `1205203`: `npm test` passou 1.458/1.458 testes antes das alterações.
-- Fontes finais: `npm run build` passou 1.470/1.470 testes e gerou o build Vite. Mantém o aviso existente de bundle acima de 2 MB; não houve nova dependência.
-- Fontes finais: `npm run test:browser` passou 94/94 jornadas com HTTP/WebSocket externo bloqueado. Inclui Metas, Calendário, Campo, upload parcial, guard de payload vazio, lease longo, duas abas, resposta perdida, validação, conflito, permissão, edição ativa, reload e contratos existentes.
+- Fontes finais após reanálise de Campo: `npm run build` passou 1.476/1.476 testes e gerou o build Vite. Mantém o aviso existente de bundle acima de 2 MB; não houve nova dependência.
+- Fontes finais após reanálise de Campo: `npm run test:browser` passou 96/96 jornadas com HTTP/WebSocket externo bloqueado. Inclui Metas, Calendário, Campo, upload parcial, guard de payload vazio, lease longo, duas abas, resposta perdida, validação, conflito, permissão, edição ativa, reload e contratos existentes.
 - `node scripts/medir-sincronizacao.mjs`: 120 operações sintéticas na comparação base/branch, com dados brutos anexados e uma única gravação por pedido em todas as amostras normais.
 - `git diff --check` passou. Não há scripts separados de lint ou verificação de tipos declarados no package.json.
 - O estado de CI deve ser conferido no SHA exato do PR. Os resultados locais não substituem o piloto autorizado em aparelhos reais.

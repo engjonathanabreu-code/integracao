@@ -57,7 +57,7 @@ O protocolo atual não persiste um comprovante granular de upload por arquivo an
 
 ## Revisão de exclusão entre abas
 
-A revisão independente do lock verificou a reserva transacional por token/dono, renovação antes/depois dos callbacks, heartbeat serial e liberação do Web Lock após drenar as renovações. Contenção pula o item sem callback e sem aumentar tentativas; o lease roubado por cliente antigo impede confirmar como salvo. O lock é por banco/conta/item, permitindo outra intenção independente.
+A revisão independente do lock verificou a reserva transacional por token/dono, conferência de sessão e prazo antes/depois dos callbacks, heartbeat serial e liberação do Web Lock após drenar as renovações. Com um Web Lock real e exclusivo, do nome esperado, o consumidor renova quando necessário: só evita uma renovação redundante se o prazo conhecido tiver folga superior a um terço do lease, usando o mesmo relógio da fila e sem retrocesso observado. Relógio ou prazo desconhecido exige renovação. O heartbeat continua forçado; as mutações duráveis mantêm a validação transacional de proprietário, token e expiração. Sem Web Locks ou com trava injetada, o caminho curto mantém as seis renovações anteriores. Contenção pula o item sem callback e sem aumentar tentativas; o lease roubado por cliente antigo impede confirmar como salvo. O lock é por banco/conta/item, permitindo outra intenção independente.
 
 Sem Web Locks, o fallback tem lease renovável, mas não comprova exclusão estrita em aba suspensa. Abas de versão antiga podem ignorar o lock novo. Esses dois casos são limites de liberação: o piloto deve usar abas atualizadas e navegador com Web Locks, mantendo filas e recibos. Não foi realizado teste de suspensão real pelo sistema operacional.
 
@@ -74,6 +74,26 @@ A revisão independente executou 10/10 testes Node de operações vazias, inten�
 Os novos motivos `sessao_nao_pronta`, `processamento_local` e `edicao_ativa` ficam disponíveis no diagnóstico local sem conteúdo de formulário, nomes, credenciais ou mensagens brutas. O código `EM_ANDAMENTO` continua significando que a leitura não foi concluída; ele não comprova ausência de gravação nem a causa histórica de um caso específico.
 
 O validador SQL remoto existente aceita uma lista fechada que não contém esses três motivos. A sanitização conserva o contrato da API e os transmite como `nao_verificado`, mantendo a discriminação precisa apenas localmente. O teste de compatibilidade em `confirmacao-retomada.test.js` executa os helpers reais da migration existente em PGlite descartável: rejeita os motivos novos sem sanitização, aceita o resultado sanitizado e verifica que o diagnóstico local original permanece preciso. Não foi alterado SQL, API ou permissão para ampliar essa lista. Discriminar os novos motivos remotamente depende de evolução futura e autorizada do contrato.
+
+## Reanálise independente do p95 de Campo
+
+O aumento de 9,4 ms observado na coleta inicial de 20 amostras por versão não ficou comprovado como uma regressão real desse tamanho. O endpoint antigo incluía espera de polling e UI; a igualdade da idade p95 durável também não bastava para excluir um custo menor. O estudo intermediário encontrou seis transações IndexedDB adicionais no caminho curto, motivando a conferência condicional de prazo descrita acima, mantendo Web Lock, heartbeat e CAS.
+
+A coleta final separou a confirmação durável da transação IndexedDB e o commit real da interface do mesmo pedido, sem polling. Foram 36 rodadas, com três versões — base, PR original e correção — em seis blocos espelhados com rotações: 240 amostras e 36 aquecimentos por versão, totalizando 720 amostras medidas e 108 aquecimentos. A instrumentação da fixture foi comum às versões, somente em memória; fingerprints das fontes e fixture foram conferidos no início/fim. O coordenador também conferiu o digest dos scripts de medição após a coleta.
+
+A revisão independente de consistência encontrou zero falhas ou tempos inválidos. Todas as amostras mantiveram 95 requisições, uma gravação, nenhuma consulta extra de recibo e nenhuma pendência residual. A contagem de transações IndexedDB observadas foi 12 na base, 18 no PR original e 12 na correção.
+
+| Contraste | Diferença do p95 durável e intervalo estimado de 95% | Diferença do p95 da UI e intervalo estimado de 95% |
+| --- | --- | --- |
+| PR original menos base | +0,9 ms [−0,2; +2,1] | +0,9 ms [−0,4; +2,0] |
+| Correção menos base | −0,9 ms [−1,6; −0,2] | −0,8 ms [−1,7; −0,3] |
+| Correção menos PR original | −1,8 ms [−2,8; −1,2] | −1,7 ms [−2,6; −1,0] |
+
+O contraste original/base é inconclusivo para piora do p95; não demonstra equivalência nem ausência absoluta de custo. A correção eliminou as seis transações redundantes e apresentou melhora mensurável nesta fixture; todos os seis blocos tiveram diferença durável negativa frente ao PR original. O polling pode ampliar a cauda observada, mas os dados não autorizam atribuir os 9,4 ms inteiros a uma única causa.
+
+Os intervalos são estimativas por bootstrap de seis blocos inteiros, com um único host e atrasos de transporte artificiais. Não demonstram desempenho em produção nem substituem piloto autorizado. A otimização continua restrita ao Web Lock real; suspensão do sistema, abas antigas e ambientes sem Web Locks mantêm os limites de liberação já registrados. A suíte final e o CI devem ser conferidos no SHA exato após o push; esta revisão não executou navegadores ou testes durante a coleta e a validação final do coordenador.
+
+[Dados finais sem polling](evidencias/otimizacao-sincronizacao-20261123/campo-confirmacao-sem-polling.json) · [Relatório da reanálise](reanalise-p95-campo-20261123.md).
 
 ## Resultados executados
 

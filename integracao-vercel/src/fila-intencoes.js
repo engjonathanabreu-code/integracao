@@ -152,6 +152,13 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    atual.leaseAte=agora()+leaseMs;await requisicao(s.intencoes.put(atual));return atual;
   });
  };
+ // Same injected clock as reservation/renewal, with no IndexedDB transaction.
+ // An absent/retrograde observation or an unknown deadline never skips renewal.
+ const observarPrazoReserva=(item,{leaseMs=60000,ultimoAgora=null}={})=>{
+  const tempo=agora(),prazo=item?.leaseAte;
+  return {agora:tempo,comFolga:Number.isFinite(tempo)&&Number.isFinite(prazo)&&Number.isFinite(ultimoAgora)&&
+   tempo>=ultimoAgora&&tempo>=prazo-leaseMs&&prazo-tempo>leaseMs/3};
+ };
  const registrarEnvio=item=>alterarReserva(item,atual=>{atual.tentativas++;atual.tentativasTotais=(atual.tentativasTotais||0)+1;atual.fase='envio';atual.estado='resultado_desconhecido';atual.enviadoEm=agora();});
  const registrarRecibo=(item,recibo)=>{
   if(!recibo||typeof recibo!=='object'||Array.isArray(recibo))throw erro('Recibo inválido.','RECIBO_INVALIDO');
@@ -297,7 +304,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.
@@ -310,22 +317,37 @@ async function consumirReserva(fila,opcoes,reserva,executar){
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
  for(;;){
   conferir();const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
-  const rodar=async()=>{
-   let falhaRenovacao,corrente=Promise.resolve();
+  const rodar=async(comWebLock=false)=>{
+   let falhaRenovacao,corrente=Promise.resolve(),prazoConhecido=item;
+   let ultimoAgora=Number.isFinite(item.leaseAte)?item.leaseAte-leaseMs:null;
    const verificar=()=>{conferir();if(falhaRenovacao)throw falhaRenovacao;};
-   const renovar=()=>{
-    corrente=corrente.then(async()=>{verificar();await fila.renovarReserva?.(item,{leaseMs});});
+   const renovar=({forcar=false}={})=>{
+    corrente=corrente.then(async()=>{
+     verificar();
+     // Only the actual exclusive Web Lock protects this short fast path.
+     // All durable mutations still validate owner/token/expiry transactionally.
+     if(!forcar&&comWebLock&&fila.observarPrazoReserva){
+      const observacao=fila.observarPrazoReserva(prazoConhecido,{leaseMs,ultimoAgora});
+      ultimoAgora=Number.isFinite(observacao.agora)?observacao.agora:null;
+      if(observacao.comFolga)return;
+     }
+     const atual=await fila.renovarReserva?.(item,{leaseMs});
+     const conhecido=atual?.reserva===item.reserva&&atual?.dono===item.dono&&Number.isFinite(atual?.leaseAte);
+     prazoConhecido=conhecido?atual:null;ultimoAgora=conhecido?atual.leaseAte-leaseMs:null;
+    });
     corrente.catch(e=>{falhaRenovacao=e;});return corrente;
    };
    const passo=async fn=>{verificar();await renovar();verificar();const result=await fn();verificar();await renovar();verificar();return result;};
-   const timer=setInterval(()=>{renovar().catch(()=>{});},Math.max(50,Math.min(renovarCadaMs,leaseMs/3)));
+   const timer=setInterval(()=>{renovar({forcar:true}).catch(()=>{});},Math.max(50,Math.min(renovarCadaMs,leaseMs/3)));
    try{return await executar(item,{conferir:verificar,passo});}
    finally{clearInterval(timer);await corrente.catch(()=>{});}
   };
   if(!travas?.request)return rodar();
   let obtida=false;
-  const result=await travas.request(fila.nomeTrava?.(item)||JSON.stringify(['integracao-intencao-v2',conta,item.id]),{ifAvailable:true},lock=>{
-   if(!lock)return null;obtida=true;return rodar();
+  const nome=fila.nomeTrava?.(item)||JSON.stringify(['integracao-intencao-v2',conta,item.id]);
+  const result=await travas.request(nome,{ifAvailable:true},lock=>{
+   if(!lock)return null;obtida=true;
+   return rodar(travas===globalThis.navigator?.locks&&lock.name===nome&&lock.mode==='exclusive');
   });
   if(obtida)return result;
   // Contention is neither an attempted write nor a failure. Skip this item in
