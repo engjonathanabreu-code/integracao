@@ -9,13 +9,16 @@ const valor=v=>v===undefined?'Não disponível nesta leitura':v===null?'Ausente'
 export default function PendenciasSincronizacao({sync}){
  const [ocupado,setOcupado]=useState(false);
  const p=sync.previaPendencia&&sync.pendencias?.some(i=>i.id===sync.previaPendencia.id)?sync.previaPendencia:null;
- const podeRetomar=(sync.pendencias||[]).some(i=>['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(i.estado));
  const executar=async fn=>{if(ocupado)return;setOcupado(true);try{await fn();}finally{setOcupado(false);}};
  if(!sync.pendencias?.length&&!p&&!sync.falhasAtualizacao?.length)return null;
- return <details style={{padding:'8px 18px'}}><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
+ return <section style={{padding:'8px 18px'}} aria-label="Sincronização de alterações">
+  {sync.pendencias?.length>0&&!sync.erroGlobal&&<div className="topo-acoes" aria-label="Ações da fila">
+   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.flush)}>Retomar tentativas automáticas</button>
+   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.reopen)}>Baixar cópia das alterações pendentes</button>
+  </div>}
+  <details><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
   {sync.falhasAtualizacao?.length>0&&<p role="status">{sync.falhasAtualizacao.length} ficha(s) aguardam atualização. As demais foram atualizadas; o conteúdo anterior e as pendências dessas fichas continuam preservados.</p>}
   <p>As alterações permanecem neste aparelho. Itens bloqueados podem ser revisados individualmente.</p>
-  {podeRetomar&&!sync.erroGlobal&&<button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.flush)}>Retomar tentativas automáticas</button>}
   <ul>{(sync.pendencias||[]).map(i=><li key={i.id}>{i.original.modulo} · {rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}<p>{orientacaoPendencia(i)}</p><details><summary>Diagnóstico desta alteração</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(sync.diagnosticarPendencia?.(i.id)||diagnosticoOperacao(i),null,2)}</pre><p>A propagação para outros aparelhos exige observação na outra sessão.</p></details><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button></li>)}</ul>
   {p&&<section aria-label="Prévia da recuperação"><strong>Revisão: {p.item.original.modulo}</strong>
    <p>Pedido {p.id.slice(0,8)}. {orientacaoPendencia(p.item)}</p>
@@ -31,5 +34,5 @@ export default function PendenciasSincronizacao({sync}){
    </>}
    <button className="btn btn-sm" disabled={ocupado} onClick={sync.fecharPrevia}>Fechar prévia</button>
   </section>}
- </details>;
+ </details></section>;
 }
