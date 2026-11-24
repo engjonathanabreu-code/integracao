@@ -27,14 +27,18 @@ const assert=require('node:assert/strict');
    const atual=(await fila.listar(conta)).find(i=>i.id==='copia-em-corrida');
    await fila.enfileirar({conta,id:'processo',unidade:'processo',modulo:'processos',operacoes:[],base:{},preparar:true,intencao:{edicoes:[{colecao:'processos'},{colecao:'auditoria',id:'a',antes:{existe:false},depois:{existe:true,valor:{id:'a',acao:'Cadastro alterado'}}}],arquivos:{}}});
    for(let i=0;i<5;i++){try{await processarIntencao(fila,{...callbacks,somenteId:'processo',preparar:async()=>{throw new TypeError('transporte fixture')}});}catch{}agora+=61000;}
-   const dormindo=await fila.reservar(conta,{dono:'worker',somenteId:'processo'});
+   // Contrato C1: cinco falhas transitórias de preparação não deixam o pedido parado (MAX_SAFE_INTEGER);
+   // ele continua elegível com backoff, e o reparo único ao reconectar fica sem candidato.
+   const reservadoDeNovo=await fila.reservar(conta,{dono:'worker',somenteId:'processo'});
+   const dormindo=reservadoDeNovo?.proximaTentativa===Number.MAX_SAFE_INTEGER?reservadoDeNovo:null,elegivel=reservadoDeNovo?.id==='processo';
+   if(reservadoDeNovo)await fila.liberarReserva(reservadoDeNovo);
    const reaberto=await fila.reabrirPreparacoesAoReconectar(conta);
    try{await processarIntencao(fila,{...callbacks,somenteId:'processo',preparar:async()=>{throw new TypeError('transporte fixture')}});}catch{}
    const segundo=await fila.reabrirPreparacoesAoReconectar(conta);
    const processo=(await fila.listar(conta)).find(i=>i.id==='processo');
-   return {envios,concorrencia,corridaPreservada:atual.estado!=='dispensado'&&atual.original.intencao.arquivos[idArq].value===value,estado:baixado.estado,decisao:relido.decisao.tipo,mesmo:JSON.stringify(relido.original)===JSON.stringify(original.original),checksum:relido.checksum===original.checksum,recibo:!!relido.recibo,dormindo,reaberto,segundo,enviosProcesso:processo.tentativasTotais};
+   return {envios,concorrencia,corridaPreservada:atual.estado!=='dispensado'&&atual.original.intencao.arquivos[idArq].value===value,estado:baixado.estado,decisao:relido.decisao.tipo,mesmo:JSON.stringify(relido.original)===JSON.stringify(original.original),checksum:relido.checksum===original.checksum,recibo:!!relido.recibo,dormindo,elegivel,reaberto,segundo,enviosProcesso:processo.tentativasTotais};
   });
-  assert.deepEqual(result,{envios:0,concorrencia:'CAMPO_COPIA_COM_DEPENDENTES',corridaPreservada:true,estado:'dispensado',decisao:'campo_ja_presente_no_servidor',mesmo:true,checksum:true,recibo:false,dormindo:null,reaberto:1,segundo:0,enviosProcesso:0});
+  assert.deepEqual(result,{envios:0,concorrencia:'CAMPO_COPIA_COM_DEPENDENTES',corridaPreservada:true,estado:'dispensado',decisao:'campo_ja_presente_no_servidor',mesmo:true,checksum:true,recibo:false,dormindo:null,elegivel:true,reaberto:0,segundo:0,enviosProcesso:0});
   console.log(JSON.stringify({ok:true,indexedDBReal:true,retomadaSemEscrita:true,reconexaoLimitada:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

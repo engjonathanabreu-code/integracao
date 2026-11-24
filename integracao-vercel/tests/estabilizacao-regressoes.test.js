@@ -42,5 +42,5 @@ test('resumo recusa páginas vazias com total positivo',async()=>{
 for(const status of [400,401,403,429,503])test(`refresh HTTP ${status} preserva classificação e não inicia gravação`,async()=>{
  const original=global.fetch;let chamadas=0;
  global.fetch=async url=>{chamadas++;assert.ok(String(url).includes('/auth/'));return Response.json({message:'fixture'}, {status});};
- try{definirSessao(sessao('A',-1));const falha=await requisicao('rpc/integracao_gravar',{method:'POST',body:'{}'}).then(()=>null,e=>e);assert.equal(falha.status,[400,401,403].includes(status)?401:status);assert.equal(falha.code,[400,401,403].includes(status)?'SESSAO_EXPIRADA':undefined);assert.equal(chamadas,1);assert.equal(temSessao(),true);}finally{definirSessao(null);global.fetch=original;}
+ try{definirSessao(sessao('A',-1));const falha=await requisicao('rpc/integracao_gravar',{method:'POST',body:'{}'}).then(()=>null,e=>e);assert.equal(falha.status,[400,401,403].includes(status)?401:status);assert.equal(falha.code,[400,401,403].includes(status)?'SESSAO_EXPIRADA':undefined);assert.equal(chamadas,1);assert.equal(temSessao(),![400,401,403].includes(status));/* C2: recusa da renovação invalida a sessão; falha transitória a mantém. */}finally{definirSessao(null);global.fetch=original;}
 });

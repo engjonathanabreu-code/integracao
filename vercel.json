@@ -15,7 +15,8 @@
       "codex/josimar-cadastro-transporte-20261119": false,
       "fix/cadeia-apenas-recibos": false,
       "fix/retomada-sincronizacao-20261123": false,
-      "codex/otimizar-sincronizacao-confirmacao": false
+      "codex/otimizar-sincronizacao-confirmacao": false,
+      "correcao/sincronizacao-pendencias": false
     }
   }
 }

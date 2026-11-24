@@ -1,6 +1,8 @@
 import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,ciclosBackoffIntencao} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,atrasoRetentativa,retomavelTransitoria,estadoRetomado,erroServidorDeterministico} from './estado-sincronizacao.js';
+// Bounds for resumed/session items and for a repeated deterministic server error.
+const PISO_RETOMADA_MS=15000,PAUSA_SESSAO_MS=5000,LIMITE_ERRO_SERVIDOR_REPETIDO=5,JANELA_ERRO_SERVIDOR_REPETIDO_MS=600000;
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
@@ -26,7 +28,7 @@ export async function checksumIntencao(v){
  return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integracao-intencoes-v2',agora=()=>Date.now(),aleatorio=Math.random}={}){
- let conexao;
+ let conexao,migradas=new Set();
  const abrir=()=>{
   if(!indexedDB)throw erro('O armazenamento persistente não está disponível. Exporte as alterações antes de sair.','PERSISTENCIA_INDISPONIVEL');
   if(!conexao)conexao=new Promise((resolve,reject)=>{
@@ -38,7 +40,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    };
    p.onerror=()=>reject(p.error);
    p.onblocked=()=>{encerrado=true;reject(erro('Outra aba está impedindo a abertura da fila. Preserve as alterações e tente novamente.','FILA_BLOQUEADA'));};
-   p.onsuccess=()=>{if(encerrado){p.result.close();return;}p.result.onversionchange=()=>{p.result.close();conexao=null;};resolve(p.result);};
+   p.onsuccess=()=>{if(encerrado){p.result.close();return;}p.result.onversionchange=()=>{p.result.close();conexao=null;migradas=new Set();};resolve(p.result);};
   }).catch(e=>{conexao=null;throw e;});
   return conexao;
  };
@@ -54,7 +56,23 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   });
  }
  const contaValida=conta=>{if(typeof conta!=='string'||!conta)throw erro('Conta da intenção ausente.','CONTA_INVALIDA');};
- async function listar(conta){contaValida(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
+ // C1 migration, once per account per connection and idempotent: old clients
+ // parked transient/session failures at MAX_SAFE_INTEGER. Without a proven
+ // server refusal they become eligible now, keeping id, payload, receipt and
+ // phase; sent entries still go through the request lookup before any resend.
+ async function migrarConta(conta){
+  if(migradas.has(conta))return;
+  // A failed migration never blocks reading; the next operation retries it.
+  await transacao('readwrite',async s=>{
+   const tempo=agora();
+   for(const i of await requisicao(s.intencoes.index('conta').getAll(conta))){
+    if(i.proximaTentativa!==Number.MAX_SAFE_INTEGER||!retomavelTransitoria(i,tempo))continue;
+    i.estado=estadoRetomado(i);i.proximaTentativa=tempo;i.retentativaMigradaEm=tempo;
+    await requisicao(s.intencoes.put(i));
+   }
+  }).then(()=>migradas.add(conta),()=>{});
+ }
+ async function listar(conta){contaValida(conta);await migrarConta(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
  // Freeze safe scopes even when their own real dependencies are still blocked.
  // Otherwise an already persisted file-only successor can never reach selection.
  async function congelarEscopos(s,items,tempo=agora()){
@@ -72,6 +90,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   if(substituirId)original.substitui=substituirId;
   canonico(original);
   const checksum=await checksumIntencao(original);
+  await migrarConta(conta);
   return transacao('readwrite',async s=>{
    const existente=await requisicao(s.intencoes.get([conta,id]));
    if(existente){if(existente.checksum!==checksum)throw erro('A mesma intenção foi reutilizada com outro conteúdo.','PEDIDO_DIVERGENTE');return existente;}
@@ -97,6 +116,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  }
  async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false,somenteConvergencia=false,ignorarIds=[]}={}){
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
+  await migrarConta(conta);
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
    for(const item of items)if(!somenteLeitura&&(!somenteId||item.id===somenteId)&&!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
@@ -188,20 +208,40 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   soltar(atual);
  });
  const registrarFalha=(item,e,{fase=item.fase}={})=>alterarReserva(item,atual=>{
-  const falha=classificarFalha(e),{status,codigo,categoria}=falha;
-  const rejeicaoConfirmada=['preparacao','envio'].includes(fase)&&([400,401,403,404,409,422].includes(status)||codigo==='PT409');
+  const falha=classificarFalha(e),{status,codigo,categoria}=falha,anterior=atual.erro;
+  // C1 `sessao`: not a property of this request. State, phase, counters and
+  // schedule stay as they were; the error is informative and the pass aborts.
+  if(categoria==='sessao'){atual.erro={...falha,rejeicaoConfirmada:false,fase,informativo:true};
+   // A short pause only: a path that cannot invalidate the session must not spin.
+   if(!(atual.proximaTentativa>agora()+PAUSA_SESSAO_MS))atual.proximaTentativa=agora()+PAUSA_SESSAO_MS;
+   soltar(atual);return;}
+  const rejeicaoConfirmada=['preparacao','envio'].includes(fase)&&([400,403,404,409,422].includes(status)||codigo==='PT409');
   // Only statuses received from the server prove rejection. A lost response does not.
   if(atual.recibo)atual.estado='confirmado_aguardando_leitura';
   else if(rejeicaoConfirmada&&categoria==='conflito')atual.estado='bloqueado_conflito';
-  else if(['sessao','permissao','validacao'].includes(categoria)||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
-  else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
+  else if(['permissao','validacao','registro_indisponivel'].includes(categoria)||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
+  // 429 proves "not processed" only for the write itself; a throttled receipt
+  // lookup leaves the result unknown, so the lookup is repeated before any resend.
+  else atual.estado=status===429&&fase==='envio'?'falha_transitoria':'resultado_desconhecido';
   atual.fase=fase;atual.erro={...falha,rejeicaoConfirmada,fase};
-  atual.falhas=(atual.falhas||0)+1;
-  const retry=Number(e.retryAfterMs)||0;
-  const ciclos=ciclosBackoffIntencao(atual);
-  atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(ciclos,6))*(.5+aleatorio()*.5));
-  // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
-  if(['sessao','permissao','validacao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  atual.falhas=(atual.falhas||0)+1;atual.falhouEm=agora();
+  // The server answered the write itself with the same 5xx error repeatedly: a
+  // deterministic failure (not a timeout/overload) needs review, not endless resends.
+  const mesma=categoria==='transitoria'&&fase==='envio'&&erroServidorDeterministico(status,codigo);
+  const continua=mesma&&anterior?.fase==='envio'&&anterior.status===status&&anterior.codigo===codigo&&atual.repeticoesEnvio>0;
+  atual.repeticoesEnvio=continua?atual.repeticoesEnvio+1:mesma?1:0;
+  if(!continua)atual.repeticoesDesde=mesma?agora():null;
+  // Backoff grows with consecutive failures, also before anything was sent.
+  atual.proximaTentativa=agora()+atrasoRetentativa(atual.falhas,e?.retryAfterMs,aleatorio);
+  // Review is reserved for server verdicts. Transient failures are retried with
+  // backoff indefinitely (never MAX_SAFE_INTEGER); an unknown result remains
+  // unknown and is resolved through the request lookup before any resend.
+  // Other non-review categories (read-back, storage, unproven conflict) keep
+  // the previous bounded automatic attempts.
+  if(['permissao','validacao','registro_indisponivel'].includes(categoria)||categoria!=='transitoria'&&(atual.tentativas>=5||atual.falhas>=5))atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  // Review without a proven refusal: the same request can still be resumed by
+  // the user (with the receipt lookup first); automatic resumption skips it.
+  if(atual.repeticoesEnvio>=LIMITE_ERRO_SERVIDOR_REPETIDO&&agora()-atual.repeticoesDesde>=JANELA_ERRO_SERVIDOR_REPETIDO_MS&&!atual.recibo){atual.estado='bloqueado_validacao';atual.erro={...atual.erro,categoria:'validacao',rejeicaoConfirmada:false,repetida:true};atual.proximaTentativa=Number.MAX_SAFE_INTEGER;}
   soltar(atual);
  });
  const fixarPayload=(item,payload,preparado)=>alterarReserva(item,atual=>{
@@ -252,6 +292,25 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    return total;
   });
  }
+ // C5: make transient/session items eligible now (online, focus, valid session,
+ // periodic tick). Counters, ids, payloads, receipts and phases are preserved;
+ // review states, active leases and proven refusals are never touched.
+ async function retomarTransitorias(conta){
+  contaValida(conta);await migrarConta(conta);
+  return transacao('readwrite',async s=>{
+   const tempo=agora();let total=0;
+   for(const i of await requisicao(s.intencoes.index('conta').getAll(conta))){
+    if(!(i.proximaTentativa>tempo)||!retomavelTransitoria(i,tempo))continue;
+    // Floor: a signal may shorten the wait, never below PISO_RETOMADA_MS after the
+    // last real failure; event storms cannot turn the backoff into a hot loop.
+    const piso=i.erro?.categoria==='sessao'?tempo:Math.max(tempo,(i.falhouEm||0)+PISO_RETOMADA_MS);
+    if(piso>=i.proximaTentativa)continue;
+    i.estado=estadoRetomado(i);i.proximaTentativa=piso;i.atualizadoEm=tempo;
+    await requisicao(s.intencoes.put(i));total++;
+   }
+   return total;
+  });
+ }
  async function retomar(conta,id){
   contaValida(conta);return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
@@ -261,7 +320,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    if(['confirmado','substituido','dispensado'].includes(item.estado))return item;
    if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)&&!(['bloqueado_validacao','bloqueado_conflito'].includes(item.estado)&&!revisaoDeRecusa(item)))throw erro('A pendência mudou. Abra novamente a prévia antes de retomar.','REVISAO_NECESSARIA');
    if(item.leaseAte>agora())return item;
-   item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
+   item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.repeticoesEnvio=0;item.repeticoesDesde=null;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
    await requisicao(s.intencoes.put(item));return item;
   });
  }
@@ -315,7 +374,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,retomarTransitorias,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.
@@ -326,8 +385,11 @@ async function consumirReserva(fila,opcoes,reserva,executar){
  const {conta,dono,sessaoAtual,leaseMs=60000,renovarCadaMs=20000,travas=globalThis.navigator?.locks}=opcoes;
  const ignorarIds=[...(opcoes.ignorarIds||[])];
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
+ // C2: never reserve or prepare while the session is invalid or absent
+ // (`estadoSessao(): 'valida'|'renovando'|'invalida'|'ausente'`, optional).
+ const sessaoUtilizavel=()=>typeof opcoes.estadoSessao!=='function'||['valida','renovando'].includes(opcoes.estadoSessao());
  for(;;){
-  conferir();const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
+  conferir();if(!sessaoUtilizavel())return null;const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
   const rodar=async(comWebLock=false)=>{
    let falhaRenovacao,corrente=Promise.resolve(),prazoConhecido=item;
    let ultimoAgora=Number.isFinite(item.leaseAte)?item.leaseAte-leaseMs:null;

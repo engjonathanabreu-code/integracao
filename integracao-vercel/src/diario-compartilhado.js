@@ -1,7 +1,8 @@
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
-import {revisaoDeRecusa} from './estado-sincronizacao.js';
+import {revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
+export {motivoEspera} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
@@ -12,7 +13,7 @@ import {arquivosDaIntencao} from './arquivos-intencoes.js';
 import {revisarLeitura,snapshotLeitura} from './revisao-leitura.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
-export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
+export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},estadoSessao,fila=abrirFilaIntencoes()}){
  const canal=typeof BroadcastChannel==='function'?new BroadcastChannel('integracao-diario-v2:'+conta):null;
  if(canal)canal.onmessage=()=>{if(ativo())notificar();};
  const sinalizar=()=>canal?.postMessage({protocolo:2});
@@ -29,10 +30,11 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    // conflicting leaves; every original remains available in the review.
    db=r.conflitos.length?aplicarIntencao(db,edicoes,{aliases:aliases(),escolhas:Object.fromEntries(r.conflitos.map(c=>[c.chave,'remoto']))}).dados:r.dados;
   };
-  for(const item of items.filter(i=>!terminal(i))){
-   if(item.recibo&&item.erro?.codigo==='LEITURA_DIVERGENTE')continue;
-   aplicar(item.original.intencao.edicoes||[]);
-  }
+  // C4: an entry with a receipt whose read-back diverged stays visible while it
+  // waits. Conflicting leaves still show the server value (see `aplicar`), the
+  // entry stays pending and nothing here confirms it. Hiding it made the next
+  // edit capture the stale value and conflict with the user's own first edit.
+  for(const item of items.filter(i=>!terminal(i)))aplicar(item.original.intencao.edicoes||[]);
   for(const p of volateis.values())aplicar(p.intencao.edicoes);
   return db;
  }
@@ -125,7 +127,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    // evaluated in order. No repeated queries for the same item within the pass.
    const lidos=[];
    for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&conflitoReconciliavelMetas(i,Date.now()));n++){
-    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
      const {remoto,edicoes}=await lerItem(item);
      const prova=verificarMetas(item,remoto,edicoes);
      return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
@@ -137,21 +139,27 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
 
   for(let n=0;n<limite;n++){
    conferir();let resultado;
-   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},provarEstado:planejarMetas?async item=>{
+   try{resultado=await processarIntencao(fila,{conta,dono,estadoSessao,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},provarEstado:planejarMetas?async item=>{
     const {remoto,edicoes}=await lerItem(item);
     const prova=verificarMetas(item,remoto,edicoes);
     return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
    }:undefined,validarEnvio:item=>validarVinculoMoradoresDoEnvio(item.payload,item.preparado?.depois),enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
     await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
-   }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}
+   }});}catch(e){
+    if(e.code==='SESSAO_ALTERADA')throw e;
+    // C1/C2: a session failure is not about this item. Abort the pass without
+    // reserving or preparing others; it resumes after a valid session.
+    if(classificarFalha(e).categoria==='sessao'){await atualizar();break;}
+    resultado=true;
+   }
    await atualizar();if(!resultado)break;sinalizar();
   }
   return items;
  }
  async function consultarExistente(id,{modo='consulta',validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();verificar();await atualizar();
-  try{return await lerIntencaoExistente(fila,{conta,dono,id,modo,sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},reler:async item=>{
+  try{return await lerIntencaoExistente(fila,{conta,dono,estadoSessao,id,modo,sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},reler:async item=>{
    await validar();verificar();const {remoto}=await lerItem(item);conferir();verificar();await confirmar(item,remoto);conferir();verificar();
   }});}finally{if(ativo()){await atualizar();sinalizar();}}
  }
@@ -241,6 +249,14 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   if(total){await atualizar();sinalizar();}
   return total;
  }
+ // C5: called on `online`, focus/visibility, a valid `integracao:sessao` and
+ // the 120 s tick. Only transient/session items; review stays untouched.
+ async function retomarTransitorias(motivo='manual'){
+  await corrente.catch(()=>{});conferir();
+  const total=await fila.retomarTransitorias(conta);conferir();
+  if(total){await atualizar();sinalizar();}
+  return {motivo,total};
+ }
  async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
   for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
@@ -259,5 +275,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

@@ -1,5 +1,5 @@
 import {conciliarEdicoes} from './concorrencia.js';
-import {criarConfirmacaoMeta} from './confirmacao-criacao-meta.js';
+import {criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados} from './confirmacao-criacao-meta.js';
 import DocumentalChatwootConfig,{administradorDocumental} from "./DocumentalChatwootConfig.jsx";
 import {exigirAcao} from './atribuicoes-api.js';
 import {acaoPermitida} from './permissoes-contrato.js';
@@ -2594,6 +2594,10 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const [preenchidos, setPreenchidos] = useState(0);
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const inputRef = useRef(null);
+  // One client id and one operation id per opening: a repeated "Concluir"
+  // (double click, slow render) never registers a second client.
+  const idMorador = useRef(null), idOperacaoMorador = useRef(null), concluido = useRef(false);
+  if (!idMorador.current) { idMorador.current = uid("p"); idOperacaoMorador.current = uid("a"); }
   const perm = permissoes(usuario);
 
   const nucleos = db.nucleos.filter((n) => n.municipioId === municipio.id && (n.remessaId === remessaId || !n.remessaId));
@@ -2623,6 +2627,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const definirRascunho = (np) => { rascunhoRef.current = np; setRascunho(np); };
   const avancar = () => {
     const np = montarMorador(db, municipio.id, { remessaId, nucleoId: acessoCRM(usuario).comercial ? "" : nucleoId, nome, telefone, cpf, qtdUnidades });
+    np.id = idMorador.current;
     definirRascunho(np);
     setPasso(2);
   };
@@ -2693,7 +2698,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const removerItem = (id) => { delete arquivosRef.current[id]; filaRef.current = filaRef.current.filter((i) => i.id !== id); setFila(filaRef.current); };
   const descartarTudo = () => { arquivosRef.current = {}; };
   const fechar = () => { if (passo === 2 && fila.some((i) => i.estado === "ok")) setConfirmarSaida(true); else { descartarTudo(); onFechar(); } };
-  const concluir = () => { descartarTudo(); onSalvar(rascunhoRef.current, { docs: fila.filter((i) => i.estado === "ok").length, campos: preenchidos, simulados: fila.filter((i) => i.simulado).length }); };
+  const concluir = () => { if (concluido.current) return; concluido.current = true; try { descartarTudo(); onSalvar(rascunhoRef.current, { idOperacao: idOperacaoMorador.current, docs: fila.filter((i) => i.estado === "ok").length, campos: preenchidos, simulados: fila.filter((i) => i.simulado).length }); } catch (e) { concluido.current = false; throw e; } };
 
   const pendentesFila = fila.filter((i) => i.estado === "fila").length;
   const cpfDivergente = divergencias.some((d) => d.cpf);
@@ -2933,7 +2938,7 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
     const vincular = nuc && !nuc.remessaId;
     const nomeR = nomeRemessa(db, remessaDe(db, np.remessaId));
     const textoDocs = info.docs ? `. ${info.docs} ${info.docs === 1 ? "documento analisado" : "documentos analisados"}${info.simulados ? ` (${info.simulados} em simulação)` : ""}, ${info.campos} ${info.campos === 1 ? "campo preenchido" : "campos preenchidos"} pela IA, arquivos descartados` : ". Sem documentos no cadastro";
-    mutar((d) => { d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
+    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
     fechar(); ir({ pag: "processo", id: np.id });
     setToast(info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`);
   };
@@ -4647,6 +4652,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
       setIaPaths([]);
       setToast(AMBIENTE.DEMO ? "Cadastro salvo na demonstração." : "Cadastro salvo. Gravação confirmada.");
     } catch (e) {
+      // Still queued and not in review: keep the same request, without an error.
+      if (emSegundoPlano(e)) { setErroCadastro(""); setToast(MENSAGEM_SEGUNDO_PLANO); return; }
       const naoEnviada=tentativaCadastro.current.naoEnviada();
       if (naoEnviada) tentativaCadastro.current = null;
       setErroCadastro(naoEnviada ? e.message : `${e.message} Confira Pendências de sincronização ou confirme este mesmo pedido.`);
@@ -5909,7 +5916,7 @@ async function entrarPeloERP(email, senha) {
   }).then((r) => r.json()).catch(() => []);
   const p = Array.isArray(perfis) ? perfis[0] : null;
   if (!p) { definirSessao(null); throw new Error("Não foi possível confirmar seu perfil no ERP. Tente novamente."); }
-  if (p.ativo === false) throw new Error("Este usuário está inativo no ERP");
+  if (p.ativo === false) { definirSessao(null); throw new Error("Este usuário está inativo no ERP"); }
   return {
     id: `erp_${p.id}`, erpRef: p.id, nome: p.nome || email, email: p.email || email,
     setor: setorDoPerfilERP(p, SETOR_POR_TIPO_ERP), setorERP: p.setor || "", funcao: FUNCAO_POR_TIPO_ERP[p.tipo] || "Analista",
@@ -10732,6 +10739,11 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
   const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  // One operation (and one goal id) per opening of the form: saving again
+  // resumes the same request instead of creating a second goal.
+  const idOperacaoMeta = useRef(null), idMetaNova = useRef(null);
+  if (!idOperacaoMeta.current) idOperacaoMeta.current = uid("a");
+  if (nova && !idMetaNova.current) idMetaNova.current = uid("mt");
   const rascunhoSujo = JSON.stringify(camposIniciais.current) !== JSON.stringify(f) || arquivosDev.length > 0 || !!registroDevId;
   const confirmarCriacao = async () => {
     setSalvando(true); setErroDev("");
@@ -10740,6 +10752,8 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       setToast(nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada."));
       onFechar(); if (nova && onDetalhe) onDetalhe();
     } catch (e) {
+      // Still queued and not in review: not a failure, and no new goal may be created.
+      if (emSegundoPlano(e)) { setToast(MENSAGEM_SEGUNDO_PLANO); onFechar(); return; }
       setErroDev(tentativaMeta.current.naoEnviada() ? `${e.message} Nada foi enviado. O formulário continua aberto; depois de resolver o aviso, tente novamente.` : `${e.message || "Não foi possível confirmar a gravação."} ${nova ? "Não crie outra meta. " : ""}Confira Pendências de sincronização ou confirme novamente este mesmo pedido.`);
     } finally { preparandoMeta.current=false; setSalvando(false); }
   };
@@ -10794,7 +10808,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
       devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
-      const m = { id: uid("mt"), erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
+      const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
         d.metas.unshift(m);
         registrarHistoricoMeta(d, m, "Criada", `${m.devolutiva ? `Devolutiva da ${m.devolutiva.origem} recebida em ${dataBR(m.devolutiva.chegada)}` : "Meta"} criada por ${usuario.nome}.`, usuario);
@@ -10802,7 +10816,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         const outros = m.responsaveis.filter((id) => id !== usuario.id);
         if (outros.length) novaNotificacao(d, { titulo: `Nova meta: ${m.titulo}`, texto: `${usuario.nome} atribuiu a você. Semana de ${dataBR(m.semana_inicio)}${m.prazo ? `, prazo ${dataBR(m.prazo)}` : ""}.`, rota: { pag: "metas" }, usuarios: outros });
         return d;
-      }, "Meta criada", { detalhe: `${m.titulo}, ${rotuloAssociacao(db, m)}` }));
+      }, "Meta criada", { id: idOperacaoMeta.current, detalhe: `${m.titulo}, ${rotuloAssociacao(db, m)}` }));
       await confirmarCriacao();
       return;
     } else {
@@ -10813,20 +10827,31 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       if (f.semana_inicio !== meta.semana_inicio) mud.push(`semana de ${dataBR(f.semana_inicio)}`);
       if (f.setor !== (meta.setor || "")) mud.push(`setor ${f.setor || "sem setor"}`);
       if (JSON.stringify(f.responsaveis) !== JSON.stringify(meta.responsaveis || [])) mud.push("responsáveis");
+      // Apply only what this form changed since it was opened; fields another
+      // user changed meanwhile stay as they are.
+      const fi = camposIniciais.current;
+      const inicial = { titulo: fi.titulo.trim(), observacoes: fi.observacoes.trim(), semana_inicio: fi.semana_inicio, prazo: fi.devolutiva ? fi.prazoDev : fi.prazo, status: fi.status, setor: fi.setor, associacao_tipo: fi.associacao_tipo, associacao_id: fi.associacao_tipo === "avulsa" ? "" : fi.associacao_id, responsaveis: fi.responsaveis, icone: fi.icone,
+        devolutiva: fi.devolutiva ? { ...meta.devolutiva, origem: fi.origemDev, chegada: fi.chegadaDev, prazo: fi.prazoDev } : null };
+      const alterado = camposAlterados(inicial, base);
+      const checklistAlterado = JSON.stringify(fi.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo)) !== JSON.stringify(itens);
       tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
         const q = d.metas.find((x) => x.id === meta.id);
-        if (q.status === "Aguardando aprovação" && base.status === "Em andamento") recusarConclusaoMeta(q,usuario,"Conclusão devolvida para ajustes pela edição da meta.",uid("h"),new Date().toISOString(),d.usuarios);
-        if (base.status !== "Aguardando aprovação") q.solicitacaoConclusao = null;
-        Object.assign(q, base);
-        q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
+        if (alterado.status) {
+          if (q.status === "Aguardando aprovação" && base.status === "Em andamento") recusarConclusaoMeta(q,usuario,"Conclusão devolvida para ajustes pela edição da meta.",uid("h"),new Date().toISOString(),d.usuarios);
+          if (base.status !== "Aguardando aprovação") q.solicitacaoConclusao = null;
+        }
+        for (const k of Object.keys(alterado)) q[k] = base[k];
+        if (alterado.associacao_tipo || alterado.associacao_id) q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
         const antesChecklist = q.checklist || [];
-        q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
-        itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
-        antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
+        if (checklistAlterado) {
+          q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
+          itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
+          antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
+        }
         if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
         return d;
-      }, "Meta editada", { detalhe: `${meta.titulo}: ${mud.join(", ") || "sem mudanças"}` }, { permitirOffline: true }));
+      }, "Meta editada", { id: idOperacaoMeta.current, detalhe: `${meta.titulo}: ${mud.join(", ") || "sem mudanças"}` }, { permitirOffline: true }));
       await confirmarCriacao();
     }
   };

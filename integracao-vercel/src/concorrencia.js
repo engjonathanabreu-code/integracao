@@ -1,17 +1,33 @@
-import {igualSemantico as igual} from './igualdade-semantica.js';
+import {igualSemantico,igualCampo,adaptadorCampo,conjuntoValido} from './igualdade-semantica.js';
 const copiar=x=>x===undefined?undefined:structuredClone(x);
 const objeto=x=>x&&typeof x==='object'&&!Array.isArray(x);
 const identificados=xs=>xs.every(x=>objeto(x)&&typeof x.id==='string')&&new Set(xs.map(x=>x.id)).size===xs.length;
 
+// Set merge for registered id lists (C4): keep the remote set, apply exactly the
+// local additions and removals relative to the base. Remote order wins.
+function mesclarConjunto(b,l,r){
+ const base=new Set(b),local=new Set(l);
+ const removidos=new Set(b.filter(x=>!local.has(x)));
+ return [...r.filter(x=>!removidos.has(x)),...l.filter(x=>!base.has(x)&&!r.includes(x))];
+}
+
 // Reconcile only compatible changes. Conflicting leaves retain both values for review.
-export function conciliarEdicoes(base,local,remoto,escolhas={}) {
+// `colecao` selects the C4 field adapters; without it only unambiguous set fields apply.
+export function conciliarEdicoes(base,local,remoto,escolhas={},{colecao}={}) {
  const conflitos=[];
- const mesclar=(b,l,r,caminho=[])=>{
+ // `campo` mirrors `caminho` with '*' for identified list items.
+ const mesclar=(b,l,r,caminho=[],campo=[])=>{
+  // Device-local fields keep the local value here, as before; they only stop
+  // blocking confirmation.
+  const registrado=campo.length?adaptadorCampo(colecao,campo):null;
+  const adaptador=registrado?.tipo==='gerado_servidor'?null:registrado;
+  const igual=adaptador?(x,y)=>igualCampo(colecao,campo,x,y):igualSemantico;
   if(igual(b,l))return copiar(r);
   if(igual(b,r)||igual(l,r))return copiar(l);
+  if(adaptador?.tipo==='conjunto'&&[b,l,r].every(x=>conjuntoValido(x,adaptador)))return mesclarConjunto(b,l,r);
   if(Array.isArray(b)&&Array.isArray(l)&&Array.isArray(r)&&[b,l,r].every(identificados)) {
    return [...new Set([...r,...l].map(x=>x.id))].flatMap(id=>{
-    const valor=mesclar(b.find(x=>x.id===id),l.find(x=>x.id===id),r.find(x=>x.id===id),[...caminho,id]);
+    const valor=mesclar(b.find(x=>x.id===id),l.find(x=>x.id===id),r.find(x=>x.id===id),[...caminho,id],[...campo,'*']);
     return valor===undefined?[]:[valor];
    });
   }
@@ -20,7 +36,7 @@ export function conciliarEdicoes(base,local,remoto,escolhas={}) {
    for(const k of new Set([...Object.keys(b||{}),...Object.keys(l),...Object.keys(r)])){
     // Completion metadata describes the boolean operation, not an independent edit.
     if(['concluido_em','concluido_por'].includes(k)&&b&&l.concluido!==b.concluido&&l.concluido===r.concluido){resultado[k]=copiar(r[k]);continue;}
-    const valor=mesclar(b?.[k],l[k],r[k],[...caminho,k]);
+    const valor=mesclar(b?.[k],l[k],r[k],[...caminho,k],[...campo,k]);
     if(valor!==undefined)resultado[k]=valor;
    }
    return resultado;

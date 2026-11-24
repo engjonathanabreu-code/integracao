@@ -163,6 +163,8 @@ window.fetch=async(input,options={})=>{
   if(table in base) {
     let rows=base[table];const id=url.searchParams.get('id');if(id?.startsWith('eq.'))rows=rows.filter(r=>r.id===id.slice(3));
     for(const k of ['referencia_id','registro_id','colecao','municipio_id','remessa_id','cliente_id']) { const filtro=url.searchParams.get(k);if(filtro?.startsWith('eq.'))rows=rows.filter(r=>r[k]===filtro.slice(3));if(filtro?.startsWith('in.('))rows=rows.filter(r=>filtro.slice(4,-1).split(',').includes(r[k])); }
+    // C3 record-scope reads: `col=in.(a,"b,c")` on any column (PostgREST quoting).
+    for(const [k,filtro] of url.searchParams) if(!['referencia_id','registro_id','colecao','municipio_id','remessa_id','cliente_id'].includes(k)&&filtro.startsWith('in.(')){const valores=filtro.slice(4,-1).match(/"(?:[^"\\]|\\.)*"|[^,]+/g)?.map(v=>v.startsWith('"')?v.slice(1,-1).replace(/\\(.)/g,'$1'):v)||[];rows=rows.filter(r=>valores.includes(String(r[k])));}
     if(table==='integracao_moradores' && url.searchParams.get('select')==='referencia_id,nucleo:dados->>nucleoId')rows=rows.map(e=>({referencia_id:e.referencia_id,nucleo:e.dados?.nucleoId}));
     if(table==='integracao_moradores' && url.searchParams.get('select')==='referencia_id,nucleo_id:dados->>nucleoId')rows=rows.map(e=>({referencia_id:e.referencia_id,nucleo_id:e.dados?.nucleoId}));
     if(table==='integracao_moradores' && url.searchParams.get('select')?.includes('nome:dados')) rows=rows.map(e=>({registro_id:e.registro_id,referencia_id:e.referencia_id,nome:e.dados?.requerente?.nome,tipoPessoa:e.dados?.requerente?.tipoPessoa,municipioId:e.dados?.municipioId,remessaId:e.dados?.remessaId,nucleoId:e.dados?.nucleoId,codigo:e.dados?.codigo,arquivamento:e.dados?.extras?.arquivamento}));

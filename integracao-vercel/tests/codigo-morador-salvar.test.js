@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import {criarConfirmacaoMeta} from '../src/confirmacao-criacao-meta.js';
+import {criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO} from '../src/confirmacao-criacao-meta.js';
 import {conciliarEdicoes} from '../src/concorrencia.js';
 import { erroCodigoMorador, resolverCodigoMorador } from '../src/codigo-morador.js';
 const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
@@ -21,7 +21,7 @@ function fixture(codigo,permissao=true) {
  const context=vm.createContext({
   fichaAtual:{current:p},baseFormulario:{current:{...extrair(p),codigo:p.codigo}},extrair,conciliarEdicoes,
   tentativaCadastro:{current:null},enviandoCadastro:{current:false},setConfirmandoCadastro:()=>{},setErroCadastro:()=>{},
-  setRascunho:()=>{},criarConfirmacaoMeta,AMBIENTE:{DEMO:false},mutar,
+  setRascunho:()=>{},criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,AMBIENTE:{DEMO:false},mutar,
   p,rascunho,db,perm:{cadastro:permissao},cancelado:false,erroCodigoMorador,resolverCodigoMorador,
  exigeDocumentoCRM:()=>false,ehPJ:()=>false,cpfValido:()=>true,cnpjValido:()=>true,so:s=>String(s||'').replace(/\D/g,''),
  remessaDe:()=>({id:'r',municipioId:'m'}),nucleoDe:()=>({id:'n',remessaId:'r'}),nomeRemessa:()=>'',proximoNumeroCliente:()=>214,codigoCliente:()=>'',
