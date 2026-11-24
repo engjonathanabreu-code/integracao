@@ -29,12 +29,12 @@ test('fila ativa tem só um indicador; divergência continua consultável e pré
   const automatico=render({...sync,pendencias:[{...item,estado:'resultado_desconhecido',proximaTentativa:Number.MAX_SAFE_INTEGER}]});
   assert.equal(automatico.match(/Retomar tentativas automáticas/g)?.length,1);
   assert.equal(render(sync).match(/Retomar tentativas automáticas/g)?.length,1);
-  assert.equal(render(sync).match(/Baixar cópia das alterações pendentes/g)?.length,1);
+  assert.equal(render(sync).match(/Baixar cópia completa de recuperação/g)?.length,1);
   const copia=render({...sync,statusExportacao:'Cópia parcial enviada para download',erroGlobal:'Confira os arquivos indicados.'});
   assert.match(copia,/Cópia parcial enviada para download/);
   assert.doesNotMatch(copia,/alteração aguardando revisão/);
   assert.equal(copia.match(/Retomar tentativas automáticas/g)?.length,1);
-  assert.equal(copia.match(/Baixar cópia das alterações pendentes/g)?.length,1);
+  assert.equal(copia.match(/Baixar cópia completa de recuperação/g)?.length,1);
   const previaPendencia={id:item.id,item,conflitos:[],edicoes:[]};
   assert.match(render({...sync,previaPendencia}),/Prévia da recuperação/);
   assert.doesNotMatch(render({...sync,previaPendencia,pendencias:[{...item,id:'outro'}]}),/Prévia da recuperação/);

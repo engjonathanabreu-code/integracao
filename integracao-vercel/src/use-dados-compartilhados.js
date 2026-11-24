@@ -1,3 +1,4 @@
+import {somentePendencias} from './exportar-somente-pendencias.js';
 import {exportarCopiaRecuperacao} from './copia-recuperacao.js';
 import {recuperarAnexosMetas} from './recuperacao-anexos-metas.js';
 import {criarDiarioCompartilhado} from './diario-compartilhado.js';
@@ -566,6 +567,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       setAvisoExportacao(avisos.join(' '));
     }catch(e){if(gen===generation.current)setError(e.message);}
   };
+  const exportarSomentePendencias=async()=>{
+    const gen=generation.current,d=diario.current;
+    if(!d||!actor.current)return;
+    try{
+      const dados=somentePendencias(await d.snapshotPendencias());conferirGeracao(gen);
+      const url=URL.createObjectURL(new Blob([JSON.stringify(dados,null,2)],{type:'application/json'}));
+      try{const a=document.createElement('a');a.href=url;a.download='integracao-somente-pendencias.json';a.click();}
+      finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
+    }catch(e){if(gen===generation.current)setError('Não foi possível exportar somente as pendências. O diário permanece intacto.');}
+  };
   useEffect(()=>{
     const tick=setInterval(refresh,120000);
     let conexaoAnterior=temConexao();
@@ -656,5 +667,5 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const erroFila=pendencias.some(i=>i.estado==='persistencia_falhou')?'O navegador não conseguiu guardar uma alteração. Baixe uma cópia antes de sair.':'';
   const filaRevisavel=pendencias.some(requerRevisaoFila);
   const erroGlobal=[erroFila,error,avisoExportacao].filter(Boolean).join(' ');
-  return {erroGlobal,statusExportacao,executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[filaRevisavel?'Abra Pendências para revisar cada alteração.':'',erroGlobal].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  return {exportarSomentePendencias,erroGlobal,statusExportacao,executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[filaRevisavel?'Abra Pendências para revisar cada alteração.':'',erroGlobal].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
