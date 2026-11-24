@@ -53,10 +53,21 @@ export const podeVerificarPreparacaoAoReconectar=(i,agora)=>
 export function podeRetomarReleitura(i,agora){
  return i?.estado==='confirmado_aguardando_leitura'&&!!i.recibo&&
   Array.isArray(i.payload)&&i.payload.length>0&&i.proximaTentativa===Number.MAX_SAFE_INTEGER&&
-  !(i.leaseAte>agora)&&!i.releituraTemporariaVerificada&&
+  !(i.leaseAte>agora)&&!i.releituraTemporariaVerificada&&!i.releituraDivergenteVerificada&&
   i.erro?.fase==='releitura'&&i.erro.categoria==='transitoria'&&
   i.erro.codigo==='TRANSPORTE'&&(i.erro.status==null||[408,429,500,502,503,504].includes(i.erro.status));
 }
+// Some historical receipts exhausted ordinary read-back while fields were
+// eventually consistent or a former projection differed. Give only that
+// existing receipt one fresh comparison after this repair, never a replay.
+export function podeRetomarReleituraDivergente(i,agora){
+ return i?.estado==='confirmado_aguardando_leitura'&&!!i.recibo&&
+  Array.isArray(i.payload)&&i.payload.length>0&&
+  i.preparado?.antes!=null&&i.preparado?.depois!=null&&
+  i.proximaTentativa===Number.MAX_SAFE_INTEGER&&!(i.leaseAte>agora)&&!i.releituraDivergenteVerificada&&
+  i.erro?.fase==='releitura'&&i.erro.codigo==='LEITURA_DIVERGENTE'&&i.erro.categoria==='leitura';
+}
+export const podeRetomarLeituraAutomaticamente=(i,agora)=>podeRetomarReleitura(i,agora)||podeRetomarReleituraDivergente(i,agora);
 export function orientacaoPendencia(i){
  if(i.erro?.codigo==='INTENCAO_SEM_OPERACOES')return 'A preparação não produziu operações de gravação verificáveis. Não há confirmação do servidor para esta alteração; o original permanece preservado para revisão.';
  if(!i.recibo&&i.erro?.codigo==='P0001')return 'Este pedido exige revisão. O código P0001 não identifica sozinho a regra ou o campo; o original continua preservado.';

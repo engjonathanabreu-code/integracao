@@ -75,6 +75,57 @@ const assert=require('node:assert/strict');
    await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
    assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);casos++;await c.close();
   }
+  // The same genuine conflict is discoverable but is not an additional live
+  // alert after routine retries, focus, a reconnect, reload, or a new tab.
+  {
+   const {c,p}=await abrir();
+   await p.evaluate(async()=>{const h=metasLeitura;h.base.metas[0].titulo='Conflito a preservar';h.sync.mutate(d=>{d.metas[0].titulo='Original sem aviso duplicado';return d;});await h.sync.flush();});
+   const confira=async page=>{
+    await page.getByText('Pendências de sincronização (1)',{exact:true}).waitFor();
+    assert.equal(await page.getByText('Pendências de sincronização (1)',{exact:true}).count(),1);
+    assert.equal(await page.getByRole('alert').count(),0);
+   };
+   await confira(p);
+   await p.evaluate(()=>metasLeitura.sync.flush());await confira(p);
+   await c.setOffline(true);await c.setOffline(false);await confira(p);
+   await p.reload();await p.waitForFunction(()=>window.metasLeitura?.ready);await confira(p);
+   const outra=await c.newPage();await outra.goto('http://127.0.0.1:5178/tests/metas-leitura.html');
+   await outra.waitForFunction(()=>window.metasLeitura?.ready);await confira(outra);
+   await outra.getByText('Pendências de sincronização (1)',{exact:true}).click();
+   await outra.getByRole('button',{name:'Revisar esta alteração',exact:true}).waitFor();
+   assert.equal(await outra.evaluate(()=>metasLeitura.stats.posts),0);
+   await outra.getByRole('button',{name:'Revisar esta alteração',exact:true}).click();
+   await outra.getByRole('region',{name:'Prévia da recuperação'}).waitFor();
+   // Hold one actual refresh after its IndexedDB snapshot. Another tab
+   // durably confirms the conflict, broadcasting while this one is busy.
+   await outra.evaluate(()=>{
+    const h=metasLeitura,fetchOriginal=window.fetch;let esperando=false;
+    const canal=new BroadcastChannel('integracao-diario-v2:'+h.actor.erpRef);
+    canal.onmessage=()=>{window.qaBroadcast=true;canal.close();};
+    window.fetch=async(input,options)=>{
+     if(!esperando&&String(input).split('?')[0].endsWith('/metas')){
+      esperando=true;await new Promise(r=>window.qaLiberarLeitura=r);
+     }
+     return fetchOriginal(input,options);
+    };
+    window.qaAntesRefresh=h.stats.requests.filter(r=>r.t==='metas').length;
+    void h.sync.refresh({force:true});
+   });
+   await outra.waitForFunction(()=>typeof window.qaLiberarLeitura==='function');
+   await p.evaluate(async()=>{
+    const h=metasLeitura,agora=Date.now;Date.now=()=>agora()+300000;
+    h.base.metas[0].titulo='Original sem aviso duplicado';await h.sync.flush();
+   });
+   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
+   await outra.waitForFunction(()=>window.qaBroadcast===true);
+   await outra.waitForTimeout(650);
+   await outra.evaluate(()=>window.qaLiberarLeitura());
+   await outra.waitForFunction(()=>!metasLeitura.sync.pendencias.length&&metasLeitura.stats.requests.filter(r=>r.t==='metas').length>=window.qaAntesRefresh+2);
+   assert.equal(await outra.getByRole('region',{name:'Prévia da recuperação'}).count(),0);
+   assert.equal(await outra.getByRole('alert').count(),0);
+   assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);
+   casos++;await c.close();
+  }
   console.log(JSON.stringify({ok:true,casos,hookReal:true,indexedDBReal:true,chatIsoladoSomenteMetas:true,autorizacaoAtual:true,arquivosPreservados:true,reciboSemReenvio:true,mistasCompletas:true,semDadosReais:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
