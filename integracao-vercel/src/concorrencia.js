@@ -36,6 +36,10 @@ export function conciliarEdicoes(base,local,remoto,escolhas={},{colecao}={}) {
    for(const k of new Set([...Object.keys(b||{}),...Object.keys(l),...Object.keys(r)])){
     // Completion metadata describes the boolean operation, not an independent edit.
     if(['concluido_em','concluido_por'].includes(k)&&b&&l.concluido!==b.concluido&&l.concluido===r.concluido){resultado[k]=copiar(r[k]);continue;}
+    // Same for a registered timestamp that accompanies a field both sides moved
+    // to the same value: the server's first stamp wins instead of a conflict.
+    const carimbo=adaptadorCampo(colecao,[...campo,k]);
+    if(carimbo?.tipo==='instante'&&carimbo.acompanha&&b&&Object.hasOwn(r,k)&&!igualSemantico(l[carimbo.acompanha],b[carimbo.acompanha])&&igualSemantico(l[carimbo.acompanha],r[carimbo.acompanha])){resultado[k]=copiar(r[k]);continue;}
     const valor=mesclar(b?.[k],l[k],r[k],[...caminho,k],[...campo,k]);
     if(valor!==undefined)resultado[k]=valor;
    }

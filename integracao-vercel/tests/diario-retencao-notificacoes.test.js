@@ -19,7 +19,11 @@ test('retenção local não enfileira exclusão nem bloqueia confirmação da me
   assert.ok(ops.some(o=>o.key.registro_id==='nova'&&o.insert));
   assert.equal(ops.some(o=>o.key.registro_id==='antiga'),false);
   assert.deepEqual(divergenciasConfirmacao({notificacoes:[],metas:[]},depois,remoto,{},ops),[]);
-  assert.deepEqual(divergenciasConfirmacao(antes,depois,remoto,{},ops).map(x=>x.caminho),[['notificacoes','antiga']]);
+  // Lote antigo que ainda guarda o corte: a remoção nunca foi enviada, então não diverge;
+  // sem o payload, ou com a remoção de fato enviada, continua divergente.
+  assert.deepEqual(divergenciasConfirmacao(antes,depois,remoto,{},ops),[]);
+  assert.deepEqual(divergenciasConfirmacao(antes,depois,remoto,{},[]).map(x=>x.caminho),[['notificacoes','antiga']]);
+  assert.deepEqual(divergenciasConfirmacao(antes,depois,remoto,{},[...ops,{table:'integracao_notificacoes',key:{colecao:'notificacoes',registro_id:'antiga'},remove:true}]).map(x=>x.caminho),[['notificacoes','antiga']]);
   const divergente={...remoto,notificacoes:[antiga,{...nova,texto:'alterada'}]};
   assert.deepEqual(divergenciasConfirmacao({notificacoes:[],metas:[]},depois,divergente,{},ops).map(x=>x.caminho),[['notificacoes','nova']]);
   await d.adicionar(antes,depois,{}, {substituirId:'historico'});

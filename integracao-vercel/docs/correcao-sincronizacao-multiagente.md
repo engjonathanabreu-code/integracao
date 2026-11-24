@@ -101,3 +101,27 @@ mantendo `id`, `payload`, `recibo` e fase. Itens enviados continuam passando pel
 | A7 QA | `tests/` |
 
 Ordem de integração: A1 → A2 → A3 → A4 → A5; A6 em separado.
+
+## Adendo — pendências já registradas nos aparelhos (24/11/2026)
+
+Causas levantadas pelo diagnóstico agregado dos aparelhos e corrigidas nesta entrega:
+
+- **Arquivos do Campo offline:** cada gravação do pacote criava uma versão do mesmo arquivo, todas na mesma
+  unidade da fila; uma versão em conflito prendia as seguintes. Versões só-de-arquivo superadas e nunca enviadas
+  (ou comprovadamente recusadas) passam a `substituido` com decisão `versao_de_arquivo_superada`, com os bytes
+  preservados; só a mais recente é enviada. Vale também para itens já presos (migração idempotente). Uma versão
+  da qual depende um pedido de dados que carrega o mesmo arquivo permanece na cadeia (sem espera circular).
+- **Arquivo sem gravação necessária / já presente no servidor:** encerram como `dispensado` com prova, em vez de
+  revisão. "Manter minha versão" usa o ponteiro do servidor exibido na prévia.
+- **Regras por versão (`VERSAO_REGRAS_CONFIRMACAO`):** itens antigos com leitura divergente ganham uma nova
+  comparação por versão de regras (sem reenvio); conflitos detectados antes do envio ganham uma nova preparação
+  por versão; se persistirem, continuam em revisão.
+- **Adaptador `instante`:** o mesmo instante em formatos diferentes não é conflito (etapas de núcleo, horários de
+  evento e conclusão de checklist).
+- **Corte local de notificações:** remoção nunca enviada conta como satisfeita na confirmação.
+- **Validação antes de salvar:** sobreposição e reserva de agenda no evento, condições de venda e código do
+  morador; mensagens de pendência indicam a regra recusada.
+
+Pendente de decisão de produto: o pacote de Campo é um registro por conta; contas usadas em vários aparelhos
+continuam gerando um conflito por aparelho a cada ciclo. Tornar o pacote por aparelho elimina a causa, mas
+remove a restauração do pacote em outro aparelho.

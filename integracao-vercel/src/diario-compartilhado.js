@@ -8,12 +8,14 @@ import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarInt
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
+import {alteracoesConfirmadas} from './confirmacao-mutacoes.js';
 import {edicaoSomenteLocal} from './intencoes-locais.js';
-import {arquivosDaIntencao} from './arquivos-intencoes.js';
-import {revisarLeitura,snapshotLeitura} from './revisao-leitura.js';
+import {arquivosDaIntencao,arquivoEmConflito,conflitoArquivoReconciliavel} from './arquivos-intencoes.js';
+import {arquivoPresenteIdentico,confirmarArquivos} from './arquivos-compartilhados.js';
+import {revisarLeitura,snapshotLeitura,arquivosAtuais} from './revisao-leitura.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
-export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},estadoSessao,fila=abrirFilaIntencoes()}){
+export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},estadoSessao,conferirArquivo=arquivoPresenteIdentico,concluirArquivos=confirmarArquivos,fila=abrirFilaIntencoes()}){
  const canal=typeof BroadcastChannel==='function'?new BroadcastChannel('integracao-diario-v2:'+conta):null;
  if(canal)canal.onmessage=()=>{if(ativo())notificar();};
  const sinalizar=()=>canal?.postMessage({protocolo:2});
@@ -112,7 +114,33 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const prova=planejarMetas&&(r.conflitos.length||igualSemantico(recortarIntencao(r.dados,edicoes),recortarIntencao(remoto.db,edicoes)))&&verificarMetas(item,remoto,edicoes);
   if(prova)return {provaEstado:prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
-  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
+  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();
+  // Nothing to write and no file involved: if every edited record, after the
+  // merge, is what this fresh read already returns (same confirmation contract,
+  // no payload), the request is closed as already present instead of parking as
+  // "no operations". Any strict difference keeps the previous review path.
+  const semArquivos=x=>!Object.keys(x||{}).length;
+  if(Array.isArray(pronto?.operacoes)&&!pronto.operacoes.length&&semArquivos(pronto.sent)&&semArquivos(pronto.identicos)&&semArquivos(arquivosDaIntencao(item,items))){
+   const gravaveis=edicoes.filter(e=>!edicaoSomenteLocal(e)&&!edicaoDerivada(e));
+   if(alteracoesConfirmadas(recortarIntencao(remoto.db,gravaveis),recortarIntencao(r.dados,gravaveis),remoto.db,{},[]))
+    return {...pronto,jaPresente:{tipo:'ja_presente_no_servidor',checksum:item.checksum}};
+  }
+  // Not enumerable: the prepared result is cloned into the journal when fixed.
+  return Object.defineProperty({...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)},'aposDispensar',{value:()=>encerrarArquivos(pronto.sent,remoto)});
+ }
+ // The request is already closed durably. Consuming the same version from the
+ // auxiliary file queue revalidates it against this read; a failure only
+ // leaves that entry for the normal recovery on the next pass.
+ const encerrarArquivos=async(sent,remoto)=>{try{await concluirArquivos(sent||{},remoto.base||{});}catch{/* kept for recovery */}};
+ // A refused single-file conflict is closed only when the current row and the
+ // stored bytes are exactly what this request tried to write.
+ async function provarArquivoPresente(item){
+  if(!arquivoEmConflito(item))return null;
+  const [id,arquivo]=Object.entries(item.original.intencao.arquivos)[0],dados=item.payload[0].changes.dados;
+  const {remoto}=await lerItem(item);
+  if(!await conferirArquivo(remoto.base?.integracao_arquivos,id,dados,new TextEncoder().encode(arquivo.value)))return null;
+  conferir();
+  return {prova:{tipo:'arquivo_ja_presente_no_servidor',id,version:arquivo.version,dados:structuredClone(dados)},aposConfirmar:()=>encerrarArquivos({[id]:arquivo},remoto)};
  }
  function verificarMetas(item,remoto,edicoes){
   try{return provarMetasNoServidor(item,edicoes,projetarProvaMetas(remoto,edicoes),items,planejarMetas);}catch{return null;}
@@ -122,12 +150,14 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   // Bound each pass; a later pass resumes independently ready entries.
   const limite=id?1:items.filter(i=>!terminal(i)).length;
   const tentados=[];
-  if(!id&&planejarMetas){
+  if(!id){
    // Read-only blocked conflicts first, so their dependent requests can then be
    // evaluated in order. No repeated queries for the same item within the pass.
    const lidos=[];
-   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&conflitoReconciliavelMetas(i,Date.now()));n++){
+   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())));n++){
     const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+     if(arquivoEmConflito(item))return provarArquivoPresente(item);
+     if(!planejarMetas)return null;
      const {remoto,edicoes}=await lerItem(item);
      const prova=verificarMetas(item,remoto,edicoes);
      return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
@@ -220,6 +250,17 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   }
   let edicoes=extrairIntencao(remoto.db,r.dados);
   const arquivos=arquivosDaIntencao(mostrada.item,items);
+  if(mostrada.item.erro?.codigo==='PT409'&&Object.keys(arquivos).length){
+   // "Keep my version" after a refused file conflict: the replacement is based
+   // on the server pointer shown in the preview, so it can replace exactly that
+   // pointer. The server compare-and-set still refuses any later change.
+   if(!igualSemantico(arquivosAtuais(mostrada.item,remoto),mostrada.snapshot?.arquivos))throw Error('Os dados ou arquivos mudaram. Abra novamente a prévia e confira os valores.');
+   const linhas=remoto.base?.integracao_arquivos||[];
+   // Only pointers the preview actually displayed may be rebased; any other
+   // file keeps its original base, which the server still refuses if stale.
+   const exibidos=mostrada.snapshot?.arquivos||{};
+   for(const [arquivoId,arquivo] of Object.entries(arquivos))if(Object.hasOwn(exibidos,arquivoId))arquivo.expected=structuredClone(linhas.find(l=>l.registro_id===arquivoId)?.dados??null);
+  }
   // Explicitly accepting the server still leaves an auditable no-op replacement.
   if(!edicoes.length&&!Object.keys(arquivos).length){await fila.aceitarRemoto(conta,id);revisao=null;await atualizar();return;}
   await adicionar(remoto.db,r.dados,arquivos,{substituirId:id});revisao=null;await atualizar();

@@ -1,4 +1,4 @@
-import {restricaoDaFalha,orientacaoRestricao} from './diagnostico-validacao.js';
+import {restricaoDaFalha,orientacaoRestricao,regraDaFalha,orientacaoRegra} from './diagnostico-validacao.js';
 export const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 export const requerRevisaoFila=i=>!terminal(i)&&(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado)||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
 // Network/transport failures carry no server verdict, so they never require review.
@@ -9,7 +9,7 @@ const redeTypeError=e=>e?.name==='TypeError'&&/fetch|network|load failed|conex/i
 const codigoTexto=e=>typeof e?.code==='string'&&e.code?e.code:undefined;
 const REGISTRO_INDISPONIVEL=/registro indispon[ií]vel/i;
 export function classificarFalha(e){
- const restricao=restricaoDaFalha(e);
+ const restricao=restricaoDaFalha(e),regra=regraDaFalha(e)?.regra;
  const vistos=new Set(),nomes=new Set(),mensagens=[];let status,codigo,rede=false;
  while(e&&!vistos.has(e)){
   vistos.add(e);status??=e.status;codigo??=codigoTexto(e);nomes.add(e.name);
@@ -27,7 +27,8 @@ export function classificarFalha(e){
   :status===409||codigo==='PT409'?'conflito'
   :rede&&!Number.isFinite(status)?'transitoria'
   :[400,404,422].includes(status)||/^(22|23)/.test(codigo)?'validacao':'transitoria';
- return {status:Number.isFinite(status)?status:null,codigo,categoria,...(restricao?{restricao}:{})};
+ // `regra` is a fixed local key (REGRAS_VALIDACAO); server text is never kept.
+ return {status:Number.isFinite(status)?status:null,codigo,categoria,...(restricao?{restricao}:{}),...(regra?{regra}:{})};
 }
 // Only a 500 that carries a real SQLSTATE outside the transient classes
 // (connection 08, transaction 25/40, resources 53, lock 55, operator 57, system
@@ -120,12 +121,40 @@ export function podeRetomarReleituraDivergente(i,agora){
   i.proximaTentativa===Number.MAX_SAFE_INTEGER&&!(i.leaseAte>agora)&&!i.releituraDivergenteVerificada&&
   i.erro?.fase==='releitura'&&i.erro.codigo==='LEITURA_DIVERGENTE'&&i.erro.categoria==='leitura';
 }
-export const podeRetomarLeituraAutomaticamente=(i,agora)=>podeRetomarReleitura(i,agora)||podeRetomarReleituraDivergente(i,agora);
+// Comparison rules (field adapters, confirmation and three-way merge) carry a
+// version. Bump it whenever those rules change: an entry that exhausted its
+// read-back or was blocked before any send under older rules gets exactly one
+// new evaluation per version, never a resend and never an automatic acceptance.
+export const VERSAO_REGRAS_CONFIRMACAO=2;
+const regrasAnteriores=v=>!(Number.isSafeInteger(v)&&v>=VERSAO_REGRAS_CONFIRMACAO);
+// Versioned form of podeRetomarReleituraDivergente, used by the automatic
+// resumption. The queue persists marcarReleituraDivergente() in the same
+// transaction that reopens the entry, so each version reopens it only once.
+export function podeRetomarReleituraDivergentePorVersao(i,agora){
+ return i?.estado==='confirmado_aguardando_leitura'&&!!i.recibo&&
+  Array.isArray(i.payload)&&i.payload.length>0&&
+  i.preparado?.antes!=null&&i.preparado?.depois!=null&&
+  i.proximaTentativa===Number.MAX_SAFE_INTEGER&&!(i.leaseAte>agora)&&regrasAnteriores(i.releituraRegrasVersao)&&
+  i.erro?.fase==='releitura'&&i.erro.codigo==='LEITURA_DIVERGENTE'&&i.erro.categoria==='leitura';
+}
+export function marcarReleituraDivergente(i){i.releituraDivergenteVerificada=true;i.releituraRegrasVersao=VERSAO_REGRAS_CONFIRMACAO;return i;}
+// A conflict found by the client while preparing: nothing was fixed, sent or
+// acknowledged. Server verdicts (sent payloads) are never included.
+export const conflitoPreEnvio=i=>i?.estado==='bloqueado_conflito'&&i.erro?.codigo==='PT409'&&i.erro.fase==='preparacao'&&
+ i.original?.preparar===true&&i.payload==null&&i.preparado==null&&i.recibo==null&&i.enviadoEm==null&&i.confirmadoEm==null&&i.lidoEm==null;
+// One new preparation per rules version. A conflict that persists is recorded
+// again as bloqueado_conflito with the marker set, so it stays in review.
+export const podeReprepararConflito=(i,agora)=>conflitoPreEnvio(i)&&!(i.leaseAte>agora)&&regrasAnteriores(i.conflitoRegrasVersao);
+export function marcarConflitoRepreparado(i){i.estado='pendente_local';i.fase='preparacao';i.proximaTentativa=0;i.conflitoRegrasVersao=VERSAO_REGRAS_CONFIRMACAO;return i;}
+export const podeRetomarLeituraAutomaticamente=(i,agora)=>podeRetomarReleitura(i,agora)||podeRetomarReleituraDivergentePorVersao(i,agora);
 export function orientacaoPendencia(i){
  if(i.erro?.repetida)return 'O servidor devolveu o mesmo erro interno várias vezes ao gravar esta alteração. Ela continua guardada neste aparelho e não foi confirmada. Tente retomar mais tarde; se o erro persistir, informe o suporte antes de descartar.';
  if(i.erro?.codigo==='CLIENTE_SEM_VINCULO_CANONICO')return 'Este cadastro não tem vínculo confirmado no servidor. A alteração não foi enviada nesta tentativa e continua neste aparelho. Confira o cadastro com a equipe autorizada antes de retomar; não crie outra ficha.';
+ if(i.erro?.codigo==='CADASTRO_LOCAL_SEM_VINCULO')return 'Este registro foi criado só neste aparelho e ainda não tem identidade no banco compartilhado. Nada foi enviado; o original continua preservado para revisão.';
+ if(i.erro?.codigo==='MUNICIPIO_NAO_ENCONTRADO')return 'O município escolhido não existe mais no cadastro atual. Nada foi enviado; revise o município desta alteração.';
  if(i.erro?.codigo==='INTENCAO_SEM_OPERACOES')return 'A preparação não produziu operações de gravação verificáveis. Não há confirmação do servidor para esta alteração; o original permanece preservado para revisão.';
  if(!i.recibo&&i.erro?.categoria==='registro_indisponivel')return 'O registro foi apagado ou não está disponível para esta conta. Recrie o registro ou descarte esta alteração; o original continua preservado.';
+ if(!i.recibo&&orientacaoRegra(i.erro?.regra))return orientacaoRegra(i.erro.regra)+' O original continua preservado; corrija e confirme somente nesta alteração.';
  if(!i.recibo&&i.erro?.codigo==='P0001')return 'Este pedido exige revisão. O código P0001 não identifica sozinho a regra ou o campo; o original continua preservado.';
  if(falhaPreparacaoSemEnvio(i))return 'O sistema falhou antes de enviar esta alteração. O rascunho continua preservado neste aparelho.';
  if(i.estado==='legado_revisao')return 'O rascunho antigo precisa de análise. Baixe o original preservado; ele não será reenviado automaticamente.';

@@ -404,6 +404,9 @@ const at = (db,b) => {
   const list=b.parent.childId ? p?.[b.parent.field]?.find(x=>x.id===b.parent.childId)?.[b.parent.childField] : p?.[b.parent.field];
   return (list||[]).find(x=>x.id===b.id);
 };
+// Deterministic local refusals while encoding an edit: nothing was sent and a
+// retry cannot change the outcome, so they are validation (422), not transport.
+const erroLocal=(mensagem,code='EDICAO_LOCAL_INVALIDA')=>Object.assign(new Error(mensagem),{code,status:422});
 export function alteracoesCompartilhadas(before,after,state,actor) {
   const ops=[];
   for (const b of state.bindings) {
@@ -411,8 +414,8 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const old=at(before,b), next=at(after,b);
     if (!old || !next) {
       if(old && !next) {
-        if(b.table==='erp_mensagens')throw new Error('Mensagens existentes são preservadas no histórico do ERP.');
-        if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw new Error('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
+        if(b.table==='erp_mensagens')throw erroLocal('Mensagens existentes são preservadas no histórico do ERP.');
+        if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw erroLocal('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
         else if(b.table==='erp_eventos') ops.push({action:'evento_status',payload:{id:b.row.id,status:'cancelado'},expected:{status:b.row.status},table:b.table,key:b.key});
         else if(b.table==='processos_kanban') ops.push({table:b.table,key:b.key,expected:b.row,changes:{excluido_erp:true}});
         else ops.push({table:b.table,key:b.key,expected:b.row,remove:true});
@@ -432,7 +435,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     }
     if(b.table==='processos_kanban' && old.municipioId!==next.municipioId) {
       const m=after.municipios.find(x=>x.id===next.municipioId);
-      if(!m)throw new Error('Município não encontrado.');
+      if(!m)throw erroLocal('Município não encontrado.','MUNICIPIO_NAO_ENCONTRADO');
       Object.assign(changes,{municipio:m.nome,estado:m.uf});Object.assign(expected,{municipio:b.row.municipio,estado:b.row.estado});
     }
     if(Object.keys(changes).length) {
@@ -443,7 +446,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
         if('cor' in rest) { ops.push({action:'evento_cor',payload:{id:b.row.id,cor:rest.cor},expected:{cor:expected.cor},table:b.table,key:b.key}); delete rest.cor; }
         if(Object.keys(rest).length) ops.push({table:b.table,key:b.key,expected:Object.fromEntries(Object.keys(rest).map(k=>[k,expected[k]])),changes:rest});
       }
-      else if(['erp_conversas','erp_mensagens'].includes(b.table)) throw new Error('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
+      else if(['erp_conversas','erp_mensagens'].includes(b.table)) throw erroLocal('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
       else ops.push({table:b.table,key:b.key,expected,changes});
     }
   }
@@ -457,7 +460,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     return refs.size===1?[...refs][0]:direto;
   };
   const link=e=> e ? {entidade_tipo:e.tipo==='nucleo'?'processo':e.tipo,entidade_id:after.nucleos.find(n=>n.id===e.id)?.externo?.kanbanId||e.id} : {};
-  const requireUuid=id=> {if(!uuid(id)) throw new Error('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.');return id;};
+  const requireUuid=id=> {if(!uuid(id)) throw erroLocal('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.','CADASTRO_LOCAL_SEM_VINCULO');return id;};
   // Um município sintético (só do kanban) vira o registro real do financeiro quando ele existe com o mesmo nome e UF.
   const municipioReal=id=>{ if(uuid(id))return id; const m=after.municipios.find(x=>x.id===id); const real=m&&after.municipios.find(x=>uuid(x.id)&&normalize(x.nome)===normalize(m.nome)&&(x.uf||'SC')===(m.uf||'SC')); return real?real.id:id; };
   // These are creations requested after loading, never an import of old local rows.

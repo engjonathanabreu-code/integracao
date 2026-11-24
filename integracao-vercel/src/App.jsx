@@ -48,7 +48,8 @@ import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
-import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,ultimaParcela} from './condicoes-venda.js';
+import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
+import {validarRegrasEvento} from './diagnostico-validacao.js';
 import {documentoHtml} from './documento-formato.js';
 import Financeiro, {FinanceiroCliente} from './Financeiro.jsx';
 import Oficios,{IconeOficios} from './Oficios.jsx';
@@ -1466,7 +1467,11 @@ function montarMorador(db, municipioId, dados) {
   const numero = proximoNumeroCliente(db, dados.remessaId);
   const m = municipioDe(db, municipioId);
   if (!m?.prefixo) throw new Error("Cadastre o prefixo do município antes de adicionar um morador.");
-  const np = processoVazio(municipioId, dados.remessaId, codigoCliente(db, dados.remessaId, numero));
+  const codigo = codigoCliente(db, dados.remessaId, numero);
+  // Mesma regra do banco (proteger_codigo): recusa aqui, antes de enfileirar.
+  const erroCodigo = erroCodigoMorador(codigo, (db._baseArquivo || db).processos || [], null);
+  if (erroCodigo) throw new Error(`${erroCodigo} Confira o prefixo no cadastro do município.`);
+  const np = processoVazio(municipioId, dados.remessaId, codigo);
   np.numeroCliente = numero;
   np.unidades = Array.from({ length: Math.max(1, dados.qtdUnidades || 1) }, () => ({ id: uid("un"), area: "", memorial: "", loteQuadra: "" }));
   np.nucleoId = "";
@@ -2608,8 +2613,9 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const erros = [];
   if (!remessaId) erros.push("Escolha a remessa");
   if (!prefixoMunicipio) erros.push("Cadastre o prefixo em Editar município antes de adicionar um morador");
-  const codigoDuplicado = (db._baseArquivo || db).processos.some(p => p.codigo === codigoGerado);
+  const codigoDuplicado = (db._baseArquivo || db).processos.some(p => normalizarCodigoMorador(p.codigo) === normalizarCodigoMorador(codigoGerado));
   if (codigoDuplicado) erros.push("Este código já existe. Confira o prefixo no cadastro do município.");
+  else if (remessaId && prefixoMunicipio && !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(normalizarCodigoMorador(codigoGerado))) erros.push(`O código ${codigoGerado} tem caracteres não aceitos. Use só letras sem acento e números no prefixo do município`);
   if (nome.trim().length < 3) erros.push("Informe o nome do requerente");
   if (!cpf) erros.push("Informe o CPF, ele é obrigatório");
   else if (!cpfOk) erros.push("CPF inválido, confira os dígitos");
@@ -9359,7 +9365,7 @@ function AbaComercialCliente({ db, p, usuario, ir, mutar, setToast }) {
         rodape={(
           <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
             {condicaoVendaRegistrada(p) ? <Tag tipo="ok">Condição própria</Tag> : <Tag>Regra do núcleo</Tag>}
-            {pode && !condicaoVendaRegistrada(p) && <button className="btn btn-sm" onClick={() => { mutar((d) => { const q = d.processos.find((x) => x.id === p.id); gravarCondicaoVenda(q, condicoes || condicoesVazias(), { atualizadoEm: new Date().toISOString(), por: usuario.nome }); return d; }, "Forma de pagamento própria criada", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: `${p.codigo}: passou a ter condição própria` }); setToast("Agora dá para alterar só para este morador."); }}><Pencil size={13} />Alterar só para este morador</button>}
+            {pode && !condicaoVendaRegistrada(p) && <button className="btn btn-sm" onClick={() => { const restricao = erroRestricoesCondicoes(condicoes || condicoesVazias()); if (restricao) { setToast(`${restricao} Corrija a forma de pagamento do núcleo antes de copiá-la.`); return; } mutar((d) => { const q = d.processos.find((x) => x.id === p.id); gravarCondicaoVenda(q, condicoes || condicoesVazias(), { atualizadoEm: new Date().toISOString(), por: usuario.nome }); return d; }, "Forma de pagamento própria criada", { processoId: p.id, nucleoId: p.nucleoId || undefined, detalhe: `${p.codigo}: passou a ter condição própria` }); setToast("Agora dá para alterar só para este morador."); }}><Pencil size={13} />Alterar só para este morador</button>}
             {pode && condicaoVendaRegistrada(p) && <button className="btn btn-sm" onClick={() => setConfirmarProprio(true)}><Undo2 size={13} />{p.planoEntradaParcelada && p.comercial ? "Remover entrada parcelada" : "Voltar à regra do núcleo"}</button>}
             {n && <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => ir({ pag: "nucleo", id: n.id, aba: "comercial" })}>Ver a regra do núcleo</button>}
           </div>
@@ -11738,6 +11744,12 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
   if (f.recorrencia !== "nenhuma" && !f.recorrenciaAte) erros.push("Informe a data final da recorrência");
   const agenda = (db.agendas || []).find((a) => a.id === f.agendaId);
   const conflito = f.agendaId && (db.eventos || []).some((e) => e.id !== inicial?.id && e.agendaId === f.agendaId && e.status !== "cancelado" && soData(e.inicio) === f.dia && hhmm(e.inicio) < f.fim && hhmm(e.fim) > f.inicio);
+  // Regras que o banco recusaria (reserva sobreposta 23P01, reserva não pública, participante sem perfil ativo).
+  const candidato = { id: inicial?.id, agendaId: f.agendaId, inicio: `${f.dia}T${f.inicio}:00`, fim: `${f.dia}T${f.fim}:00`, publico: f.publico, participantes: f.participantes, status: inicial?.status || "ativo" };
+  const participantesMudaram = novo || f.participantes.length !== (inicial.participantes || []).length || f.participantes.some((x) => !(inicial.participantes || []).includes(x));
+  const regrasEvento = podeEditar && f.fim > f.inicio ? validarRegrasEvento(candidato, { eventos: db.eventos || [], perfisAtivos: participantesMudaram ? (db.usuarios || []).filter((u) => u.ativo && u.erpRef).map((u) => u.id) : undefined }) : [];
+  for (const p of regrasEvento) erros.push(p.mensagem.replace(/\.$/, ""));
+  const reativacaoSobreposta = !novo && inicial.status === "cancelado" && validarRegrasEvento({ ...inicial, status: "ativo" }, { eventos: db.eventos || [] });
   const salvar = () => {
     const dados = { titulo: f.titulo.trim(), descricao: f.descricao.trim(), inicio: `${f.dia}T${f.inicio}:00`, fim: `${f.dia}T${f.fim}:00`, agendaId: f.agendaId, participantes: f.participantes, publico: f.publico, cor: f.cor, entidade: f.entidade, recorrencia: f.recorrencia, recorrenciaAte: f.recorrencia === "nenhuma" ? "" : f.recorrenciaAte };
     if (novo) {
@@ -11762,6 +11774,7 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
     setToast(resposta === "aceito" ? "Presença confirmada." : "Convite recusado."); onFechar();
   };
   const cancelar = () => {
+    if (reativacaoSobreposta?.length) { setToast(reativacaoSobreposta[0].mensagem); return; }
     mutar((d) => { const e = d.eventos.find((x) => x.id === inicial.id); e.status = e.status === "cancelado" ? "ativo" : "cancelado"; return d; }, inicial.status === "cancelado" ? "Evento reativado" : "Evento cancelado", { detalhe: inicial.titulo });
     setToast(inicial.status === "cancelado" ? "Evento reativado." : "Evento cancelado."); onFechar();
   };
@@ -11794,7 +11807,7 @@ function ModalEvento({ db, usuario, inicial, diaPadrao, horaPadrao, mutar, setTo
           </select>
         </div>
       </div>
-      {conflito && <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}><AlertTriangle size={14} />Já existe outro evento em {agenda?.nome} neste horário.</div>}
+      {conflito && !regrasEvento.some((p) => p.regra === "integracao_reserva_sem_sobreposicao") && <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}><AlertTriangle size={14} />Já existe outro evento em {agenda?.nome} neste horário.</div>}
       <span className="rot" style={{ marginTop: 14 }}>Participantes</span>
       <div className="flex flex-wrap gap-2">
         {(db.usuarios || []).filter((u) => u.ativo).map((u) => (
@@ -12747,7 +12760,7 @@ export default function App() {
     // Quem entra pela conta do ERP e ainda não existe aqui é cadastrado na hora
     mutar((d) => {
       const q = d.usuarios.find((x) => x.id === u.id || (u.erpRef && x.erpRef === u.erpRef) || (u.email && normalizar(x.email) === normalizar(u.email)));
-      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP ?? q.setorERP, tipoERP: u.tipoERP ?? q.tipoERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
+      if (q) { Object.assign(q, { nome: u.nome || q.nome, email: u.email || q.email, setor: u.setor || q.setor, setorERP: u.setorERP || q.setorERP, tipoERP: u.tipoERP ?? q.tipoERP, funcao: u.funcao || q.funcao, erpRef: u.erpRef || q.erpRef, ativo: true, online: true, ultimaAtividade: new Date().toISOString() }); usuarioRef.current = q; }
       else d.usuarios = [...d.usuarios, { ...u, online: true, ultimaAtividade: new Date().toISOString() }];
       return d;
     }, "Entrou no sistema");

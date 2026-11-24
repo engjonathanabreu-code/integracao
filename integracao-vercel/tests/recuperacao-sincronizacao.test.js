@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {validarRegrasEvento} from '../src/diagnostico-validacao.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
@@ -43,7 +44,7 @@ test('calendar form changes the resource without requesting an administrative co
  const app=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
  const code=transformSync(app.slice(app.indexOf('function ModalEvento('),app.indexOf('function ModalEditarAgenda(')),{loader:'jsx'}).code;
  let form;
- const deps={React,permissoes,rotuloNucleo:(_db,n)=>n.nome,useState:init=>{form??=init();return [form,update=>{form=update(form);}];},useRef:()=>({current:false}),useEffect:()=>{},soData:v=>v.slice(0,10),hhmm:v=>v.slice(11,16),dataBR:v=>v,Modal:'section',Aviso:'aside',Tag:'span',AlertTriangle:'span'};
+ const deps={React,permissoes,validarRegrasEvento,rotuloNucleo:(_db,n)=>n.nome,useState:init=>{form??=init();return [form,update=>{form=update(form);}];},useRef:()=>({current:false}),useEffect:()=>{},soData:v=>v.slice(0,10),hhmm:v=>v.slice(11,16),dataBR:v=>v,Modal:'section',Aviso:'aside',Tag:'span',AlertTriangle:'span'};
  const Modal=new Function(...Object.keys(deps),code+';return ModalEvento;')(...Object.values(deps));
  const props={db,usuario:db.usuarios[0],inicial:db.eventos[0],mutar:fn=>fn(db),setToast:()=>{},onFechar:()=>{}};
  const find=(node,predicate)=>{if(!node)return; if(Array.isArray(node))return node.map(n=>find(n,predicate)).find(Boolean);if(predicate(node))return node;return find(node.props?.children,predicate);};

@@ -1,4 +1,5 @@
 import {parseNum} from './requisitos-moradores.js';
+import {validarRestricoesProcesso} from './diagnostico-validacao.js';
 const centavos=v=>Math.round(parseNum(v)*100);
 const texto=c=>(c/100).toFixed(2).replace('.',',');
 export const ENTRADA_PARCELADA='Com Entrada Parcelada';
@@ -22,6 +23,18 @@ export function calcularEntradaParcelada(f){
  const parcela=dinheiroExato(f?.valorParcela);
  return {itens,valores,total,entrada,saldo,qtd,numeroValido,padrao,parcela,ultima:saldo-parcela*(qtd-1)};
 }
+const semParcelamento=f=>/^(Isento|Custeado)/.test(f?.modalidade||'')||f?.modalidade==='À vista';
+// Hidden inputs keep what was typed under another modality. Without instalments
+// the Financeiro columns numero_parcelas/dia_vencimento must be empty (NULL).
+export function normalizarCondicoesVenda(f){
+ return f&&!ehPlano(f)&&semParcelamento(f)?{...f,parcelas:'',diaVencimento:''}:f;
+}
+// Database CHECKs of fin_receb_clientes for the values that will be written,
+// in every modality. '' = nothing would be refused.
+export function erroRestricoesCondicoes(f){
+ if(!f||ehPlano(f))return '';
+ return validarRestricoesProcesso({processo:{comercial:normalizarCondicoesVenda(f)}})[0]?.mensagem||'';
+}
 // Contrato-only condition stays outside the legacy Financeiro-bound comercial fields.
 export function gravarCondicaoVenda(registro,f,{atualizadoEm,por}={}){
  if(ehPlano(f)){
@@ -29,7 +42,7 @@ export function gravarCondicaoVenda(registro,f,{atualizadoEm,por}={}){
   const plano=Object.fromEntries(['modalidade','valorTotal','parcelas','valorParcela','diaVencimento','primeiroVencimento','reajuste','observacoes'].map(k=>[k,f[k]??'']));
   registro.planoEntradaParcelada={...plano,valorTotal:texto(total),valorParcela:texto(parcela),parcelasEntrada:itens.map(({vencimento},i)=>({valor:texto(valores[i]),vencimento})),atualizadoEm,por};
  }else{
-  const {parcelasEntrada,...legacy}=f;
+  const {parcelasEntrada,...legacy}=normalizarCondicoesVenda(f);
   registro.comercial={...legacy,atualizadoEm,por};
   if(registro.planoEntradaParcelada)registro.planoEntradaParcelada=null;
  }
@@ -69,7 +82,10 @@ export function atualizarCondicoes(f,chave,valor){
  }
  return novo;
 }
-export function validarCondicoesVenda(f){
+// The form rules come first (their messages name the field); the database
+// CHECKs are a backstop for every modality, including those without instalments.
+export function validarCondicoesVenda(f){return regrasCondicoesVenda(f)||erroRestricoesCondicoes(f);}
+function regrasCondicoesVenda(f){
  if(/^(Isento|Custeado)/.test(f.modalidade))return '';
  if(ehPlano(f)){
   const {itens,valores,total,entrada,saldo,numeroValido,qtd,parcela,ultima}=calcularEntradaParcelada(f);

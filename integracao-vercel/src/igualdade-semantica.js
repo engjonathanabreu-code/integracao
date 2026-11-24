@@ -12,7 +12,7 @@ export function igualSemantico(a,b){
 // Cada entrada aponta a prova de que o servidor devolve a mesma intenção em outra forma.
 // Campos financeiros não têm adaptador: usam a projeção de contrato-financeiro.js.
 const ID_USUARIO=/^(?:erp_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const TIPOS_ADAPTADOR=Object.freeze(['conjunto','nulo_vazio','numero','gerado_servidor']);
+export const TIPOS_ADAPTADOR=Object.freeze(['conjunto','nulo_vazio','numero','gerado_servidor','instante']);
 export const adaptadoresCampo=Object.freeze([
  // Linhas de meta_responsaveis; a leitura não preserva a ordem marcada. Dados
  // inválidos nunca provam um conjunto de identidades (contrato anterior).
@@ -41,6 +41,16 @@ export const adaptadoresCampo=Object.freeze([
  // Presença é local ao aparelho; prepararEdicao e complementos() nunca a gravam.
  {colecao:'usuarios',caminho:['online'],tipo:'gerado_servidor'},
  {colecao:'usuarios',caminho:['ultimaAtividade'],tipo:'gerado_servidor'},
+ // O aparelho grava new Date().toISOString() ('…Z') e o PostgreSQL devolve o mesmo
+ // instante como '…+00:00'. `acompanha`: o carimbo descreve a mudança daquele campo;
+ // se as duas partes chegaram ao mesmo valor dele, vale o carimbo do servidor.
+ {colecao:'nucleos',caminho:['etapaIniciadaEm'],tipo:'instante',acompanha:'etapaProcesso'},
+ {colecao:'nucleos',caminho:['etapaPrefeituraIniciadaEm'],tipo:'instante',acompanha:'etapaPrefeitura'},
+ // Na confirmação estes campos mantêm as regras próprias de confirmacao-mutacoes.js,
+ // que exigem a operação enviada; o adaptador vale só na conciliação de três versões.
+ {colecao:'eventos',caminho:['inicio'],tipo:'instante',somenteConciliacao:true},
+ {colecao:'eventos',caminho:['fim'],tipo:'instante',somenteConciliacao:true},
+ {colecao:'metas',caminho:['checklist','*','concluido_em'],tipo:'instante',somenteConciliacao:true},
 ].map(a=>Object.freeze({...a,caminho:Object.freeze(a.caminho)})));
 
 const casa=(padrao,caminho)=>padrao.length===caminho.length&&padrao.every((p,i)=>p==='*'||p===caminho[i]);
@@ -55,16 +65,20 @@ export function adaptadorCampo(colecao,caminho){
 }
 export const conjuntoValido=(lista,adaptador)=>Array.isArray(lista)&&lista.every(x=>typeof x==='string'&&x!==''&&(!adaptador?.elemento||adaptador.elemento.test(x)))&&new Set(lista).size===lista.length;
 const vazio=v=>v===null||v===undefined||v==='';
+// Somente data e hora ISO; datas simples e texto livre continuam estritos.
+const ISO_INSTANTE=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
+export const instanteISO=v=>typeof v==='string'&&ISO_INSTANTE.test(v)?Date.parse(v):NaN;
 const numeroCanonico=v=>typeof v==='number'?v:typeof v==='string'&&/^-?\d+(?:\.\d+)?$/.test(v)?Number(v):NaN;
 
 // Compara um campo pelo adaptador registrado; sem adaptador, igualdade estrita.
 // `confirmacao:true`: a é o valor lido do servidor e b o esperado.
 export function igualCampo(colecao,caminho,a,b,{confirmacao=false}={}){
  const ad=adaptadorCampo(colecao,caminho);
- if(!ad)return igualSemantico(a,b);
+ if(!ad||ad.somenteConciliacao&&confirmacao)return igualSemantico(a,b);
  if(ad.tipo==='gerado_servidor')return true;
  if(ad.tipo==='nulo_vazio')return (vazio(a)&&vazio(b))||igualSemantico(a,b);
  if(ad.tipo==='numero'){const x=numeroCanonico(a);return Number.isFinite(x)&&x===numeroCanonico(b)||igualSemantico(a,b);}
+ if(ad.tipo==='instante'){const x=instanteISO(a);return Number.isFinite(x)&&x===instanteISO(b)||igualSemantico(a,b);}
  if(ad.tipo==='conjunto'){
   // Lista que não é conjunto de identidades: contrato estrito (ou divergência).
   if(!conjuntoValido(a,ad)||!conjuntoValido(b,ad))return ad.invalido==='diverge'?false:igualSemantico(a,b);

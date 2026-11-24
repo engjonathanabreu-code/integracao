@@ -67,7 +67,17 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
     // Presence is device-local; it is deliberately not written by prepararEdicao.
     if(relativo?.length&&adaptadorCampo(colecaoCampo,relativo)?.tipo==='gerado_servidor')return true;
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
-    if (!mudanca.existe) return !atual.existe;
+    if (!mudanca.existe) {
+      // Notification/audit retention is local (the list is trimmed on the device)
+      // and the encoder never sends those removals. With the submitted payload
+      // in hand and no removal of that record in it, the server row staying
+      // there is the expected result; every submitted insert is still checked.
+      if (atual.existe && mudanca.caminho.length === 2 && ['notificacoes','auditoria'].includes(mudanca.caminho[0]) && objeto(mudanca.caminho[1]) && operacoes.length) {
+        const id = String(aliases[mudanca.caminho[1].id] || mudanca.caminho[1].id);
+        return !operacoes.some(o => o?.remove && [o.key?.registro_id, o.key?.id].some(k => k != null && String(aliases[k] || k) === id));
+      }
+      return !atual.existe;
+    }
     const campo=mudanca.caminho.at(-1);
     if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===5&&mudanca.caminho[2]==='checklist'&&campo==='concluido_em'){
       const id=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
@@ -89,6 +99,8 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       if(op&&Number.isFinite(instante)&&op.changes[campo]===new Date(instante).toISOString())return atual.existe&&instante===Date.parse(atual.valor);
     }
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
+    // ISO stamps are covered by the `instante` adapter (igualdade-semantica.js);
+    // this keeps the earlier acceptance of any other parseable representation.
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
       if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;

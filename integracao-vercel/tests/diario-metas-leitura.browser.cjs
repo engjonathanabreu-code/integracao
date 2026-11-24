@@ -61,12 +61,16 @@ const assert=require('node:assert/strict');
    await p.evaluate(()=>{const h=metasLeitura;h.base.metas[0].titulo='Já gravada';h.sync.mutate(d=>{d.metas[0].titulo='Já gravada';return d;});});
    await p.waitForFunction(()=>metasLeitura.db.metas[0].titulo==='Já gravada');
    await c.setOffline(false);
-   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
-   const r=await p.evaluate(async()=>{
+   // A lista de pendências fica vazia também antes de a edição ser persistida; espere o
+   // próprio item da fila chegar a um estado terminal.
+   const lerItem=()=>p.evaluate(async()=>{
     const {abrirFilaIntencoes}=await import('/src/fila-intencoes.js'),f=abrirFilaIntencoes();
-    try{const [i]=await f.listar(metasLeitura.id(1));return {estado:i.estado,prova:i.decisao?.tipo,recibo:!!i.recibo,posts:metasLeitura.stats.posts};}
+    try{const [i]=await f.listar(metasLeitura.id(1));return i?{estado:i.estado,prova:i.decisao?.tipo,recibo:!!i.recibo,posts:metasLeitura.stats.posts}:null;}
     finally{await f.fechar();}
    });
+   let r=null;
+   for(const fim=Date.now()+30000;Date.now()<fim;){r=await lerItem();if(r&&['confirmado','dispensado','substituido'].includes(r.estado))break;await p.waitForTimeout(100);}
+   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
    assert.deepEqual(r,{estado:'confirmado',prova:'metas_ja_presentes_no_servidor',recibo:false,posts:0});casos++;await c.close();
   }
   // A true divergent value stays queued; once the same data become visible,
