@@ -1,3 +1,4 @@
+import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
 import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarReleitura,ciclosBackoffIntencao} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
@@ -94,7 +95,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));return item;
   });
  }
- async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false,ignorarIds=[]}={}){
+ async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false,somenteConvergencia=false,ignorarIds=[]}={}){
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
@@ -107,7 +108,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     if(somenteId&&item.id!==somenteId)continue;
     if(ignorarIds.includes(item.id))continue;
     const elegivel=['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
-    if(!elegivel||item.leaseAte>tempo||somenteLeitura&&(!item.payload||exigirRecibo&&!item.recibo))continue;
+    if(item.leaseAte>tempo||!elegivel||somenteConvergencia&&!conflitoReconciliavelMetas(item,tempo)||somenteLeitura&&!somenteConvergencia&&(!item.payload||exigirRecibo&&!item.recibo))continue;
     // One read-only retry after this repair, even when the old code exhausted
     // its attempts. The marker is committed together with the existing lease.
     const reabrirReleitura=!somenteLeitura&&!somenteId&&item.proximaTentativa===Number.MAX_SAFE_INTEGER&&
@@ -124,9 +125,10 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
      item.payload=remapearIdentidades(item.original.operacoes,aliases);
     }
     if(escopo&&!item.escopoArquivos)item.escopoArquivos=escopo;
-    item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
+    if(!somenteConvergencia)item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
     if(!somenteLeitura&&(item.fase==='envio'||item.fase==='recibo'))item.estado='resultado_desconhecido';
     if(reabrirReleitura)item.releituraRetencaoVerificada=true;
+    if(somenteConvergencia)item.reconciliacaoVerificadaEm=tempo;
     item.dono=dono;item.reserva=crypto.randomUUID();item.leaseAte=tempo+leaseMs;
     await requisicao(s.intencoes.put(item));return item;
    }
@@ -168,6 +170,12 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  const confirmarLeitura=item=>alterarReserva(item,atual=>{
   if(!atual.recibo)throw erro('A leitura não substitui o recibo de gravação.','RECIBO_AUSENTE');
   atual.estado='confirmado';atual.lidoEm=agora();soltar(atual);
+ });
+ const confirmarEstadoExistente=(item,prova)=>alterarReserva(item,atual=>{
+  if(!elegivelReconciliacaoMetas(atual)||typeof atual.checksum!=='string'||prova?.tipo!=='metas_ja_presentes_no_servidor'||prova.checksum!==atual.checksum)
+   throw erro('A intenção mudou durante a reconciliação.','REVISAO_NECESSARIA');
+  atual.estado='confirmado';atual.lidoEm=agora();atual.decisao={tipo:prova.tipo,em:atual.lidoEm};
+  delete atual.erro;soltar(atual);
  });
  const dispensarCampoIdentico=(item,pronto)=>alterarReserva(item,async(atual,s)=>{
   const prova=provaCampoSemEscrita(atual,pronto);
@@ -304,7 +312,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.
@@ -360,7 +368,7 @@ async function consumirReserva(fila,opcoes,reserva,executar){
 // The application must capture session identity in these callbacks. This processor
 // never obtains a token itself, and never infers a business unit from table names.
 export async function processarIntencao(fila,opcoes){
- const {consultarRecibo,enviar,reler,preparar,somenteId=null,aoReservar=()=>{}}=opcoes;
+ const {consultarRecibo,enviar,reler,preparar,provarEstado,somenteId=null,aoReservar=()=>{}}=opcoes;
  return consumirReserva(fila,opcoes,{somenteId},async(reservado,{conferir,passo})=>{
  let item=reservado,fase=item.fase;
  try{
@@ -368,6 +376,10 @@ export async function processarIntencao(fila,opcoes){
   conferir();
   if(!item.payload){
    fase='preparacao';const pronto=await passo(()=>preparar(item));conferir();
+   if(pronto.provaEstado){
+    const prontoItem=await fila.confirmarEstadoExistente(item,pronto.provaEstado);
+    conferir();pronto.aposConfirmar?.();return prontoItem;
+   }
    if(provaCampoSemEscrita(item,pronto))return await fila.dispensarCampoIdentico(item,pronto);
    if(Object.keys(pronto.identicos||{}).length&&!pronto.operacoes.length)
     throw erro('Não foi possível encerrar a cópia sem mudar a intenção original.','CAMPO_COPIA_LEITURA_INCONCLUSIVA');
@@ -385,6 +397,13 @@ export async function processarIntencao(fila,opcoes){
     // The receipt RPC returns JSON null only after an authorized lookup proves
     // absence. An inconclusive/empty transport result is never permission to send.
     if(recibo!==null&&(!recibo||typeof recibo!=='object'||Array.isArray(recibo)))throw erro('A consulta do recibo não foi concluída. O pedido original permanece preservado.','RECIBO_INCONCLUSIVO');
+   }
+   if(recibo===null&&provarEstado&&elegivelReconciliacaoMetas(item)){
+    const resultado=await passo(()=>provarEstado(item));conferir();
+    if(resultado){
+     const prontoItem=await fila.confirmarEstadoExistente(item,resultado.prova);
+     conferir();resultado.aposConfirmar?.();return prontoItem;
+    }
    }
    if(!recibo){fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await passo(()=>enviar(item));conferir();}
    item=await fila.registrarRecibo(item,recibo);conferir();
@@ -436,5 +455,22 @@ export async function lerIntencaoExistente(fila,opcoes){
   }catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
   throw e;
  }
+ });
+}
+
+// A blocked conflict is never returned to the write worker. Only prove the
+// existing state under its original lease; a mismatch retains the old error.
+export async function reconciliarIntencaoMetas(fila,opcoes){
+ return consumirReserva(fila,opcoes,{somenteLeitura:true,somenteConvergencia:true},async(item,{conferir,passo})=>{
+  try{
+   opcoes.aoReservar?.(item.id);
+   const resultado=await passo(()=>opcoes.provar(item));conferir();
+   if(resultado){
+    const prontoItem=await fila.confirmarEstadoExistente(item,resultado.prova);
+    conferir();resultado.aposConfirmar?.();return prontoItem;
+   }
+  }catch(e){if(e.code==='SESSAO_ALTERADA')throw e;}
+  try{await fila.liberarReserva(item);}catch(e){if(e.code!=='RESERVA_EXPIRADA')throw e;}
+  return false;
  });
 }
