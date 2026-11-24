@@ -371,7 +371,7 @@ async function consumirReserva(fila,opcoes,reserva,executar){
 // The application must capture session identity in these callbacks. This processor
 // never obtains a token itself, and never infers a business unit from table names.
 export async function processarIntencao(fila,opcoes){
- const {consultarRecibo,enviar,reler,preparar,provarEstado,somenteId=null,aoReservar=()=>{}}=opcoes;
+ const {consultarRecibo,enviar,reler,preparar,provarEstado,validarEnvio,somenteId=null,aoReservar=()=>{}}=opcoes;
  return consumirReserva(fila,opcoes,{somenteId},async(reservado,{conferir,passo})=>{
  let item=reservado,fase=item.fase;
  try{
@@ -408,7 +408,10 @@ export async function processarIntencao(fila,opcoes){
      conferir();resultado.aposConfirmar?.();return prontoItem;
     }
    }
-   if(!recibo){fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await passo(()=>enviar(item));conferir();}
+   if(!recibo){
+    if(validarEnvio){fase='preparacao';await passo(()=>validarEnvio(item));conferir();}
+    fase='envio';item=await fila.registrarEnvio(item);conferir();recibo=await passo(()=>enviar(item));conferir();
+   }
    item=await fila.registrarRecibo(item,recibo);conferir();
   }else{
    // A receipt already present in local storage (including imported queues)
