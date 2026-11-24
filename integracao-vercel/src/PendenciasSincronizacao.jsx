@@ -14,11 +14,14 @@ export default function PendenciasSincronizacao({sync}){
  return <section style={{padding:'8px 18px'}} aria-label="Sincronização de alterações">
   {sync.pendencias?.some(requerRevisaoFila)&&!sync.erroGlobal&&<div className="topo-acoes" aria-label="Ações da fila">
    <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.flush)}>Retomar tentativas automáticas</button>
-   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.reopen)}>Baixar cópia das alterações pendentes</button>
+   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.reopen)}>Baixar cópia completa de recuperação</button>
   </div>}
   <details><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
   {sync.falhasAtualizacao?.length>0&&<p role="status">{sync.falhasAtualizacao.length} ficha(s) aguardam atualização. As demais foram atualizadas; o conteúdo anterior e as pendências dessas fichas continuam preservados.</p>}
   <p>As alterações permanecem neste aparelho. Itens bloqueados podem ser revisados individualmente.</p>
+  {sync.pendencias?.length>0&&sync.exportarSomentePendencias&&<><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.exportarSomentePendencias)}>Baixar somente pendências</button>
+   <p>Este arquivo local inclui apenas mudanças em aberto e referências dos arquivos pendentes, sem fotos, documentos ou dados de contexto. Para resgatar o contexto e os anexos, use a cópia completa de recuperação separada.</p></>}
+
   <ul>{(sync.pendencias||[]).map(i=><li key={i.id}>{i.original.modulo} · {rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}<p>{orientacaoPendencia(i)}</p><details><summary>Diagnóstico desta alteração</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(sync.diagnosticarPendencia?.(i.id)||diagnosticoOperacao(i),null,2)}</pre><p>A propagação para outros aparelhos exige observação na outra sessão.</p></details><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button></li>)}</ul>
   {p&&<section aria-label="Prévia da recuperação"><strong>Revisão: {p.item.original.modulo}</strong>
    <p>Pedido {p.id.slice(0,8)}. {orientacaoPendencia(p.item)}</p>

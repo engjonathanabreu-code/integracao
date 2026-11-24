@@ -29,4 +29,22 @@ sync().close();await wait(30);assert.equal(sync().error,'','logout limpa aviso d
 window.syncHarness.definirSessao({user:{id:actor.erpRef},access_token:'isolated-fixture',expires_in:3600});
 await sync().open(actor,null);await wait(30);
 const emCurso=sync().reopen();sync().close();await emCurso;await wait(30);assert.equal(sync().error,'','exportação interrompida não restaura aviso após logout');
+window.syncHarness.definirSessao({user:{id:actor.erpRef},access_token:'isolated-fixture',expires_in:3600});
+await sync().open(actor,null);await wait(30);
+const mid='00000000-0000-4000-8000-000000000350';
+const fake={id:'00000000-0000-4000-8000-000000000351',pedido:'00000000-0000-4000-8000-000000000351',checksum:'a'.repeat(64),estado:'bloqueado_validacao',
+ original:{modulo:'metas',base:{senha:'CONTEXTO_FORA_DO_ARQUIVO'},intencao:{edicoes:[{colecao:'metas',id:mid,
+  antes:{existe:true,valor:{id:mid,titulo:'invariável',status:'Em andamento',cpf:'CONTEXTO_FORA_DO_ARQUIVO'}},
+  depois:{existe:true,valor:{id:mid,titulo:'invariável',status:'Cancelado',cpf:'CONTEXTO_FORA_DO_ARQUIVO'}}}],arquivos:{}}}};
+emitirDiarioTeste([fake,{...fake,id:'encerrado',pedido:'encerrado',estado:'confirmado'}]);await wait(30);
+let blob;const criar=URL.createObjectURL.bind(URL);
+URL.createObjectURL=b=>{blob=b;return criar(b);};
+const antesPendencias=downloads,writes=window.syncHarness.stats.writes;
+await sync().exportarSomentePendencias();
+const json=JSON.parse(await blob.text());
+assert.equal(downloads,antesPendencias+1);
+assert.equal(window.syncHarness.stats.writes,writes,'download local não grava no servidor');
+assert.equal(json.pendencias.length,1);
+assert.deepEqual(json.pendencias[0].mudancas,[{caminho:['metas',{id:mid},'status'],acao:'substituir',valor:'Cancelado'}]);
+assert.doesNotMatch(JSON.stringify(json),/CONTEXTO_FORA_DO_ARQUIVO|encerrado|invariável|Em andamento/);
 console.log(JSON.stringify({ok:true,downloads,quota:true,diarioVazio:true,diarioBloqueado:true,novaExportacao:true,sessao:true}));process.exit(0);

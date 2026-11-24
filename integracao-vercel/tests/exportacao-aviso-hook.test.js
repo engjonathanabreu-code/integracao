@@ -17,7 +17,7 @@ test('hook real conserva aviso de exportação até nova exportação ou mudanç
     export function criarDiarioCompartilhado(o){
      let items=[];
      globalThis.emitirDiarioTeste=novos=>{items=novos;o.atualizou(items);};
-     return {migrar:async()=>{},atualizar:async()=>{o.atualizou(items);return items;},itens:()=>items,materializar:x=>x,adicionarArquivos:async()=>{},executar:async()=>items,exportar:async()=>({intencoes:items,naoPersistidas:[]}),fechar:()=>{}};
+     return {migrar:async()=>{},atualizar:async()=>{o.atualizou(items);return items;},itens:()=>items,materializar:x=>x,adicionarArquivos:async()=>{},executar:async()=>items,snapshotPendencias:async()=>({intencoes:items,naoPersistidas:[]}),exportar:async()=>({intencoes:items,naoPersistidas:[]}),fechar:()=>{}};
     }
    `}));}
   }]});
