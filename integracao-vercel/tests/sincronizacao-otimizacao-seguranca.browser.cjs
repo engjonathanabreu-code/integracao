@@ -33,7 +33,7 @@ const assert=require('node:assert/strict');
     const cb=opcoes(conta,{consultarRecibo:async()=>{consultas++;if(resultado==='erro')throw new TypeError('consulta sintética indisponível');return undefined;},enviar:async()=>{envios++;throw new TypeError('resposta desconhecida');},reler:async()=>{leituras++;}});
     for(let n=0;n<8;n++){try{await mod.processarIntencao(fila,cb);}catch{}tempo+=120000;}
     const itens=await fila.listar(conta),i=itens[0];return {envios,leituras,consultas,estado:i.estado,semRecibo:!i.recibo,originalIgual:JSON.stringify(i.original)===JSON.stringify(original.original),checksumIgual:i.checksum===original.checksum,total:itens.length};
-   },resultado);assert.equal(r.envios,1);assert.equal(r.leituras,0);assert.ok(r.consultas>0&&r.consultas<=5);assert.equal(r.estado,'resultado_desconhecido');assert.equal(r.semRecibo,true);assert.equal(r.originalIgual,true);assert.equal(r.checksumIgual,true);assert.equal(r.total,1);casos++;
+   },resultado);assert.equal(r.envios,1);assert.equal(r.leituras,0);/* Contrato C1: transitória sem teto de MAX_SAFE_INTEGER; o limite é uma consulta por oportunidade, com backoff. */assert.ok(r.consultas>0&&r.consultas<=8);assert.equal(r.estado,'resultado_desconhecido');assert.equal(r.semRecibo,true);assert.equal(r.originalIgual,true);assert.equal(r.checksumIgual,true);assert.equal(r.total,1);casos++;
   }
   // Regra genérica, permissão e conflito mantêm a unidade e liberam a independente.
   for(const [code,status,estado] of [['P0001',null,'bloqueado_validacao'],['42501',403,'bloqueado_validacao'],['PT409',409,'bloqueado_conflito']]){

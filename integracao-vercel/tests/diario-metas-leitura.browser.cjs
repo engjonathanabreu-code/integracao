@@ -23,7 +23,9 @@ const assert=require('node:assert/strict');
   for(const flag of ['checklist503','perfis403','contrato403','trocarSessao']){
    const {c,p}=await abrir();
    await p.evaluate(async flag=>{const h=metasLeitura;h.flags[flag]=true;h.sync.mutate(d=>{d.metas[0].titulo='Original preservado';return d;});await h.sync.flush();},flag);
-   await p.waitForFunction(()=>metasLeitura.sync.error.length>0);
+   // Contrato C1: 503 é transitória e não esgota nem exige revisão, então pode não haver mensagem
+   // de erro; basta a falha registrada no item preservado (ou o erro exibido).
+   await p.waitForFunction(()=>metasLeitura.sync.error.length>0||metasLeitura.sync.pendencias.some(i=>i.erro?.categoria==='transitoria'));
    const r=await p.evaluate(async()=>{const {abrirFilaIntencoes}=await import('/src/fila-intencoes.js');const f=abrirFilaIntencoes();try{return {posts:metasLeitura.stats.posts,titulo:metasLeitura.base.metas[0].titulo,itens:await f.listar(metasLeitura.id(1)),outra:await f.listar(metasLeitura.id(2))};}finally{await f.fechar();}});
    assert.equal(r.posts,0,flag);assert.equal(r.titulo,'Meta Teste');assert.ok(r.itens.some(i=>i.original.intencao.edicoes.some(e=>e.colecao==='metas'&&e.depois.valor.titulo==='Original preservado')));assert.ok(r.itens.every(i=>i.estado!=='confirmado'));assert.equal(r.outra.length,0);casos++;await c.close();
   }
@@ -39,7 +41,9 @@ const assert=require('node:assert/strict');
   {
    const {c,p}=await abrir();
    await p.evaluate(async()=>{const h=metasLeitura;h.flags.chat503=true;h.stats.requests.length=0;h.sync.mutate(d=>{d.metas[0].titulo='Mista preservada';d.nucleos[0].prioridade='Alta';return d;});await h.sync.flush();});
-   await p.waitForFunction(()=>metasLeitura.sync.error.length>0);
+   // Contrato C1: 503 é transitória e não esgota nem exige revisão, então pode não haver mensagem
+   // de erro; basta a falha registrada no item preservado (ou o erro exibido).
+   await p.waitForFunction(()=>metasLeitura.sync.error.length>0||metasLeitura.sync.pendencias.some(i=>i.erro?.categoria==='transitoria'));
    assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);
    assert.ok(await p.evaluate(()=>metasLeitura.stats.requests.some(x=>x.t==='erp_mensagens')),'intenção mista mantém leitura completa');casos++;await c.close();
   }
@@ -52,16 +56,21 @@ const assert=require('node:assert/strict');
    });
    await p.waitForFunction(()=>metasLeitura.db.metas.length===2);
    await c.setOffline(true);
-   await p.evaluate(()=>{const h=metasLeitura;h.sync.mutate(d=>{d.metas[0].titulo='Já gravada';return d;});});
-   await p.waitForFunction(()=>metasLeitura.sync.pendencias.length===1);
-   await p.evaluate(()=>{metasLeitura.base.metas[0].titulo='Já gravada';});
+   // O servidor já contém o valor antes da edição local: a retomada automática (C5) pode
+   // enviar sem esperar o debounce, então a ordem não pode depender desse intervalo.
+   await p.evaluate(()=>{const h=metasLeitura;h.base.metas[0].titulo='Já gravada';h.sync.mutate(d=>{d.metas[0].titulo='Já gravada';return d;});});
+   await p.waitForFunction(()=>metasLeitura.db.metas[0].titulo==='Já gravada');
    await c.setOffline(false);
-   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
-   const r=await p.evaluate(async()=>{
+   // A lista de pendências fica vazia também antes de a edição ser persistida; espere o
+   // próprio item da fila chegar a um estado terminal.
+   const lerItem=()=>p.evaluate(async()=>{
     const {abrirFilaIntencoes}=await import('/src/fila-intencoes.js'),f=abrirFilaIntencoes();
-    try{const [i]=await f.listar(metasLeitura.id(1));return {estado:i.estado,prova:i.decisao?.tipo,recibo:!!i.recibo,posts:metasLeitura.stats.posts};}
+    try{const [i]=await f.listar(metasLeitura.id(1));return i?{estado:i.estado,prova:i.decisao?.tipo,recibo:!!i.recibo,posts:metasLeitura.stats.posts}:null;}
     finally{await f.fechar();}
    });
+   let r=null;
+   for(const fim=Date.now()+30000;Date.now()<fim;){r=await lerItem();if(r&&['confirmado','dispensado','substituido'].includes(r.estado))break;await p.waitForTimeout(100);}
+   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
    assert.deepEqual(r,{estado:'confirmado',prova:'metas_ja_presentes_no_servidor',recibo:false,posts:0});casos++;await c.close();
   }
   // A true divergent value stays queued; once the same data become visible,

@@ -21,7 +21,11 @@ const assert=require('node:assert/strict');
   });
   await page.evaluate(()=>syncHarness.sync.flush());
   await page.waitForFunction(()=>syncHarness.sync.pendencias.some(i=>i.recibo&&i.erro?.codigo==='LEITURA_DIVERGENTE'));
-  assert.equal(await page.evaluate(()=>syncHarness.db.metas[0].titulo),original,'overlay não mascara valor atual com envio antigo');
+  // Contrato C4: a edição com recibo e LEITURA_DIVERGENTE continua visível enquanto
+  // aguarda (sem conflito de três versões aqui) e o item permanece pendente, sem confirmação.
+  assert.equal(await page.evaluate(()=>syncHarness.db.metas[0].titulo),'Alteração com recibo','edição aguardando releitura continua visível');
+  assert.ok(await page.evaluate(()=>syncHarness.sync.pendencias.some(i=>i.recibo&&i.estado==='confirmado_aguardando_leitura')),'item continua pendente');
+  assert.notEqual(original,'Alteração com recibo');
   const writes=await page.evaluate(()=>syncHarness.stats.writes);
   await page.locator('summary').filter({hasText:'Pendências de sincronização'}).click();
   await page.getByRole('button',{name:'Revisar esta alteração',exact:true}).click();

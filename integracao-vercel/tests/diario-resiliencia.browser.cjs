@@ -75,7 +75,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const asse
    }
   }finally{diario.fechar();}
  },caso);
- const expected={arquivo_intercalado:{enviados:['primeiro','segundo','terceiro'],estados:['confirmado','confirmado','confirmado']},arquivo:{quantidade:2,estado:'substituido',arquivo:'modelo'},arquivo_sequencia:{enviados:['primeiro','segundo','terceiro'],estados:['confirmado','confirmado','confirmado']},previa_alterada:{erro:true,quantidade:1},substituicao_simultanea:{sucessos:1,quantidade:2},substituicao_abortada:{erro:true,quantidade:1,estado:'bloqueado_conflito'},migracao:{avisos:0,checksum:true,quantidade:1},previa:{substituido:true,outro:'alteração independente'},exportacao:{preservadas:1},substituicao:{erro:true,quantidade:1}}[caso];assert.deepEqual(result,expected);results.push({caso,ok:true});
+ // Versões superadas do mesmo arquivo, ainda não enviadas, não sobem: só a mais recente é
+ // enviada e as anteriores ficam preservadas como substituídas (coalescência da fila).
+ const expected={arquivo_intercalado:{enviados:['segundo','terceiro'],estados:['substituido','confirmado','confirmado']},arquivo:{quantidade:2,estado:'substituido',arquivo:'modelo'},arquivo_sequencia:{enviados:['terceiro'],estados:['substituido','substituido','confirmado']},previa_alterada:{erro:true,quantidade:1},substituicao_simultanea:{sucessos:1,quantidade:2},substituicao_abortada:{erro:true,quantidade:1,estado:'bloqueado_conflito'},migracao:{avisos:0,checksum:true,quantidade:1},previa:{substituido:true,outro:'alteração independente'},exportacao:{preservadas:1},substituicao:{erro:true,quantidade:1}}[caso];assert.deepEqual(result,expected);results.push({caso,ok:true});
  }catch(e){results.push({caso,ok:false,erro:e.message});}
  }
  console.log(JSON.stringify(results,null,2));assert.ok(results.every(r=>r.ok));

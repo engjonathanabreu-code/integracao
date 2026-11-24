@@ -55,10 +55,10 @@ test('recibo com leitura divergente rejeita sem alterar os dados recebidos',asyn
   assert.deepEqual(depois,original);
 });
 
-test('timeout, falha de rede e encerramento limpam apenas esperas e preservam snapshots',async()=>{
+test('timeout (segundo plano), falha de rede e encerramento limpam apenas esperas e preservam snapshots',async()=>{
   let timeout;const c=criarConfirmacoesMutacoes({setTimer:fn=>{timeout=fn;return 1;},clearTimer:()=>{}}),antes=base();
   const depois=mudar(antes,'a',d=>{d.nucleos[0].memorial.texto='novo';});
-  const p=c.aguardar('a',antes,depois);timeout();await assert.rejects(p,{code:'CONFIRMACAO_TIMEOUT'});
+  const p=c.aguardar('a',antes,depois);timeout();await assert.rejects(p,{code:'CONFIRMACAO_SEGUNDO_PLANO',segundoPlano:true,rascunhoPreservado:true});
   const p2=c.aguardar('b',antes,depois);c.falhar(erroConfirmacao('Sem rede','SEM_CONEXAO'));await assert.rejects(p2,{code:'SEM_CONEXAO'});
   assert.equal(depois.nucleos[0].memorial.texto,'novo');assert.equal(c.tamanho,0);
 });
@@ -166,4 +166,10 @@ test('meta nova confirma histórico e arquivo pelo endereço exato da operação
  assert.equal(alteracoesConfirmadas(antes,depois,remoto,{},ops),true);assert.equal(alteracoesConfirmadas(antes,depois,remoto),false);
  for(const alterar of [m=>m.historico=[],m=>m.historico[0].acao='Outra',m=>m.historico[0].autor='Outra',m=>m.historico[0].data='inválida',m=>m.arquivos=[],m=>m.arquivos[0].chave+='outro-hash',m=>m.arquivos[0].nome='outro.pdf',m=>m.arquivos[0].por='Outro',m=>m.arquivos[0].data='',m=>m.arquivos[0].tamanho=99]){const r=structuredClone(remoto);alterar(r.metas[0]);assert.equal(alteracoesConfirmadas(antes,depois,r,{},ops),false);}
  const errada=structuredClone(ops);errada[0].changes.meta_id='outro';assert.equal(alteracoesConfirmadas(antes,depois,remoto,{},errada),false);
+});
+
+test('timeout com item que exige revisão não é anunciado como segundo plano',async()=>{
+  let timeout;const c=criarConfirmacoesMutacoes({setTimer:fn=>{timeout=fn;return 1;},clearTimer:()=>{},exigeRevisao:id=>id==='r'}),antes=base();
+  const depois=mudar(antes,'r',d=>{d.nucleos[0].memorial.texto='novo';});
+  const p=c.aguardar('r',antes,depois);timeout();await assert.rejects(p,e=>e.code==='REVISAO_NECESSARIA'&&!e.segundoPlano);
 });

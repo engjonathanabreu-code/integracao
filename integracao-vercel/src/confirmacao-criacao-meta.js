@@ -1,3 +1,15 @@
+import {igualSemantico} from './igualdade-semantica.js';
+export {emSegundoPlano,MENSAGEM_SEGUNDO_PLANO} from './confirmacao-mutacoes.js';
+
+// Fields the user actually changed in a form, compared with the values the
+// form was opened with. Saving applies only these, so concurrent changes made
+// by someone else to the other fields are not overwritten.
+export function camposAlterados(inicial,atual){
+ const alterados={};
+ for(const k of Object.keys(atual))if(!igualSemantico(inicial?.[k]??null,atual[k]??null))alterados[k]=true;
+ return alterados;
+}
+
 // Keep one captured creation. Retrying confirmation never creates another goal.
 export function criarConfirmacaoMeta(criar) {
  let iniciada=false,emCurso=null,retentar=null,confirmada=false,ultimoErro=null;

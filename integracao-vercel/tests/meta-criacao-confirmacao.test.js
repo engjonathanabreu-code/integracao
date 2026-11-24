@@ -2,18 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
-import {criarConfirmacaoMeta} from '../src/confirmacao-criacao-meta.js';
+import {criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados} from '../src/confirmacao-criacao-meta.js';
 const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('function ModalMetaERP('),source.indexOf('function ModalDetalheMeta('));
 const compiled=transformSync(code,{loader:'jsx',jsx:'transform'}).code;
 function harness(){
  const states=[],refs=[];let si=0,ri=0,seq=0;
- const c={db:{metas:[],usuarios:[],setoresMeta:[]},toasts:[],closed:0,requests:[],creations:0,retries:0};
+ const c={db:{metas:[],usuarios:[],setoresMeta:[]},toasts:[],closed:0,requests:[],creations:0,retries:0,extras:[]};
  const wait=()=>new Promise((resolve,reject)=>c.requests.push({resolve,reject}));
  const mutar=()=>{throw Error('Produção não deve usar mutação otimista');};
- mutar.confirmado=fn=>{c.creations++;c.db=fn(structuredClone(c.db));return wait();};
+ mutar.confirmado=(fn,acao,extra)=>{c.creations++;c.extras.push(extra);c.db=fn(structuredClone(c.db));return wait();};
  const empty=()=>null;
- const deps={confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
+ const deps={confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
  useState:initial=>{const n=si++;if(!(n in states)){states[n]=typeof initial==='function'?initial():initial;if(n===0)states[n]={...states[n],titulo:'Meta teste',responsaveis:['destinatario']};}return [states[n],v=>states[n]=typeof v==='function'?v(states[n]):v];},useRef:initial=>refs[ri++]??(refs[ri-1]={current:initial}),
  semanaISO:()=> '2026-11-16',podeUsarAgentes:()=>false,uid:()=>String(++seq),dataBR:String,rotuloAssociacao:()=>'',registrarHistoricoMeta:()=>{},novaNotificacao:()=>{},
  Modal:empty,Plus:empty,Trash2:empty,SeletorIcone:empty,sugerirIcone:()=>'',META_STATUS:[],ASSOC_TIPOS:[],setoresUnicos:()=>[]};
@@ -56,4 +56,24 @@ test('ponte real sem sessão pronta identifica falha pré-envio e permite tentar
  await assert.rejects(attempt.executar(),{code:'SESSAO_ENCERRADA'});
  assert.equal(writes,0);assert.equal(attempt.naoEnviada(),true);assert.equal(attempt.podeRetentar(),true);
  ready=true;await attempt.executar();assert.equal(writes,1);
+});
+
+test('C6: timeout em segundo plano fecha sem erro, sem "Gravação confirmada" e sem nova criação',async()=>{
+ const c=harness(),p=c.save();await Promise.resolve();
+ const e=Object.assign(Error(MENSAGEM_SEGUNDO_PLANO),{code:'CONFIRMACAO_SEGUNDO_PLANO',segundoPlano:true,retentarConfirmacao:()=>{c.retries++;return new Promise(()=>{});}});
+ c.requests.shift().reject(e);await p;
+ assert.equal(c.closed,1);assert.deepEqual(c.toasts,[MENSAGEM_SEGUNDO_PLANO]);assert.doesNotMatch(c.toasts.join(' '),/Gravação confirmada/);
+ assert.equal(c.creations,1);assert.equal(c.db.metas.length,1);
+});
+test('C6: idOperacao e id da meta nova são gerados ao abrir e reutilizados na nova tentativa',async()=>{
+ const c=harness(),p=c.save();await Promise.resolve();
+ const id=c.extras[0]?.id,metaId=c.db.metas[0].id;assert.ok(id,'a criação leva o idOperacao do formulário');
+ c.reject();await p;
+ // Nova renderização do mesmo formulário mantém as mesmas identidades.
+ c.render();assert.equal(c.db.metas[0].id,metaId);assert.equal(c.extras.length,1);
+});
+test('C6: camposAlterados compara com os valores de abertura do formulário',()=>{
+ assert.deepEqual(camposAlterados({titulo:'a',status:'x',responsaveis:['u']},{titulo:'a',status:'y',responsaveis:['u']}),{status:true});
+ assert.deepEqual(camposAlterados({devolutiva:null},{devolutiva:null}),{});
+ assert.equal(emSegundoPlano({code:'CONFIRMACAO_TIMEOUT'}),false);
 });

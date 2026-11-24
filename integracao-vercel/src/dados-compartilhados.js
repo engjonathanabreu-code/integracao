@@ -9,6 +9,7 @@ import {buscarREST} from './transporte-rest.js';
 import {horarioNovoChecklist} from './contrato-checklist.js';
 import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
+import {falhaTransitoria} from './sincronizacao-regras.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
 // Canonical ERP rows are read in place. Only explicit user edits produce writes.
 // Tokens stay in memory; local storage contains drafts, never credentials.
@@ -17,6 +18,35 @@ export const configERP = {
   chave: import.meta.env?.VITE_ERP_SUPABASE_KEY || 'sb_publishable_A7fw5Et4_bfUnqohpGajCw_nfhT-3a4',
 };
 let session = null, refreshing = null, sessaoEpoch=0, sessaoAbort=new AbortController();
+// C2: 'valida'|'renovando'|'invalida'|'ausente'. Uma sessão invalidada mantém o usuário
+// (para relogin na mesma conta), mas nunca é usada para enviar requisições.
+let estadoAtual='ausente';
+const MARGEM_RENOVACAO_MS=120000;
+// Somente RPCs STABLE (sem escrita no banco), conferidas nas migrations, são repetidas como leitura.
+const RPC_LEITURA=new Set(['integracao_moradores_carga','integracao_consultar_pedido','integracao_atribuicoes_contrato_ler','integracao_contagens_clientes','integracao_eventos']);
+const expiracaoSessao=dados=>{
+  // Relativa ao recebimento: tolera relógio do aparelho adiantado ou atrasado.
+  const s=Number(dados?.expires_in);
+  if(Number.isFinite(s))return Date.now()+s*1000;
+  const absoluto=Number(dados?.expires_at);
+  return Number.isFinite(absoluto)?absoluto*1000:Date.now();
+};
+function mudarEstadoSessao(estado,motivo,forcar=false){
+  if(estadoAtual===estado&&!forcar)return;
+  estadoAtual=estado;
+  if(typeof window==='undefined'||typeof window.dispatchEvent!=='function')return;
+  const detail=motivo?{estado,motivo}:{estado};
+  try{window.dispatchEvent(typeof CustomEvent==='function'?new CustomEvent('integracao:sessao',{detail}):Object.assign(new Event('integracao:sessao'),{detail}));}catch{/* Evento informativo; a sessão já mudou. */}
+}
+const erroSessaoExpirada=()=>Object.assign(new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.'),{status:401,code:'SESSAO_EXPIRADA'});
+const erroAutenticacao=e=>e?.status===401||/^PGRST30[123]$/.test(e?.code||'')||([401,403].includes(e?.status)&&/JWT expired/i.test(e?.message||''));
+export const estadoSessao=()=>estadoAtual;
+export function invalidarSessao(motivo){
+  if(!session){mudarEstadoSessao('ausente');return;}
+  // Aborta requisições em voo; uma gravação interrompida fica com resultado desconhecido (consulta de pedido).
+  sessaoAbort.abort();sessaoAbort=new AbortController();refreshing=null;
+  mudarEstadoSessao('invalida',typeof motivo==='string'?motivo:undefined);
+}
 export function capturarSessao(){
  const epoch=sessaoEpoch,owner=session?.user?.id,signal=sessaoAbort.signal;
  const conferir=()=>{if(epoch!==sessaoEpoch||!session||session.user?.id!==owner){const e=new Error('A sessão mudou. Reabra o registro nesta conta.');e.code='SESSAO_ALTERADA';throw e;}};
@@ -40,32 +70,57 @@ export function definirSessao(dados) {
   sessaoEpoch++;sessaoAbort.abort();sessaoAbort=new AbortController();refreshing=null;
   if (!dados || dados.user?.id !== session?.user?.id) limparContratos();
   if (!dados || !session || !dados.user?.id || dados.user.id !== session.user?.id) { indiceSessao++; indiceJob = null; invalidarIndiceClientes(); }
-  session = dados ? { ...dados, expires_at: Date.now() + dados.expires_in * 1000 } : null; }
-export function temSessao() { return !!session; }
-export async function requisicao(path, options = {}) {
-  if (!session) throw Object.assign(new Error('Entre novamente com sua conta para acessar os dados compartilhados.'),{status:401,code:'SESSAO_AUSENTE'});
-  const scope=capturarSessao();
-  if (session.expires_at < Date.now() + 60000) {
-    if (!refreshing) {
-      const original=session;
-      const job=(async()=>{
+  session = dados ? { ...dados, expires_at: expiracaoSessao(dados) } : null;
+  mudarEstadoSessao(dados?'valida':'ausente',undefined,!!dados); }
+export function temSessao() { return !!session&&(estadoAtual==='valida'||estadoAtual==='renovando'); }
+async function renovarSessao(scope){
+  if (!refreshing) {
+    const original=session,epoch=sessaoEpoch;
+    mudarEstadoSessao('renovando');
+    const job=(async()=>{
+      try{
         const r=await fetch(`${configERP.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:configERP.chave,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:original.refresh_token}),signal:AbortSignal.any([scope.signal,AbortSignal.timeout(25000)])});
         scope.conferir();
-        if(!r.ok){if([400,401,403].includes(r.status))throw Object.assign(new Error('Sua sessão expirou. Entre novamente; suas alterações locais foram preservadas.'),{status:401,code:'SESSAO_EXPIRADA'});throw Object.assign(new Error('Não foi possível renovar a sessão agora. Tente novamente; suas alterações locais foram preservadas.'),{status:r.status});}
+        if(!r.ok){if([400,401,403].includes(r.status)){invalidarSessao('renovacao_recusada');throw erroSessaoExpirada();}throw Object.assign(new Error('Não foi possível renovar a sessão agora. Tente novamente; suas alterações locais foram preservadas.'),{status:r.status});}
         const dados=await r.json();scope.conferir();
         if(dados.user?.id!==scope.owner)throw new Error('Resposta de sessão incompatível. Entre novamente.');
-        session={...dados,expires_at:Date.now()+dados.expires_in*1000};
-      })();
-      refreshing=job;
-      job.finally(()=>{if(refreshing===job)refreshing=null;}).catch(()=>{});
-    }
-    try{await refreshing;}catch(e){scope.conferir();throw e;}
+        session={...dados,expires_at:expiracaoSessao(dados)};
+        mudarEstadoSessao('valida');
+      }catch(e){
+        // Falha transitória da renovação: a sessão continua utilizável para nova tentativa.
+        // Sem evento: nada foi restaurado, e um aviso de sessão válida faria a fila tentar de novo em laço.
+        if(epoch===sessaoEpoch&&estadoAtual==='renovando')estadoAtual='valida';
+        throw e;
+      }
+    })();
+    refreshing=job;
+    job.finally(()=>{if(refreshing===job)refreshing=null;}).catch(()=>{});
   }
-  scope.conferir();
-  try{
-    const result=await buscarREST(`${configERP.url}/rest/v1/${path}`,{...options,signal:options.signal?AbortSignal.any([scope.signal,options.signal]):scope.signal,headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',...options.headers}});
-    scope.conferir();return result;
-  }catch(e){scope.conferir();throw e;}
+  try{await refreshing;}catch(e){scope.conferir();throw e;}
+}
+export async function requisicao(path, options = {}) {
+  if (!session) throw Object.assign(new Error('Entre novamente com sua conta para acessar os dados compartilhados.'),{status:401,code:'SESSAO_AUSENTE'});
+  if (estadoAtual==='invalida') throw erroSessaoExpirada();
+  const scope=capturarSessao();
+  if (session.expires_at < Date.now() + MARGEM_RENOVACAO_MS) await renovarSessao(scope);
+  const rpc=/^rpc\/([a-z0-9_]+)/i.exec(path)?.[1];
+  const leitura=options.leitura??(rpc&&RPC_LEITURA.has(rpc)?true:undefined);
+  // 401/PGRST301–303 vêm antes da execução no servidor: renova uma vez e repete uma vez.
+  for (let repetida=false; ; repetida=true) {
+    scope.conferir();
+    const token=session.access_token;
+    try{
+      const result=await buscarREST(`${configERP.url}/rest/v1/${path}`,{...options,leitura,signal:options.signal?AbortSignal.any([scope.signal,options.signal]):scope.signal,headers:{apikey:configERP.chave,Authorization:`Bearer ${token}`,'Content-Type':'application/json',...options.headers}});
+      scope.conferir();return result;
+    }catch(e){
+      scope.conferir();
+      if(!erroAutenticacao(e)||options.signal?.aborted)throw e;
+      if(repetida){invalidarSessao('token_recusado');throw erroSessaoExpirada();}
+      if(estadoAtual==='invalida')throw erroSessaoExpirada();
+      // Outra requisição pode já ter renovado o token; nesse caso só repete.
+      if(session.access_token===token)await renovarSessao(scope);
+    }
+  }
 }
 export async function lerTabela(tabela, campos = '*', filtro = '') {
   const scope=capturarSessao();
@@ -94,29 +149,89 @@ export async function abrirArquivoSemanal(caminho) {
 }
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { integracao_agente_estrategias: 'agente', integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
-export async function tokenTempoReal(){if(!session)return null;const scope=capturarSessao();if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});scope.conferir();return session.access_token;}
-export async function lerBase({municipios=[],tabelas=null,anterior=null,semCache=false}={}) {
+export async function tokenTempoReal(){if(!temSessao())return null;const scope=capturarSessao();if(session.expires_at<Date.now()+MARGEM_RENOVACAO_MS)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});scope.conferir();return session.access_token;}
+const TABELAS_BASE=[...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t));
+const ordemTabela=table=>compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id');
+const LEITURAS_SIMULTANEAS=6, REPETICOES_TABELA=1, LOTE_IDS=100;
+const esperar=ms=>new Promise(r=>setTimeout(r,ms));
+// Run at most `limite` reads at once; the first failure rejects the whole load.
+async function emParalelo(tarefas,limite=LEITURAS_SIMULTANEAS){
+  const resultados=new Array(tarefas.length);let proxima=0;
+  const trabalhador=async()=>{while(proxima<tarefas.length){const i=proxima++;resultados[i]=await tarefas[i]();}};
+  await Promise.all(Array.from({length:Math.min(limite,tarefas.length)},trabalhador));
+  return resultados;
+}
+// Only a transient failure of this table's page is repeated. Session,
+// permission and validation errors propagate: nothing is confirmed unread.
+async function comRepeticao(ler,scope){
+  for(let tentativa=0;;tentativa++){
+    try{return await ler();}
+    catch(e){scope.conferir();if(tentativa>=REPETICOES_TABELA||!falhaTransitoria(e)||e?.retryAfterMs>5000||e?.cause?.retryAfterMs>5000)throw e;await esperar(Math.max(60*2**tentativa,Number(e?.retryAfterMs??e?.cause?.retryAfterMs)||0));scope.conferir();}
+  }
+}
+// PostgREST: quote only values with reserved characters inside in.(...).
+const valorFiltro=v=>/^[A-Za-z0-9_-]+$/.test(String(v))?String(v):`"${String(v).replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`;
+async function lerPaginas(table,filtro,{semCache,scope}){
+  const rows=[];
+  for (let offset = 0; ; offset += 500) {
+    const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
+    const path = `${table==='erp_eventos'?'rpc/integracao_eventos':table}?select=${fields}${filtro}&order=${ordemTabela(table)}&limit=500&offset=${offset}`;
+    const page = await comRepeticao(()=>requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:semCache?{cache:'no-store'}:{}),scope);
+    scope.conferir();rows.push(...page); if (page.length < 500) break;
+  }
+  return rows;
+}
+async function lerFiltrado(table,coluna,ids,opcoes){
+  const lotes=[];for(let i=0;i<ids.length;i+=LOTE_IDS)lotes.push(ids.slice(i,i+LOTE_IDS));
+  return (await emParalelo(lotes.map(lote=>()=>lerPaginas(table,`&${coluna}=in.(${lote.map(v=>encodeURIComponent(valorFiltro(v))).join(',')})`,opcoes)))).flat();
+}
+const compararOrdem=table=>{const cols=ordemTabela(table).split(',');return (a,b)=>{for(const c of cols){const x=String(a[c]??''),y=String(b[c]??'');if(x!==y)return x<y?-1:1;}return 0;};};
+// Replace the scoped keys: a row absent from an authorized read is absent
+// (deleted or hidden by RLS), exactly as in a complete read. Rows outside the
+// scope keep their previous order; fresh rows are placed by the read order.
+export function substituirEscopo(table,anteriores,coluna,ids,novas){
+  const chaves=new Set(ids.map(String)),cmp=compararOrdem(table);
+  const resto=(anteriores||[]).filter(r=>!chaves.has(String(r[coluna])));
+  for(const row of novas){const i=resto.findIndex(r=>cmp(r,row)>0);if(i<0)resto.push(row);else resto.splice(i,0,row);}
+  return resto;
+}
+export const baseCompleta=anterior=>!!anterior&&[...TABELAS_BASE,'fin_receb_clientes','integracao_moradores'].every(t=>Array.isArray(anterior[t]));
+export async function lerBase({municipios=[],tabelas=null,anterior=null,semCache=false,escopo=null}={}) {
   const scope=capturarSessao();
-  if(!tabelas||tabelas.includes("profiles")){const contrato=await requisicao("rpc/integracao_atribuicoes_contrato_ler",{method:"POST",body:"{}"});scope.conferir();registrarContrato(scope.owner,contrato); }
-  const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {
-    const rows = [];
-    for (let offset = 0; ; offset += 500) {
-      const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
-      const path = `${table==='erp_eventos'?'rpc/integracao_eventos':table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`;
-      const page = await requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:semCache?{cache:'no-store'}:{});
-      scope.conferir();rows.push(...page); if (page.length < 500) break;
-    }
-    return [table, rows];
-  }));
-  scope.conferir();const result = {...(anterior||{}),...Object.fromEntries(pairs)};
-  if(!tabelas||tabelas.includes('fin_receb_clientes'))result._contagensClientes=await requisicao('rpc/integracao_contagens_clientes',{method:'POST',body:'{}'});
+  // A scope is applied only over a complete previous server base; without one
+  // the companion tables are not enough, so the whole base is read.
+  if(escopo&&!baseCompleta(anterior)){escopo=null;tabelas=null;anterior=null;}
+  if(escopo)tabelas=tabelas||[];
+  const opcoes={semCache,scope},perfis=!tabelas||tabelas.includes('profiles'),contagens=!tabelas||tabelas.includes('fin_receb_clientes');
+  const completas=TABELAS_BASE.filter(t=>!tabelas||tabelas.includes(t));
+  const filtradas=escopo?Object.entries(escopo).filter(([t,e])=>TABELAS_BASE.includes(t)&&!completas.includes(t)&&typeof e?.coluna==='string'&&Array.isArray(e.ids)):[];
+  // One bounded pool: contract/directory RPCs, complete tables and scoped tables.
+  const rpc=nome=>requisicao(`rpc/${nome}`,{method:'POST',body:'{}'});
+  const lerEscopo=(t,e,ids)=>async()=>['escopo',[t,e,ids,ids.length?await lerFiltrado(t,e.coluna,ids,opcoes):[]]];
+  const lidas=await emParalelo([
+    ...(perfis?[async()=>['contrato',await rpc('integracao_atribuicoes_contrato_ler')],async()=>['diretorio',await rpc('erp_collab_directory')]]:[]),
+    ...(contagens?[async()=>['contagens',await rpc('integracao_contagens_clientes')]]:[]),
+    ...completas.map(table=>async()=>['tabela',[table,await lerPaginas(table,'',opcoes)]]),
+    ...filtradas.map(([t,e])=>lerEscopo(t,e,e.ids)),
+  ]);
+  scope.conferir();
+  const de=tipo=>lidas.filter(([k])=>k===tipo).map(([,v])=>v);
+  if(perfis)registrarContrato(scope.owner,de('contrato')[0]);
+  const result = {...(anterior||{}),...Object.fromEntries(de('tabela'))};
+  if(contagens)result._contagensClientes=de('contagens')[0];
   // projetar reúne complementos; não reutilize cópias de tabelas próprias removidas.
   if(tabelas&&!tabelas.includes('integracao_complementos'))result.integracao_complementos=(result.integracao_complementos||[]).filter(e=>!e._tabela||e._tabela==='integracao_complementos');
-  // The existing ERP directory exposes names/roles without exposing personal fields.
-  if(!tabelas||tabelas.includes('profiles')){
-  const directory = await requisicao('rpc/erp_collab_directory', { method: 'POST', body: '{}' });
-  result.profiles = directory.map(p => ({ ...p, ativo: true, ...(result.profiles.find(x => x.id === p.id) || {}) }));
+  const aplicar=lista=>{for(const [t,e,ids,rows] of lista)result[t]=substituirEscopo(t,result[t],e.coluna,ids,rows);};
+  aplicar(de('escopo'));
+  if(escopo){
+    // Child ids read just now (e.g. a checklist item added elsewhere) also
+    // select their complements, so the projection matches a complete read.
+    const filhosLidos=([origem,campo])=>{const o=escopo[origem];if(!o)return [];const chaves=new Set(o.ids.map(String));return (result[origem]||[]).filter(r=>chaves.has(String(r[o.coluna]))).map(r=>r[campo]).filter(v=>v!=null).map(String);};
+    const extras=filtradas.filter(([,e])=>e.incluirDe).map(([t,e])=>{const ja=new Set(e.ids.map(String));return [t,e,[...new Set(e.incluirDe.flatMap(filhosLidos))].filter(id=>!ja.has(id))];}).filter(([,,ids])=>ids.length);
+    if(extras.length){aplicar((await emParalelo(extras.map(([t,e,ids])=>lerEscopo(t,e,ids)))).map(([,v])=>v));scope.conferir();}
   }
+  // The existing ERP directory exposes names/roles without exposing personal fields.
+  if(perfis)result.profiles = de('diretorio')[0].map(p => ({ ...p, ativo: true, ...(result.profiles.find(x => x.id === p.id) || {}) }));
   if(!tabelas||tabelas.some(t=>['fin_receb_clientes','integracao_moradores'].includes(t))){
   result.fin_receb_clientes=[];result.integracao_moradores=[];
   for(const municipio of municipios){const carga=await lerMoradoresMunicipio(municipio);result.fin_receb_clientes.push(...carga.clientes);result.integracao_moradores.push(...carga.complementos);}
@@ -289,6 +404,9 @@ const at = (db,b) => {
   const list=b.parent.childId ? p?.[b.parent.field]?.find(x=>x.id===b.parent.childId)?.[b.parent.childField] : p?.[b.parent.field];
   return (list||[]).find(x=>x.id===b.id);
 };
+// Deterministic local refusals while encoding an edit: nothing was sent and a
+// retry cannot change the outcome, so they are validation (422), not transport.
+const erroLocal=(mensagem,code='EDICAO_LOCAL_INVALIDA')=>Object.assign(new Error(mensagem),{code,status:422});
 export function alteracoesCompartilhadas(before,after,state,actor) {
   const ops=[];
   for (const b of state.bindings) {
@@ -296,8 +414,8 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     const old=at(before,b), next=at(after,b);
     if (!old || !next) {
       if(old && !next) {
-        if(b.table==='erp_mensagens')throw new Error('Mensagens existentes são preservadas no histórico do ERP.');
-        if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw new Error('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
+        if(b.table==='erp_mensagens')throw erroLocal('Mensagens existentes são preservadas no histórico do ERP.');
+        if(b.table==='erp_conversas') {if(!old.exclusaoSolicitada?.id)throw erroLocal('Solicite a exclusão da conversa antes de aprová-la.');ops.push({action:'decidir_exclusao',payload:{id:old.exclusaoSolicitada.id,status:'aprovado'}});}
         else if(b.table==='erp_eventos') ops.push({action:'evento_status',payload:{id:b.row.id,status:'cancelado'},expected:{status:b.row.status},table:b.table,key:b.key});
         else if(b.table==='processos_kanban') ops.push({table:b.table,key:b.key,expected:b.row,changes:{excluido_erp:true}});
         else ops.push({table:b.table,key:b.key,expected:b.row,remove:true});
@@ -317,7 +435,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     }
     if(b.table==='processos_kanban' && old.municipioId!==next.municipioId) {
       const m=after.municipios.find(x=>x.id===next.municipioId);
-      if(!m)throw new Error('Município não encontrado.');
+      if(!m)throw erroLocal('Município não encontrado.','MUNICIPIO_NAO_ENCONTRADO');
       Object.assign(changes,{municipio:m.nome,estado:m.uf});Object.assign(expected,{municipio:b.row.municipio,estado:b.row.estado});
     }
     if(Object.keys(changes).length) {
@@ -328,7 +446,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
         if('cor' in rest) { ops.push({action:'evento_cor',payload:{id:b.row.id,cor:rest.cor},expected:{cor:expected.cor},table:b.table,key:b.key}); delete rest.cor; }
         if(Object.keys(rest).length) ops.push({table:b.table,key:b.key,expected:Object.fromEntries(Object.keys(rest).map(k=>[k,expected[k]])),changes:rest});
       }
-      else if(['erp_conversas','erp_mensagens'].includes(b.table)) throw new Error('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
+      else if(['erp_conversas','erp_mensagens'].includes(b.table)) throw erroLocal('O ERP não permite editar os dados desta conversa. A alteração local foi preservada para revisão.');
       else ops.push({table:b.table,key:b.key,expected,changes});
     }
   }
@@ -342,7 +460,7 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
     return refs.size===1?[...refs][0]:direto;
   };
   const link=e=> e ? {entidade_tipo:e.tipo==='nucleo'?'processo':e.tipo,entidade_id:after.nucleos.find(n=>n.id===e.id)?.externo?.kanbanId||e.id} : {};
-  const requireUuid=id=> {if(!uuid(id)) throw new Error('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.');return id;};
+  const requireUuid=id=> {if(!uuid(id)) throw erroLocal('Este cadastro local precisa ser vinculado antes de ser gravado no banco compartilhado. Os dados locais foram preservados.','CADASTRO_LOCAL_SEM_VINCULO');return id;};
   // Um município sintético (só do kanban) vira o registro real do financeiro quando ele existe com o mesmo nome e UF.
   const municipioReal=id=>{ if(uuid(id))return id; const m=after.municipios.find(x=>x.id===id); const real=m&&after.municipios.find(x=>uuid(x.id)&&normalize(x.nome)===normalize(m.nome)&&(x.uf||'SC')===(m.uf||'SC')); return real?real.id:id; };
   // These are creations requested after loading, never an import of old local rows.

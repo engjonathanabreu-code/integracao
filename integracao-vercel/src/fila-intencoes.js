@@ -1,6 +1,8 @@
 import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
-import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,ciclosBackoffIntencao} from './estado-sincronizacao.js';
+import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita,arquivoUnicoDaIntencao,provaArquivoSemGravacao,arquivoEmConflito,conflitoArquivoReconciliavel} from './arquivos-intencoes.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,atrasoRetentativa,retomavelTransitoria,estadoRetomado,erroServidorDeterministico,marcarReleituraDivergente,podeReprepararConflito,marcarConflitoRepreparado,VERSAO_REGRAS_CONFIRMACAO} from './estado-sincronizacao.js';
+// Bounds for resumed/session items and for a repeated deterministic server error.
+const PISO_RETOMADA_MS=15000,PAUSA_SESSAO_MS=5000,LIMITE_ERRO_SERVIDOR_REPETIDO=5,JANELA_ERRO_SERVIDOR_REPETIDO_MS=600000;
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
@@ -26,7 +28,7 @@ export async function checksumIntencao(v){
  return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integracao-intencoes-v2',agora=()=>Date.now(),aleatorio=Math.random}={}){
- let conexao;
+ let conexao,migradas=new Set();
  const abrir=()=>{
   if(!indexedDB)throw erro('O armazenamento persistente não está disponível. Exporte as alterações antes de sair.','PERSISTENCIA_INDISPONIVEL');
   if(!conexao)conexao=new Promise((resolve,reject)=>{
@@ -38,7 +40,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    };
    p.onerror=()=>reject(p.error);
    p.onblocked=()=>{encerrado=true;reject(erro('Outra aba está impedindo a abertura da fila. Preserve as alterações e tente novamente.','FILA_BLOQUEADA'));};
-   p.onsuccess=()=>{if(encerrado){p.result.close();return;}p.result.onversionchange=()=>{p.result.close();conexao=null;};resolve(p.result);};
+   p.onsuccess=()=>{if(encerrado){p.result.close();return;}p.result.onversionchange=()=>{p.result.close();conexao=null;migradas=new Set();};resolve(p.result);};
   }).catch(e=>{conexao=null;throw e;});
   return conexao;
  };
@@ -54,7 +56,89 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   });
  }
  const contaValida=conta=>{if(typeof conta!=='string'||!conta)throw erro('Conta da intenção ausente.','CONTA_INVALIDA');};
- async function listar(conta){contaValida(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
+ // C1 migration, once per account per connection and idempotent: old clients
+ // parked transient/session failures at MAX_SAFE_INTEGER. Without a proven
+ // server refusal they become eligible now, keeping id, payload, receipt and
+ // phase; sent entries still go through the request lookup before any resend.
+ async function migrarConta(conta){
+  if(migradas.has(conta))return;
+  // A failed migration never blocks reading; the next operation retries it.
+  await transacao('readwrite',async s=>{
+   const tempo=agora(),todas=await requisicao(s.intencoes.index('conta').getAll(conta));
+   for(const i of todas){
+    // One new preparation for a never-sent file request parked as "no
+    // operations": it can now be closed with proof, or it parks again.
+    if(i.estado==='bloqueado_validacao'&&i.erro?.codigo==='INTENCAO_SEM_OPERACOES'&&!i.semOperacoesVerificada&&!(i.leaseAte>tempo)&&arquivoUnicoDaIntencao(i)&&nuncaEnviada(i)){
+     i.estado='pendente_local';i.proximaTentativa=tempo;i.semOperacoesVerificada=true;
+     await requisicao(s.intencoes.put(i));continue;
+    }
+    // Same single re-evaluation for a never-sent request without files: an
+    // access/presence-only entry is dispensed, a value already on the server is
+    // closed with proof by the preparation, anything else parks again.
+    if(i.estado==='bloqueado_validacao'&&i.erro?.codigo==='INTENCAO_SEM_OPERACOES'&&!i.semOperacoesVerificada&&!(i.leaseAte>tempo)&&semArquivos(i)&&i.original?.preparar===true&&nuncaEnviada(i)){
+     i.estado='pendente_local';i.proximaTentativa=tempo;i.semOperacoesVerificada=true;
+     await requisicao(s.intencoes.put(i));continue;
+    }
+    // A conflict found before any send is prepared once more per comparison-rules
+    // version (the merge rules may now reconcile it). If it persists it is
+    // recorded again as bloqueado_conflito, with the marker, and stays in review.
+    if(podeReprepararConflito(i,tempo)){
+     marcarConflitoRepreparado(i);i.proximaTentativa=tempo;i.atualizadoEm=tempo;
+     await requisicao(s.intencoes.put(i));continue;
+    }
+    if(i.proximaTentativa!==Number.MAX_SAFE_INTEGER||!retomavelTransitoria(i,tempo))continue;
+    i.estado=estadoRetomado(i);i.proximaTentativa=tempo;i.retentativaMigradaEm=tempo;
+    await requisicao(s.intencoes.put(i));
+   }
+   await coalescerArquivos(s,todas,tempo);
+  }).then(()=>migradas.add(conta),()=>{});
+ }
+ const semArquivos=i=>Object.keys(i.original?.intencao?.arquivos||{}).length===0;
+ const nuncaEnviada=i=>i.payload==null&&i.preparado==null&&i.recibo==null&&i.enviadoEm==null&&i.confirmadoEm==null&&!(i.tentativas>0)&&!(i.tentativasTotais>0);
+ // A whole-value file has one meaningful local version: the newest. Older
+ // file-only versions that never reached the server (or were provably refused)
+ // are archived as superseded, with their bytes kept in the journal, so one
+ // refused or pending version cannot hold every later one. Requests with an
+ // unknown result, a receipt, an active lease or an explicit review decision
+ // are never touched. Idempotent; runs inside the caller's transaction.
+ async function coalescerArquivos(s,items,tempo=agora()){
+  const grupos=new Map();
+  for(const i of items){
+   if(['confirmado','substituido','dispensado'].includes(i.estado))continue;
+   const a=arquivoUnicoDaIntencao(i);if(!a)continue;
+   const chave=JSON.stringify([a.id,a.key]);grupos.set(chave,[...(grupos.get(chave)||[]),i]);
+  }
+  let total=0;
+  for(const grupo of grupos.values()){
+   grupo.sort((a,b)=>a.ordem-b.ordem);const ultima=grupo.at(-1);
+   if(grupo.length<2||ultima.leaseAte>tempo)continue;
+   // A live request outside the group that sits between a version and the
+   // survivor and waits on that version (or shares the file) would end up
+   // waiting on the survivor while the survivor waits on it. Keep such a
+   // version, and every earlier one, in the ordinary chain.
+   const recurso='arquivo:'+arquivoUnicoDaIntencao(ultima).id,membros=new Set(grupo.map(i=>i.id));
+   const vivos=items.filter(x=>!membros.has(x.id)&&!['confirmado','substituido','dispensado'].includes(x.estado));
+   const esperadas=new Set(dependenciasEfetivasDaIntencao(ultima));
+   const presa=i=>vivos.some(x=>x.ordem>i.ordem&&x.ordem<ultima.ordem&&(recursosEfetivosDaIntencao(x).includes(recurso)||esperadas.has(x.id)&&dependenciasEfetivasDaIntencao(x).includes(i.id)));
+   const ultimaPresa=grupo.slice(0,-1).reduce((n,i,k)=>presa(i)?k:n,-1);
+   const superadas=grupo.slice(ultimaPresa+1,-1).filter(i=>!i.original.substitui&&!i.recibo&&!(i.leaseAte>tempo)&&(nuncaEnviada(i)||revisaoDeRecusa(i)));
+   if(!superadas.length)continue;
+   const ids=new Set(superadas.map(i=>i.id));
+   // The survivor must not wait on what it supersedes; it keeps every other
+   // ordering constraint those versions had.
+   const herdar=lista=>[...new Set([...lista,...superadas.flatMap(dependenciasEfetivasDaIntencao)])].filter(id=>!ids.has(id)&&id!==ultima.id);
+   ultima.dependencias=herdar(ultima.dependencias||ultima.original.dependencias||[]);
+   if(ultima.escopoArquivos?.versao===1)ultima.escopoArquivos={...ultima.escopoArquivos,dependencias:herdar(ultima.escopoArquivos.dependencias||[])};
+   for(const i of superadas){
+    i.decisao={tipo:'versao_de_arquivo_superada',em:tempo,por:ultima.id,estadoAnterior:i.estado};
+    i.estado='substituido';i.substituidaPor=ultima.id;i.atualizadoEm=tempo;
+    await requisicao(s.intencoes.put(i));total++;
+   }
+   await requisicao(s.intencoes.put(ultima));
+  }
+  return total;
+ }
+ async function listar(conta){contaValida(conta);await migrarConta(conta);return transacao('readonly',async s=>(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem));}
  // Freeze safe scopes even when their own real dependencies are still blocked.
  // Otherwise an already persisted file-only successor can never reach selection.
  async function congelarEscopos(s,items,tempo=agora()){
@@ -72,6 +156,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   if(substituirId)original.substitui=substituirId;
   canonico(original);
   const checksum=await checksumIntencao(original);
+  await migrarConta(conta);
   return transacao('readwrite',async s=>{
    const existente=await requisicao(s.intencoes.get([conta,id]));
    if(existente){if(existente.checksum!==checksum)throw erro('A mesma intenção foi reutilizada com outro conteúdo.','PEDIDO_DIVERGENTE');return existente;}
@@ -92,23 +177,28 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     await requisicao(s.intencoes.put(substituida));
    }
    if(legado){item.payload=structuredClone(operacoes);item.preparado={antes:legado.before,depois:legado.after,sent:legado.sent||{}};item.estado=legado.confirmacao?'confirmado_aguardando_leitura':legado.rejeitada?'bloqueado_validacao':'resultado_desconhecido';if(legado.confirmacao)item.recibo=structuredClone(legado.confirmacao);}
-   await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));return item;
+   await requisicao(s.sequencias.put({conta,valor:(seq?.valor||0)+1}));await requisicao(s.intencoes.add(item));
+   if(!arquivoUnicoDaIntencao(item))return item;
+   // Reread: earlier copies in this transaction may predate a replacement.
+   await coalescerArquivos(s,await requisicao(s.intencoes.index('conta').getAll(conta)));
+   return requisicao(s.intencoes.get([conta,id]));
   });
  }
  async function reservar(conta,{dono,leaseMs=60000,somenteId=null,somenteLeitura=false,exigirRecibo=false,somenteConvergencia=false,ignorarIds=[]}={}){
   contaValida(conta);if(!dono||leaseMs<1000)throw erro('Consumidor inválido.','CONSUMIDOR_INVALIDO');
+  await migrarConta(conta);
   return transacao('readwrite',async s=>{
    const items=(await requisicao(s.intencoes.index('conta').getAll(conta))).sort((a,b)=>a.ordem-b.ordem),tempo=agora();
    for(const item of items)if(!somenteLeitura&&(!somenteId||item.id===somenteId)&&!(item.leaseAte>tempo)&&pendenciaSomenteLocal(item)){
     item.estado='dispensado';item.decisao={tipo:item.original.intencao.edicoes.some(edicaoDerivada)?'somente_projecao_derivada_local':'somente_presenca_ou_acesso_local',em:tempo};
     await requisicao(s.intencoes.put(item));
    }
-   if(!somenteLeitura)await congelarEscopos(s,items,tempo);
+   if(!somenteLeitura){await coalescerArquivos(s,items,tempo);await congelarEscopos(s,items,tempo);}
    for(const item of items){
     if(somenteId&&item.id!==somenteId)continue;
     if(ignorarIds.includes(item.id))continue;
     const elegivel=['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
-    if(item.leaseAte>tempo||!elegivel||somenteConvergencia&&!conflitoReconciliavelMetas(item,tempo)||somenteLeitura&&!somenteConvergencia&&(!item.payload||exigirRecibo&&!item.recibo))continue;
+    if(item.leaseAte>tempo||!elegivel||somenteConvergencia&&!conflitoReconciliavelMetas(item,tempo)&&!conflitoArquivoReconciliavel(item,tempo)||somenteLeitura&&!somenteConvergencia&&(!item.payload||exigirRecibo&&!item.recibo))continue;
     // One read-only retry after this repair, even when the old code exhausted
     // its attempts. The marker is committed together with the existing lease.
     const reabrirReleitura=!somenteLeitura&&!somenteId&&item.proximaTentativa===Number.MAX_SAFE_INTEGER&&
@@ -181,27 +271,78 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   const prova=provaCampoSemEscrita(atual,pronto);
   if(!prova)throw erro('A evidência do arquivo ou sua versão mudou.','REVISAO_NECESSARIA');
   const vivos=(await requisicao(s.intencoes.index('conta').getAll(item.conta))).filter(i=>i.id!==atual.id&&!['confirmado','substituido','dispensado'].includes(i.estado));
-  if(vivos.some(i=>dependenciasEfetivasDaIntencao(i).includes(atual.id)||i.original.unidade===atual.original.unidade))
+  const dependentes=vivos.filter(i=>dependenciasEfetivasDaIntencao(i).includes(atual.id)||i.original.unidade===atual.original.unidade);
+  // A newer version of this same file supersedes this copy on the next pass,
+  // so refusing here cannot deadlock. Any other dependent only waits on this
+  // request: it sends nothing here, and its own compare-and-set still applies.
+  if(dependentes.some(i=>arquivoUnicoDaIntencao(i)?.id===prova.id))
    throw erro('A cópia de Campo tem alterações dependentes; o histórico foi preservado.','CAMPO_COPIA_COM_DEPENDENTES');
   if(atual.leaseAte<=agora())throw erro('A reserva da intenção mudou durante a verificação.','RESERVA_EXPIRADA');
   atual.estado='dispensado';atual.decisao={tipo:'campo_ja_presente_no_servidor',em:agora(),prova};
   soltar(atual);
  });
+ // Closes a single-file request with no server write and no receipt: either
+ // preparation proved there is nothing to write, or a refused conflict's exact
+ // content was read back from the server. Never marks it confirmed.
+ const dispensarArquivoSemGravacao=(item,prova)=>alterarReserva(item,atual=>{
+  const a=arquivoUnicoDaIntencao(atual),arquivo=a&&atual.original.intencao.arquivos[a.id];
+  const comum=a&&prova?.id===a.id&&prova.version===a.version&&!atual.recibo;
+  const semEfeito=comum&&prova.tipo==='arquivo_sem_gravacao_necessaria'&&nuncaEnviada(atual)&&
+   (prova.motivo==='remocao_sem_registro'?arquivo.value===null:prova.motivo==='conteudo_identico'&&typeof arquivo.value==='string'&&prova.dados?.chave===a.key);
+  const presente=comum&&prova.tipo==='arquivo_ja_presente_no_servidor'&&arquivoEmConflito(atual)&&canonico(prova.dados)===canonico(atual.payload[0].changes.dados);
+  if(!semEfeito&&!presente)throw erro('A evidência do arquivo ou sua versão mudou.','REVISAO_NECESSARIA');
+  if(atual.leaseAte<=agora())throw erro('A reserva da intenção mudou durante a verificação.','RESERVA_EXPIRADA');
+  atual.estado='dispensado';atual.decisao={tipo:prova.tipo,em:agora(),prova:structuredClone(prova)};
+  soltar(atual);
+ });
+ // Closes a never-sent request without files whose fresh preparation proved
+ // there is nothing to write: every edited value is already what the server
+ // returns. No receipt exists, so it is dispensed, never marked confirmed.
+ const dispensarJaPresente=(item,prova)=>alterarReserva(item,atual=>{
+  if(prova?.tipo!=='ja_presente_no_servidor'||typeof atual.checksum!=='string'||prova.checksum!==atual.checksum||!semArquivos(atual)||atual.original?.preparar!==true||!nuncaEnviada(atual))
+   throw erro('A intenção mudou durante a verificação.','REVISAO_NECESSARIA');
+  if(atual.leaseAte<=agora())throw erro('A reserva da intenção mudou durante a verificação.','RESERVA_EXPIRADA');
+  atual.estado='dispensado';atual.decisao={tipo:prova.tipo,em:agora()};
+  delete atual.erro;soltar(atual);
+ });
  const registrarFalha=(item,e,{fase=item.fase}={})=>alterarReserva(item,atual=>{
-  const falha=classificarFalha(e),{status,codigo,categoria}=falha;
-  const rejeicaoConfirmada=['preparacao','envio'].includes(fase)&&([400,401,403,404,409,422].includes(status)||codigo==='PT409');
+  const falha=classificarFalha(e),{status,codigo,categoria}=falha,anterior=atual.erro;
+  // C1 `sessao`: not a property of this request. State, phase, counters and
+  // schedule stay as they were; the error is informative and the pass aborts.
+  if(categoria==='sessao'){atual.erro={...falha,rejeicaoConfirmada:false,fase,informativo:true};
+   // A short pause only: a path that cannot invalidate the session must not spin.
+   if(!(atual.proximaTentativa>agora()+PAUSA_SESSAO_MS))atual.proximaTentativa=agora()+PAUSA_SESSAO_MS;
+   soltar(atual);return;}
+  const rejeicaoConfirmada=['preparacao','envio'].includes(fase)&&([400,403,404,409,422].includes(status)||codigo==='PT409');
   // Only statuses received from the server prove rejection. A lost response does not.
   if(atual.recibo)atual.estado='confirmado_aguardando_leitura';
   else if(rejeicaoConfirmada&&categoria==='conflito')atual.estado='bloqueado_conflito';
-  else if(['sessao','permissao','validacao'].includes(categoria)||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
-  else atual.estado=status===429?'falha_transitoria':'resultado_desconhecido';
+  else if(['permissao','validacao','registro_indisponivel'].includes(categoria)||rejeicaoConfirmada)atual.estado='bloqueado_validacao';
+  // 429 proves "not processed" only for the write itself; a throttled receipt
+  // lookup leaves the result unknown, so the lookup is repeated before any resend.
+  else atual.estado=status===429&&fase==='envio'?'falha_transitoria':'resultado_desconhecido';
   atual.fase=fase;atual.erro={...falha,rejeicaoConfirmada,fase};
-  atual.falhas=(atual.falhas||0)+1;
-  const retry=Number(e.retryAfterMs)||0;
-  const ciclos=ciclosBackoffIntencao(atual);
-  atual.proximaTentativa=agora()+Math.max(retry,Math.min(60000,1000*2**Math.min(ciclos,6))*(.5+aleatorio()*.5));
-  // Automatic retries are bounded. An unknown result remains unknown after exhaustion.
-  if(['sessao','permissao','validacao'].includes(categoria)||atual.tentativas>=5||atual.falhas>=5)atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  // A conflict found with the current rules is not prepared again by the
+  // once-per-version repair; only conflicts recorded by older rules are.
+  if(atual.estado==='bloqueado_conflito'&&fase==='preparacao')atual.conflitoRegrasVersao=VERSAO_REGRAS_CONFIRMACAO;
+  atual.falhas=(atual.falhas||0)+1;atual.falhouEm=agora();
+  // The server answered the write itself with the same 5xx error repeatedly: a
+  // deterministic failure (not a timeout/overload) needs review, not endless resends.
+  const mesma=categoria==='transitoria'&&fase==='envio'&&erroServidorDeterministico(status,codigo);
+  const continua=mesma&&anterior?.fase==='envio'&&anterior.status===status&&anterior.codigo===codigo&&atual.repeticoesEnvio>0;
+  atual.repeticoesEnvio=continua?atual.repeticoesEnvio+1:mesma?1:0;
+  if(!continua)atual.repeticoesDesde=mesma?agora():null;
+  // Backoff grows with consecutive failures, also before anything was sent.
+  atual.proximaTentativa=agora()+atrasoRetentativa(atual.falhas,e?.retryAfterMs,aleatorio);
+  // Review is reserved for server verdicts. Transient failures are retried with
+  // backoff indefinitely (never MAX_SAFE_INTEGER); an unknown result remains
+  // unknown and is resolved through the request lookup before any resend.
+  // Other non-review categories (read-back, storage, unproven conflict) keep
+  // the previous bounded automatic attempts.
+  if(['permissao','validacao','registro_indisponivel'].includes(categoria)||categoria!=='transitoria'&&(atual.tentativas>=5||atual.falhas>=5))atual.proximaTentativa=Number.MAX_SAFE_INTEGER;
+  // Review without a proven refusal: the same request can still be resumed by
+  // the user (with the receipt lookup first); automatic resumption skips it.
+  if(atual.repeticoesEnvio>=LIMITE_ERRO_SERVIDOR_REPETIDO&&agora()-atual.repeticoesDesde>=JANELA_ERRO_SERVIDOR_REPETIDO_MS&&!atual.recibo){atual.estado='bloqueado_validacao';atual.erro={...atual.erro,categoria:'validacao',rejeicaoConfirmada:false,repetida:true};atual.proximaTentativa=Number.MAX_SAFE_INTEGER;}
   soltar(atual);
  });
  const fixarPayload=(item,payload,preparado)=>alterarReserva(item,atual=>{
@@ -244,9 +385,29 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    const tempo=agora(),items=await requisicao(s.intencoes.index('conta').getAll(conta));let total=0;
    for(const i of items)if(podeRetomarLeituraAutomaticamente(i,tempo)){
     i.proximaTentativa=0;
-    if(i.erro.codigo==='LEITURA_DIVERGENTE')i.releituraDivergenteVerificada=true;
+    // Versioned marker: one fresh comparison per comparison-rules version.
+    if(i.erro.codigo==='LEITURA_DIVERGENTE')marcarReleituraDivergente(i);
     else i.releituraTemporariaVerificada=true;
     i.atualizadoEm=tempo;
+    await requisicao(s.intencoes.put(i));total++;
+   }
+   return total;
+  });
+ }
+ // C5: make transient/session items eligible now (online, focus, valid session,
+ // periodic tick). Counters, ids, payloads, receipts and phases are preserved;
+ // review states, active leases and proven refusals are never touched.
+ async function retomarTransitorias(conta){
+  contaValida(conta);await migrarConta(conta);
+  return transacao('readwrite',async s=>{
+   const tempo=agora();let total=0;
+   for(const i of await requisicao(s.intencoes.index('conta').getAll(conta))){
+    if(!(i.proximaTentativa>tempo)||!retomavelTransitoria(i,tempo))continue;
+    // Floor: a signal may shorten the wait, never below PISO_RETOMADA_MS after the
+    // last real failure; event storms cannot turn the backoff into a hot loop.
+    const piso=i.erro?.categoria==='sessao'?tempo:Math.max(tempo,(i.falhouEm||0)+PISO_RETOMADA_MS);
+    if(piso>=i.proximaTentativa)continue;
+    i.estado=estadoRetomado(i);i.proximaTentativa=piso;i.atualizadoEm=tempo;
     await requisicao(s.intencoes.put(i));total++;
    }
    return total;
@@ -261,7 +422,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    if(['confirmado','substituido','dispensado'].includes(item.estado))return item;
    if(!['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)&&!(['bloqueado_validacao','bloqueado_conflito'].includes(item.estado)&&!revisaoDeRecusa(item)))throw erro('A pendência mudou. Abra novamente a prévia antes de retomar.','REVISAO_NECESSARIA');
    if(item.leaseAte>agora())return item;
-   item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
+   item.proximaTentativa=0;item.tentativas=0;item.falhas=0;item.repeticoesEnvio=0;item.repeticoesDesde=null;item.estado=item.recibo?'confirmado_aguardando_leitura':item.payload?'resultado_desconhecido':'pendente_local';
    await requisicao(s.intencoes.put(item));return item;
   });
  }
@@ -315,7 +476,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,retomarTransitorias,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,dispensarArquivoSemGravacao,dispensarJaPresente,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.
@@ -326,8 +487,11 @@ async function consumirReserva(fila,opcoes,reserva,executar){
  const {conta,dono,sessaoAtual,leaseMs=60000,renovarCadaMs=20000,travas=globalThis.navigator?.locks}=opcoes;
  const ignorarIds=[...(opcoes.ignorarIds||[])];
  const conferir=()=>{if(!sessaoAtual())throw erro('Sessão encerrada. A intenção permanece na conta original.','SESSAO_ALTERADA');};
+ // C2: never reserve or prepare while the session is invalid or absent
+ // (`estadoSessao(): 'valida'|'renovando'|'invalida'|'ausente'`, optional).
+ const sessaoUtilizavel=()=>typeof opcoes.estadoSessao!=='function'||['valida','renovando'].includes(opcoes.estadoSessao());
  for(;;){
-  conferir();const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
+  conferir();if(!sessaoUtilizavel())return null;const item=await fila.reservar(conta,{dono,leaseMs,...reserva,ignorarIds});if(!item)return null;
   const rodar=async(comWebLock=false)=>{
    let falhaRenovacao,corrente=Promise.resolve(),prazoConhecido=item;
    let ultimoAgora=Number.isFinite(item.leaseAte)?item.leaseAte-leaseMs:null;
@@ -384,8 +548,14 @@ export async function processarIntencao(fila,opcoes){
     conferir();pronto.aposConfirmar?.();return prontoItem;
    }
    if(provaCampoSemEscrita(item,pronto))return await fila.dispensarCampoIdentico(item,pronto);
-   if(Object.keys(pronto.identicos||{}).length&&!pronto.operacoes.length)
+   const semGravacao=provaArquivoSemGravacao(item,pronto);
+   if(semGravacao){
+    const dispensado=await fila.dispensarArquivoSemGravacao(item,{tipo:'arquivo_sem_gravacao_necessaria',...semGravacao});
+    conferir();await pronto.aposDispensar?.();return dispensado;
+   }
+   if(Object.values(pronto.identicos||{}).some(p=>!p?.motivo)&&!pronto.operacoes.length)
     throw erro('Não foi possível encerrar a cópia sem mudar a intenção original.','CAMPO_COPIA_LEITURA_INCONCLUSIVA');
+   if(pronto.jaPresente&&Array.isArray(pronto.operacoes)&&!pronto.operacoes.length&&fila.dispensarJaPresente)return await fila.dispensarJaPresente(item,pronto.jaPresente);
    if(!Array.isArray(pronto.operacoes)||!pronto.operacoes.length)throw erro('Esta intenção não gerou operações de gravação verificáveis. O original foi preservado para revisão.','INTENCAO_SEM_OPERACOES');
    item=await fila.fixarPayload(item,pronto.operacoes,pronto);conferir();
   }
@@ -472,8 +642,8 @@ export async function reconciliarIntencaoMetas(fila,opcoes){
    opcoes.aoReservar?.(item.id);
    const resultado=await passo(()=>opcoes.provar(item));conferir();
    if(resultado){
-    const prontoItem=await fila.confirmarEstadoExistente(item,resultado.prova);
-    conferir();resultado.aposConfirmar?.();return prontoItem;
+    const prontoItem=resultado.prova?.tipo==='arquivo_ja_presente_no_servidor'?await fila.dispensarArquivoSemGravacao(item,resultado.prova):await fila.confirmarEstadoExistente(item,resultado.prova);
+    conferir();await resultado.aposConfirmar?.();return prontoItem;
    }
   }catch(e){if(e.code==='SESSAO_ALTERADA')throw e;}
   try{await fila.liberarReserva(item);}catch(e){if(e.code!=='RESERVA_EXPIRADA')throw e;}

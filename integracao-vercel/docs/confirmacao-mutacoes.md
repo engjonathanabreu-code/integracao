@@ -6,6 +6,10 @@ A entrada recebe ID se não o tiver. Esse ID associa a espera ao lote que efetiv
 
 Offline antes da operação, a função de edição não é aplicada. Falhas após a edição rejeitam a Promise sem apagar o rascunho ou a tentativa persistida pelo mecanismo existente. O limite de espera é 45 segundos; ele não cancela nem duplica a gravação. Nenhum sucesso é exibido apenas por alteração otimista.
 
+## Adaptadores de campo (C4)
+
+`igualSemantico` continua estrita. As exceções ficam em `adaptadoresCampo` (`src/igualdade-semantica.js`), por coleção e caminho relativo ao registro (`*` = item de lista por id), e `igualCampo(colecao, caminho, a, b)` as aplica na confirmação (`confirmacao-mutacoes.js`) e na conciliação de três versões (`concorrencia.js`, que faz merge de conjunto nas listas registradas). Tipos: `conjunto` (lista de ids sem ordem; membro faltante ou extra continua divergente), `nulo_vazio`, `numero` e `gerado_servidor` (ignorado na confirmação). Cada entrada traz o motivo no código; campos financeiros não têm adaptador. Novas entradas exigem prova de que o encoder, o SQL ou a projeção devolvem a mesma intenção em outra forma, além de teste em `tests/sync-a4-adaptadores.test.js`.
+
 ## Repetir uma tentativa
 
 Uma rejeição posterior à edição contém `erro.retentarConfirmacao()`. O editor deve guardar esse callback enquanto o conteúdo da intenção original não mudar e usá-lo no botão de tentar novamente. O callback retoma a confirmação da fila original; não executa a função de edição novamente sobre o próprio estado otimista. Se o envio já tiver concluído em segundo plano, retorna a confirmação guardada.

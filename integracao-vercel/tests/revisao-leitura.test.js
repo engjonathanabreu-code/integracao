@@ -64,8 +64,18 @@ test('overlay mostra campo remoto conflitante e mantém mudança local compatív
   await a.diario.atualizar();assert.deepEqual(a.diario.materializar(remote).metas,[{id:'m',titulo:'novo remoto',observacoes:'nota local'}]);assert.equal(a.item().original.intencao.edicoes[0].depois.valor.titulo,'local');
  }finally{a.diario.fechar();}
 });
-test('recibo divergente não reapresenta o valor enviado como atual',async()=>{
- const a=ambiente();try{await a.diario.atualizar();assert.deepEqual(a.diario.materializar(before),before);assert.equal(a.item().original.intencao.edicoes[0].depois.valor.titulo,'local');}finally{a.diario.fechar();}
+// Contrato C4 (docs/correcao-sincronizacao-multiagente.md): a edição com recibo e
+// LEITURA_DIVERGENTE continua visível enquanto aguarda; folhas em conflito mostram o
+// valor do servidor e nada é confirmado. A asserção antiga (edição oculta) contradizia C4.
+test('recibo divergente mantém a edição visível sem confirmar; campo conflitante mostra o servidor',async()=>{
+ const a=ambiente();try{
+  await a.diario.atualizar();
+  assert.deepEqual(a.diario.materializar(before).metas,after.metas);
+  const remoto={metas:[{id:'m',titulo:'outro remoto',observacoes:'base'}],auditoria:[]};
+  assert.deepEqual(a.diario.materializar(remoto),remoto,'conflito usa o valor do servidor');
+  assert.equal(a.item().estado,'confirmado_aguardando_leitura');assert.equal(a.calls.decisoes,0);
+  assert.equal(a.item().original.intencao.edicoes[0].depois.valor.titulo,'local');
+ }finally{a.diario.fechar();}
 });
 test('diagnóstico usa exatamente os mesmos adaptadores de confirmação',async()=>{
  const b={nucleos:[{id:'n',etapaIniciadaEm:'2026-01-01'}]},d={nucleos:[{id:'n',etapaIniciadaEm:'2026-01-02T12:00:00Z'}]},r={nucleos:[{id:'n',etapaIniciadaEm:'2026-01-02T09:00:00-03:00'}]};

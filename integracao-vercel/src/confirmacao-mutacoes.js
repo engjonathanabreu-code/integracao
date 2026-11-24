@@ -1,6 +1,6 @@
 import {COLUNAS_FINANCEIRAS,codificarNumeroFinanceiro,projetarNumeroFinanceiro} from './contrato-financeiro.js';
 import {remapearIdentidades as remapear} from './aliases-tipados.js';
-import {igualSemantico as igual} from './igualdade-semantica.js';
+import {igualSemantico as igual,igualCampo,adaptadorCampo} from './igualdade-semantica.js';
 import {instanteChecklist} from './contrato-checklist.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
 // Observa o pipeline existente; não grava, repete ou concilia mutações.
@@ -51,23 +51,33 @@ function lerCaminho(raiz, caminho, aliases) {
   return { existe: true, valor };
 }
 
-function contem(atual, esperado) {
-  if (objeto(esperado)) return objeto(atual) && Object.keys(esperado).every(k => contem(atual[k], esperado[k]));
+// C4 adapters (igualdade-semantica.js) apply by collection and record-relative
+// path; every other leaf, including lists of child records, stays strict.
+function contem(atual, esperado, colecao, campo = []) {
+  if (campo.length && adaptadorCampo(colecao, campo)) return igualCampo(colecao, campo, atual, esperado, {confirmacao: true});
+  if (objeto(esperado)) return objeto(atual) && Object.keys(esperado).every(k => contem(atual[k], esperado[k], colecao, [...campo, k]));
   return igual(atual, esperado);
 }
-
-function mesmosResponsaveis(atual, esperado) {
-  const valido=lista=>Array.isArray(lista)&&lista.every(id=>typeof id==='string'&&/^(?:erp_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))&&new Set(lista).size===lista.length;
-  if(!valido(atual)||!valido(esperado)||atual.length!==esperado.length)return false;
-  const ids=new Set(atual);return esperado.every(id=>ids.has(id));
-}
+// Record-relative path of a change: [colecao,{id},...resto] -> resto.
+const campoRelativo = caminho => typeof caminho[1] === 'object' ? caminho.slice(2).map(p => typeof p === 'object' ? '*' : p) : null;
 
 function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
   return mudancas.every(mudanca => {
+    const relativo=campoRelativo(mudanca.caminho),colecaoCampo=relativo?mudanca.caminho[0]:'';
     // Presence is device-local; it is deliberately not written by prepararEdicao.
-    if(mudanca.caminho[0]==='usuarios'&&mudanca.caminho.length===3&&['online','ultimaAtividade'].includes(mudanca.caminho[2]))return true;
+    if(relativo?.length&&adaptadorCampo(colecaoCampo,relativo)?.tipo==='gerado_servidor')return true;
     const atual = lerCaminho(remoto, mudanca.caminho, aliases);
-    if (!mudanca.existe) return !atual.existe;
+    if (!mudanca.existe) {
+      // Notification/audit retention is local (the list is trimmed on the device)
+      // and the encoder never sends those removals. With the submitted payload
+      // in hand and no removal of that record in it, the server row staying
+      // there is the expected result; every submitted insert is still checked.
+      if (atual.existe && mudanca.caminho.length === 2 && ['notificacoes','auditoria'].includes(mudanca.caminho[0]) && objeto(mudanca.caminho[1]) && operacoes.length) {
+        const id = String(aliases[mudanca.caminho[1].id] || mudanca.caminho[1].id);
+        return !operacoes.some(o => o?.remove && [o.key?.registro_id, o.key?.id].some(k => k != null && String(aliases[k] || k) === id));
+      }
+      return !atual.existe;
+    }
     const campo=mudanca.caminho.at(-1);
     if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===5&&mudanca.caminho[2]==='checklist'&&campo==='concluido_em'){
       const id=aliases[mudanca.caminho[3].id]||mudanca.caminho[3].id;
@@ -89,9 +99,8 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
       if(op&&Number.isFinite(instante)&&op.changes[campo]===new Date(instante).toISOString())return atual.existe&&instante===Date.parse(atual.valor);
     }
     let esperado = remapear(mudanca.valor, aliases,typeof campo==='string'?campo:'');
-    // Goal responsibilities are membership rows; their SELECT order carries
-    // no user intent. Never generalize this to ordered lists or invalid IDs.
-    if(mudanca.caminho[0]==='metas'&&mudanca.caminho.length===3&&typeof mudanca.caminho[1]==='object'&&campo==='responsaveis')return atual.existe&&mesmosResponsaveis(atual.valor,esperado);
+    // ISO stamps are covered by the `instante` adapter (igualdade-semantica.js);
+    // this keeps the earlier acceptance of any other parseable representation.
     if(mudanca.caminho[0]==='nucleos'&&mudanca.caminho.length===3&&['etapaIniciadaEm','etapaPrefeituraIniciadaEm'].includes(campo)&&typeof esperado==='string'&&typeof atual.valor==='string'){
       const instante=Date.parse(esperado);
       if(Number.isFinite(instante)&&instante===Date.parse(atual.valor))return true;
@@ -197,17 +206,15 @@ function conferir(mudancas, remoto, aliases = {}, operacoes = []) {
         delete esperado[filho];
       }
     }
-    if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&typeof mudanca.caminho[1]==='object'&&objeto(esperado)&&possui(esperado,'responsaveis')){
-      if(!mesmosResponsaveis(atual.valor?.responsaveis,esperado.responsaveis))return false;
-      esperado={...esperado};delete esperado.responsaveis;
-    }
     // New canonical goals receive their ERP binding on projection. Accept only
     // that exact binding; business nulls and any different identity still differ.
     if(mudanca.parcial&&mudanca.caminho[0]==='metas'&&mudanca.caminho.length===2&&esperado?.erpId==null&&atual.valor?.erpId===atual.valor?.id&&atual.valor?.id===esperado?.id){
       esperado={...esperado,erpId:atual.valor.erpId};
       if(esperado._compartilhado===undefined)delete esperado._compartilhado;
     }
-    return atual.existe && (mudanca.parcial ? contem(atual.valor, esperado) : igual(atual.valor, esperado));
+    // Membership rows (responsáveis, participantes...) carry no SELECT order;
+    // missing/extra members, other values and absent records still diverge.
+    return atual.existe && (mudanca.parcial ? contem(atual.valor, esperado, colecaoCampo, relativo || []) : relativo ? igualCampo(colecaoCampo, relativo, atual.valor, esperado, {confirmacao: true}) : igual(atual.valor, esperado));
   });
 }
 
@@ -307,7 +314,12 @@ export function erroConfirmacao(mensagem, codigo = 'CONFIRMACAO_PENDENTE', causa
   return erro;
 }
 
-export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+export const MENSAGEM_SEGUNDO_PLANO = 'Enviando em segundo plano — você pode continuar; avisaremos se precisar de revisão.';
+// A timeout is not a rejection: the intention stays queued and the same
+// operation id may still be confirmed later. Never treat it as "Salvo".
+export const emSegundoPlano = e => e?.code === 'CONFIRMACAO_SEGUNDO_PLANO' || e?.segundoPlano === true;
+
+export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeout, clearTimer = clearTimeout, exigeRevisao = () => false } = {}) {
   const pendentes = new Map(), registros = new Map();
   const concluir = (id, erro, resultado) => {
     const registro = registros.get(id);
@@ -321,6 +333,14 @@ export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeo
     pendentes.delete(id); clearTimer(item.timer);
     if (erro) item.reject(erro); else item.resolve(resultado);
   };
+  const expirou = id => {
+    let revisar = false;
+    try { revisar = !!exigeRevisao(id); } catch { revisar = false; }
+    if (revisar) return concluir(id, erroConfirmacao('Esta alteração precisa de revisão. As alterações continuam preservadas; confira Pendências de sincronização.', 'REVISAO_NECESSARIA'));
+    const erro = erroConfirmacao(MENSAGEM_SEGUNDO_PLANO, 'CONFIRMACAO_SEGUNDO_PLANO');
+    erro.segundoPlano = true;
+    concluir(id, erro);
+  };
   const esperar = id => {
     if (pendentes.has(id)) return pendentes.get(id).promessa;
     const registro = registros.get(id);
@@ -330,13 +350,14 @@ export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeo
     const promessa = new Promise((ok, falha) => { resolve = ok; reject = falha; });
     const item = { resolve, reject, promessa };
     pendentes.set(id, item);
-    item.timer = setTimer(() => concluir(id, erroConfirmacao('Ainda não foi possível confirmar a gravação. As alterações continuam preservadas; confira a sincronização antes de tentar novamente.', 'CONFIRMACAO_TIMEOUT')), timeout);
+    item.timer = setTimer(() => expirou(id), timeout);
     return promessa;
   };
   return {
     aguardar(id, antes, depois) {
       if (!id) throw new Error('A confirmação precisa de um identificador de operação.');
-      if (registros.has(id)) throw new Error('Esta operação já foi registrada. Retome a confirmação existente.');
+      // Same operation id = same intention: resume it, never register a second one.
+      if (registros.has(id)) return esperar(id);
       registros.set(id, { mudancas: diferencas(antes, depois) });
       for (const chave of registros.keys()) {
         if (registros.size <= 32) break;
@@ -345,6 +366,7 @@ export function criarConfirmacoesMutacoes({ timeout = 45000, setTimer = setTimeo
       return esperar(id);
     },
     retentar: esperar,
+    registrada: id => registros.has(id),
     confirmada: id => !!registros.get(id)?.resultado,
     confirmar(enviado, remoto, recibo = {}) {
       const ids = new Set((enviado?.auditoria || []).map(x => x.id));

@@ -54,13 +54,18 @@ export async function verificarRetomadaCadastro(){
  const vazio=await guardas('outra-conta','outra-conta');
  const confirmadasAntes=await fila.listar(u);const armarConfirmada=await fila.rearmarCadastro(u,'audit-incerta');bloqs.push(['recibo',armarConfirmada,iguais(confirmadasAntes,await fila.listar(u))]);
  await fila.fechar();
- return {recuperado,eventosIncerto,incerto:incerto.estado,naoEnviar,permaneceParada:parada.estado==='resultado_desconhecido'&&parada.proximaTentativa===Number.MAX_SAFE_INTEGER,bloqs,vazio};
+ // Contrato C1: falha transitória nunca agenda MAX_SAFE_INTEGER. A consulta que falhou
+ // mantém o resultado desconhecido, com backoff, sem reenviar.
+ return {recuperado,eventosIncerto,incerto:incerto.estado,naoEnviar,permaneceIncerta:parada.estado==='resultado_desconhecido'&&parada.proximaTentativa!==Number.MAX_SAFE_INTEGER&&!parada.recibo,bloqs,vazio};
 }
 
+// Contrato C1 (docs/correcao-sincronizacao-multiagente.md): cinco falhas transitórias já
+// não esgotam o pedido. A retomada automática consulta o recibo do mesmo pedido antes de
+// qualquer reenvio e confirma pela releitura; o reparo rearmarCadastro fica sem candidato.
 export const esperado={
-   recuperado:{antes:'resultado_desconhecido',rearmou:true,repetido:false,mesmaIdentidade:true,outroIntacto:true,final:'confirmado',eventos:[['recibo','pedido-certificado'],['leitura','pedido-certificado']]},
+   recuperado:{antes:'confirmado',rearmou:false,repetido:false,mesmaIdentidade:true,outroIntacto:true,final:'confirmado',eventos:[['recibo','pedido-certificado'],['leitura','pedido-certificado']]},
    eventosIncerto:[['consulta','incerto'],['envio','incerto'],'leitura'],incerto:'confirmado',
-   naoEnviar:0,permaneceParada:true,
+   naoEnviar:0,permaneceIncerta:true,
    bloqs:['permissao','intervalo','limite-rate','validacao','modulo','recibo'].map(nome=>[nome,false,true]),
    vazio:['outra-conta',false,true]
   };

@@ -30,7 +30,7 @@ export function aplicarIntencao(remoto,edicoes,{aliases={},escolhas={},preservar
   const atual=id?(dados[colecao]||[]).find(r=>r.id===id):dados[colecao];
   const caminho=id?[colecao,id]:[colecao];
   const relativas=Object.fromEntries(Object.entries(escolhas).filter(([k])=>JSON.stringify(JSON.parse(k).slice(0,caminho.length))===JSON.stringify(caminho)).map(([k,v])=>[JSON.stringify(JSON.parse(k).slice(caminho.length)),v]));
-  const r=conciliarEdicoes(base,local,atual,relativas);
+  const r=conciliarEdicoes(base,local,atual,relativas,{colecao:id?colecao:''});
   conflitos.push(...r.conflitos.map(c=>({...c,caminho:[...caminho,...c.caminho],chave:JSON.stringify([...caminho,...c.caminho])})));
   if(id){dados[colecao]=(dados[colecao]||[]).filter(x=>x.id!==id);if(r.dados!==undefined)dados[colecao].push(r.dados);}
   else if(r.dados===undefined)delete dados[colecao];else dados[colecao]=r.dados;

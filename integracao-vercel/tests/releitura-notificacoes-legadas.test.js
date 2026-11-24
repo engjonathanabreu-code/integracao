@@ -15,7 +15,11 @@ function fixture(table='integracao_notificacoes'){
 }
 test('legado confirma ambos inserts, sem exigir exclusão de aviso antigo',()=>{
  const {item,base}=fixture(),{antes,depois}=item.preparado;
- assert.equal(alteracoesConfirmadas(antes,depois,{notificacoes:[antiga,...avisos]},item.recibo.aliases,item.payload),false);
+ // O corte local nunca é enviado: com o payload em mãos a confirmação comum já o aceita;
+ // sem o payload (ou com a remoção enviada) continua divergente.
+ assert.equal(alteracoesConfirmadas(antes,depois,{notificacoes:[antiga,...avisos]},item.recibo.aliases,item.payload),true);
+ assert.equal(alteracoesConfirmadas(antes,depois,{notificacoes:[antiga,...avisos]},item.recibo.aliases,[]),false);
+ assert.equal(alteracoesConfirmadas(antes,depois,{notificacoes:[antiga,avisos[0]]},item.recibo.aliases,item.payload),false);
  assert.equal(estruturaReleituraNotificacoesLegadas(item,dono),true);
  assert.equal(releituraNotificacoesLegadas(item,base,dono),true);
 });
@@ -92,7 +96,8 @@ function fixtureTipada(){
 
 test('recibo tipado confirma somente a inserção do corte local preservado, sem reenviar',async()=>{
  const {item,base,remoto}=fixtureTipada();
- assert.equal(alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,remoto,item.recibo.aliases,item.payload),false);
+ assert.equal(alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,remoto,item.recibo.aliases,item.payload),true);
+ assert.equal(alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,remoto,item.recibo.aliases,[...item.payload,{table:'integracao_notificacoes',key:{colecao:'notificacoes',registro_id:'antiga'},remove:true}]),false);
  assert.equal(estruturaReleituraNotificacoesLegadas(item,dono),true);
  assert.equal(await verificarReleituraNotificacoesLegadas(item,base,dono,async atual=>{
    assert.equal(atual.pedido,item.pedido);assert.equal(atual.payload,item.payload);

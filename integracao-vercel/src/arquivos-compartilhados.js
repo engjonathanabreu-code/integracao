@@ -87,13 +87,32 @@ export async function arquivoCampoIdentico(rows,owner,id,item,dados,bytes,ler=co
   return false;
  }
 }
+// Any single file: the current row points at exactly these metadata and the
+// stored object has exactly these bytes. Unreadable or different is not proof.
+export async function arquivoPresenteIdentico(rows,id,dados,bytes,ler=conteudoStorage){
+ const candidatas=(Array.isArray(rows)?rows:[]).filter(r=>r.registro_id===id);
+ if(candidatas.length!==1||candidatas[0].colecao!=='arquivos'||!eq(candidatas[0].dados,dados))return false;
+ try{
+  const atual=new Uint8Array(await ler(dados.path,undefined,{bruto:true}));
+  return atual.length===bytes.length&&atual.every((byte,i)=>byte===bytes[i]);
+ }catch(e){
+  if(e.code==='SESSAO_ALTERADA'||e.code==='SESSAO_EXPIRADA'||e.status===401||e.status===403)throw e;
+  return false;
+ }
+}
 export async function prepararArmazenamento(state,after,selecionados=null) {
   const c=context;if(!c)return {operations:[],sent:{}};
   const sent=copy(selecionados||c.queue),operations=[],identicos={};
   for(const [id,item] of Object.entries(sent)) {
     conferirContexto(c);
     const key={colecao:'arquivos',registro_id:id};
-    if(item.value===null) {if(item.expected)operations.push({table:'integracao_arquivos',key,expected:{dados:item.expected},remove:true});continue;}
+    const atual=(state.base?.integracao_arquivos||[]).filter(r=>r.registro_id===id);
+    if(item.value===null) {
+      if(item.expected)operations.push({table:'integracao_arquivos',key,expected:{dados:item.expected},remove:true});
+      // Removing a file that never reached the server: this read has no row.
+      else if(Array.isArray(state.base?.integracao_arquivos)&&!atual.length)identicos[id]={version:item.version,motivo:'remocao_sem_registro'};
+      continue;
+    }
     const bytes=new TextEncoder().encode(item.value);
     const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
     const path=`${c.owner}/${hash}`;
@@ -109,7 +128,12 @@ export async function prepararArmazenamento(state,after,selecionados=null) {
       identicos[id]={version:item.version,dados};continue;
     }
     conferirContexto(c);await conteudoStorage(path,bytes);conferirContexto(c);
-    if(eq(dados,item.expected))continue;
+    if(eq(dados,item.expected)){
+      // Same content as the captured base and as the pointer read now; the
+      // immutable object was just stored (or already existed) at this path.
+      if(atual.length===1&&atual[0].colecao==='arquivos'&&eq(atual[0].dados,dados))identicos[id]={version:item.version,motivo:'conteudo_identico',dados};
+      continue;
+    }
     operations.push(item.expected?{table:'integracao_arquivos',key,expected:{dados:item.expected},changes:{dados,updated_at:new Date().toISOString()}}:{table:'integracao_arquivos',key,insert:true,changes:{dados,criado_por:c.owner,...referencia(item.key,state,after)}});
   }
   return {operations,sent,identicos};

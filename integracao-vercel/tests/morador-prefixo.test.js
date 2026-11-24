@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { erroCodigoMorador } from '../src/codigo-morador.js';
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const context = vm.createContext({
   remessaDe: (db, id) => db.remessas.find(r => r.id === id),
   municipioDe: (db, id) => db.municipios.find(m => m.id === id),
   pad2: n => String(n).padStart(2, '0'), pad3: n => String(n).padStart(3, '0'),
-  proximoNumeroCliente: () => 212, uid: () => 'unidade',
+  proximoNumeroCliente: () => 212, uid: () => 'unidade', erroCodigoMorador,
   processoVazio: (municipioId, remessaId, codigo) => ({ municipioId, remessaId, codigo, requerente: {}, endereco: {}, enderecoImovel: {} }),
 });
 for (const name of ['codigoCliente', 'montarMorador']) {

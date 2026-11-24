@@ -53,9 +53,10 @@ export async function atualizarFichas(base,clientes,lerFicha,{isolarFalhas=false
   catch(e){
    // Session changes invalidate the whole load. Ordinary per-file failures do
    // not authorize absence, writes or dependency release. Keep only cached rows.
-   if(!isolarFalhas||e.code==='SESSAO_ALTERADA')throw e;
-   preservarFichaAnterior(base,anterior,cliente);
+   // An expired/absent session is not a per-file failure: it stops the load.
    const {codigo,status,categoria}=classificarFalha(e);
+   if(!isolarFalhas||e.code==='SESSAO_ALTERADA'||categoria==='sessao')throw e;
+   preservarFichaAnterior(base,anterior,cliente);
    falhas.set(cliente.id,{id:cliente.id,codigo,status,categoria});base._falhasFichas=[...falhas.values()];continue;
   }
   falhas.delete(cliente.id);base._falhasFichas=[...falhas.values()];

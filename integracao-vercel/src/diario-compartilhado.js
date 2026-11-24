@@ -1,18 +1,21 @@
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
-import {revisaoDeRecusa} from './estado-sincronizacao.js';
+import {revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
+export {motivoEspera} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
+import {alteracoesConfirmadas} from './confirmacao-mutacoes.js';
 import {edicaoSomenteLocal} from './intencoes-locais.js';
-import {arquivosDaIntencao} from './arquivos-intencoes.js';
-import {revisarLeitura,snapshotLeitura} from './revisao-leitura.js';
+import {arquivosDaIntencao,arquivoEmConflito,conflitoArquivoReconciliavel} from './arquivos-intencoes.js';
+import {arquivoPresenteIdentico,confirmarArquivos} from './arquivos-compartilhados.js';
+import {revisarLeitura,snapshotLeitura,arquivosAtuais} from './revisao-leitura.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
-export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
+export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},estadoSessao,conferirArquivo=arquivoPresenteIdentico,concluirArquivos=confirmarArquivos,fila=abrirFilaIntencoes()}){
  const canal=typeof BroadcastChannel==='function'?new BroadcastChannel('integracao-diario-v2:'+conta):null;
  if(canal)canal.onmessage=()=>{if(ativo())notificar();};
  const sinalizar=()=>canal?.postMessage({protocolo:2});
@@ -29,10 +32,11 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    // conflicting leaves; every original remains available in the review.
    db=r.conflitos.length?aplicarIntencao(db,edicoes,{aliases:aliases(),escolhas:Object.fromEntries(r.conflitos.map(c=>[c.chave,'remoto']))}).dados:r.dados;
   };
-  for(const item of items.filter(i=>!terminal(i))){
-   if(item.recibo&&item.erro?.codigo==='LEITURA_DIVERGENTE')continue;
-   aplicar(item.original.intencao.edicoes||[]);
-  }
+  // C4: an entry with a receipt whose read-back diverged stays visible while it
+  // waits. Conflicting leaves still show the server value (see `aplicar`), the
+  // entry stays pending and nothing here confirms it. Hiding it made the next
+  // edit capture the stale value and conflict with the user's own first edit.
+  for(const item of items.filter(i=>!terminal(i)))aplicar(item.original.intencao.edicoes||[]);
   for(const p of volateis.values())aplicar(p.intencao.edicoes);
   return db;
  }
@@ -110,7 +114,33 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const prova=planejarMetas&&(r.conflitos.length||igualSemantico(recortarIntencao(r.dados,edicoes),recortarIntencao(remoto.db,edicoes)))&&verificarMetas(item,remoto,edicoes);
   if(prova)return {provaEstado:prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
-  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
+  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();
+  // Nothing to write and no file involved: if every edited record, after the
+  // merge, is what this fresh read already returns (same confirmation contract,
+  // no payload), the request is closed as already present instead of parking as
+  // "no operations". Any strict difference keeps the previous review path.
+  const semArquivos=x=>!Object.keys(x||{}).length;
+  if(Array.isArray(pronto?.operacoes)&&!pronto.operacoes.length&&semArquivos(pronto.sent)&&semArquivos(pronto.identicos)&&semArquivos(arquivosDaIntencao(item,items))){
+   const gravaveis=edicoes.filter(e=>!edicaoSomenteLocal(e)&&!edicaoDerivada(e));
+   if(alteracoesConfirmadas(recortarIntencao(remoto.db,gravaveis),recortarIntencao(r.dados,gravaveis),remoto.db,{},[]))
+    return {...pronto,jaPresente:{tipo:'ja_presente_no_servidor',checksum:item.checksum}};
+  }
+  // Not enumerable: the prepared result is cloned into the journal when fixed.
+  return Object.defineProperty({...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)},'aposDispensar',{value:()=>encerrarArquivos(pronto.sent,remoto)});
+ }
+ // The request is already closed durably. Consuming the same version from the
+ // auxiliary file queue revalidates it against this read; a failure only
+ // leaves that entry for the normal recovery on the next pass.
+ const encerrarArquivos=async(sent,remoto)=>{try{await concluirArquivos(sent||{},remoto.base||{});}catch{/* kept for recovery */}};
+ // A refused single-file conflict is closed only when the current row and the
+ // stored bytes are exactly what this request tried to write.
+ async function provarArquivoPresente(item){
+  if(!arquivoEmConflito(item))return null;
+  const [id,arquivo]=Object.entries(item.original.intencao.arquivos)[0],dados=item.payload[0].changes.dados;
+  const {remoto}=await lerItem(item);
+  if(!await conferirArquivo(remoto.base?.integracao_arquivos,id,dados,new TextEncoder().encode(arquivo.value)))return null;
+  conferir();
+  return {prova:{tipo:'arquivo_ja_presente_no_servidor',id,version:arquivo.version,dados:structuredClone(dados)},aposConfirmar:()=>encerrarArquivos({[id]:arquivo},remoto)};
  }
  function verificarMetas(item,remoto,edicoes){
   try{return provarMetasNoServidor(item,edicoes,projetarProvaMetas(remoto,edicoes),items,planejarMetas);}catch{return null;}
@@ -120,12 +150,14 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   // Bound each pass; a later pass resumes independently ready entries.
   const limite=id?1:items.filter(i=>!terminal(i)).length;
   const tentados=[];
-  if(!id&&planejarMetas){
+  if(!id){
    // Read-only blocked conflicts first, so their dependent requests can then be
    // evaluated in order. No repeated queries for the same item within the pass.
    const lidos=[];
-   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&conflitoReconciliavelMetas(i,Date.now()));n++){
-    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())));n++){
+    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+     if(arquivoEmConflito(item))return provarArquivoPresente(item);
+     if(!planejarMetas)return null;
      const {remoto,edicoes}=await lerItem(item);
      const prova=verificarMetas(item,remoto,edicoes);
      return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
@@ -137,21 +169,27 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
 
   for(let n=0;n<limite;n++){
    conferir();let resultado;
-   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},provarEstado:planejarMetas?async item=>{
+   try{resultado=await processarIntencao(fila,{conta,dono,estadoSessao,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},provarEstado:planejarMetas?async item=>{
     const {remoto,edicoes}=await lerItem(item);
     const prova=verificarMetas(item,remoto,edicoes);
     return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
    }:undefined,validarEnvio:item=>validarVinculoMoradoresDoEnvio(item.payload,item.preparado?.depois),enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
     await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
-   }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}
+   }});}catch(e){
+    if(e.code==='SESSAO_ALTERADA')throw e;
+    // C1/C2: a session failure is not about this item. Abort the pass without
+    // reserving or preparing others; it resumes after a valid session.
+    if(classificarFalha(e).categoria==='sessao'){await atualizar();break;}
+    resultado=true;
+   }
    await atualizar();if(!resultado)break;sinalizar();
   }
   return items;
  }
  async function consultarExistente(id,{modo='consulta',validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();verificar();await atualizar();
-  try{return await lerIntencaoExistente(fila,{conta,dono,id,modo,sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},reler:async item=>{
+  try{return await lerIntencaoExistente(fila,{conta,dono,estadoSessao,id,modo,sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},reler:async item=>{
    await validar();verificar();const {remoto}=await lerItem(item);conferir();verificar();await confirmar(item,remoto);conferir();verificar();
   }});}finally{if(ativo()){await atualizar();sinalizar();}}
  }
@@ -212,6 +250,17 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   }
   let edicoes=extrairIntencao(remoto.db,r.dados);
   const arquivos=arquivosDaIntencao(mostrada.item,items);
+  if(mostrada.item.erro?.codigo==='PT409'&&Object.keys(arquivos).length){
+   // "Keep my version" after a refused file conflict: the replacement is based
+   // on the server pointer shown in the preview, so it can replace exactly that
+   // pointer. The server compare-and-set still refuses any later change.
+   if(!igualSemantico(arquivosAtuais(mostrada.item,remoto),mostrada.snapshot?.arquivos))throw Error('Os dados ou arquivos mudaram. Abra novamente a prévia e confira os valores.');
+   const linhas=remoto.base?.integracao_arquivos||[];
+   // Only pointers the preview actually displayed may be rebased; any other
+   // file keeps its original base, which the server still refuses if stale.
+   const exibidos=mostrada.snapshot?.arquivos||{};
+   for(const [arquivoId,arquivo] of Object.entries(arquivos))if(Object.hasOwn(exibidos,arquivoId))arquivo.expected=structuredClone(linhas.find(l=>l.registro_id===arquivoId)?.dados??null);
+  }
   // Explicitly accepting the server still leaves an auditable no-op replacement.
   if(!edicoes.length&&!Object.keys(arquivos).length){await fila.aceitarRemoto(conta,id);revisao=null;await atualizar();return;}
   await adicionar(remoto.db,r.dados,arquivos,{substituirId:id});revisao=null;await atualizar();
@@ -241,6 +290,14 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   if(total){await atualizar();sinalizar();}
   return total;
  }
+ // C5: called on `online`, focus/visibility, a valid `integracao:sessao` and
+ // the 120 s tick. Only transient/session items; review stays untouched.
+ async function retomarTransitorias(motivo='manual'){
+  await corrente.catch(()=>{});conferir();
+  const total=await fila.retomarTransitorias(conta);conferir();
+  if(total){await atualizar();sinalizar();}
+  return {motivo,total};
+ }
  async function retomarAutomaticas({id=null}={}){
   await corrente.catch(()=>{});conferir();await atualizar();
   for(const item of items)if((!id||item.id===id)&&!terminal(item)&&!item.estado.startsWith('bloqueado')&&item.proximaTentativa===Number.MAX_SAFE_INTEGER){await fila.retomar(conta,item.id);conferir();}
@@ -259,5 +316,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }
