@@ -1,6 +1,6 @@
 import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarReleitura,ciclosBackoffIntencao} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,ciclosBackoffIntencao} from './estado-sincronizacao.js';
 import {remapearIdentidades} from './aliases-tipados.js';
 import {VERSAO_CLIENTE} from './diagnostico-sincronizacao.js';
 import {validarReciboOperacoes} from './recibo-operacoes.js';
@@ -113,7 +113,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     // its attempts. The marker is committed together with the existing lease.
     const reabrirReleitura=!somenteLeitura&&!somenteId&&item.proximaTentativa===Number.MAX_SAFE_INTEGER&&
      item.estado==='confirmado_aguardando_leitura'&&item.erro?.codigo==='LEITURA_DIVERGENTE'&&
-     !item.releituraRetencaoVerificada&&estruturaReleituraNotificacoesLegadas(item,conta);
+     !item.releituraRetencaoVerificada&&!item.releituraDivergenteVerificada&&estruturaReleituraNotificacoesLegadas(item,conta);
     if(!somenteLeitura&&item.proximaTentativa>tempo&&!reabrirReleitura)continue;
     if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;
     const resolver=id=>{let d=items.find(i=>i.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=items.find(i=>i.id===d.substituidaPor);}return d;};
@@ -242,8 +242,11 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   contaValida(conta);
   return transacao('readwrite',async s=>{
    const tempo=agora(),items=await requisicao(s.intencoes.index('conta').getAll(conta));let total=0;
-   for(const i of items)if(podeRetomarReleitura(i,tempo)){
-    i.proximaTentativa=0;i.releituraTemporariaVerificada=true;i.atualizadoEm=tempo;
+   for(const i of items)if(podeRetomarLeituraAutomaticamente(i,tempo)){
+    i.proximaTentativa=0;
+    if(i.erro.codigo==='LEITURA_DIVERGENTE')i.releituraDivergenteVerificada=true;
+    else i.releituraTemporariaVerificada=true;
+    i.atualizadoEm=tempo;
     await requisicao(s.intencoes.put(i));total++;
    }
    return total;

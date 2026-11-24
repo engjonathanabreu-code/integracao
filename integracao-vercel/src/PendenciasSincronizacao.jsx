@@ -1,18 +1,24 @@
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {useState} from 'react';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
-import {orientacaoPendencia,revisaoDeRecusa,classificarFalha,falhaPreparacaoSemEnvio} from './estado-sincronizacao.js';
+import {orientacaoPendencia,revisaoDeRecusa,classificarFalha,falhaPreparacaoSemEnvio,requerRevisaoFila} from './estado-sincronizacao.js';
 const estados={persistencia_falhou:'Ainda não guardada — exporte antes de sair',legado_revisao:'Original preservado para revisão',pendente_local:'Guardada no aparelho',resultado_desconhecido:'Resultado desconhecido',confirmado_aguardando_leitura:'Confirmada; aguardando leitura',bloqueado_conflito:'Valores diferentes — revisar',bloqueado_validacao:'Campos ou vínculos — revisar',falha_transitoria:'Aguardando nova tentativa'};
 const motivos={RESPONSAVEL_INDISPONIVEL:'O responsável escolhido não está ativo no cadastro atual.',IDENTIDADE_OUTRA_META:'Um item pertence a outra meta. Preserve o histórico.',23503:'Uma referência está indisponível.',ARQUIVO_LOCAL_AUSENTE:'O arquivo original não está disponível neste aparelho.'};
 const rotulo=i=>{if(falhaPreparacaoSemEnvio(i))return 'Falhou antes de enviar';const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;return categoria==='sessao'?'Sessão expirada — autenticar novamente':categoria==='permissao'?'Permissão insuficiente — solicitar revisão':estados[i.estado]||i.estado;};
 const valor=v=>v===undefined?'Não disponível nesta leitura':v===null?'Ausente':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 export default function PendenciasSincronizacao({sync}){
- const p=sync.previaPendencia,[ocupado,setOcupado]=useState(false);
+ const [ocupado,setOcupado]=useState(false);
+ const p=sync.previaPendencia&&sync.pendencias?.some(i=>i.id===sync.previaPendencia.id)?sync.previaPendencia:null;
  const executar=async fn=>{if(ocupado)return;setOcupado(true);try{await fn();}finally{setOcupado(false);}};
  if(!sync.pendencias?.length&&!p&&!sync.falhasAtualizacao?.length)return null;
- return <details style={{padding:'8px 18px'}}><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
+ return <section style={{padding:'8px 18px'}} aria-label="Sincronização de alterações">
+  {sync.pendencias?.some(requerRevisaoFila)&&!sync.erroGlobal&&<div className="topo-acoes" aria-label="Ações da fila">
+   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.flush)}>Retomar tentativas automáticas</button>
+   <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.reopen)}>Baixar cópia das alterações pendentes</button>
+  </div>}
+  <details><summary>Pendências de sincronização ({(sync.pendencias||[]).length})</summary>
   {sync.falhasAtualizacao?.length>0&&<p role="status">{sync.falhasAtualizacao.length} ficha(s) aguardam atualização. As demais foram atualizadas; o conteúdo anterior e as pendências dessas fichas continuam preservados.</p>}
-  <p>As alterações permanecem neste aparelho. O botão geral retoma somente tentativas automáticas; itens bloqueados exigem revisão individual.</p>
+  <p>As alterações permanecem neste aparelho. Itens bloqueados podem ser revisados individualmente.</p>
   <ul>{(sync.pendencias||[]).map(i=><li key={i.id}>{i.original.modulo} · {rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}<p>{orientacaoPendencia(i)}</p><details><summary>Diagnóstico desta alteração</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(sync.diagnosticarPendencia?.(i.id)||diagnosticoOperacao(i),null,2)}</pre><p>A propagação para outros aparelhos exige observação na outra sessão.</p></details><button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button></li>)}</ul>
   {p&&<section aria-label="Prévia da recuperação"><strong>Revisão: {p.item.original.modulo}</strong>
    <p>Pedido {p.id.slice(0,8)}. {orientacaoPendencia(p.item)}</p>
@@ -28,5 +34,5 @@ export default function PendenciasSincronizacao({sync}){
    </>}
    <button className="btn btn-sm" disabled={ocupado} onClick={sync.fecharPrevia}>Fechar prévia</button>
   </section>}
- </details>;
+ </details></section>;
 }

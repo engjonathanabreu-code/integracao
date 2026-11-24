@@ -52,3 +52,20 @@ test('motivos locais permanecem compatíveis com o validador SQL real sem migrat
   }
  }finally{await db.close();}
 });
+
+test('releitura divergente exaurida exige recibo e snapshots, uma vez apenas',async()=>{
+ const {podeRetomarReleituraDivergente,podeRetomarLeituraAutomaticamente}=await import('../src/estado-sincronizacao.js');
+ const candidata={...esgotada,preparado:{antes:{metas:[]},depois:{metas:[{id:pedido}]}},
+   erro:{fase:'releitura',categoria:'leitura',codigo:'LEITURA_DIVERGENTE',status:409}};
+ assert.equal(podeRetomarReleitura(candidata,1000),false,'a regra antiga deixava a leitura presa');
+ assert.equal(podeRetomarReleituraDivergente(candidata,1000),true);
+ assert.equal(podeRetomarLeituraAutomaticamente(candidata,1000),true);
+ for(const alteracao of [{recibo:null},{payload:[]},{preparado:null},{preparado:{antes:{}}},{estado:'bloqueado_conflito'},
+  {leaseAte:2000},{releituraDivergenteVerificada:true},{proximaTentativa:2000},{erro:{...candidata.erro,fase:'envio'}},
+  {erro:{...candidata.erro,codigo:'PT409'}},{erro:{...candidata.erro,codigo:'P0001'}},{erro:{...candidata.erro,categoria:'permissao'}}])
+  assert.equal(podeRetomarLeituraAutomaticamente({...candidata,...alteracao},1000),false,JSON.stringify(alteracao));
+});
+
+test('uma falha transitória na releitura extra não rearma o mesmo pedido automaticamente',()=>{
+ assert.equal(podeRetomarReleitura({...esgotada,releituraDivergenteVerificada:true},1000),false);
+});

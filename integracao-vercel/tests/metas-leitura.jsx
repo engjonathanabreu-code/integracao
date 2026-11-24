@@ -3,6 +3,8 @@ import {createRoot} from 'react-dom/client';
 import {fixture,blank,id} from './fixture.js';
 import {projetar,definirSessao} from '../src/dados-compartilhados.js';
 import {useDadosCompartilhados} from '../src/use-dados-compartilhados.js';
+import AvisoSincronizacao from '../src/AvisoSincronizacao.jsx';
+import PendenciasSincronizacao from '../src/PendenciasSincronizacao.jsx';
 
 // Real hook and IndexedDB, isolated fixture server. Never forwards credentials,
 // requests or writes to a real service. Faults are armed after initial opening.
@@ -52,6 +54,6 @@ function Harness(){
  const sync=useDadosCompartilhados({setDb,storage,baseLimpa:blank});
  useEffect(()=>{definirSessao({user:{id:id(1)},access_token:'fixture-sem-credencial-real',expires_in:3600});sync.open(actor,null).then(()=>setReady(true)).catch(e=>setFatal(e.message));return()=>sync.close();},[]);
  window.metasLeitura={sync,db,ready,fatal,stats,flags,base,actor,receipts,storage,id};
- return <main><h1>Metas — leitura isolada</h1><p>{fatal||sync.error}</p><p>{db.metas[0]?.titulo}</p></main>;
+ return <main><h1>Metas — leitura isolada</h1><p>{fatal||sync.error}</p><p>{db.metas[0]?.titulo}</p><AvisoSincronizacao sync={sync}/><PendenciasSincronizacao sync={sync}/></main>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);

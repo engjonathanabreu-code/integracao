@@ -20,7 +20,7 @@ import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos,visualizarCopiaCampoConferida} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao,motivoEsperaLocal} from './diagnostico-sincronizacao.js';
-import {podeRetomarReleitura} from './estado-sincronizacao.js';
+import {podeRetomarLeituraAutomaticamente,requerRevisaoFila} from './estado-sincronizacao.js';
 import {diagnosticosSuporte,prepararRecuperacaoAtualizacao,edicaoVisivelParaAtualizar} from './suporte-remoto-local.js';
 import {configERP,consultarReciboOperacao,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
@@ -33,7 +33,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const [status,setStatus]=useState(''),[error,setError]=useState('');
   // Recovery warnings survive routine synchronization updates until another
   // export or a session change. Never let a queue refresh hide a partial copy.
-  const [avisoExportacao,setAvisoExportacao]=useState('');
+  const [avisoExportacao,setAvisoExportacao]=useState(''),[statusExportacao,setStatusExportacao]=useState('');
   const recuperacoes=useRef([]),[reservasPreservadas,setReservasPreservadas]=useState(0);
   const [conflitos,setConflitos]=useState([]),revisao=useRef(null);
   const [summaryReady,setSummaryReady]=useState(false),[summaryError,setSummaryError]=useState('');
@@ -89,11 +89,12 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const gravaRascunho=useRef(null);if(!gravaRascunho.current)gravaRascunho.current=filaRascunho(storage);
   const saveDraft=async()=>{if(actor.current && current.current) {const owner=actor.current.erpRef;await gravaRascunho.current(storageKey(),JSON.stringify({db:usarDiario?server.current?.db:current.current,baseline:server.current?.db,base:server.current?.base,pending:usarDiario?false:pending.current,attempt:usarDiario?null:attempt.current,recuperacoes:recuperacoes.current,municipios:[...municipios.current]}),owner);}};
   const atualizarDiario=items=>{
-    setPendencias(items.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado)));
-    pending.current=items.some(i=>!['confirmado','substituido','dispensado'].includes(i.estado));
-    const bloqueadas=items.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado)).filter(i=>(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado))||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
+    const ativas=items.filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));
+    setPendencias(ativas);
+    setPreviaPendencia(p=>p&&!ativas.some(i=>i.id===p.id)?null:p);
+    pending.current=ativas.length>0;
+    const bloqueadas=ativas.filter(requerRevisaoFila);
     setStatus(bloqueadas.length?`${bloqueadas.length} alteração(ões) aguardando revisão; as demais podem sincronizar.`:pending.current?'Alterações guardadas neste aparelho; aguardando confirmação.':'Dados compartilhados no Supabase');
-    if(bloqueadas.length)setError('Abra Pendências para revisar cada alteração.');else setError('');
   };
   const edicoesDiario=()=>{
     const itens=diario.current?.itens()||[],aliases=Object.assign({},...itens.filter(i=>i.recibo).map(i=>i.recibo.aliases||{}));
@@ -116,10 +117,16 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     return state;
   };
   const iniciarDiario=(user,gen)=>{
-    diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
+    diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{
+      if(gen!==generation.current)return;
+      // Share the existing coalesced refresh queue: an alert received while
+      // another tab is processing must survive that busy interval.
+      avisos.current.add('*');
+      if(!avisoTimer.current)avisoTimer.current=setTimeout(processarAvisos,400);
+     },
       carregar:async edicoes=>{
         const seed=semearOriginais(server.current.db,edicoes);
-        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false,semCache:edicoes.some(e=>e.colecao==='metas')});conferirGeracao(gen);
+        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false,semCache:true});conferirGeracao(gen);
         const clientes=await hidratarFichasDiario(base,edicoes,gen);
         return filtrarFichasDiario(projetarRemoto(base,seed,server.current.db),clientes);
       },
@@ -178,9 +185,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const flushDiario=async()=>{
     if(busy.current||opening.current||!diario.current||!server.current||!temSessao()||!temConexao())return;
     busy.current=true;const gen=generation.current,d=diario.current;
-    try{if(!temEdicaoEmAndamento()&&d.itens().some(i=>podeRetomarReleitura(i,Date.now())))await d.verificarReleiturasTemporarias();conferirGeracao(gen);await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);publish(d.materializar(server.current.db));await saveDraft();}
+    try{if(!temEdicaoEmAndamento()&&d.itens().some(i=>podeRetomarLeituraAutomaticamente(i,Date.now())))await d.verificarReleiturasTemporarias();conferirGeracao(gen);await recuperarArquivosDiario();await d.executar();conferirGeracao(gen);await reconciliarCopiasCampoConfirmadas(d,gen);publish(d.materializar(server.current.db));await saveDraft();conferirGeracao(gen);setError('');}
     catch(e){if(gen===generation.current){setError(e.message);setStatus(e.code?.startsWith('PERSISTENCIA')?'Não foi possível guardar as alterações. Baixe uma cópia antes de sair.':'Alterações pendentes — consulte a revisão.');rejeitarConfirmacoes(e.message,e.code||'CONFIRMACAO_FALHOU',e);}}
-    finally{if(gen===generation.current){busy.current=false;const itens=d.itens().filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));if(itens.some(i=>!i.estado.startsWith('bloqueado')&&!['persistencia_falhou','legado_revisao'].includes(i.estado)&&i.proximaTentativa!==Number.MAX_SAFE_INTEGER)||!temEdicaoEmAndamento()&&itens.some(i=>podeRetomarReleitura(i,Date.now()))){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
+    finally{if(gen===generation.current){busy.current=false;const itens=d.itens().filter(i=>!['confirmado','substituido','dispensado'].includes(i.estado));if(itens.some(i=>!i.estado.startsWith('bloqueado')&&!['persistencia_falhou','legado_revisao'].includes(i.estado)&&i.proximaTentativa!==Number.MAX_SAFE_INTEGER)||!temEdicaoEmAndamento()&&itens.some(i=>podeRetomarLeituraAutomaticamente(i,Date.now()))){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
 
   const atualizarPreservando=async(base,remoto,gen,obter=()=>current.current)=>{
@@ -326,7 +333,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     setAvisoExportacao('');
     rejeitarConfirmacoes('A sessão foi reaberta antes da confirmação. Confira a sincronização do rascunho.','SESSAO_ALTERADA');
     vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
-    diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);actor.current=user;generation.current++;server.current=null;municipioAtivo.current=null;desatualizados.current.clear();municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');
+    diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);actor.current=user;generation.current++;server.current=null;municipioAtivo.current=null;desatualizados.current.clear();municipios.current=new Set();setSummaryReady(false);setSummaryError('');opening.current=true;setStatus('Carregando municípios…');setError('');setStatusExportacao('');setAvisoExportacao('');
     const gen=generation.current;busy.current=false;clearTimeout(timer.current);attempt.current=null;revisao.current=null;pending.current=false;current.current=null;municipalityLoads.current.clear();
     try {
     const antigo=usarDiario?await storage.get(`integracao-compartilhado-${user.erpRef}`):null;conferirGeracao(gen);
@@ -490,7 +497,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
         const base=await carregarBase(server.current.db,grupos);conferirGeracao(gen);
         const clientes=await hidratarFichasDiario(base,edicoesDiario(),gen,{isolarFalhas:true});
         const state=filtrarFichasDiario(projetarRemoto(base,server.current.db),clientes);
-        server.current=state;publish(diario.current.materializar(state.db));await saveDraft();return true;
+        server.current=state;publish(diario.current.materializar(state.db));await saveDraft();conferirGeracao(gen);setError('');return true;
       }
       catch(e){if(gen===generation.current)setError(e.message);return false;}
       finally{if(gen===generation.current){busy.current=false;if(pending.current)timer.current=setTimeout(flush,250);}}
@@ -534,9 +541,9 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     if(manual)invalidarIndiceClientes();
     return true;
   };
-  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');};
+  const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');setStatusExportacao('');};
   const reopen=async()=>{
-    setAvisoExportacao('');
+    setAvisoExportacao('');setStatusExportacao('');
     const gen=generation.current;
     try {
       if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
@@ -552,7 +559,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       },preservar:async snapshot=>{conferirGeracao(gen);await storage.set(`${chave}-revisao-${Date.now()}`,snapshot);conferirGeracao(gen);await saveDraft();}});
       conferirGeracao(gen);
       const parcial=!conteudo.recuperacaoAnexosMetas.completa;
-      setStatus(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
+      setStatusExportacao(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
       const avisos=[];
       if(parcial)avisos.push(`${conteudo.recuperacaoAnexosMetas.ausentes.length} anexo(s) de Metas não puderam ser incluídos. Preserve este aparelho e revise os arquivos indicados na cópia antes de fechar a tela.`);
       if(!resultado.copiaInterna)avisos.push('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
@@ -581,7 +588,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     let releituraTimer;
     const retomarReleitura=()=>{
       clearTimeout(releituraTimer);
-      if(!pending.current||!usarDiario||!diario.current?.itens().some(i=>podeRetomarReleitura(i,Date.now())))return;
+      if(!pending.current||!usarDiario||!diario.current?.itens().some(i=>podeRetomarLeituraAutomaticamente(i,Date.now())))return;
       releituraTimer=setTimeout(()=>{if(actor.current&&!opening.current&&!busy.current&&!temEdicaoEmAndamento()&&temSessao()&&temConexao())void flushDiario();},250);
     };
     const observador=typeof MutationObserver==='function'?new MutationObserver(retomarReleitura):null;
@@ -646,5 +653,8 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       return await prepararRecuperacaoAtualizacao({conta,storage,snapshot:()=>({protocolo:1,conta,dados:current.current,base:server.current,diario:diarioPreservado}),seguro,conferir:()=>conferirGeracao(gen),esperar:async()=>{await d.esperar();await saveDraft();}});
     }catch{return false;}finally{if(gen===generation.current){busy.current=false;if(pending.current){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
-  return {executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[error,avisoExportacao].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
+  const erroFila=pendencias.some(i=>i.estado==='persistencia_falhou')?'O navegador não conseguiu guardar uma alteração. Baixe uma cópia antes de sair.':'';
+  const filaRevisavel=pendencias.some(requerRevisaoFila);
+  const erroGlobal=[erroFila,error,avisoExportacao].filter(Boolean).join(' ');
+  return {erroGlobal,statusExportacao,executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[filaRevisavel?'Abra Pendências para revisar cada alteração.':'',erroGlobal].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }
