@@ -15,3 +15,10 @@ test('intenções vazias, de arquivos, alheias ou mistas conservam leitura compl
  for(const edicoes of [null,undefined,{},[],[{colecao:'auditoria'}],[{colecao:'arquivos'}],[{colecao:'metas'},null],[{colecao:'metas'},{colecao:'arquivos'}],[{colecao:'metas'},{colecao:'nucleos'}],[{colecao:'metas'},{colecao:'notificacoes'}],[{colecao:'metas'},{}]])assert.equal(gruposDeLeituraDaIntencao(edicoes),null);
  const grupos=gruposDeLeituraDaIntencao([{colecao:'metas'}]);grupos.pop();assert.deepEqual(gruposDeLeituraDaIntencao([{colecao:'metas'}]),['metas','usuarios','auxiliar']);
 });
+
+test('notificação nova de Metas usa escopo restrito; edição ou rota mista não',()=>{
+ const meta={colecao:'metas'},notificacao={colecao:'notificacoes',antes:{existe:false},depois:{existe:true,valor:{rota:{pag:'metas'}}}};
+ assert.deepEqual(gruposDeLeituraDaIntencao([meta,notificacao]),['metas','usuarios','auxiliar']);
+ assert.equal(gruposDeLeituraDaIntencao([meta,{...notificacao,antes:{existe:true}}]),null);
+ assert.equal(gruposDeLeituraDaIntencao([meta,{...notificacao,depois:{existe:true,valor:{rota:{pag:'chat'}}}}]),null);
+});

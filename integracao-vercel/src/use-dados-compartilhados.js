@@ -51,10 +51,10 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     municipios.current.forEach(id=>desatualizados.current.add(id));
   };
   const conferirGeracao=gen=>{if(gen!==generation.current)throw Object.assign(new Error('Sessão encerrada.'),{code:'SESSAO_ALTERADA'});};
-  const carregarBase=async(seed,grupos=null,{fichasAvulsas=true}={})=>{
+  const carregarBase=async(seed,grupos=null,{fichasAvulsas=true,semCache=false}={})=>{
     const gen=generation.current;
     const tabelas=grupos?tabelasDosGrupos(grupos):null;
-    const base=await lerBase({municipios:municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[],tabelas,anterior:grupos?server.current?.base:null});
+    const base=await lerBase({municipios:municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[],tabelas,anterior:grupos?server.current?.base:null,semCache});
     conferirGeracao(gen);
     if(server.current&&(!grupos||grupos.includes('clientes'))){
       const antigos=server.current.base,ativos=new Set(base.fin_receb_clientes.map(c=>c.id)),extras=new Set((base.integracao_moradores||[]).map(e=>e.registro_id)), idsAtivos=new Set(antigos.fin_receb_clientes.filter(c=>c.municipio_id===municipioAtivo.current).map(c=>c.id));
@@ -119,7 +119,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     diario.current=criarDiarioCompartilhado({conta:user.erpRef,ativo:()=>gen===generation.current&&actor.current?.erpRef===user.erpRef,atualizou:atualizarDiario,notificar:()=>{if(gen===generation.current){clearTimeout(timer.current);timer.current=setTimeout(()=>refresh({force:true}),400);}},
       carregar:async edicoes=>{
         const seed=semearOriginais(server.current.db,edicoes);
-        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false});conferirGeracao(gen);
+        const base=await carregarBase(seed,gruposDeLeituraDaIntencao(edicoes),{fichasAvulsas:false,semCache:edicoes.some(e=>e.colecao==='metas')});conferirGeracao(gen);
         const clientes=await hidratarFichasDiario(base,edicoes,gen);
         return filtrarFichasDiario(projetarRemoto(base,seed,server.current.db),clientes);
       },
@@ -127,7 +127,18 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
         const ops=prepararEdicao(state.db,depois,state,user),files=await prepararArquivos(state.db,depois,storage,user);conferirGeracao(gen);
         const assets=await prepararArmazenamento(state,depois,arquivos||{});conferirGeracao(gen);
         return {operacoes:[...ops,...files,...assets.operations],sent:assets.sent,identicos:assets.identicos};
-      },enviar:gravarOperacoes,consultarRecibo:consultarReciboOperacao,
+      },projetarProvaMetas:(remoto,edicoes)=>{
+        const ids=new Set(edicoes.filter(e=>e.colecao==='metas').map(e=>e.id));
+        // Proof must not read arbitrary local-only fields carried by projection.
+        return projetar(remoto.base,{...remoto.db,metas:remoto.db.metas.filter(m=>!ids.has(m.id)),auditoria:[],notificacoes:[]});
+      },planejarMetas:(antes,depois,state)=>prepararEdicao(antes,depois,state,user),
+      confirmarEstado:(_item,state,prova)=>{
+        conferirGeracao(gen);server.current=state;
+        const ids=new Set(prova.operacoes.filter(op=>op.table==='integracao_notificacoes').map(op=>op.key.registro_id));
+        const relido=ids.size?{...state.db,notificacoes:[...(state.db.notificacoes||[]).filter(n=>!ids.has(n.id)),...(state.base.integracao_notificacoes||[]).filter(n=>ids.has(n.registro_id)).map(n=>n.dados)]}:state.db;
+        confirmacoes.current.confirmar(prova.depois,relido,{estadoConferido:true,operacoes:prova.operacoes});
+      },
+      enviar:gravarOperacoes,consultarRecibo:consultarReciboOperacao,
       confirmar:async(item,state)=>{
         conferirGeracao(gen);server.current=state;
         if(item.preparado&&!alteracoesConfirmadas(item.preparado.antes,item.preparado.depois,state.db,item.recibo?.aliases||{},item.payload||[])){

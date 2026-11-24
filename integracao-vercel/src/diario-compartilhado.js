@@ -1,7 +1,8 @@
+import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
-import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,checksumIntencao} from './fila-intencoes.js';
+import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
@@ -10,7 +11,7 @@ import {arquivosDaIntencao} from './arquivos-intencoes.js';
 import {revisarLeitura,snapshotLeitura} from './revisao-leitura.js';
 const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
 const uuidHash=h=>`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
-export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
+export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetarProvaMetas=r=>r,planejarMetas,confirmarEstado=()=>{},enviar,consultarRecibo,confirmar,aceitarLeitura=async()=>{},atualizou,notificar=()=>{},fila=abrirFilaIntencoes()}){
  const canal=typeof BroadcastChannel==='function'?new BroadcastChannel('integracao-diario-v2:'+conta):null;
  if(canal)canal.onmessage=()=>{if(ativo())notificar();};
  const sinalizar=()=>canal?.postMessage({protocolo:2});
@@ -105,17 +106,41 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,enviar,c
  }
  async function prepararItem(item){
   const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
+  const prova=planejarMetas&&(r.conflitos.length||igualSemantico(recortarIntencao(r.dados,edicoes),recortarIntencao(remoto.db,edicoes)))&&verificarMetas(item,remoto,edicoes);
+  if(prova)return {provaEstado:prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
   const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();return {...pronto,antes:recortarIntencao(remoto.db,edicoes),depois:recortarIntencao(r.dados,edicoes)};
+ }
+ function verificarMetas(item,remoto,edicoes){
+  try{return provarMetasNoServidor(item,edicoes,projetarProvaMetas(remoto,edicoes),items,planejarMetas);}catch{return null;}
  }
  async function executar({id=null,validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();await atualizar();
   // Bound each pass; a later pass resumes independently ready entries.
   const limite=id?1:items.filter(i=>!terminal(i)).length;
   const tentados=[];
+  if(!id&&planejarMetas){
+   // Read-only blocked conflicts first, so their dependent requests can then be
+   // evaluated in order. No repeated queries for the same item within the pass.
+   const lidos=[];
+   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&conflitoReconciliavelMetas(i,Date.now()));n++){
+    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+     const {remoto,edicoes}=await lerItem(item);
+     const prova=verificarMetas(item,remoto,edicoes);
+     return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
+    }});
+    if(resultado===null)break;
+    await atualizar();if(resultado)sinalizar();
+   }
+  }
+
   for(let n=0;n<limite;n++){
    conferir();let resultado;
-   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
+   try{resultado=await processarIntencao(fila,{conta,dono,somenteId:id,ignorarIds:tentados,aoReservar:pedido=>tentados.push(pedido),sessaoAtual:()=>{verificar();return ativo();},preparar:async item=>{await validar();verificar();return prepararItem(item);},consultarRecibo:async item=>{await validar();verificar();return consultarRecibo(item);},provarEstado:planejarMetas?async item=>{
+    const {remoto,edicoes}=await lerItem(item);
+    const prova=verificarMetas(item,remoto,edicoes);
+    return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
+   }:undefined,enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
     await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
    }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}

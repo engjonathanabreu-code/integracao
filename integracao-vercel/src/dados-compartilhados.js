@@ -95,7 +95,7 @@ export async function abrirArquivoSemanal(caminho) {
 const TABLES = ['profiles','fin_receb_municipios','fin_receb_remessas','fin_receb_clientes','processos_kanban','processos_kanban_andamentos','processos_kanban_observacoes','processos_kanban_historico','meta_setores','metas','meta_responsaveis','meta_checklist','meta_comentarios','meta_historico','ordens_servico','ordem_servico_comentarios','planos_trabalho','etapas_plano','etapa_responsaveis','entregaveis','comentarios_plano','projetos','erp_agendas','erp_eventos','erp_evento_respostas','erp_conversas','erp_mensagens','integracao_complementos'];
 const compositeOrder = { integracao_agente_estrategias: 'agente', integracao_crm_chatwoot_resumo: 'card_id', meta_responsaveis: 'meta_id,usuario_id', etapa_responsaveis: 'etapa_id,usuario_id', erp_evento_respostas: 'evento_id,usuario_id', integracao_complementos: 'colecao,registro_id' };
 export async function tokenTempoReal(){if(!session)return null;const scope=capturarSessao();if(session.expires_at<Date.now()+60000)await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});scope.conferir();return session.access_token;}
-export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
+export async function lerBase({municipios=[],tabelas=null,anterior=null,semCache=false}={}) {
   const scope=capturarSessao();
   if(!tabelas||tabelas.includes("profiles")){const contrato=await requisicao("rpc/integracao_atribuicoes_contrato_ler",{method:"POST",body:"{}"});scope.conferir();registrarContrato(scope.owner,contrato); }
   const pairs = await Promise.all([...TABLES,...tabelasProprias,'integracao_arquivos','meta_arquivos','erp_exclusoes_chat','documentos'].filter(t=>!['fin_receb_clientes','integracao_moradores'].includes(t)&&(!tabelas||tabelas.includes(t))).map(async table => {
@@ -103,7 +103,7 @@ export async function lerBase({municipios=[],tabelas=null,anterior=null}={}) {
     for (let offset = 0; ; offset += 500) {
       const fields = table === 'profiles' ? 'id,nome,email,tipo,setor,ativo' : '*';
       const path = `${table==='erp_eventos'?'rpc/integracao_eventos':table}?select=${fields}&order=${compositeOrder[table] || (tabelasProprias.includes(table)||table==='integracao_arquivos'?'colecao,registro_id':'id')}&limit=500&offset=${offset}`;
-      const page = await requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:{});
+      const page = await requisicao(path,table==='erp_eventos'?{method:'POST',body:'{}'}:semCache?{cache:'no-store'}:{});
       scope.conferir();rows.push(...page); if (page.length < 500) break;
     }
     return [table, rows];

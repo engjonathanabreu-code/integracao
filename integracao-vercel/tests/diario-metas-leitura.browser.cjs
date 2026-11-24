@@ -43,6 +43,38 @@ const assert=require('node:assert/strict');
    assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);
    assert.ok(await p.evaluate(()=>metasLeitura.stats.requests.some(x=>x.t==='erp_mensagens')),'intenção mista mantém leitura completa');casos++;await c.close();
   }
+  // Without a receipt, the exact read can reconcile an offline save without a POST.
+  {
+   const {c,p}=await abrir();
+   await p.evaluate(async()=>{
+    const h=metasLeitura;h.base.metas.push({...h.base.metas[0],id:h.id(99),titulo:'Segunda meta'});
+    await h.sync.refresh({force:true});
+   });
+   await p.waitForFunction(()=>metasLeitura.db.metas.length===2);
+   await c.setOffline(true);
+   await p.evaluate(()=>{const h=metasLeitura;h.sync.mutate(d=>{d.metas[0].titulo='Já gravada';return d;});});
+   await p.waitForFunction(()=>metasLeitura.sync.pendencias.length===1);
+   await p.evaluate(()=>{metasLeitura.base.metas[0].titulo='Já gravada';});
+   await c.setOffline(false);
+   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
+   const r=await p.evaluate(async()=>{
+    const {abrirFilaIntencoes}=await import('/src/fila-intencoes.js'),f=abrirFilaIntencoes();
+    try{const [i]=await f.listar(metasLeitura.id(1));return {estado:i.estado,prova:i.decisao?.tipo,recibo:!!i.recibo,posts:metasLeitura.stats.posts};}
+    finally{await f.fechar();}
+   });
+   assert.deepEqual(r,{estado:'confirmado',prova:'metas_ja_presentes_no_servidor',recibo:false,posts:0});casos++;await c.close();
+  }
+  // A true divergent value stays queued; once the same data become visible,
+  // the PT409 is reconciled without resending and the original is retained.
+  {
+   const {c,p}=await abrir();
+   await p.evaluate(async()=>{const h=metasLeitura;h.base.metas[0].titulo='Versão concorrente';h.sync.mutate(d=>{d.metas[0].titulo='Minha versão';return d;});await h.sync.flush();});
+   await p.waitForFunction(()=>metasLeitura.sync.pendencias.some(i=>i.estado==='bloqueado_conflito'));
+   assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);
+   await p.evaluate(async()=>{const h=metasLeitura;h.base.metas[0].titulo='Minha versão';await h.sync.flush();});
+   await p.waitForFunction(()=>!metasLeitura.sync.pendencias.length);
+   assert.equal(await p.evaluate(()=>metasLeitura.stats.posts),0);casos++;await c.close();
+  }
   console.log(JSON.stringify({ok:true,casos,hookReal:true,indexedDBReal:true,chatIsoladoSomenteMetas:true,autorizacaoAtual:true,arquivosPreservados:true,reciboSemReenvio:true,mistasCompletas:true,semDadosReais:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
