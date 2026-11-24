@@ -543,7 +543,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   };
   const close=()=>{rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');setStatusExportacao('');};
   const reopen=async()=>{
-    setAvisoExportacao('');
+    setAvisoExportacao('');setStatusExportacao('');
     const gen=generation.current;
     try {
       if(!actor.current||!current.current)throw Error('Abra a conta que contém as pendências antes de exportar.');
@@ -559,7 +559,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       },preservar:async snapshot=>{conferirGeracao(gen);await storage.set(`${chave}-revisao-${Date.now()}`,snapshot);conferirGeracao(gen);await saveDraft();}});
       conferirGeracao(gen);
       const parcial=!conteudo.recuperacaoAnexosMetas.completa;
-      setStatus(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
+      setStatusExportacao(parcial?'Cópia parcial enviada para download; as pendências continuam preservadas.':'Cópia enviada para download. Confira o arquivo antes de fechar a tela; as pendências continuam preservadas.');
       const avisos=[];
       if(parcial)avisos.push(`${conteudo.recuperacaoAnexosMetas.ausentes.length} anexo(s) de Metas não puderam ser incluídos. Preserve este aparelho e revise os arquivos indicados na cópia antes de fechar a tela.`);
       if(!resultado.copiaInterna)avisos.push('A cópia interna do navegador não pôde ser atualizada. Confirme o download antes de fechar esta tela.');
