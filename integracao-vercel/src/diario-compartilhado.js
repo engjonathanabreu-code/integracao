@@ -1,3 +1,4 @@
+import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa} from './estado-sincronizacao.js';
@@ -140,7 +141,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
     const {remoto,edicoes}=await lerItem(item);
     const prova=verificarMetas(item,remoto,edicoes);
     return prova&&{prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
-   }:undefined,enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
+   }:undefined,validarEnvio:item=>validarVinculoMoradoresDoEnvio(item.payload,item.preparado?.depois),enviar:async item=>{await validar();verificar();return enviar(item.payload,item.pedido,item.preparado.depois);},reler:async item=>{
     await validar();verificar();
     const {remoto}=await lerItem(item);conferir();await confirmar(item,remoto);conferir();
    }});}catch(e){if(e.code==='SESSAO_ALTERADA')throw e;resultado=true;}

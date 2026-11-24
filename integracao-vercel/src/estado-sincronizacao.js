@@ -70,6 +70,7 @@ export function podeRetomarReleituraDivergente(i,agora){
 }
 export const podeRetomarLeituraAutomaticamente=(i,agora)=>podeRetomarReleitura(i,agora)||podeRetomarReleituraDivergente(i,agora);
 export function orientacaoPendencia(i){
+ if(i.erro?.codigo==='CLIENTE_SEM_VINCULO_CANONICO')return 'Este cadastro não tem vínculo confirmado no servidor. A alteração não foi enviada nesta tentativa e continua neste aparelho. Confira o cadastro com a equipe autorizada antes de retomar; não crie outra ficha.';
  if(i.erro?.codigo==='INTENCAO_SEM_OPERACOES')return 'A preparação não produziu operações de gravação verificáveis. Não há confirmação do servidor para esta alteração; o original permanece preservado para revisão.';
  if(!i.recibo&&i.erro?.codigo==='P0001')return 'Este pedido exige revisão. O código P0001 não identifica sozinho a regra ou o campo; o original continua preservado.';
  if(falhaPreparacaoSemEnvio(i))return 'O sistema falhou antes de enviar esta alteração. O rascunho continua preservado neste aparelho.';

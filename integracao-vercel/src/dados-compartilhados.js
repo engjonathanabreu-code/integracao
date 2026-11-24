@@ -443,6 +443,30 @@ export function mesclarEdicoes(base,local,remote) {
   return copy(local);
 }
 
+const moradorCompartilhavel = (id,dados={}) =>
+  uuid(id)||uuid(dados.financeiroRef)||(!!dados.remessaId&&!!dados.codigo);
+const erroVinculoMorador = () => Object.assign(
+  new Error('Este cadastro não tem vínculo confirmado no servidor. A alteração fica preservada neste aparelho; confira a ficha antes de retomar.'),
+  {code:'CLIENTE_SEM_VINCULO_CANONICO',status:422}
+);
+
+// Called only at the point of a possible write, after any receipt lookup.
+// A frozen legacy UPDATE without a reference does not prove which live row
+// it addressed; do not infer absence. Explicit orphan/wrong inserts or relinks
+// must never leave the device, but a genuine older receipt can still be read.
+export function validarVinculoMoradoresDoEnvio(operacoes,depois){
+  for(const op of operacoes||[]){
+    if(!['integracao_moradores','integracao_complementos'].includes(op.table)||op.key?.colecao!=='processos'||op.remove)continue;
+    const mudancas=op.changes||{};
+    if(!op.insert&&!Object.hasOwn(mudancas,'referencia_tabela')&&!Object.hasOwn(mudancas,'referencia_id'))continue;
+    const ficha=depois?.processos?.find(p=>p.id===op.key.registro_id);
+    if(!moradorCompartilhavel(op.key.registro_id,ficha||mudancas.dados||{}))continue;
+    const novoCanonico=operacoes.find(x=>x.table==='fin_receb_clientes'&&x.insert&&x.key?.id===op.key.registro_id);
+    const esperado=ficha?.financeiroRef||novoCanonico?.key.id;
+    if(mudancas.referencia_tabela!=='fin_receb_clientes'||!uuid(mudancas.referencia_id)||
+       (esperado&&esperado!==mudancas.referencia_id))throw erroVinculoMorador();
+  }
+}
 export function complementos(before,after,state,actor) {
   const operations=[];
   const ignored=new Set(['_compartilhado','_atualizadoEm','online','ultimaAtividade']);
@@ -478,6 +502,12 @@ export function complementos(before,after,state,actor) {
         if(target)delete target[last];
       }
       if(eq(data,prior?.dados||{})) continue;
+      // An edit is not authorization to create a missing shared customer.
+      // Creation above projects the real financial ID before generating its complement.
+      // Preserve older local/owner-only records for review, without silently filing
+      // an unlinked complement as a shared edit or guessing a canonical identity.
+      if(collection==='processos' && moradorCompartilhavel(r.id,r) && (b?.table!=='fin_receb_clientes'||!uuid(b.row.id)||
+        (prior&&(prior.referencia_tabela!=='fin_receb_clientes'||prior.referencia_id!==b.row.id))))throw erroVinculoMorador();
       const key={colecao:array?collection:'config',registro_id:r.id};
       if(prior) operations.push({table:prior?._tabela||destinoComplemento(key.colecao),key,expected:{dados:prior.dados},changes:{dados:data,updated_at:new Date().toISOString()}});
       else {
