@@ -20,7 +20,7 @@ import {gruposDeLeituraDaIntencao} from './leitura-intencoes.js';
 import {abrirArquivos,fecharArquivos,capturarArquivos,arquivosPendentes,prepararArmazenamento,confirmarArquivos,reconhecerArquivos,visualizarCopiaCampoConferida} from './arquivos-compartilhados.js';
 import {useRef,useState,useEffect} from 'react';
 import {diagnosticoOperacao,motivoEsperaLocal} from './diagnostico-sincronizacao.js';
-import {podeRetomarLeituraAutomaticamente} from './estado-sincronizacao.js';
+import {podeRetomarLeituraAutomaticamente,requerRevisaoFila} from './estado-sincronizacao.js';
 import {diagnosticosSuporte,prepararRecuperacaoAtualizacao,edicaoVisivelParaAtualizar} from './suporte-remoto-local.js';
 import {configERP,consultarReciboOperacao,tokenTempoReal,invalidarIndiceClientes,temSessao,definirSessao,lerBase,lerMoradoresMunicipio,lerFichaCliente,projetar,copy,prepararEdicao,prepararArquivos,gravarOperacoes} from './dados-compartilhados.js';
 
@@ -93,7 +93,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     setPendencias(ativas);
     setPreviaPendencia(p=>p&&!ativas.some(i=>i.id===p.id)?null:p);
     pending.current=ativas.length>0;
-    const bloqueadas=ativas.filter(i=>(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado))||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
+    const bloqueadas=ativas.filter(requerRevisaoFila);
     setStatus(bloqueadas.length?`${bloqueadas.length} alteração(ões) aguardando revisão; as demais podem sincronizar.`:pending.current?'Alterações guardadas neste aparelho; aguardando confirmação.':'Dados compartilhados no Supabase');
   };
   const edicoesDiario=()=>{
@@ -654,7 +654,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     }catch{return false;}finally{if(gen===generation.current){busy.current=false;if(pending.current){clearTimeout(timer.current);timer.current=setTimeout(flush,3000);}}}
   };
   const erroFila=pendencias.some(i=>i.estado==='persistencia_falhou')?'O navegador não conseguiu guardar uma alteração. Baixe uma cópia antes de sair.':'';
-  const filaRevisavel=pendencias.some(i=>i.estado.startsWith('bloqueado')||i.estado==='legado_revisao'||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
+  const filaRevisavel=pendencias.some(requerRevisaoFila);
   const erroGlobal=[erroFila,error,avisoExportacao].filter(Boolean).join(' ');
   return {erroGlobal,statusExportacao,executarSuporte,prepararAtualizacaoSuporte,diagnosticarPendencia,falhasAtualizacao,diagnosticoPronto:()=>!!diario.current&&!opening.current&&!!server.current,pendencias,previaPendencia,abrirPendencia,resolverPendencia,reconhecerPendencia,descartarPendencia,fecharPrevia:()=>setPreviaPendencia(null),definirMunicipioAtivo:id=>{municipioAtivo.current=id;},open,mutate,mutateConfirmed,close,flush:tentarNovamente,refresh,reopen,loadMunicipio,status,error:[filaRevisavel?'Abra Pendências para revisar cada alteração.':'',erroGlobal].filter(Boolean).join(' '),reservasPreservadas,conflitos,resolverConflitos,summaryReady,summaryError,tempoReal,salvamentoConfirmado:!!attempt.current?.confirmacao,ready:()=>!!server.current};
 }

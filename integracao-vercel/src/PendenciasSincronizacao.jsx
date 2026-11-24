@@ -1,7 +1,7 @@
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {useState} from 'react';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
-import {orientacaoPendencia,revisaoDeRecusa,classificarFalha,falhaPreparacaoSemEnvio} from './estado-sincronizacao.js';
+import {orientacaoPendencia,revisaoDeRecusa,classificarFalha,falhaPreparacaoSemEnvio,requerRevisaoFila} from './estado-sincronizacao.js';
 const estados={persistencia_falhou:'Ainda não guardada — exporte antes de sair',legado_revisao:'Original preservado para revisão',pendente_local:'Guardada no aparelho',resultado_desconhecido:'Resultado desconhecido',confirmado_aguardando_leitura:'Confirmada; aguardando leitura',bloqueado_conflito:'Valores diferentes — revisar',bloqueado_validacao:'Campos ou vínculos — revisar',falha_transitoria:'Aguardando nova tentativa'};
 const motivos={RESPONSAVEL_INDISPONIVEL:'O responsável escolhido não está ativo no cadastro atual.',IDENTIDADE_OUTRA_META:'Um item pertence a outra meta. Preserve o histórico.',23503:'Uma referência está indisponível.',ARQUIVO_LOCAL_AUSENTE:'O arquivo original não está disponível neste aparelho.'};
 const rotulo=i=>{if(falhaPreparacaoSemEnvio(i))return 'Falhou antes de enviar';const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;return categoria==='sessao'?'Sessão expirada — autenticar novamente':categoria==='permissao'?'Permissão insuficiente — solicitar revisão':estados[i.estado]||i.estado;};
@@ -12,7 +12,7 @@ export default function PendenciasSincronizacao({sync}){
  const executar=async fn=>{if(ocupado)return;setOcupado(true);try{await fn();}finally{setOcupado(false);}};
  if(!sync.pendencias?.length&&!p&&!sync.falhasAtualizacao?.length)return null;
  return <section style={{padding:'8px 18px'}} aria-label="Sincronização de alterações">
-  {sync.pendencias?.length>0&&!sync.erroGlobal&&<div className="topo-acoes" aria-label="Ações da fila">
+  {sync.pendencias?.some(requerRevisaoFila)&&!sync.erroGlobal&&<div className="topo-acoes" aria-label="Ações da fila">
    <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.flush)}>Retomar tentativas automáticas</button>
    <button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(sync.reopen)}>Baixar cópia das alterações pendentes</button>
   </div>}

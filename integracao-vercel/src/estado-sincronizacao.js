@@ -1,5 +1,6 @@
 import {restricaoDaFalha,orientacaoRestricao} from './diagnostico-validacao.js';
 export const terminal=i=>['confirmado','substituido','dispensado'].includes(i.estado);
+export const requerRevisaoFila=i=>!terminal(i)&&(i.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(i.estado)||i.proximaTentativa===Number.MAX_SAFE_INTEGER);
 export function classificarFalha(e){
  const restricao=restricaoDaFalha(e);
  const vistos=new Set(),nomes=new Set();let status,codigo;

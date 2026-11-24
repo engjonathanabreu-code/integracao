@@ -24,7 +24,9 @@ test('fila ativa tem só um indicador; divergência continua consultável e pré
    assert.doesNotMatch(html,/role="alert"|Abra Pendências|alteração aguardando revisão/);
    assert.match(html,/Revisar esta alteração/);
   }
-  const automatico=render({...sync,pendencias:[{...item,estado:'resultado_desconhecido'}]});
+  const emAndamento=render({...sync,pendencias:[{...item,estado:'resultado_desconhecido',proximaTentativa:0}]});
+  assert.doesNotMatch(emAndamento,/Retomar tentativas automáticas|Baixar cópia/);
+  const automatico=render({...sync,pendencias:[{...item,estado:'resultado_desconhecido',proximaTentativa:Number.MAX_SAFE_INTEGER}]});
   assert.equal(automatico.match(/Retomar tentativas automáticas/g)?.length,1);
   assert.equal(render(sync).match(/Retomar tentativas automáticas/g)?.length,1);
   assert.equal(render(sync).match(/Baixar cópia das alterações pendentes/g)?.length,1);
