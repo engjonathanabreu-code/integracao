@@ -7,7 +7,7 @@ Em 24–25/11/2026 três requisições ficaram cerca de 15 horas sendo repetidas
 removida (`docs/conflitos-negocio-sem-retry-20261125.md`). Este alarme existe para o caso de algo
 parecido reaparecer por outro caminho.
 
-`supabase/migrations/20261125141221_monitor_lacos_repeticao.sql` cria o schema `integracao_monitor_privado` e agenda no pg_cron, a cada
+`supabase/migrations/20261125142032_monitor_lacos_repeticao.sql` cria o schema `integracao_monitor_privado` e agenda no pg_cron, a cada
 2 minutos, o job `integracao-monitor-lacos`, que chama `integracao_monitor_privado.verificar()`.
 A função:
 
@@ -114,3 +114,7 @@ select integracao_monitor_privado.sessoes_suspeitas(0, 3600);
 select status, return_message, end_time from cron.job_run_details d join cron.job j using (jobid)
  where j.jobname = 'integracao-monitor-lacos' order by end_time desc limit 3;
 ```
+
+## Aplicação em produção — 25/11/2026
+
+A migration foi aplicada com autorização específica e o arquivo foi renomeado para a versão registrada (`20261125142032`); o SQL não mudou. Conferido em seguida no banco: os corpos das três funções são idênticos aos gerados por este arquivo (md5 conferido), o job `integracao-monitor-lacos` está ativo com a agenda `*/2 * * * *`, o schema não concede uso a `anon` nem a `authenticated`, e as três tabelas estão com RLS habilitado e sem políticas.

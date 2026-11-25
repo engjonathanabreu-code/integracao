@@ -1,4 +1,4 @@
--- Reversão de supabase/migrations/20261125141221_monitor_lacos_repeticao.sql.
+-- Reversão de supabase/migrations/20261125142032_monitor_lacos_repeticao.sql.
 -- Desagenda o job do pg_cron e remove funções, tabelas e o schema do monitor (amostras,
 -- alertas e limites ajustados são perdidos). NÃO apaga as notificações já criadas em
 -- public.integracao_notificacoes nem toca em qualquer outro objeto.
