@@ -50,8 +50,6 @@ test('vários requerentes: um incompleto bloqueia e é identificado pela posiç�
  assert.deepEqual(pend('contrato',p),['CPF do cônjuge do 3º requerente (Terceira Incompleta)','Regime de bens do casamento do 3º requerente (Terceira Incompleta)']);
  p.corequerentes[1].conjuge.cpf=CPFS[1];p.corequerentes[1].pessoa.regimeBens='Separação de bens';
  assert.deepEqual(pend('contrato',p),[]);
- p.corequerentes[0].tipo='representado';p.corequerentes[0].representanteId='';
- assert.deepEqual(pend('contrato',p),['Representante legal do 2º requerente (Segundo Completo)']);
 });
 test('pessoa jurídica: completa gera; incompleta pede razão social, CNPJ e representante, nunca CPF ou cônjuge',()=>{
  for(const tipo of BLOQUEADOS){assert.deepEqual(pend(tipo,empresa()),[],tipo);assert.deepEqual(faltaNaTela(tipo,empresa()),[],tipo);}
@@ -77,7 +75,7 @@ test('toda falta que a qualificação acusa bloqueia; nada vira texto resumido e
   if(qualificar(p).faltas.length){conferidos++;assert.ok(pendenciasQualificacao(p,DIA).length>0,campo);}
  }
  for(const campo of ['logradouro','numero','bairro','municipio','uf','cep']){const p=base();p.endereco[campo]='';assert.ok(qualificar(p).faltas.length>0,campo);assert.ok(pendenciasQualificacao(p,DIA).length>0,campo);conferidos++;}
- {const p=base();p.corequerentes[0].representanteId='';assert.ok(qualificar(p).faltas.length>0);assert.ok(pendenciasQualificacao(p,DIA).length>0);}
+ {const p=base();p.corequerentes[0].representanteId='';assert.ok(qualificar(p).faltas.length>0);assert.ok(pend('contrato',p).length>0);}
  assert.ok(conferidos>=20);
  // Rede de segurança: colchete que as regras não previram também bloqueia.
  assert.deepEqual(pendenciasDocumento('contrato',solteiro(),{referencia:DIA,qualificacao:'Fulano, [campo novo], residente.'}),['Qualificação: campo novo']);

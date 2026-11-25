@@ -7,7 +7,7 @@ import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoRes
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
 import {documentoPorDeclarante,opcoesDeclaracao} from './declarantes-comerciais.js';
-import {documentoComBloqueio,pendenciasDocumento,unirPendencias} from './documentos-bloqueio.js';
+import {documentoComBloqueio,pendenciasDocumento,unirPendencias,assinantesDocumento} from './documentos-bloqueio.js';
 import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
@@ -8890,8 +8890,7 @@ function dadosDocumento(db, p, usuario) {
     historicoPosse: p.imovel?.historicoPosse || "____________",
     qualificacaoCompleta: gerarQualificacao(p, "completa", true).texto,
     requerentes: [p.requerente.nome, ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
-    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome && p.conjuge.beneficiario !== "nao" ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
-      ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome && c.conjuge.beneficiario !== "nao" ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
+    assinantes: assinantesDocumento(p, { fmtCPF, fmtCNPJ }),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
     qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",

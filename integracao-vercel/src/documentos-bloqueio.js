@@ -4,7 +4,8 @@
 // As regras espelham a qualificação completa (gerarQualificacao, em App.jsx), que é o
 // texto das partes nesses três documentos.
 import {ehPJ,temConjuge,cpfValido,cnpjValido,preenchido,so,COM_CONJUGE} from './requisitos-moradores.js';
-import {cpfDispensado} from './pessoa-menor.js';
+import {cpfDispensado,menorDeIdade} from './pessoa-menor.js';
+import {declarantesComerciais} from './declarantes-comerciais.js';
 import {pendenciasPagamento} from './contrato-dados.js';
 
 export const DOCUMENTOS_COM_BLOQUEIO=['contrato','procuracao','distrato'];
@@ -54,12 +55,41 @@ export function pendenciasQualificacao(p,referencia){
   const rotulo=rotuloOutro(o,i);
   f.push(...faltasPessoa(o.pessoa,`do ${rotulo}`,true,referencia));
   f.push(...faltasCasal(o.pessoa,o.conjuge,`do ${rotulo}`,`do cônjuge do ${rotulo}`,referencia));
-  if(o.tipo==='menor'||o.tipo==='representado'){
-   const rep=o.representanteId==='principal'?r.nome:(p.corequerentes||[]).find(k=>k.id===o.representanteId)?.pessoa?.nome;
-   if(!preenchido(rep))f.push(`Representante legal do ${rotulo}`);
-  }
  });
  return f;
+}
+
+// Quem assina contrato e termo: titular, cônjuge beneficiário, demais requerentes beneficiários e
+// seus cônjuges. Menor de idade ou representado não assina: a regra de representante é a mesma
+// das declarações (declarantesComerciais).
+export function partesAssinantes(p,referencia){
+ p=p||{};const partes=[{pessoa:p.requerente,papel:'requerente'}];
+ if(p.requerente&&temConjuge(p)&&p.conjuge?.nome&&p.conjuge.beneficiario!=='nao')partes.push({pessoa:p.conjuge,papel:'conjuge'});
+ (p.corequerentes||[]).filter(c=>c?.beneficiario!=='nao').forEach(c=>{
+  partes.push({pessoa:c.pessoa,papel:'corequerente',tipo:c.tipo});
+  if(c.conjuge?.nome&&c.conjuge.beneficiario!=='nao')partes.push({pessoa:c.conjuge,papel:'conjuge'});
+ });
+ const declarantes=declarantesComerciais(p,referencia);
+ return partes.filter(x=>x.pessoa?.nome).map(x=>{
+  const d=declarantes.find(k=>k.pessoa===x.pessoa),pj=ehPJ(x.pessoa);
+  const menor=!pj&&menorDeIdade(x.pessoa,referencia);
+  const representado=!pj&&(d?d.representado:menor||['menor','representado'].includes(x.tipo));
+  const valido=representado&&!!d&&!d.falta.includes('representante válido no cadastro');
+  return {...x,menor,representado,representante:valido?d.representante:null};
+ });
+}
+export function assinantesDocumento(p,{referencia,fmtCPF=x=>x,fmtCNPJ=x=>x}={}){
+ return partesAssinantes(p,referencia).map(({pessoa,representante})=>representante
+  ?[`${representante.nome}, representante legal de ${pessoa.nome}`,fmtCPF(representante.cpf)]
+  :[pessoa.nome,ehPJ(pessoa)?fmtCNPJ(pessoa.cnpj):fmtCPF(pessoa.cpf)]);
+}
+export function pendenciasRepresentacao(p,referencia){
+ return partesAssinantes(p,referencia).filter(x=>x.representado&&!x.representante).map(x=>{
+  const quem=`${String(x.pessoa.nome).trim()} (${x.menor?'menor de idade':'representado'})`;
+  return x.papel==='corequerente'
+   ?`Representante legal de ${quem}, com CPF válido: escolha o tipo e o representante em Outros requerentes`
+   :`Representante legal de ${quem}: o cadastro só aceita representante em Outros requerentes; cadastre o responsável como requerente principal`;
+ });
 }
 
 // opcoes.condicoes: forma de pagamento em vigor para o cliente (própria ou do núcleo).
@@ -68,7 +98,7 @@ export function pendenciasQualificacao(p,referencia){
 // documento também fica bloqueado, em vez de trocar o texto por uma versão resumida.
 export function pendenciasDocumento(tipo,p,opcoes={}){
  if(!documentoComBloqueio(tipo))return [];
- const f=pendenciasQualificacao(p,opcoes.referencia);
+ const f=[...pendenciasQualificacao(p,opcoes.referencia),...pendenciasRepresentacao(p,opcoes.referencia)];
  if(!f.length)for(const [,campo] of String(opcoes.qualificacao||'').matchAll(/\[([^\]]+)\]/g))f.push(`Qualificação: ${campo}`);
  // Só o contrato imprime preço e parcelas; procuração e distrato não dependem da forma de pagamento.
  if(tipo==='contrato')f.push(...pendenciasPagamento(opcoes.condicoes));
