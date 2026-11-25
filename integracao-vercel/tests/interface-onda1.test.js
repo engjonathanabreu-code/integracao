@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro} from '../src/interface-regras.js';
+import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro,avisoErrosCadastro,campoFaltando,irAoPrimeiroErro,MENSAGEM_CAMPO_FALTANDO} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const css=fonte.slice(fonte.indexOf('const CSS'),fonte.indexOf('function Modal('));
@@ -98,4 +98,30 @@ test('UI-C1: Descartar da ficha pergunta antes e informa quantas alterações se
  assert.match(botao,/onClick=\{\(\) => setModal\(\{ tipo: "confirmar", \.\.\.confirmacaoDescarteCadastro\(alterados\.length\), onConfirmar: \(\) => \{ setModal\(null\); baseFormulario\.current = /,'o rascunho só é desfeito dentro da confirmação');
  assert.equal(botao.split('setRascunho(').length,2,'um único caminho desfaz o rascunho');
  assert.match(ficha,/\{modal\?\.tipo === "confirmar" && <ModalConfirmar \{\.\.\.modal\} onFechar=\{\(\) => setModal\(null\)\} \/>\}/,'usa a confirmação já existente na ficha');
+});
+
+test('UI-C2: erros ao salvar a ficha ficam na barra de salvar e os campos são destacados',()=>{
+ assert.deepEqual(avisoErrosCadastro([]),{mensagem:'',faltando:[]});
+ assert.deepEqual(avisoErrosCadastro(['CPF do cônjuge','CEP da residência']),{mensagem:'Corrija antes de salvar: CPF do cônjuge, CEP da residência.',faltando:[]},'valor inválido já fica vermelho no próprio campo');
+ assert.deepEqual(avisoErrosCadastro(['CPF do requerente, que é obrigatório a partir da etapa Contrato']).faltando,['requerente.cpf']);
+ assert.deepEqual(avisoErrosCadastro(['CNPJ do requerente, que é obrigatório a partir da etapa Contrato','CEP do imóvel']).faltando,['requerente.cnpj']);
+ assert.deepEqual(avisoErrosCadastro(['CPF do requerente']).faltando,[]);
+ const form={faltando:['requerente.cpf']};
+ assert.equal(campoFaltando(form,'requerente.cpf',''),MENSAGEM_CAMPO_FALTANDO);
+ assert.equal(campoFaltando(form,'requerente.cpf','529.982.247-25'),'','some assim que o campo é preenchido');
+ assert.equal(campoFaltando(form,'conjuge.cpf',''),'');assert.equal(campoFaltando({},'requerente.cpf',''),'','formulários sem a lista não mudam');
+ const chamadas=[],campo={scrollIntoView:o=>chamadas.push(['rolar',o.block]),focus:()=>chamadas.push(['foco'])};
+ assert.equal(irAoPrimeiroErro({querySelector:s=>s.includes(':not(:disabled)')?campo:null}),true);
+ assert.deepEqual(chamadas,[['rolar','center'],['foco']]);
+ assert.equal(irAoPrimeiroErro({querySelector:()=>null}),false);assert.equal(irAoPrimeiroErro(undefined),false);
+ const ficha=trecho('function PaginaProcesso(','function PaginaNucleo(');
+ // As mensagens de validação que o Salvar monta são as que a regra reconhece.
+ for(const doc of ['CPF','CNPJ'])assert.ok(ficha.includes(`"${doc} do requerente, que é obrigatório a partir da etapa Contrato"`),doc);
+ assert.match(ficha,/if \(invalidos\.length\) \{ setErroCadastro\(avisoCadastro\.mensagem\);[^\n]*irAoPrimeiroErro\(document\)[^\n]*return; \}/);
+ assert.doesNotMatch(ficha,/setToast\(`Corrija antes de salvar/,'o aviso não depende mais do aviso que some');
+ assert.match(ficha,/\{erroCadastro && <span role="alert">\{erroCadastro\}<\/span>\}/,'a barra de salvar mostra o aviso');
+ assert.match(ficha,/\(sujo \|\| confirmandoCadastro \|\| !!tentativaCadastro\.current \|\| erroCadastro\) && \(/,'a barra continua na tela enquanto houver aviso');
+ assert.match(fonte,/const erro = v && !cpfValido\(v\) \? "CPF inválido\. Confira os dígitos\." : campoFaltando\(form, path, v\);/);
+ assert.match(fonte,/campoFaltando\(form, P\("cnpj"\), x\.cnpj\)/);
+ assert.match(fonte,/const form = \{ rascunho, ia: iaPaths, faltando, set:/);
 });

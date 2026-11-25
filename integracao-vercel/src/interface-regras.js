@@ -48,3 +48,28 @@ export function confirmacaoDescarteCadastro(quantidade) {
   const perda = n === 1 ? "1 alteração não salva será perdida" : n > 1 ? `${n} alterações não salvas serão perdidas` : "As alterações não salvas serão perdidas";
   return { titulo: "Descartar as alterações da ficha?", texto: `${perda}. A ficha volta ao que estava salvo.`, rotuloBotao: n === 1 ? "Descartar 1 alteração" : n > 1 ? `Descartar ${n} alterações` : "Descartar alterações" };
 }
+
+/* ---------- Ficha do cliente: erros ao salvar ---------- */
+const OBRIGATORIO_VAZIO = /^(CPF|CNPJ) do requerente, que é obrigatório/;
+export const MENSAGEM_CAMPO_FALTANDO = "Preencha este campo: ele é obrigatório a partir da etapa Contrato.";
+// Recebe a lista do que o Salvar recusou e devolve o aviso que fica na barra de
+// salvar e os campos obrigatórios vazios a destacar. Campos preenchidos com
+// valor inválido já ficam vermelhos por conta própria.
+export function avisoErrosCadastro(invalidos) {
+  const lista = (invalidos || []).filter(Boolean);
+  if (!lista.length) return { mensagem: "", faltando: [] };
+  const faltando = lista.map((item) => OBRIGATORIO_VAZIO.exec(item)).filter(Boolean).map((m) => (m[1] === "CNPJ" ? "requerente.cnpj" : "requerente.cpf"));
+  return { mensagem: `Corrija antes de salvar: ${lista.join(", ")}.`, faltando };
+}
+// Mensagem do campo obrigatório que o Salvar apontou e que continua vazio.
+export function campoFaltando(form, path, valor) {
+  return !valor && (form?.faltando || []).includes(path) ? MENSAGEM_CAMPO_FALTANDO : "";
+}
+// Leva a tela até o primeiro campo marcado com erro e põe o cursor nele.
+export function irAoPrimeiroErro(raiz) {
+  const campo = raiz?.querySelector?.(".contem .inp.erro:not(:disabled)") || raiz?.querySelector?.(".contem .inp.erro");
+  if (!campo) return false;
+  campo.scrollIntoView?.({ block: "center" });
+  campo.focus?.();
+  return true;
+}

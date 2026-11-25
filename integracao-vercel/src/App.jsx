@@ -104,7 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
-import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro } from './interface-regras.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -2395,7 +2395,7 @@ function Campo({ form, rot, path, span = 1, dis, opcoes, tipo = "text", fmt, err
 
 function CampoCPF({ form, rot, path, dis }) {
   const v = getPath(form.rascunho, path) || "";
-  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : "";
+  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : campoFaltando(form, path, v);
   const ia = form.ia.includes(path);
   return (
     <div>
@@ -3785,7 +3785,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
       {pj ? (
         <>
           <Campo form={form} rot="Razão social" path={P("nome")} span={2} dis={dis} />
-          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : ""} />
+          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : campoFaltando(form, P("cnpj"), x.cnpj)} />
           {campoCodigoMorador}
           <Campo form={form} rot="Representante legal" path={P("representante")} opcoes={representantes.length ? representantes : undefined} vazio="Escolha ou informe abaixo" span={representantes.length ? 1 : 2} dis={dis} ajuda={representantes.length ? "Um dos requerentes cadastrados nesta ficha." : "Nome de quem assina pela empresa. Cadastre a pessoa em Outros requerentes para ter a qualificação completa."} />
           <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
@@ -3877,11 +3877,11 @@ function ListaPessoas({ form, chave, dis, perm, titulo, vazio, novo, cabecalho }
   );
 }
 
-function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado }) {
+function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, faltando, perm, cancelado }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
-  const form = { rascunho, ia: iaPaths, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
+  const form = { rascunho, ia: iaPaths, faltando, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
   const pode = (k) => !cancelado && (perm.editarClientes || !!perm[k]);
   const pd = { ...p, ...rascunho };
   const nucleoDraft = db.nucleos.find((n) => n.id === pd.nucleoId) || null;
@@ -4637,6 +4637,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   fichaAtual.current = p;
   const [confirmandoCadastro, setConfirmandoCadastro] = useState(false);
   const [erroCadastro, setErroCadastro] = useState("");
+  const [faltandoCadastro, setFaltandoCadastro] = useState([]);
 
   if (!p || !rascunho) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Morador não encontrado.</p></div>;
   const r = remessaDe(db, p.remessaId);
@@ -4685,7 +4686,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
     if (rascunho.endereco.cep && so(rascunho.endereco.cep).length !== 8) invalidos.push("CEP da residência");
     if (rascunho.enderecoImovel?.cep && so(rascunho.enderecoImovel.cep).length !== 8) invalidos.push("CEP do imóvel");
-    if (invalidos.length) { setToast(`Corrija antes de salvar: ${invalidos.join(", ")}.`); return; }
+    const avisoCadastro = avisoErrosCadastro(invalidos); setFaltandoCadastro(avisoCadastro.faltando);
+    if (invalidos.length) { setErroCadastro(avisoCadastro.mensagem); if (aba !== "cadastro" && !observacaoPendente) setAba("cadastro"); setTimeout(() => irAoPrimeiroErro(document), 0); return; }
     const remessaNova = remessaDe(db, rascunho.remessaId);
     if (!remessaNova || remessaNova.municipioId !== p.municipioId) { setToast("Escolha uma remessa do município do morador."); return; }
     const nucleoSel = rascunho.nucleoId ? nucleoDe(db, rascunho.nucleoId) : null;
@@ -4789,7 +4791,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </button>
             ))}
           </div>
-          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} /></fieldset>}
+          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} faltando={faltandoCadastro} perm={perm} cancelado={cancelado} /></fieldset>}
           {aba === "documentos" && <div data-observacao-pendente={observacaoPendente ? "true" : undefined}><AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} onEdicaoPendente={setObservacaoPendente} recarregar={recarregar} /></div>}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import {criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO} from '../src/confirmacao-criacao-meta.js';
 import {conciliarEdicoes} from '../src/concorrencia.js';
+import {avisoErrosCadastro} from '../src/interface-regras.js';
 import { erroCodigoMorador, resolverCodigoMorador } from '../src/codigo-morador.js';
 const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const start=source.indexOf('  const confirmarCadastro = async () => {',source.indexOf('function PaginaProcesso('));
@@ -20,7 +21,7 @@ function fixture(codigo,permissao=true) {
  mutar.confirmado=fn=>{grava++;fn(db);return pendente();};
  const context=vm.createContext({
   fichaAtual:{current:p},baseFormulario:{current:{...extrair(p),codigo:p.codigo}},extrair,conciliarEdicoes,
-  tentativaCadastro:{current:null},enviandoCadastro:{current:false},setConfirmandoCadastro:()=>{},setErroCadastro:()=>{},
+  tentativaCadastro:{current:null},enviandoCadastro:{current:false},setConfirmandoCadastro:()=>{},setErroCadastro:()=>{},avisoErrosCadastro,setFaltandoCadastro:()=>{},
   setRascunho:()=>{},criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,AMBIENTE:{DEMO:false},mutar,
   p,rascunho,db,perm:{cadastro:permissao},cancelado:false,erroCodigoMorador,resolverCodigoMorador,
  exigeDocumentoCRM:()=>false,ehPJ:()=>false,cpfValido:()=>true,cnpjValido:()=>true,so:s=>String(s||'').replace(/\D/g,''),
