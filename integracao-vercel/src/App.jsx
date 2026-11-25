@@ -2598,6 +2598,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const [processando, setProcessando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
   const [divergencias, setDivergencias] = useState([]);
+  const [selecaoIA, setSelecaoIA] = useState({});
   const [preenchidos, setPreenchidos] = useState(0);
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const inputRef = useRef(null);
@@ -2660,20 +2661,20 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     const destino = destinoDocumento(r2, extrair(np));
     const linhas = montarLinhas(r2, extrair(np));
     const novo = clone(np);
-    const aplicar = linhas.filter((l) => !l.diverge);
-    aplicar.forEach((l) => setPath(novo, l.path, l.sugerido));
+    // A IA não preenche a ficha sozinha: tudo o que ela leu vira sugestão para aceite campo a campo.
     const avaliadas = regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), tipo).map((r) => {
       const got = tipo === "comp_residencia" && r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES ? avaliarPrazoResidencia(res.campos) : (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     novo.docs.push({ id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
     const falhas = avaliadas.filter((x) => x.resultado === "nao_atende");
-    const div = linhas.filter((l) => l.diverge).map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
-    const partes = [`${aplicar.length} ${aplicar.length === 1 ? "campo preenchido" : "campos preenchidos"}`];
-    if (div.length) partes.push(`${div.length} para conferir`);
+    const div = linhas.map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
+    const conferir = linhas.filter((l) => l.diverge || l.implausivel).length;
+    const partes = [`${linhas.length} ${linhas.length === 1 ? "campo sugerido" : "campos sugeridos"}`];
+    if (conferir) partes.push(`${conferir} para conferir`);
     if (falhas.length) partes.push(`${falhas.length} ${falhas.length === 1 ? "regra não atendida" : "regras não atendidas"}`);
     if (res.legivel === false) partes.push("documento ilegível");
-    return { novo, aplicados: aplicar.length, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
+    return { novo, aplicados: 0, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
   };
   const analisar = async ({ simular = false, soId = null } = {}) => {
     setProcessando(true);
@@ -2686,11 +2687,12 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
         const np = rascunhoRef.current;
         const res = simular || !arq
           ? simularAnalise(item.tipoEsperado, np, db.regrasIA)
-          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome });
+          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasDocumentoCliente(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome }, { regrasObrigatorias: regrasDoMunicipio(db, municipio?.id) });
         const out = aplicarAnalise(np, res, simular || !arq, meta);
         definirRascunho(out.novo);
         setPreenchidos((x) => x + out.aplicados);
         setDivergencias((ds) => [...ds.filter((d) => !out.divergencias.some((o) => o.path === d.path)), ...out.divergencias]);
+        setSelecaoIA((sel) => ({ ...sel, ...selecaoInicialSugestoes(out.divergencias) }));
         delete arquivosRef.current[item.id];
         atualizarItem(item.id, { estado: "ok", resumo: out.resumo, simulado: simular || !arq });
       } catch (e) {
@@ -2699,9 +2701,11 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     }
     setProcessando(false);
   };
-  const resolver = (d, usarDocumento) => {
-    if (usarDocumento) { const c = clone(rascunhoRef.current); setPath(c, d.path, d.sugerido); definirRascunho(c); setPreenchidos((x) => x + 1); }
-    setDivergencias((ds) => ds.filter((x) => x.path !== d.path));
+  const dispensarSugestoes = () => { setDivergencias([]); setSelecaoIA({}); };
+  const aplicarSugestoes = () => {
+    const escolhidas = sugestoesSelecionadas(divergencias, selecaoIA);
+    if (escolhidas.length) { const c = clone(rascunhoRef.current); escolhidas.forEach((l) => setPath(c, l.path, l.sugerido)); definirRascunho(c); setPreenchidos((x) => x + escolhidas.length); }
+    dispensarSugestoes();
   };
   const removerItem = (id) => { delete arquivosRef.current[id]; filaRef.current = filaRef.current.filter((i) => i.id !== id); setFila(filaRef.current); };
   const descartarTudo = () => { arquivosRef.current = {}; };
@@ -2710,6 +2714,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const pendentesFila = fila.filter((i) => i.estado === "fila").length;
   const cpfDivergente = divergencias.some((d) => d.cpf);
+  const qtdSugestoesIA = sugestoesSelecionadas(divergencias, selecaoIA).length;
   const docsRecebidos = new Set((rascunho?.docs || []).map((d) => d.tipo));
   const sugeridos = ["identidade", "comp_residencia", "estado_civil", "comp_renda", "comp_posse", ...(rascunho && COM_CONJUGE.includes(rascunho.requerente.estadoCivil) ? ["identidade_conjuge"] : [])];
   const mostrarValor = (path, v) => (/cpf$/.test(path) ? fmtCPF(v) : /(nascimento|dataUniao)$/.test(path) ? dataBR(v) : v);
@@ -2788,7 +2793,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
           </div>
         )}
         {nomeDup && <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}><AlertTriangle size={14} />Já existe {nomeDup.codigo} com o mesmo nome nesta remessa. Confira antes de continuar.</div>}
-        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA preenche o restante da ficha.</div>
+        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA sugere o restante da ficha, para você aceitar campo a campo.</div>
       </Modal>
     );
   }
@@ -2797,10 +2802,10 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     <Modal titulo={`Documentos de ${rascunho.requerente.nome}`} largura={860} onFechar={fechar}
       rodape={<>
         <button className="btn" disabled={processando || fila.some((i) => i.estado === "ok")} onClick={() => { descartarTudo(); filaRef.current = []; setFila([]); setPasso(1); }} title="Só é possível voltar antes de analisar documentos"><ChevronLeft size={15} />Dados básicos</button>
-        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || cpfDivergente} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
+        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || divergencias.length > 0} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
       </>}>
       {etapas}
-      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, preenche a ficha e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
+      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, sugere os campos da ficha para você aceitar e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
 
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
         {sugeridos.map((t) => <Tag key={t} tipo={docsRecebidos.has(t) ? "ok" : undefined}>{docsRecebidos.has(t) ? <Check size={12} /> : null}{DOC_TIPOS[t]}</Tag>)}
@@ -2849,16 +2854,31 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
       {divergencias.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Conferir antes de concluir</h3>
-          {divergencias.map((d) => (
-            <div key={d.path} className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 12px", borderRadius: 10, marginBottom: 6, background: d.cpf ? "var(--danger-bg)" : "var(--warning-bg)" }}>
-              <span style={{ fontSize: 14 }}>
-                <strong>{d.rot}</strong>{d.cpf ? ": o CPF do documento é diferente do digitado." : ""}<br />
-                Digitado: <strong>{mostrarValor(d.path, d.atual)}</strong>. No documento ({d.doc}): <strong>{mostrarValor(d.path, d.sugerido)}</strong>
-              </span>
-              <span className="flex gap-1"><button className="btn btn-sm" onClick={() => resolver(d, false)}>Manter o digitado</button><button className="btn btn-sm btn-primario" onClick={() => resolver(d, true)}>Usar o do documento</button></span>
-            </div>
-          ))}
+          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Sugestões da IA para a ficha</h3>
+          <p className="ajuda" style={{ margin: "0 0 8px" }}>Nada disto foi preenchido ainda. Marque os campos que quer aceitar e confirme; os desmarcados ficam como estão.</p>
+          <div className="rolagem">
+            <table className="tab">
+              <thead><tr><th style={{ width: 36 }}><span className="sr-only">Aplicar</span></th><th>Campo</th><th>Na ficha</th><th>No documento</th></tr></thead>
+              <tbody>
+                {divergencias.map((d) => (
+                  <tr key={d.path} style={d.implausivel || d.cpf ? { background: "var(--danger-bg)" } : d.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                    <td><input type="checkbox" aria-label={`Aplicar ${d.rot}`} checked={!!selecaoIA[d.path] && !d.implausivel} disabled={processando || !!d.implausivel} onChange={() => setSelecaoIA((sel) => ({ ...sel, [d.path]: !sel[d.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                    <td>{d.rot}<div className="ajuda" style={{ margin: 0 }}>{d.doc}</div></td>
+                    <td style={{ color: d.atual ? "var(--text)" : "var(--muted)" }}>{d.atual ? mostrarValor(d.path, d.atual) : "vazio"}</td>
+                    <td><strong style={{ fontWeight: 650 }}>{mostrarValor(d.path, d.sugerido)}</strong>
+                      {d.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{d.implausivel} Não pode ser aplicado; confira o documento.</div>}
+                      {d.cpf && !d.implausivel && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>O CPF do documento é diferente do digitado.</div>}
+                      {d.diverge && !d.cpf && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do digitado. Confira antes de trocar.</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
+            <button className="btn btn-primario" disabled={processando || !qtdSugestoesIA} onClick={aplicarSugestoes}><Sparkles size={16} />Preencher {qtdSugestoesIA} {qtdSugestoesIA === 1 ? "campo" : "campos"} na ficha</button>
+            <button className="btn" disabled={processando} onClick={dispensarSugestoes}>Dispensar sugestões</button>
+          </div>
         </div>
       )}
 
@@ -2876,7 +2896,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
         </div>
       )}
       <div className="ajuda" style={{ marginTop: 12 }}>
-        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
+        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : divergencias.length > 0 ? "Preencha os campos escolhidos ou dispense as sugestões da IA para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
       </div>
       {confirmarSaida && <ModalConfirmar titulo="Sair sem cadastrar?" texto="O morador não será criado e o resultado das análises será perdido." rotuloBotao="Sair sem cadastrar" onFechar={() => setConfirmarSaida(false)} onConfirmar={() => { setConfirmarSaida(false); descartarTudo(); onFechar(); }} />}
     </Modal>

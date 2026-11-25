@@ -16,6 +16,8 @@ test('handler real do cadastro novo registra pessoa e prazo deterministico sem d
  const d={DOC_TIPOS:{identidade:'Identidade',comp_residencia:'Residência'},destinoDocumento,extrair,montarLinhas,clone,setPath,regrasAplicaveis:r=>r,regrasDoMunicipio:()=>[{id:'rg_residencia_90',nome:'Prazo',instrucao:INSTRUCAO_RESIDENCIA_SEIS_MESES}],db:{},municipio:{id:'m1'},INSTRUCAO_RESIDENCIA_SEIS_MESES,avaliarPrazoResidencia,uid:()=> 'doc-ficticio',usuario:{nome:'Revisor fictício'}};
  const aplicar=new Function(...Object.keys(d),code+';return aplicarAnalise;')(...Object.values(d));
  const p=base();let r=aplicar(p,{tipo:'identidade',pessoa:'ocupante',campos:{nome:'Ocupante Fictício',rg:'RG-FICTICIO'}},false,{nome:'ficticio.png'});
- assert.equal(r.novo.docs[0].pessoaId,'ocupantes:o1');assert.equal(r.novo.ocupantes[0].pessoa.rg,'RG-FICTICIO');assert.equal(p.docs.length,0);
+ assert.equal(r.novo.docs[0].pessoaId,'ocupantes:o1');
+ // IA-C1: a IA não preenche sozinha; o campo lido vira sugestão para aceite.
+ assert.equal(r.novo.ocupantes[0].pessoa.rg,undefined);assert.equal(r.aplicados,0);assert.equal(r.divergencias[0].path,'ocupantes.0.pessoa.rg');assert.equal(r.divergencias[0].sugerido,'RG-FICTICIO');assert.equal(p.docs.length,0);
  r=aplicar(p,{tipo:'comp_residencia',pessoa:'requerente',campos:{nome:'Requerente Fictício',emissao:'1900-01-01'},regras:[{id:'rg_residencia_90',resultado:'atende'}]},false,{nome:'ficticio.png'});assert.equal(r.novo.docs[0].regras[0].resultado,'nao_atende');
 });
