@@ -20,7 +20,7 @@ import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
 import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
-import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA } from "./devolutivas-ia-validacao.js";
+import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -8369,7 +8369,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
         const vencida = d.prazo && d.prazo < hoje && m.status !== "Concluído";
         const etapa1 = d.analiseIA?.etapa1;
         const etapa2 = d.analiseIA?.etapa2;
-        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <div key={m.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <div className="flex flex-wrap items-center gap-2">
@@ -8530,14 +8530,14 @@ function ModalRelatorioDevolutiva({ meta, onFechar }) {
 
 // Resultado da etapa 2: veredito, item a item, o que ainda falta e pontos para revisar
 const ROTULO_STATUS_ETAPA2 = { corrigido: ["ok", "Corrigido"], nao_corrigido: ["bloq", "Não corrigido"], nao_verificavel: ["pend", "Não foi possível verificar"] };
-function resumoEtapa2(etapa2) {
+function resumoEtapa2(etapa2, etapa1) {
   const contagem = (etapa2?.itens || []).reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {});
   const pendentes = (etapa2?.pendencias || []).length;
-  const pronto = etapa2 ? (typeof etapa2.pronto === "boolean" ? etapa2.pronto : !pendentes && !contagem.nao_corrigido && !contagem.nao_verificavel) : false;
+  const pronto = prontoParaReenviarDevolutiva(etapa2, etapa1 ? etapa1.itens : null);
   return { contagem, pendentes, pronto };
 }
 function RelatorioEtapa2({ etapa1, etapa2 }) {
-  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
   const descricaoItem = (id) => (etapa1?.itens || []).find((x) => x.id === id)?.descricao;
   return (
     <div>
@@ -8639,7 +8639,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
       const resultado = await analisarRespostaDevolutivaIA({ itensEtapa1: etapa1?.itens || [], arquivosOriginais, textoOriginal, arquivosResposta: arquivosEtapa2 });
       const itens = resultado.itens || [];
       const pendencias = resultado.pendencias || [];
-      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status !== "corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
+      const pronto = prontoParaReenviarDevolutiva(resultado, etapa1?.itens || []);
       setEtapa2({ geradoEm: new Date().toISOString(), por: usuario.nome, resumo: resultado.resumo || "", pronto, itens, pendencias, naoIdentificado: resultado.naoIdentificado || [], comOriginal: arquivosOriginais.length > 0 || !!textoOriginal, arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
@@ -11057,7 +11057,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       {m.devolutiva && (() => {
         const etapa1 = m.devolutiva.analiseIA?.etapa1;
         const etapa2 = m.devolutiva.analiseIA?.etapa2;
-        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <section className="bloco-modal">
             <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
