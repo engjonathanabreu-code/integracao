@@ -76,6 +76,7 @@ import {acessoCRM, ETAPAS_CRM} from './crm-regras.js';
 import {solicitarConclusaoMeta, recusarConclusaoMeta, totalRecusasMeta, totalRecusasUsuario} from './recusas-metas.js';
 import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
+import {faixaDaPagina, textoDaFaixa} from './paginacao.js';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import ImportadorPerimetro from "../geojson/ImportadorPerimetro.jsx";
@@ -3615,6 +3616,9 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
     return normalizar(`${p.codigo} ${p.requerente.nome} ${p.conjuge.nome}`).includes(b) || (bd.length >= 3 && (so(p.requerente.cpf).includes(bd) || so(p.conjuge.cpf).includes(bd)));
   });
   const naoAtivos = ps.filter((p) => !ativo(p)).length;
+  const [pagina, setPagina] = useState(0);
+  useEffect(() => { setPagina(0); }, [busca, etapa, situacao]);
+  const faixa = faixaDaPagina(lista.length, pagina);
   return (
     <>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
@@ -3632,7 +3636,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
         <table className="tab">
           <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}<th><span className="sr-only">Ações</span></th></tr></thead>
           <tbody>
-            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).map((p) => {
+            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).slice(faixa.inicio, faixa.fim).map((p) => {
               const pend = pendencias(db, p);
               const ctx = contexto(db, p);
               const alertas = alertasDados(p, ctx);
@@ -3660,6 +3664,11 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
           </tbody>
         </table>
       </div>
+      {faixa.paginas > 1 && <nav className="metas-paginacao" aria-label="Páginas de moradores">
+        <span className="ajuda" aria-live="polite">{textoDaFaixa(faixa)}</span>
+        <button className="btn btn-sm" disabled={faixa.atual === 0} onClick={() => setPagina(faixa.atual - 1)}><ChevronLeft size={16} />Anterior</button>
+        <button className="btn btn-sm" disabled={faixa.atual === faixa.paginas - 1} onClick={() => setPagina(faixa.atual + 1)}>Próxima<ChevronRight size={16} /></button>
+      </nav>}
     </>
   );
 }
