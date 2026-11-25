@@ -19,7 +19,7 @@ const fixture=`create role authenticated;create role anon;create role service_ro
  create table integracao_pedidos(usuario_id uuid,pedido uuid,resultado jsonb,primary key(usuario_id,pedido));
  create table integracao_sincronizacao_dispositivos(usuario_id uuid,instalacao_id uuid,versao text,ultimo_contato timestamptz,resumo jsonb);
  insert into profiles values('${id(1)}','Operador de teste',true,'Administrador'),('${id(2)}','Conta A',true,'Topografia'),('${id(3)}','Outro administrador',true,'Administrador'),('${id(4)}','Outro diretor',true,'Diretor Técnico'),('${id(5)}','Conta inativa',false,'Administrador');`;
-const nova='../supabase/migrations/20261125195300_suporte_retomada_validacao_crm.sql';
+const nova='../supabase/migrations/20261125202348_suporte_retomada_validacao_crm.sql';
 test('retomada é desligada por padrão e exige usuário, dispositivo, revisão e lease exatos',async()=>{
  const db=new PGlite(),inst=id(305),pedido=id(450),rev='a'.repeat(64),consumidor=id(900);
  const login=async(n,sid=id(100+n))=>{
