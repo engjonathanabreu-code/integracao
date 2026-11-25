@@ -104,7 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
-import { errosVisiveisMeta, confirmacaoRemocaoMeta } from './interface-regras.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -4820,7 +4820,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             <span role="status">{confirmandoCadastro ? "Aguardando confirmação do cadastro…" : tentativaCadastro.current ? "Confirmação do cadastro pendente" : `${alterados.length} ${alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro`}</span>
             {erroCadastro && <span role="alert">{erroCadastro}</span>}
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => { baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); }}>Descartar</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => setModal({ tipo: "confirmar", ...confirmacaoDescarteCadastro(alterados.length), onConfirmar: () => { setModal(null); baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); } })}>Descartar</button>
               <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} disabled={confirmandoCadastro || (tentativaCadastro.current ? !tentativaCadastro.current.podeRetentar() : !sujo)} onClick={salvar}><Check size={16} />{confirmandoCadastro ? "Confirmando…" : tentativaCadastro.current ? "Confirmar mesmo pedido" : "Salvar alterações"}</button>
             </div>
           </div>

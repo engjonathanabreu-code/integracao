@@ -40,3 +40,11 @@ export function confirmacaoRemocaoMeta(tipo, nome) {
   if (tipo === "setor") return { titulo: "Excluir este setor?", texto: `O setor "${alvo || "sem nome"}" deixará de aparecer nas metas e nos filtros.`, rotuloBotao: "Excluir setor" };
   throw new Error(`Tipo de remoção desconhecido: ${tipo}`);
 }
+
+/* ---------- Ficha do cliente: descartar alterações ---------- */
+// Confirmação (formato do ModalConfirmar) antes de desfazer a edição da ficha.
+export function confirmacaoDescarteCadastro(quantidade) {
+  const n = Math.max(0, Number(quantidade) || 0);
+  const perda = n === 1 ? "1 alteração não salva será perdida" : n > 1 ? `${n} alterações não salvas serão perdidas` : "As alterações não salvas serão perdidas";
+  return { titulo: "Descartar as alterações da ficha?", texto: `${perda}. A ficha volta ao que estava salvo.`, rotuloBotao: n === 1 ? "Descartar 1 alteração" : n > 1 ? `Descartar ${n} alterações` : "Descartar alterações" };
+}

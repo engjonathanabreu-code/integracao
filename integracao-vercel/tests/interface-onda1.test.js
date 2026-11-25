@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta} from '../src/interface-regras.js';
+import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const css=fonte.slice(fonte.indexOf('const CSS'),fonte.indexOf('function Modal('));
@@ -86,4 +86,16 @@ test('UI-M5: a linha do checklist é clicável e os alvos de toque têm 44 px no
  assert.match(movel[1],/\.rb \.modal \.btn\{min-height:44px\}/);
  assert.match(movel[1],/\.rb \.modal label\.tag\{min-height:44px\}/,'etiquetas de responsáveis');
  assert.match(css,/\.rb \.linha-checklist label\{flex:1;display:flex;[^}]*align-self:stretch\}/,'o texto ocupa a altura toda da linha');
+});
+
+test('UI-C1: Descartar da ficha pergunta antes e informa quantas alterações serão perdidas',()=>{
+ assert.deepEqual(confirmacaoDescarteCadastro(1),{titulo:'Descartar as alterações da ficha?',texto:'1 alteração não salva será perdida. A ficha volta ao que estava salvo.',rotuloBotao:'Descartar 1 alteração'});
+ assert.match(confirmacaoDescarteCadastro(7).texto,/^7 alterações não salvas serão perdidas\./);
+ assert.equal(confirmacaoDescarteCadastro(7).rotuloBotao,'Descartar 7 alterações');
+ assert.match(confirmacaoDescarteCadastro(0).texto,/^As alterações não salvas serão perdidas\./);
+ const ficha=trecho('function PaginaProcesso(','function PaginaNucleo(');
+ const botao=ficha.match(/<button[^\n]*>Descartar<\/button>/)[0];
+ assert.match(botao,/onClick=\{\(\) => setModal\(\{ tipo: "confirmar", \.\.\.confirmacaoDescarteCadastro\(alterados\.length\), onConfirmar: \(\) => \{ setModal\(null\); baseFormulario\.current = /,'o rascunho só é desfeito dentro da confirmação');
+ assert.equal(botao.split('setRascunho(').length,2,'um único caminho desfaz o rascunho');
+ assert.match(ficha,/\{modal\?\.tipo === "confirmar" && <ModalConfirmar \{\.\.\.modal\} onFechar=\{\(\) => setModal\(null\)\} \/>\}/,'usa a confirmação já existente na ficha');
 });
