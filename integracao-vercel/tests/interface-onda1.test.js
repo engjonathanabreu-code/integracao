@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {transformSync} from 'esbuild';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {CAMPO_DO_ERRO_META,errosVisiveisMeta} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
@@ -35,4 +38,19 @@ test('UI-M2: toda validação do formulário de meta tem campo na tela, e Salvar
  assert.doesNotMatch(formulario,/podeRetentar\(\) : erros\.length > 0/,'Salvar não é desabilitado pelos erros');
  assert.match(formulario,/if \(erros\.length\) \{ setTentouSalvar\(true\);[^\n]*return; \}/,'tentar salvar com erro revela os avisos e não grava');
  assert.match(formulario,/Título da nova meta \(obrigatório\)/);assert.match(formulario,/Responsáveis \(obrigatório\)/);
+});
+
+test('UI-M3: as ações da janela ficam num rodapé fixo, visível sem rolar até o fim',()=>{
+ const regra=css.match(/\.rb \.modal-rodape\{([^}]*)\}/);
+ assert.ok(regra,'estilo do rodapé existe');
+ assert.match(regra[1],/position:sticky/);assert.match(regra[1],/bottom:0/);assert.match(regra[1],/background:var\(--card\)/,'o conteúdo rolado não aparece por trás dos botões');
+ assert.match(css,/\.rb \.modal\{[^}]*overflow-y:auto/,'a própria janela é a área de rolagem em que o rodapé se fixa');
+ const js=transformSync(trecho('function Modal(','function ModalMotivo('),{loader:'jsx',jsx:'transform'}).code;
+ const Modal=new Function('React','useRef','useEffect','X',`${js};return Modal;`)(React,React.useRef,React.useEffect,()=>null);
+ const h=React.createElement;
+ const html=renderToStaticMarkup(h(Modal,{titulo:'Meta',onFechar(){},rodape:h('button',null,'Concluir')},h('p',null,'conteúdo longo')));
+ assert.match(html,/<p>conteúdo longo<\/p><div class="[^"]*\bmodal-rodape\b[^"]*"[^>]*><button>Concluir<\/button><\/div>/);
+ assert.doesNotMatch(renderToStaticMarkup(h(Modal,{titulo:'Sem ações',onFechar(){}},'x')),/modal-rodape/);
+ const detalhe=trecho('function ModalDetalheMeta(','function CartaoMeta(');
+ assert.match(detalhe,/rodape=\{<><button className="btn" onClick=\{fechar\}>Fechar<\/button>/,'Concluir, Editar, Excluir e Recusar seguem no rodapé da janela da meta');
 });
