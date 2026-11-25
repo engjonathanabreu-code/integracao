@@ -13,6 +13,7 @@ import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
+import {mesclarChecklistEditado} from './metas-checklist.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
@@ -10850,9 +10851,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         if (alterado.associacao_tipo || alterado.associacao_id) q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
         const antesChecklist = q.checklist || [];
         if (checklistAlterado) {
-          q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
-          itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
-          antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
+          const checklistMesclado = mesclarChecklistEditado(antesChecklist, fi.checklistItens, itens, () => uid("c"));
+          q.checklist = checklistMesclado.checklist;
+          checklistMesclado.adicionados.forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
+          checklistMesclado.removidos.forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
         }
         if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
