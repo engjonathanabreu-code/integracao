@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ordenarMetasContinuas } from './metas-organizacao.js';
 
-export default function MetasAgrupadas({ metas, renderMeta }) {
+export default function MetasAgrupadas({ metas, renderMeta, ordenar = ordenarMetasContinuas }) {
   const grade = useRef(null);
   const [colunas, setColunas] = useState(1);
   const [pagina, setPagina] = useState(0);
-  const ordenadas = useMemo(() => ordenarMetasContinuas(metas), [metas]);
+  const ordenadas = useMemo(() => ordenar(metas), [metas, ordenar]);
   const identidade = ordenadas.map(m => m.id).join('|');
   useEffect(() => { setPagina(0); }, [identidade, colunas]);
   useEffect(() => {

@@ -45,7 +45,7 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta, textoAtraso, ordenarMetasAtrasadas } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
@@ -11156,9 +11156,9 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
   const icone = normalizarEscolhaIcone(m.icone) || sugerirIcone(`${m.titulo} ${m.setor || ""}`);
   const feitos = (m.checklist || []).filter((c) => c.concluido).length;
   const selo = seloStatusMeta(m.status, !!atrasada);
-  const sinal = { Ic: { atrasada: AlertTriangle, aprovacao: AlertCircle, andamento: MoreHorizontal, concluido: Check }[selo.chave] || X, cor: selo.cor, fundo: selo.fundo, titulo: selo.rotulo };
+  const sinal = { Ic: { atrasada: AlertTriangle, aprovacao: AlertCircle, andamento: MoreHorizontal, concluido: Check }[selo.chave] || X, cor: selo.cor, fundo: selo.fundo, titulo: (selo.chave === "atrasada" && textoAtraso(m.prazo, diaCivilEvento(new Date()))) || selo.rotulo };
   return (
-    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
+    <div className={`meta-card${selo.chave === "atrasada" ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
       draggable={!!acoesOrdem}
       onDragStart={e => { if (!acoesOrdem) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); acoesOrdem.iniciar(); }}
       onDragOver={e => { if (!acoesOrdem?.aceita()) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDestinoArraste(true); }}
@@ -11311,8 +11311,8 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
             {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>{buscaTitulo.trim() ? "Nenhuma meta com esse título nesta semana." : "Nenhuma meta programada para esta semana."}</p>}
           </Secao>
-          <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
-            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
+          <Secao titulo="Metas atrasadas" nota="Metas vencidas, da mais atrasada para a mais recente, com setor, responsáveis e dias de atraso em cada card.">
+            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
           </Secao>
           <h3 style={{ fontSize: 17, margin: "18px 0 10px" }}>Colaboradores</h3>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>

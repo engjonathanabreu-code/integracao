@@ -65,3 +65,18 @@ export function seloStatusMeta(status, atrasada = false) {
   if (chave) return { chave, ...SELOS_STATUS_META[chave] };
   return { chave: 'outro', rotulo: String(status || '').trim() || 'Sem status', cor: 'var(--text)', fundo: 'var(--pill)' };
 }
+// Atraso em dias civis entre o prazo e hoje (ambos AAAA-MM-DD); 0 quando não venceu ou a data é inválida.
+const diaEmUTC = dia => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dia || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN; };
+export function diasDeAtraso(prazo, hoje) {
+  const dias = Math.round((diaEmUTC(hoje) - diaEmUTC(prazo)) / 86400000);
+  return Number.isFinite(dias) && dias > 0 ? dias : 0;
+}
+export function textoAtraso(prazo, hoje) {
+  const dias = diasDeAtraso(prazo, hoje);
+  return dias ? `Atrasada há ${dias} ${dias === 1 ? 'dia' : 'dias'}` : '';
+}
+// Atrasadas: prazo mais antigo primeiro, em todos os setores. Ordenação apenas visual.
+export function ordenarMetasAtrasadas(metas = []) {
+  return [...metas].sort((a, b) => comparar(a.prazo || '9999', b.prazo || '9999')
+    || comparar(a.titulo || '', b.titulo || '') || comparar(a.id, b.id));
+}
