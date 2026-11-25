@@ -20,6 +20,7 @@ import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
 import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
+import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -1097,7 +1098,7 @@ Se houver trechos da devolutiva que você não conseguiu interpretar com seguran
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a devolutiva","itens":[{"categoria":"pessoas|areas|memoriais|lei|decreto|tabela_planta|vertices|nome_lote|outro","descricao":"o que o município pediu para alterar","statusEsperado":"o que deve constar depois de corrigido"}],"naoIdentificado":["trecho ou ponto que não deu para interpretar com segurança"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+  return validarAnaliseTeorDevolutiva(await chamarIA([...blocos, { type: "text", text: instrucao }]).catch(erroRespostaDevolutivaIA));
 }
 // Etapa 2: a mesma IA recebe a devolutiva original (arquivos e/ou texto) e o trabalho já corrigido,
 // confere item a item o que a etapa 1 apontou e diz o que ainda falta fazer antes de responder ao município.
@@ -1122,7 +1123,7 @@ Se encontrar no trabalho corrigido alguma alteração relevante que a devolutiva
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a conferência","pronto":true,"itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"pendencias":[{"refItemId":"id do item da lista, ou vazio se for algo novo","descricao":"o que ainda falta","oQueFazer":"orientação objetiva para a equipe, até 40 palavras"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000);
+  return validarConferenciaDevolutiva(await chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000).catch(erroRespostaDevolutivaIA), itensEtapa1);
 }
 // Recupera um anexo guardado com a meta como File, para reenviar à IA
 async function arquivoDoArmazenamento(arq) {
