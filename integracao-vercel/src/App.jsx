@@ -2185,7 +2185,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (max-width:1100px){.rb .layout-proc{grid-template-columns:1fr}.rb .lateral{position:static}}
 @media (max-width:900px){.rb .app{grid-template-columns:minmax(0,1fr)}.rb .nav{position:fixed;left:0;top:0;bottom:0;width:265px;z-index:70;transform:translateX(-100%);transition:transform .2s}.rb .nav.aberta{transform:none}.rb .btn-menu{display:inline-flex}.rb .barra-salvar{left:0}.rb .toast{left:50%}
  .rb .trilha{grid-template-columns:1fr 1fr;gap:16px 8px}.rb .trilha .eixo,.rb .trilha .eixo-feito{display:none}}
-@media (max-width:640px){.rb .fg{grid-template-columns:1fr}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
+@media (max-width:640px){.rb .fg{grid-template-columns:1fr!important}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
  .rb .trilha{grid-template-columns:1fr}.rb .estaca{flex-direction:row;gap:14px;text-align:left}.rb .estaca .nome{margin-top:0}}
 @media (prefers-reduced-motion: reduce){.rb *{transition:none!important;animation:none!important}}
 `;
