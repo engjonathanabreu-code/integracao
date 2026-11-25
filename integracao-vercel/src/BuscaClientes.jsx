@@ -1,7 +1,7 @@
 import {useEffect, useId, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {Search} from 'lucide-react';
 import {lerIndiceClientes, obterIndiceClientes, observarIndiceClientes, versaoIndiceClientes, sessaoIndiceClientes} from './dados-compartilhados.js';
-import {filtrarClientes, reunirClientes} from './busca-clientes.js';
+import {filtrarClientes, reunirClientes, termoBuscaSuficiente, limitarResultados, MINIMO_BUSCA_CLIENTES, LOTE_BUSCA_CLIENTES} from './busca-clientes.js';
 
 // Same input used by the previous municipality step and both client searches.
 export function CampoBusca(props) {
@@ -41,7 +41,10 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
     return () => { vivo = false; clearTimeout(timer); };
   }, [demo, tentativa, versao, sessao]);
   const clientes = useMemo(() => demo || mesmaSessao ? reunirClientes(indice?.clientes || [], indice?.complementos || [], db._baseArquivo || db) : [], [demo, mesmaSessao, indice, db]);
-  const resultados = useMemo(() => filtrarClientes(clientes, busca, municipioId, {incluirConjuge}), [clientes, busca, municipioId, incluirConjuge]);
+  const [limite, setLimite] = useState(LOTE_BUSCA_CLIENTES);
+  const suficiente = termoBuscaSuficiente(busca);
+  const encontrados = useMemo(() => suficiente ? filtrarClientes(clientes, busca, municipioId, {incluirConjuge}) : [], [clientes, busca, municipioId, incluirConjuge, suficiente]);
+  const {visiveis: resultados, total, restantes} = useMemo(() => limitarResultados(encontrados, limite), [encontrados, limite]);
   const ativo = resultados.findIndex(p => p.id === clienteAtivo);
   const visivel = aberto && !!busca.trim();
   useEffect(() => { lista.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest'}); }, [ativo]);
@@ -53,7 +56,7 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
   };
   return <div style={{position:'relative', width:'100%', maxWidth:520}} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAberto(false); }}>
     <CampoBusca id={id} autoFocus={autoFocus} autoComplete="off" role="combobox" aria-label={incluirConjuge?"Buscar cliente por nome, cônjuge ou código":"Buscar cliente por nome ou código"} aria-autocomplete="list" aria-expanded={visivel} aria-controls={`${id}-lista`} aria-activedescendant={visivel && ativo >= 0 && resultados[ativo] ? `${id}-${ativo}` : undefined}
-      placeholder={incluirConjuge?"Nome, cônjuge ou código":"Buscar cliente por nome ou código"} value={busca} onFocus={() => setAberto(true)} onChange={e => {setBusca(e.target.value); setClienteAtivo(null); setAberto(true);}}
+      placeholder={incluirConjuge?"Nome, cônjuge ou código":"Buscar cliente por nome ou código"} value={busca} onFocus={() => setAberto(true)} onChange={e => {setBusca(e.target.value); setClienteAtivo(null); setLimite(LOTE_BUSCA_CLIENTES); setAberto(true);}}
       onKeyDown={e => {
         if (e.key === 'Escape') {setAberto(false); e.stopPropagation();}
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {e.preventDefault(); setAberto(true); setClienteAtivo(resultados[Math.max(0, Math.min(resultados.length - 1, ativo + (e.key === 'ArrowDown' ? 1 : -1)))]?.id ?? null);}
@@ -63,9 +66,10 @@ export function BuscaClientes({db, municipioId, abrirCliente, demo=false, autoFo
       {resultados.map((p,i) => <button type="button" key={p.id} id={`${id}-${i}`} className={`item-busca${ativo === i ? ' ativo' : ''}`} role="option" aria-selected={ativo === i} disabled={abrindo} onMouseDown={e => e.preventDefault()} onClick={() => escolher(p)}>
         <span><strong>{p.requerente?.nome || 'Cliente sem nome'}</strong><span className="ajuda" style={{display:'block', margin:0}}>{p.codigo || 'Sem código'} · {p.requerente?.tipoPessoa === 'juridica' ? 'PJ' : 'PF'} · {db.municipios.find(m => m.id === p.municipioId)?.nome || 'Sem município'}{!p.remessaId ? ' · Sem remessa' : ''}</span></span>
       </button>)}
-      {!resultados.length && <div className="ajuda" style={{padding:10}}>{erro ? 'Busca indisponível.' : (demo || indice) ? 'Nenhum cliente encontrado.' : 'Carregando clientes…'}</div>}
+      {restantes > 0 && <button type="button" className="btn btn-sm" style={{margin:8}} disabled={abrindo} onMouseDown={e => e.preventDefault()} onClick={() => setLimite(v => v + LOTE_BUSCA_CLIENTES)}>Mostrar mais {Math.min(restantes, LOTE_BUSCA_CLIENTES)} de {restantes} restantes</button>}
+      {!resultados.length && <div className="ajuda" style={{padding:10}}>{!suficiente ? `Digite pelo menos ${MINIMO_BUSCA_CLIENTES} letras ou números.` : erro ? 'Busca indisponível.' : (demo || indice) ? 'Nenhum cliente encontrado.' : 'Carregando clientes…'}</div>}
     </div>}
-    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : erro ? 'Não foi possível concluir a busca.' : !demo && !indice ? 'Carregando clientes…' : busca.trim() ? `${resultados.length} cliente(s) encontrado(s).` : incluirConjuge?'Pesquise PF ou PJ por nome, cônjuge, prefixo ou código.':'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
+    <div className="ajuda" role="status">{abrindo ? 'Abrindo ficha do cliente…' : erro ? 'Não foi possível concluir a busca.' : !demo && !indice ? 'Carregando clientes…' : busca.trim() ? (!suficiente ? `Digite pelo menos ${MINIMO_BUSCA_CLIENTES} letras ou números para buscar.` : restantes > 0 ? `${total} cliente(s) encontrado(s). Mostrando os ${resultados.length} primeiros; refine a busca ou use Mostrar mais.` : `${total} cliente(s) encontrado(s).`) : incluirConjuge?'Pesquise PF ou PJ por nome, cônjuge, prefixo ou código.':'Pesquise PF ou PJ por nome, prefixo ou código.'}</div>
     {erro && <div role="alert" className="msg-erro">{erro} <button className="btn btn-sm" onClick={() => setTentativa(v => v+1)}>Tentar novamente</button></div>}
   </div>;
 }
