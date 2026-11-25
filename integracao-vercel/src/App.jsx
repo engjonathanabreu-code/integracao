@@ -1834,7 +1834,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .toast{position:fixed;bottom:88px;left:calc(50% + 122px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 16px;border-radius:10px;font-size:14px;z-index:90;max-width:92vw;box-shadow:0 10px 30px rgba(15,95,91,.25)}
 .rb .modal-fundo{position:fixed;inset:0;background:rgba(16,42,42,.45);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
 .rb .modal{width:100%;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(15,95,91,.25)}
-.rb .modal-rodape{position:sticky;bottom:0;z-index:2;margin:0 -22px -22px;padding:12px 22px 16px;background:var(--card);border-top:1px solid var(--line2);border-radius:0 0 18px 18px}
+.rb .modal-rodape{position:sticky;bottom:-22px;z-index:2;margin:0 -22px -22px;padding:12px 22px 16px;background:var(--card);border-top:1px solid var(--line2);border-radius:0 0 18px 18px}
 .rb .girando{animation:girar 1s linear infinite}
 .rb .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 .rb .grade-lote{background-color:var(--bg);background-image:linear-gradient(rgba(20,122,116,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,122,116,.07) 1px,transparent 1px);background-size:46px 46px}

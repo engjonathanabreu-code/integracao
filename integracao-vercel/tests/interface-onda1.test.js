@@ -43,7 +43,7 @@ test('UI-M2: toda validação do formulário de meta tem campo na tela, e Salvar
 test('UI-M3: as ações da janela ficam num rodapé fixo, visível sem rolar até o fim',()=>{
  const regra=css.match(/\.rb \.modal-rodape\{([^}]*)\}/);
  assert.ok(regra,'estilo do rodapé existe');
- assert.match(regra[1],/position:sticky/);assert.match(regra[1],/bottom:0/);assert.match(regra[1],/background:var\(--card\)/,'o conteúdo rolado não aparece por trás dos botões');
+ assert.match(regra[1],/position:sticky/);assert.match(regra[1],/bottom:-22px/);assert.match(regra[1],/margin:0 -22px -22px/,'o recuo de 22 px da janela é compensado nos dois: sem isso sobra uma faixa sob o rodapé');assert.match(css,/\.rb \.modal\{[^}]*padding:22px/);assert.match(regra[1],/background:var\(--card\)/,'o conteúdo rolado não aparece por trás dos botões');
  assert.match(css,/\.rb \.modal\{[^}]*overflow-y:auto/,'a própria janela é a área de rolagem em que o rodapé se fixa');
  const js=transformSync(trecho('function Modal(','function ModalMotivo('),{loader:'jsx',jsx:'transform'}).code;
  const Modal=new Function('React','useRef','useEffect','X',`${js};return Modal;`)(React,React.useRef,React.useEffect,()=>null);
