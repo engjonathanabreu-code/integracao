@@ -45,7 +45,7 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
@@ -11155,11 +11155,8 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
   const acao = podeSolicitarConclusao(m, usuario) ? "Concluir" : podeAprovarConclusao(m, usuario) ? "Aprovar conclusão" : vePendenteAprovacao(m) && respMeta(m, usuario) ? "Aguardando aprovação" : "";
   const icone = normalizarEscolhaIcone(m.icone) || sugerirIcone(`${m.titulo} ${m.setor || ""}`);
   const feitos = (m.checklist || []).filter((c) => c.concluido).length;
-  const sinal = atrasada ? { Ic: AlertTriangle, cor: "var(--danger)", fundo: "var(--danger-bg)", titulo: "Atrasada" }
-    : m.status === "Aguardando aprovação" ? { Ic: AlertCircle, cor: "#2563B8", fundo: "#E5EFFB", titulo: "Aguardando aprovação" }
-    : m.status === "Em andamento" ? { Ic: MoreHorizontal, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Em andamento" }
-    : m.status === "Concluído" ? { Ic: Check, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Concluído" }
-    : { Ic: X, cor: "var(--muted)", fundo: "var(--pill)", titulo: "Cancelado" };
+  const selo = seloStatusMeta(m.status, !!atrasada);
+  const sinal = { Ic: { atrasada: AlertTriangle, aprovacao: AlertCircle, andamento: MoreHorizontal, concluido: Check }[selo.chave] || X, cor: selo.cor, fundo: selo.fundo, titulo: selo.rotulo };
   return (
     <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
       draggable={!!acoesOrdem}
@@ -11183,6 +11180,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         <span className="meta-card-rodape">
           <span className="flex flex-wrap items-center gap-2">
             <span className="chip-setor">{m.setor || "Sem setor"}</span>
+            <span className="selo-status-meta" style={{ background: sinal.fundo, color: sinal.cor }}>{sinal.titulo}</span>
             {(m.checklist || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><ListTodo size={12} /> {feitos}/{m.checklist.length}</span>}
             {(m.comentarios || []).length > 0 && !compacto && <span className="ajuda" style={{ margin: 0 }}><MessageSquare size={12} /> {m.comentarios.length}</span>}
             {(m.arquivos || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><Paperclip size={12} /> {m.arquivos.length}</span>}

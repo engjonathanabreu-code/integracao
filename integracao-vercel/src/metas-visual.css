@@ -33,3 +33,4 @@
 .rb .setor-cor-controle input,.rb #stcor{width:40px;height:36px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
 .rb .setor-meta-linha{flex-wrap:wrap}
 .rb[data-ui-guide] .metas-grade-continua .meta-card{border-top-color:var(--meta-setor-cor)}
+.rb .meta-card .selo-status-meta{display:inline-flex;align-items:center;font-size:12px;font-weight:700;line-height:1.3;border-radius:999px;padding:3px 9px}

@@ -49,3 +49,19 @@ export function corSetor(setor, setores = []) {
   const hash = [...String(setor || '')].reduce((v,c) => (v * 31 + c.charCodeAt(0)) >>> 0, 0);
   return paleta[(indice < 0 ? hash : indice) % paleta.length];
 }
+// Selo de status do cartão: uma cor da paleta do app por estado e o nome sempre escrito.
+// Só usa variáveis já existentes (claro e escuro), sem criar tokens novos.
+const SELOS_STATUS_META = {
+  atrasada: { rotulo: 'Atrasada', cor: 'var(--danger)', fundo: 'var(--danger-bg)' },
+  aprovacao: { rotulo: 'Aguardando aprovação', cor: 'var(--warning)', fundo: 'var(--warning-bg)' },
+  andamento: { rotulo: 'Em andamento', cor: 'var(--primary)', fundo: 'var(--soft)' },
+  concluido: { rotulo: 'Concluído', cor: 'var(--ok)', fundo: 'var(--ok-bg)' },
+  cancelado: { rotulo: 'Cancelado', cor: 'var(--text)', fundo: 'var(--pill)' },
+};
+const CHAVE_POR_STATUS = { 'Aguardando aprovação': 'aprovacao', 'Em andamento': 'andamento', 'Concluído': 'concluido', 'Cancelado': 'cancelado' };
+const STATUS_ENCERRADOS = ['Concluído', 'Cancelado'];
+export function seloStatusMeta(status, atrasada = false) {
+  const chave = atrasada && !STATUS_ENCERRADOS.includes(status) ? 'atrasada' : CHAVE_POR_STATUS[status];
+  if (chave) return { chave, ...SELOS_STATUS_META[chave] };
+  return { chave: 'outro', rotulo: String(status || '').trim() || 'Sem status', cor: 'var(--text)', fundo: 'var(--pill)' };
+}
