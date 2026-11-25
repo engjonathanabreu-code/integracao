@@ -93,3 +93,15 @@ export function validarConferenciaDevolutiva(res, itensEtapa1 = []) {
   const pronto = res.pronto === true && prontoParaReenviarDevolutiva({ pronto: true, itens, pendencias }, exigencias);
   return { resumo: textoOpcional(res.resumo), pronto, itens, pendencias, naoIdentificado };
 }
+
+// IA fora do ar não impede guardar a devolutiva: a meta e os anexos seguem pelo salvamento normal e a
+// análise fica marcada como pendente (some sozinha quando uma análise nova é gravada por cima).
+export const AVISO_ANALISE_PENDENTE = ' A análise de IA não pôde ser feita agora e ficou pendente: abra a devolutiva e use “Analisar devolutiva” para tentar de novo.';
+export function marcarAnalisePendenteDevolutiva(analiseIA, erro, agora = new Date().toISOString()) {
+  const motivo = String(erro?.message || erro || '').trim().slice(0, 300) || 'serviço de IA indisponível';
+  return { ...(objeto(analiseIA) ? analiseIA : {}), pendente: { desde: agora, motivo } };
+}
+export function analisePendenteDevolutiva(devolutiva) {
+  const p = devolutiva?.analiseIA?.pendente;
+  return objeto(p) ? { desde: typeof p.desde === 'string' ? p.desde : '', motivo: typeof p.motivo === 'string' ? p.motivo : '' } : null;
+}

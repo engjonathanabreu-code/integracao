@@ -20,7 +20,7 @@ import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
 import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
-import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva } from "./devolutivas-ia-validacao.js";
+import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva, marcarAnalisePendenteDevolutiva, analisePendenteDevolutiva, AVISO_ANALISE_PENDENTE } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -8653,11 +8653,14 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     if (!podeSalvar) return;
     setSalvando(true); setErro("");
     try {
-      let etapa1Salvar = etapa1;
+      let etapa1Salvar = etapa1, falhaIA = null;
       if (!etapa1Salvar) {
+        // IA indisponível não cancela o salvamento: a devolutiva e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais(), textoLivre);
         etapa1Salvar = {geradoEm:new Date().toISOString(),resumo:resultado.resumo || "",itens:(resultado.itens || []).map(it => ({...it,id:uid("iv")})),naoIdentificado:resultado.naoIdentificado || []};
         setEtapa1(etapa1Salvar);
+        } catch (e) { falhaIA = e; }
       }
       const gravarLote = async (arquivos) => {
         const anexos = [];
@@ -8676,6 +8679,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         origem: meta?.devolutiva?.origem || "Prefeitura",
         ...meta?.devolutiva, chegada, prazo, textoOriginal: textoLivre.trim(),
         analiseIA: {
+          ...(falhaIA ? marcarAnalisePendenteDevolutiva(null, falhaIA) : {}),
           etapa1: etapa1Salvar ? { ...etapa1Salvar, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1Salvar.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
           etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: anexosEtapa2.length ? anexosEtapa2.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa2.arquivosAnalisados || []) } : null,
         },
@@ -8695,18 +8699,18 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         };
         await envio.executar((d) => {
           d.metas.unshift(m);
-          registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
+          registrarHistoricoMeta(d, m, "Devolutiva registrada", falhaIA ? `Registrada por ${usuario.nome}. Análise de IA pendente.` : `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
           if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência do trabalho corrigido) gerada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, "Devolutiva registrada com o relatório da IA.", onFechar);
+        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, falhaIA ? `Devolutiva registrada.${AVISO_ANALISE_PENDENTE}` : "Devolutiva registrada com o relatório da IA.", onFechar);
       } else {
         await envio.executar((d) => {
           const q = d.metas.find((x) => x.id === meta.id);
           q.devolutiva = devolutiva;
           q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
-          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
+          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : falhaIA ? "Devolutiva salva. Análise de IA pendente." : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, "Relatório da IA atualizado.", onFechar);
+        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, falhaIA ? `Devolutiva salva.${AVISO_ANALISE_PENDENTE}` : "Relatório da IA atualizado.", onFechar);
       }
     } catch (e) { setErro(`Não foi possível salvar: ${e.message}`); } finally { setSalvando(false); }
   };
@@ -10745,7 +10749,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const [registroDevId, setRegistroDevId] = useState("");
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
-  const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  const tentativaMeta = useRef(null), preparandoMeta = useRef(false), avisoAnalisePendente = useRef("");
   // One operation (and one goal id) per opening of the form: saving again
   // resumes the same request instead of creating a second goal.
   const idOperacaoMeta = useRef(null), idMetaNova = useRef(null);
@@ -10756,7 +10760,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     setSalvando(true); setErroDev("");
     try {
       await tentativaMeta.current.executar();
-      setToast(nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada."));
+      setToast((nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada.")) + avisoAnalisePendente.current);
       onFechar(); if (nova && onDetalhe) onDetalhe();
     } catch (e) {
       // Still queued and not in review: not a failure, and no new goal may be created.
@@ -10794,11 +10798,14 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
-    let novaAnalise = null;
+    let novaAnalise = null, falhaIA = null;
     try {
       if (f.devolutiva && arquivosDev.length) {
+        // IA indisponível não cancela o salvamento: a meta e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosDev, f.observacoes);
         novaAnalise = { geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map(it => ({...it,id:uid("iv")})), naoIdentificado: resultado.naoIdentificado || [] };
+        } catch (e) { falhaIA = e; }
       }
       for (const arquivo of f.devolutiva ? arquivosDev : []) {
         const base64 = await lerBase64(arquivo);
@@ -10811,9 +10818,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
       preparandoMeta.current=false; setSalvando(false); return;
     }
+    avisoAnalisePendente.current = falhaIA ? AVISO_ANALISE_PENDENTE : "";
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
-      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
+      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : falhaIA ? {analiseIA:marcarAnalisePendenteDevolutiva((registroDev || meta)?.devolutiva?.analiseIA, falhaIA)} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
@@ -11063,6 +11071,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
             <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
             {etapa1?.resumo && <p>{etapa1.resumo}</p>}
             {!etapa1 && <p className="ajuda" style={{ margin: "0 0 8px" }}>A devolutiva ainda não foi analisada pela IA.</p>}
+            {analisePendenteDevolutiva(m.devolutiva) && <p className="msg-erro" role="status" style={{ margin: "0 0 8px" }}>Análise de IA pendente{analisePendenteDevolutiva(m.devolutiva).desde ? ` desde ${dataHoraBR(analisePendenteDevolutiva(m.devolutiva).desde)}` : ""}: a devolutiva e os anexos foram salvos, mas a IA não respondeu ({analisePendenteDevolutiva(m.devolutiva).motivo || "serviço indisponível"}).</p>}
             {etapa1 && (
               <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
                 <Tag tipo="neutra"><Sparkles size={12} />Etapa 1: {etapa1.itens.length} item(ns) a corrigir</Tag>
