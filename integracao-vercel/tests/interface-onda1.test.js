@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CAMPO_DO_ERRO_META,errosVisiveisMeta} from '../src/interface-regras.js';
+import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const css=fonte.slice(fonte.indexOf('const CSS'),fonte.indexOf('function Modal('));
@@ -53,4 +53,23 @@ test('UI-M3: as ações da janela ficam num rodapé fixo, visível sem rolar at�
  assert.doesNotMatch(renderToStaticMarkup(h(Modal,{titulo:'Sem ações',onFechar(){}},'x')),/modal-rodape/);
  const detalhe=trecho('function ModalDetalheMeta(','function CartaoMeta(');
  assert.match(detalhe,/rodape=\{<><button className="btn" onClick=\{fechar\}>Fechar<\/button>/,'Concluir, Editar, Excluir e Recusar seguem no rodapé da janela da meta');
+});
+
+test('UI-M4: remover item do checklist, anexo ou setor pergunta antes, no padrão de confirmação do app',()=>{
+ const item=confirmacaoRemocaoMeta('checklist','Visitar as unidades');
+ assert.deepEqual(Object.keys(item),['titulo','texto','rotuloBotao'],'mesmas propriedades do ModalConfirmar');
+ assert.match(item.texto,/"Visitar as unidades"/);assert.equal(item.rotuloBotao,'Remover item');
+ assert.match(confirmacaoRemocaoMeta('anexo','planta.pdf').texto,/"planta\.pdf"/);
+ assert.match(confirmacaoRemocaoMeta('setor','Campo').texto,/"Campo"/);
+ assert.match(confirmacaoRemocaoMeta('checklist','  ').texto,/Item sem título/);
+ assert.throws(()=>confirmacaoRemocaoMeta('outro','x'),/desconhecido/);
+ const detalhe=trecho('function ModalDetalheMeta(','function CartaoMeta(');
+ // A lixeira só abre a pergunta; a alteração acontece dentro de onConfirmar.
+ assert.match(detalhe,/onClick=\{\(\) => setRemocao\(\{ \.\.\.confirmacaoRemocaoMeta\("checklist", c\.titulo\), onConfirmar: \(\) => alterar\(/);
+ assert.match(detalhe,/onClick=\{\(\) => setRemocao\(\{ \.\.\.confirmacaoRemocaoMeta\("anexo", a\.nome\), onConfirmar: \(\) => removerAnexo\(a\) \}\)\}/);
+ assert.doesNotMatch(detalhe,/onClick=\{\(\) => (removerAnexo\(a\)|alterar\(\(q\) => \{ q\.checklist = q\.checklist\.filter)/,'nenhuma lixeira remove direto');
+ assert.match(detalhe,/\{remocao && <div [^\n]*<ModalConfirmar \{\.\.\.remocao\}/);
+ const pagina=trecho('function PaginaMetas(','function AbaMetasNucleo(');
+ assert.match(pagina,/onClick=\{\(\) => setSetorRemocao\(\{ \.\.\.confirmacaoRemocaoMeta\("setor", s\.nome\), onConfirmar: \(\) => mutar\(/);
+ assert.match(pagina,/\{setorRemocao && <ModalConfirmar \{\.\.\.setorRemocao\}/);
 });

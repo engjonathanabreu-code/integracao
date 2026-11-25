@@ -104,7 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
-import { errosVisiveisMeta } from './interface-regras.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10967,6 +10967,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [item, setItem] = useState("");
   const [comentario, setComentario] = useState("");
   const [excluir, setExcluir] = useState(false);
+  const [remocao, setRemocao] = useState(null);
   const [recusando, setRecusando] = useState(false);
   const [motivoRecusa, setMotivoRecusa] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -11094,7 +11095,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
           <input type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
             onChange={() => alterar((q) => { const x = q.checklist.find((y) => y.id === c.id); x.concluido = !x.concluido; x.concluido_por = x.concluido ? usuario.nome : ""; x.concluido_em = x.concluido ? new Date().toISOString() : ""; }, c.concluido ? "Checklist reaberto" : "Checklist concluído", c.titulo)} />
           <span style={{ flex: 1, textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</span>
-          {colabora && <button className="btn-icone" onClick={() => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo)} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("checklist", c.titulo), onConfirmar: () => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo) })} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
         </div>
       ))}
       {colabora && (
@@ -11114,7 +11115,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
           <span style={{ flex: 1, minWidth: 140 }}><strong style={{ fontWeight: 650 }}>{a.nome}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{(a.tamanho / 1024).toFixed(0)} KB, enviado por {a.por} em {dataBR(a.data)}</span></span>
           <VerArquivoMeta arquivo={a} />
           <button className="btn btn-sm" onClick={() => baixarAnexo(a)}><Download size={13} />Baixar</button>
-          {colabora && <button className="btn-icone" onClick={() => removerAnexo(a)} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("anexo", a.nome), onConfirmar: () => removerAnexo(a) })} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
         </div>
       ))}
       {!(m.arquivos || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhum arquivo enviado.</p>}
@@ -11153,6 +11154,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </section>
       {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
       {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
+      {remocao && <div onKeyDown={(e) => e.stopPropagation()}><ModalConfirmar {...remocao} onFechar={() => setRemocao(null)} onConfirmar={() => { setRemocao(null); remocao.onConfirmar(); }} /></div>}
       {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta excluída na demonstração." : "Exclusão da meta aguardando confirmação."); }} />}
     </Modal>
   );
@@ -11219,6 +11221,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
   const [cadastroDevolutiva, setCadastroDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
+  const [setorRemocao, setSetorRemocao] = useState(null);
   const [osModal, setOsModal] = useState(null);
   const [osAberta, setOsAberta] = useState(null);
   const [comentarioOS, setComentarioOS] = useState("");
@@ -11349,7 +11352,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
                     <span className="flex items-center gap-2">
                       <label className="setor-cor-controle">Cor<input type="color" aria-label={`Cor do setor ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} onChange={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.nome === s.nome ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /></label>
                       <button className="btn-icone" onClick={() => setSetorModal(s)} aria-label={`Editar ${s.nome}`}><Pencil size={14} /></button>
-                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
+                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => setSetorRemocao({ ...confirmacaoRemocaoMeta("setor", s.nome), onConfirmar: () => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome }) })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
                     </span>
                   </div>
                 );
@@ -11456,6 +11459,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
       {cadastroDevolutiva && <ModalCadastroDevolutiva db={db} meta={cadastroDevolutiva === "nova" ? null : cadastroDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setCadastroDevolutiva(null)} />}
+      {setorRemocao && <ModalConfirmar {...setorRemocao} onFechar={() => setSetorRemocao(null)} onConfirmar={() => { setSetorRemocao(null); setorRemocao.onConfirmar(); }} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} envio={envioSetor} onFechar={() => { if (envioSetor.fechar()) setSetorModal(null); }} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} envio={envioOS} onFechar={() => { if (envioOS.fechar()) setOsModal(null); }} />}
     </div>

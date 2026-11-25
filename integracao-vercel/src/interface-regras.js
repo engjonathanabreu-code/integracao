@@ -29,3 +29,14 @@ export function errosVisiveisMeta(erros, tocados = {}, tentouSalvar = false) {
   }
   return Object.fromEntries(Object.entries(porCampo).map(([campo, lista]) => [campo, `${lista.join(". ")}.`]));
 }
+
+/* ---------- Remoções nas metas: pergunta antes de apagar ---------- */
+// Texto da confirmação (no formato do ModalConfirmar) para remover item do
+// checklist, anexo ou setor de metas. O nome vem da própria tela.
+export function confirmacaoRemocaoMeta(tipo, nome) {
+  const alvo = String(nome || "").trim();
+  if (tipo === "checklist") return { titulo: "Remover este item do checklist?", texto: `"${alvo || "Item sem título"}" sairá do checklist da meta. A remoção fica registrada no histórico.`, rotuloBotao: "Remover item" };
+  if (tipo === "anexo") return { titulo: "Remover este arquivo da meta?", texto: `"${alvo || "Arquivo"}" deixará de aparecer nos arquivos da meta. A remoção fica registrada no histórico.`, rotuloBotao: "Remover arquivo" };
+  if (tipo === "setor") return { titulo: "Excluir este setor?", texto: `O setor "${alvo || "sem nome"}" deixará de aparecer nas metas e nos filtros.`, rotuloBotao: "Excluir setor" };
+  throw new Error(`Tipo de remoção desconhecido: ${tipo}`);
+}
