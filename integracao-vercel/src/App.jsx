@@ -106,6 +106,7 @@ import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
 import {prazoSugeridoMeta} from './metas-uso.js';
 import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
+import AprovacoesPendentesMetas from './AprovacoesPendentesMetas.jsx';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10653,6 +10654,15 @@ function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
   return item;
 }
 
+// Gravação única da aprovação: o botão da meta e a aprovação em lote usam esta mesma mutação.
+function aprovarConclusaoMeta(d, metaId, usuario) {
+  const q = d.metas.find(x => x.id === metaId);
+  if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
+  q.status = "Concluído"; q.solicitacaoConclusao = null;
+  registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
+  novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
+  return d;
+}
 function useConfirmacaoEdicao(mutar, setToast) {
   const tentativa = useRef(null), ocupada = useRef(false);
   const [estado, setEstado] = useState(null);
@@ -10991,14 +11001,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       novaNotificacao(d,{titulo:`Conclusão recusada: ${q.titulo}`,texto:motivoRecusa.trim(),rota:{pag:"metas"},usuarios:[...new Set([...(q.responsaveis||[]),...(solicitante?[solicitante]:[])])]});return d;
     }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`}, "Recusa registrada. A meta voltou para Em andamento.", onFechar);
   };
-  const aprovar = () => envio.executar(d => {
-    const q = d.metas.find(x => x.id === m.id);
-    if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
-    q.status = "Concluído"; q.solicitacaoConclusao = null;
-    registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
-    novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
-    return d;
-  }, "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
+  const aprovar = () => envio.executar(d => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
     if (!arq || enviando || envio.bloqueada) return;
@@ -11284,6 +11287,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
       {gerencia && <div className="flex flex-wrap gap-2" style={{marginBottom:12}}><button className={`btn${tela==='planejamento'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('planejamento');}}>Planejamento futuro</button><button className={`btn${tela==='home'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('home');}}>Visão atual de Metas</button></div>}
       {barra}
+      {(tela === "home" || tela === "planejamento") && aprovaMetas(usuario) && <AprovacoesPendentesMetas metas={todasVisiveis} usuarios={db.usuarios} hoje={hoje} podeAprovar={(m) => podeAprovarConclusao(m, usuario)} onAbrir={abrir} setToast={setToast} aprovar={(m) => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, { permitirOffline: true })} />}
       {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
 
       {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia ? <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button> : podeGerirDevolutivaPosProtocolo(null,usuario) && <button className="btn btn-primario" onClick={() => setCadastroDevolutiva("nova")}>Cadastrar devolutiva</button>}>

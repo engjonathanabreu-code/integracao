@@ -70,3 +70,40 @@ export function registrarAvisosMetasVencidas(d,avisos){
  if(novos.length)d.notificacoes=[...novos.map(a=>structuredClone(a)),...(d.notificacoes||[])];
  return d;
 }
+
+// USO-M3 — fila "Aguardando minha aprovação" com aprovação em lote.
+// Quem pode aprovar é decidido por quem chama (a mesma regra do botão
+// individual); aqui ficam só a ordem da fila e o desfecho do lote.
+const instante=meta=>{const t=Date.parse(meta?.solicitacaoConclusao?.data||'');return Number.isFinite(t)?t:Infinity;};
+export function metasAguardandoAprovacao(metas,podeAprovar){
+ return (metas||[]).filter(m=>m&&podeAprovar(m))
+  .sort((a,b)=>instante(a)-instante(b)||String(a.titulo||'').localeCompare(String(b.titulo||''),'pt-BR')||String(a.id).localeCompare(String(b.id)));
+}
+// Dias civis desde o pedido de conclusão; null quando a data não foi registrada.
+export function diasAguardandoAprovacao(meta,hoje){
+ const pedido=diaCivilEvento(meta?.solicitacaoConclusao?.data||'');
+ if(!DIA.test(pedido)||!DIA.test(hoje||''))return null;
+ return Math.max(0,Math.round((Date.parse(`${hoje}T12:00:00Z`)-Date.parse(`${pedido}T12:00:00Z`))/86400000));
+}
+const segundoPlano=e=>e?.code==='CONFIRMACAO_SEGUNDO_PLANO'||e?.segundoPlano===true;
+// Cada meta é uma aprovação independente, pelo mesmo caminho da individual:
+// todas entram na fila na ordem pedida e a falha de uma não desfaz as outras.
+export async function aprovarMetasEmLote(metas,aprovarUma){
+ const lista=[...(metas||[])];
+ const desfechos=await Promise.allSettled(lista.map(m=>{try{return Promise.resolve(aprovarUma(m));}catch(e){return Promise.reject(e);}}));
+ const resultado={aprovadas:[],emEnvio:[],falhas:[]};
+ desfechos.forEach((r,i)=>{
+  if(r.status==='fulfilled')resultado.aprovadas.push(lista[i].id);
+  else if(segundoPlano(r.reason))resultado.emEnvio.push(lista[i].id);
+  else resultado.falhas.push({id:lista[i].id,titulo:lista[i].titulo||'',mensagem:r.reason?.message||'Não foi possível aprovar.'});
+ });
+ return resultado;
+}
+const plural=(n,um,varios)=>`${n} ${n===1?um:varios}`;
+export function resumoAprovacaoEmLote({aprovadas=[],emEnvio=[],falhas=[]}={}){
+ const partes=[];
+ if(aprovadas.length)partes.push(plural(aprovadas.length,'conclusão aprovada','conclusões aprovadas'));
+ if(emEnvio.length)partes.push(`${plural(emEnvio.length,'aprovação','aprovações')} em envio em segundo plano`);
+ if(falhas.length)partes.push(`${plural(falhas.length,'meta não foi aprovada','metas não foram aprovadas')}`);
+ return partes.length?`${partes.join('; ')}.`:'Nenhuma meta selecionada.';
+}
