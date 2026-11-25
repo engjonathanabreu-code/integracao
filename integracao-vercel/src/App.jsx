@@ -16,7 +16,7 @@ import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejam
 import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
-import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
+import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador, proximoNumeroLivreMorador, codigoMoradorAoGravar } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
@@ -1493,7 +1493,7 @@ const pad3 = (n) => String(n).padStart(3, "0");
 
 
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
-function proximoNumeroCliente(db, remessaId) { return proximoNumeroMorador((db._baseArquivo || db).processos, remessaId); }
+function proximoNumeroCliente(db, remessaId) { return proximoNumeroLivreMorador((db._baseArquivo || db).processos, remessaId, (n) => codigoCliente(db, remessaId, n)); }
 function codigoCliente(db, remessaId, numero) {
   const r = remessaDe(db, remessaId); const m = r ? municipioDe(db, r.municipioId) : null;
   const prefixo = `${m?.prefixo || "MUN"}${pad2(r?.numero || 0)}`;
@@ -2942,13 +2942,16 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
     fechar(); setToast("Núcleo salvo.");
   };
   const salvarMorador = (municipio) => (np, info = {}) => {
+    // O código foi calculado quando o formulário abriu: refaz a conta agora e de novo dentro da gravação.
+    const recodificar = (base) => { const r = codigoMoradorAoGravar(np, (base._baseArquivo || base).processos || [], (n) => codigoCliente(base, np.remessaId, n)); if (r.mudou) { np.codigo = r.codigo; np.numeroCliente = r.numeroCliente; } return r.mudou; };
+    const codigoPrevisto = np.codigo, renumerado = recodificar(db);
     const nuc = nucleoDe(db, np.nucleoId);
     const vincular = nuc && !nuc.remessaId;
     const nomeR = nomeRemessa(db, remessaDe(db, np.remessaId));
     const textoDocs = info.docs ? `. ${info.docs} ${info.docs === 1 ? "documento analisado" : "documentos analisados"}${info.simulados ? ` (${info.simulados} em simulação)` : ""}, ${info.campos} ${info.campos === 1 ? "campo preenchido" : "campos preenchidos"} pela IA, arquivos descartados` : ". Sem documentos no cadastro";
-    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
+    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; recodificar(d); d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
     fechar(); ir({ pag: "processo", id: np.id });
-    setToast(info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`);
+    setToast((renumerado ? `O código ${codigoPrevisto} já estava em uso; o morador recebeu ${np.codigo}. ` : "") + (info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`));
   };
   const adicionarUnidade = (p) => {
     const total = unidadesDe(p).length + 1;
