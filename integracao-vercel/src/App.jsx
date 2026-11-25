@@ -104,6 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
+import {prazoSugeridoMeta} from './metas-uso.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10736,7 +10737,7 @@ function ModalOrdemServico({ db, inicial, onSalvar, onFechar, envio }) {
 function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, onDetalhe }) {
   const nova = !meta;
   const [f, setF] = useState(() => nova
-    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: semanaISO(1), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
+    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: prazoSugeridoMeta(), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
   const camposIniciais = useRef(f);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
