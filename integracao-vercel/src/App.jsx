@@ -48,6 +48,7 @@ import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
+import {numeroDinheiro} from './leitor-dinheiro.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
 import {validarRegrasEvento} from './diagnostico-validacao.js';
 import {documentoHtml} from './documento-formato.js';
@@ -8789,12 +8790,12 @@ const condicoesDoCliente = (db, p) => {
   return null;
 };
 // Valor em reais a partir do texto digitado ("2.400,00")
-const reais = (v) => {
-  const n = parseNum(v);
+const reais = (v, ler = numeroDinheiro) => {
+  const n = ler(v);
   return Number.isFinite(n) ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "____________";
 };
 const porExtensoReais = (v) => {
-  const n = parseNum(v);
+  const n = numeroDinheiro(v);
   return Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} reais` : "";
 };
 function resumoCondicoes(c) {
@@ -8806,7 +8807,7 @@ function resumoCondicoes(c) {
   if (c.modalidade === "À vista") return `À vista, ${reais(c.valorTotal)}`;
   if (c.modalidade.startsWith("Isento") || c.modalidade.startsWith("Custeado")) return c.modalidade;
   const partes = [];
-  if (parseNum(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
+  if (numeroDinheiro(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
   if (parseNum(c.parcelas) > 0) partes.push(`${c.parcelas}x de ${reais(c.valorParcela)}`);
   return `${reais(c.valorTotal)}${partes.length ? `, ${partes.join(" e ")}` : ""}`;
 }
@@ -8819,7 +8820,7 @@ function textoPagamento(c) {
   if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento", ", até")}.`;
   if (c.modalidade.startsWith("Isento")) return "O beneficiário está enquadrado na REURB-S e não paga pelos serviços, conforme a Lei 13.465/2017.";
   if (c.modalidade.startsWith("Custeado")) return "Os serviços são custeados integralmente pela prefeitura, conforme o contrato firmado com o município.";
-  const entrada = parseNum(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
+  const entrada = numeroDinheiro(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
   return `O valor total de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago em ${entrada}${c.parcelas || "___"} parcelas mensais de ${reais(c.valorParcela)}${dia}${venc}.${reaj}`;
 }
 
@@ -8843,7 +8844,7 @@ const ITENS_COMPROMISSO = [
 ];
 const compromissoVazio = () => ({ itens: {}, prazos: {}, observacao: "", atualizadoEm: "", por: "" });
 const distratoVazio = () => ({ tipo: "devolucao", valorMulta: "", vencimentoMulta: "", formaMulta: "", data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
-function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,parseNum); }
+function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,numeroDinheiro); }
 function textoCompromissos(c, remessaPrazos) {
   const itens = ITENS_COMPROMISSO.filter((i) => c?.itens?.[i.id]);
   if (!itens.length) return "Nenhum compromisso de infraestrutura assumido para esta unidade.";
@@ -8899,7 +8900,7 @@ function dadosDocumento(db, p, usuario) {
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
     area: un[0]?.area || p.imovel?.area || "____________", tipoPosse: p.imovel?.tipoPosse || "posse",
     tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || tempoDesde(p.imovel?.aquisicao) || "____________",
-    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar) : "____________",
+    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar, parseNum) : "____________",
     modalidade: p.social?.modalidade || "REURB-S",
     condicoes: c, pagamento: textoPagamento(c),
     dataExtenso: `${m ? m.nome : "____________"}, ${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
@@ -9144,7 +9145,7 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
       <label className="rot" htmlFor={`${titulo}-obs`} style={{ marginTop: 12 }}>Observações que entram no contrato</label>
       <textarea id={`${titulo}-obs`} className="inp" rows={2} value={f.observacoes} disabled={!pode} onChange={(e) => set("observacoes", e.target.value)} />
       <div className="faixa-especifica" style={{ marginTop: 12 }}>
-        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
+        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && numeroDinheiro(ultimaParcela(f)) !== numeroDinheiro(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
         {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => { const mensagem=validarCondicoesVenda(f); setErro(mensagem); if(!mensagem)onSalvar(f); }}><Check size={15} />Salvar</button>}
       </div>
       {erro && <p role="alert" className="msg-erro">{erro}</p>}
@@ -9162,11 +9163,11 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
   const registrado = !!p.distrato?.registradoEm;
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...distratoVazio(), ...(p.distrato || {}) });
   const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
-  const calcular = () => { const total = parseNum(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
+  const calcular = () => { const total = numeroDinheiro(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
   const salvar = () => {
-    const erroDistrato=validarDistrato(f,parseNum);if(erroDistrato){setToast(erroDistrato);return;}
+    const erroDistrato=validarDistrato(f,numeroDinheiro);if(erroDistrato){setToast(erroDistrato);return;}
     const novo = { ...f, motivo: f.motivo.trim(), por: usuario.nome, registradoEm: p.distrato?.registradoEm || new Date().toISOString() };
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : numeroDinheiro(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
     setToast("Distrato guardado neste aparelho e aguardando sincronização. Após confirmar o envio, gere o documento.");
   };
   const desfazer = () => {

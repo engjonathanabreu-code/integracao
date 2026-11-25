@@ -1,7 +1,10 @@
+import {erroDinheiro} from './leitor-dinheiro.js';
 export const tipoDistrato=d=>d?.tipo||'devolucao';
 export function validarDistrato(d,numero){
  if(!['devolucao','multa','sem_acerto'].includes(tipoDistrato(d)))return 'Escolha o tipo de distrato.';
  if((d.motivo||'').trim().length<10)return 'Descreva o motivo do distrato com pelo menos 10 caracteres.';
+ const formato=tipoDistrato(d)==='multa'?erroDinheiro(d.valorMulta,'Valor da multa'):tipoDistrato(d)==='devolucao'?erroDinheiro(d.valorDevolucao,'Valor a devolver')||erroDinheiro(d.valorParcela,'Valor da parcela'):'';
+ if(formato)return formato;
  if(tipoDistrato(d)==='multa'&&(!(numero(d.valorMulta)>0)||!d.vencimentoMulta||!(d.formaMulta||'').trim()))return 'Informe valor da multa maior que zero, vencimento e forma de pagamento à empresa.';
  return '';
 }

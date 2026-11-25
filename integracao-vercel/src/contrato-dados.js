@@ -1,5 +1,5 @@
 import {numeroExtenso} from './cadastros-prf.js';
-import {parseNum} from './requisitos-moradores.js';
+import {numeroDinheiro as parseNum} from './leitor-dinheiro.js';
 import {ENTRADA_PARCELADA,calcularEntradaParcelada,descreverEntradaParcelada,ultimaParcela} from './condicoes-venda.js';
 const esc=v=>String(v??'____________').replaceAll('&','&amp;').replaceAll(String.fromCharCode(60),'&lt;').replaceAll(String.fromCharCode(62),'&gt;');
 const moeda=v=>parseNum(v)==null?'____________':parseNum(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -16,7 +16,7 @@ export function dadosContrato(d){
  const ultima=ultimaParcela(c);
  const ajuste=c.modalidade!==ENTRADA_PARCELADA&&ultima&&parseNum(ultima)!==parseNum(c.valorParcela)?' A última parcela será de '+moeda(ultima)+' para completar o valor total.':'';
  let pagamento=d.pagamento||'____________';
- if(c.modalidade===ENTRADA_PARCELADA)pagamento=descreverEntradaParcelada(c,{formatar:n=>moedaExtenso((n/100).toFixed(2))})||'____________';
+ if(c.modalidade===ENTRADA_PARCELADA)pagamento=descreverEntradaParcelada(c,{formatar:n=>moedaExtenso(n/100)})||'____________';
  if(c.modalidade==='Entrada e parcelas'||c.modalidade==='Parcelado sem entrada'){
   const entrada=c.modalidade==='Entrada e parcelas'?'Em um pagamento inicial no valor de '+moedaExtenso(c.entrada)+', a ser pago no ato da assinatura deste contrato, mais ':'';
   const qtd=Number(c.parcelas),dia=Number(c.diaVencimento);

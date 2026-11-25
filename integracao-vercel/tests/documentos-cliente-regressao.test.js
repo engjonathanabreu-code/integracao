@@ -29,7 +29,7 @@ test('assinatura e qualificação de PJ usam CNPJ',()=>{
 });
 test('renda numérica zero é formatada e renda ausente continua em branco',()=>{
  const expr=source.match(/renda: (preenchido\(p\.social\?\.rendaFamiliar\)[^\n]+),/)[1];
- const avaliar=new Function('p','preenchido','reais','return '+expr);
+ const avaliar=new Function('p','preenchido','reais','parseNum','return '+expr);
  const reais=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
  assert.match(avaliar({social:{rendaFamiliar:0}},preenchido,reais),/0,00/);
  assert.equal(avaliar({social:{}},preenchido,reais),'____________');
