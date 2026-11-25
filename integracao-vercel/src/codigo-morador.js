@@ -46,3 +46,25 @@ export function resolverCodigoMorador({ atual, rascunho, processos }) {
   const numeroCliente = numeroDoCodigoMorador(codigo);
   return { codigo, numeroCliente };
 }
+
+// Próximo número cujo código ainda não pertence a nenhum morador. O número
+// seguinte ao maior da remessa pode gerar um código já usado (outra remessa com
+// o mesmo prefixo, código editado à mão): nesse caso segue até achar um livre.
+export function proximoNumeroLivreMorador(processos, remessaId, montarCodigo) {
+  const usados = new Set(processos.map(p => normalizarCodigoMorador(p.codigo)));
+  let numero = BigInt(proximoNumeroMorador(processos, remessaId));
+  for (let i = 0; i <= processos.length && usados.has(normalizarCodigoMorador(montarCodigo(numeroSerializavel(numero)))); i++) numero += 1n;
+  return numeroSerializavel(numero);
+}
+
+// O código é calculado quando o formulário abre; até a gravação outro cadastro
+// (deste aparelho ou vindo da sincronização) pode ter ocupado o mesmo código.
+// Refaz a conta na hora de gravar: mantém o código se continua livre, senão
+// devolve o próximo livre. Não altera `novo` nem `processos`.
+export function codigoMoradorAoGravar(novo, processos, montarCodigo) {
+  const outros = processos.filter(p => p !== novo && !mesmoMorador(p, novo));
+  const codigo = normalizarCodigoMorador(novo.codigo);
+  if (codigo && !outros.some(p => normalizarCodigoMorador(p.codigo) === codigo)) return { codigo: novo.codigo, numeroCliente: novo.numeroCliente, mudou: false };
+  const numeroCliente = proximoNumeroLivreMorador(outros, novo.remessaId, montarCodigo);
+  return { codigo: montarCodigo(numeroCliente), numeroCliente, mudou: true };
+}

@@ -13,9 +13,11 @@ import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
+import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
+import {conferirNovoMorador} from './novo-morador.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
-import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
+import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador, proximoNumeroLivreMorador, codigoMoradorAoGravar } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
@@ -48,6 +50,7 @@ import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
+import {numeroDinheiro} from './leitor-dinheiro.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
 import {validarRegrasEvento} from './diagnostico-validacao.js';
 import {documentoHtml} from './documento-formato.js';
@@ -1491,7 +1494,7 @@ const pad3 = (n) => String(n).padStart(3, "0");
 
 
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
-function proximoNumeroCliente(db, remessaId) { return proximoNumeroMorador((db._baseArquivo || db).processos, remessaId); }
+function proximoNumeroCliente(db, remessaId) { return proximoNumeroLivreMorador((db._baseArquivo || db).processos, remessaId, (n) => codigoCliente(db, remessaId, n)); }
 function codigoCliente(db, remessaId, numero) {
   const r = remessaDe(db, remessaId); const m = r ? municipioDe(db, r.municipioId) : null;
   const prefixo = `${m?.prefixo || "MUN"}${pad2(r?.numero || 0)}`;
@@ -2607,19 +2610,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const nucleos = db.nucleos.filter((n) => n.municipioId === municipio.id && (n.remessaId === remessaId || !n.remessaId));
   const nucleoSel = nucleoDe(db, nucleoId);
-  const cpfOk = cpfValido(cpf);
-  const cpfDup = cpfOk && db.processos.find((p) => p.remessaId === remessaId && so(p.requerente.cpf) === so(cpf));
-  const nomeDup = !cpfDup && nome.trim().length > 3 && db.processos.find((p) => p.remessaId === remessaId && normalizar(p.requerente.nome) === normalizar(nome));
-  const erros = [];
-  if (!remessaId) erros.push("Escolha a remessa");
-  if (!prefixoMunicipio) erros.push("Cadastre o prefixo em Editar município antes de adicionar um morador");
-  const codigoDuplicado = (db._baseArquivo || db).processos.some(p => normalizarCodigoMorador(p.codigo) === normalizarCodigoMorador(codigoGerado));
-  if (codigoDuplicado) erros.push("Este código já existe. Confira o prefixo no cadastro do município.");
-  else if (remessaId && prefixoMunicipio && !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(normalizarCodigoMorador(codigoGerado))) erros.push(`O código ${codigoGerado} tem caracteres não aceitos. Use só letras sem acento e números no prefixo do município`);
-  if (nome.trim().length < 3) erros.push("Informe o nome do requerente");
-  if (!cpf) erros.push("Informe o CPF, ele é obrigatório");
-  else if (!cpfOk) erros.push("CPF inválido, confira os dígitos");
-  if (cpfDup && !confirmaDup) erros.push("Confirme o cadastro com CPF repetido");
+  const { cpfOk, cpfDup, nomeDup, codigoDuplicado, erros } = conferirNovoMorador({ remessaId, prefixoMunicipio, codigoGerado, nome, cpf, confirmaDup }, db.processos, (db._baseArquivo || db).processos);
 
   if (!remessas.length) {
     return (
@@ -2940,13 +2931,16 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
     fechar(); setToast("Núcleo salvo.");
   };
   const salvarMorador = (municipio) => (np, info = {}) => {
+    // O código foi calculado quando o formulário abriu: refaz a conta agora e de novo dentro da gravação.
+    const recodificar = (base) => { const r = codigoMoradorAoGravar(np, (base._baseArquivo || base).processos || [], (n) => codigoCliente(base, np.remessaId, n)); if (r.mudou) { np.codigo = r.codigo; np.numeroCliente = r.numeroCliente; } return r.mudou; };
+    const codigoPrevisto = np.codigo, renumerado = recodificar(db);
     const nuc = nucleoDe(db, np.nucleoId);
     const vincular = nuc && !nuc.remessaId;
     const nomeR = nomeRemessa(db, remessaDe(db, np.remessaId));
     const textoDocs = info.docs ? `. ${info.docs} ${info.docs === 1 ? "documento analisado" : "documentos analisados"}${info.simulados ? ` (${info.simulados} em simulação)` : ""}, ${info.campos} ${info.campos === 1 ? "campo preenchido" : "campos preenchidos"} pela IA, arquivos descartados` : ". Sem documentos no cadastro";
-    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
+    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; recodificar(d); d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
     fechar(); ir({ pag: "processo", id: np.id });
-    setToast(info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`);
+    setToast((renumerado ? `O código ${codigoPrevisto} já estava em uso; o morador recebeu ${np.codigo}. ` : "") + (info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`));
   };
   const adicionarUnidade = (p) => {
     const total = unidadesDe(p).length + 1;
@@ -8789,12 +8783,12 @@ const condicoesDoCliente = (db, p) => {
   return null;
 };
 // Valor em reais a partir do texto digitado ("2.400,00")
-const reais = (v) => {
-  const n = parseNum(v);
+const reais = (v, ler = numeroDinheiro) => {
+  const n = ler(v);
   return Number.isFinite(n) ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "____________";
 };
 const porExtensoReais = (v) => {
-  const n = parseNum(v);
+  const n = numeroDinheiro(v);
   return Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} reais` : "";
 };
 function resumoCondicoes(c) {
@@ -8806,7 +8800,7 @@ function resumoCondicoes(c) {
   if (c.modalidade === "À vista") return `À vista, ${reais(c.valorTotal)}`;
   if (c.modalidade.startsWith("Isento") || c.modalidade.startsWith("Custeado")) return c.modalidade;
   const partes = [];
-  if (parseNum(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
+  if (numeroDinheiro(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
   if (parseNum(c.parcelas) > 0) partes.push(`${c.parcelas}x de ${reais(c.valorParcela)}`);
   return `${reais(c.valorTotal)}${partes.length ? `, ${partes.join(" e ")}` : ""}`;
 }
@@ -8819,7 +8813,7 @@ function textoPagamento(c) {
   if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento", ", até")}.`;
   if (c.modalidade.startsWith("Isento")) return "O beneficiário está enquadrado na REURB-S e não paga pelos serviços, conforme a Lei 13.465/2017.";
   if (c.modalidade.startsWith("Custeado")) return "Os serviços são custeados integralmente pela prefeitura, conforme o contrato firmado com o município.";
-  const entrada = parseNum(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
+  const entrada = numeroDinheiro(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
   return `O valor total de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago em ${entrada}${c.parcelas || "___"} parcelas mensais de ${reais(c.valorParcela)}${dia}${venc}.${reaj}`;
 }
 
@@ -8843,7 +8837,7 @@ const ITENS_COMPROMISSO = [
 ];
 const compromissoVazio = () => ({ itens: {}, prazos: {}, observacao: "", atualizadoEm: "", por: "" });
 const distratoVazio = () => ({ tipo: "devolucao", valorMulta: "", vencimentoMulta: "", formaMulta: "", data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
-function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,parseNum); }
+function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,numeroDinheiro); }
 function textoCompromissos(c, remessaPrazos) {
   const itens = ITENS_COMPROMISSO.filter((i) => c?.itens?.[i.id]);
   if (!itens.length) return "Nenhum compromisso de infraestrutura assumido para esta unidade.";
@@ -8899,7 +8893,7 @@ function dadosDocumento(db, p, usuario) {
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
     area: un[0]?.area || p.imovel?.area || "____________", tipoPosse: p.imovel?.tipoPosse || "posse",
     tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || tempoDesde(p.imovel?.aquisicao) || "____________",
-    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar) : "____________",
+    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar, parseNum) : "____________",
     modalidade: p.social?.modalidade || "REURB-S",
     condicoes: c, pagamento: textoPagamento(c),
     dataExtenso: `${m ? m.nome : "____________"}, ${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
@@ -9144,7 +9138,7 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
       <label className="rot" htmlFor={`${titulo}-obs`} style={{ marginTop: 12 }}>Observações que entram no contrato</label>
       <textarea id={`${titulo}-obs`} className="inp" rows={2} value={f.observacoes} disabled={!pode} onChange={(e) => set("observacoes", e.target.value)} />
       <div className="faixa-especifica" style={{ marginTop: 12 }}>
-        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
+        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && numeroDinheiro(ultimaParcela(f)) !== numeroDinheiro(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
         {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => { const mensagem=validarCondicoesVenda(f); setErro(mensagem); if(!mensagem)onSalvar(f); }}><Check size={15} />Salvar</button>}
       </div>
       {erro && <p role="alert" className="msg-erro">{erro}</p>}
@@ -9162,11 +9156,11 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
   const registrado = !!p.distrato?.registradoEm;
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...distratoVazio(), ...(p.distrato || {}) });
   const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
-  const calcular = () => { const total = parseNum(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
+  const calcular = () => { const total = numeroDinheiro(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
   const salvar = () => {
-    const erroDistrato=validarDistrato(f,parseNum);if(erroDistrato){setToast(erroDistrato);return;}
+    const erroDistrato=validarDistrato(f,numeroDinheiro);if(erroDistrato){setToast(erroDistrato);return;}
     const novo = { ...f, motivo: f.motivo.trim(), por: usuario.nome, registradoEm: p.distrato?.registradoEm || new Date().toISOString() };
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : numeroDinheiro(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
     setToast("Distrato guardado neste aparelho e aguardando sincronização. Após confirmar o envio, gere o documento.");
   };
   const desfazer = () => {
@@ -10811,7 +10805,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       preparandoMeta.current=false; setSalvando(false); return;
     }
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
-    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
+    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: semanaAoSalvar(f.semana_inicio, meta?.semana_inicio), prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
       devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
@@ -10921,7 +10915,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={addItemChecklist}><Plus size={14} />Adicionar item</button>
           <div className="ajuda">Marque os que já estão feitos. O Enter cria o próximo item.</div>
         </div>
-        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} />{semanaAoSalvar(f.semana_inicio, meta?.semana_inicio) !== f.semana_inicio && <div className="ajuda">A semana começa na segunda-feira: será gravada como {dataBR(semanaAoSalvar(f.semana_inicio, meta?.semana_inicio))}.</div>}</div>
         <div><label className="rot" htmlFor="mtp">Prazo (opcional)</label><input id="mtp" type="date" className="inp" value={f.devolutiva ? f.prazoDev : f.prazo} disabled={f.devolutiva} onChange={(e) => set("prazo", e.target.value)} />{f.devolutiva && <div className="ajuda">Vem do prazo final da devolutiva.</div>}</div>
         <div><label className="rot" htmlFor="mtst">Status</label><select id="mtst" className="inp" value={f.status} onChange={(e) => set("status", e.target.value)}>{META_STATUS.map((x) => <option key={x}>{x}</option>)}</select></div>
         <div><label className="rot" htmlFor="mtse">Setor</label><select id="mtse" className="inp" value={f.setor} onChange={(e) => set("setor", e.target.value)}><option value="">Sem setor</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select></div>
@@ -11223,7 +11217,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
-  const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
+  const daSemana = visiveis.filter((m) => metaNaSemana(m, inicioSemana));
   const ativas = visiveis.filter((m) => !["Concluído", "Cancelado"].includes(m.status));
   const atrasadas = ativas.filter((m) => m.prazo && m.prazo < hoje);
   const metasDe = (id) => visiveis.filter((m) => respMeta(m, {id}));
@@ -11456,6 +11450,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const [detalhe, setDetalhe] = useState(null);
   const [nova, setNova] = useState(false);
+  const [editando, setEditando] = useState(null);
   const gerencia = gerenciaMetas(usuario);
   const hoje = new Date().toISOString().slice(0, 10);
   const doNucleo = (db.metas || []).filter((m) => (m.associacao_tipo === "nucleo" && m.associacao_id === n.id) || (m.nucleos || []).includes(n.id)).filter((m) => podeVerMeta(m, usuario));
@@ -11464,7 +11459,8 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
       acao={gerencia && <button className="btn btn-sm btn-primario" onClick={() => setNova(true)}><Plus size={14} />Nova meta</button>}>
       {!doNucleo.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta ligada a este processo.</p>}
       <div className="grade-metas">{doNucleo.map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={(x) => setDetalhe(x.id)} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => {}} onFechar={() => setDetalhe(null)} />}
+      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = metaParaEditar(db.metas, detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
+      {editando && <ModalMetaERP db={db} meta={editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {nova && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNova(false)} />}
     </Secao>
   );

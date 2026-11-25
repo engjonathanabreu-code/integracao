@@ -1,9 +1,10 @@
+import {lerDinheiro} from './leitor-dinheiro.js';
 export const CAMPOS_NEGOCIACAO=['valor_total','forma_negociacao','parcelas','desconto_percentual','entrada_percentual','entrada_valor'];
 export const reais=v=>Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 export function lerValorReais(texto){
- const s=String(texto??'').trim().replace(/^R\$\s*/,'');
- if(!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(s))throw new Error('Informe o valor em reais, por exemplo 1.500,00.');
- const v=Number(s.replaceAll('.','').replace(',','.'));
+ const r=lerDinheiro(typeof texto==='number'?String(texto):texto);
+ if(!r.ok||r.vazio)throw new Error('Informe o valor em reais, por exemplo 1.500,00.');
+ const v=r.valor;
  if(!Number.isFinite(v)||v<=0||v>999999999999.99)throw new Error('Informe um valor total maior que zero.');
  return Math.round(v*100)/100;
 }
