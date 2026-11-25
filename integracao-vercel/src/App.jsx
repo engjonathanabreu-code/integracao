@@ -113,6 +113,10 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
+import {prazoSugeridoMeta} from './metas-uso.js';
+import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
+import AprovacoesPendentesMetas from './AprovacoesPendentesMetas.jsx';
+import {alertaSemContatoMorador,temContatoMorador} from './contato-morador.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -2631,6 +2635,8 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const atualizarItem = (id, mud) => { filaRef.current = filaRef.current.map((i) => (i.id === id ? { ...i, ...mud } : i)); setFila(filaRef.current); };
   const definirRascunho = (np) => { rascunhoRef.current = np; setRascunho(np); };
   const avancar = () => {
+    const semContato = alertaSemContatoMorador(telefone);
+    if (semContato && !window.confirm(semContato)) return;
     const np = montarMorador(db, municipio.id, { remessaId, nucleoId: acessoCRM(usuario).comercial ? "" : nucleoId, nome, telefone, cpf, qtdUnidades });
     np.id = idMorador.current;
     definirRascunho(np);
@@ -2757,13 +2763,13 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
             {nucleoSel && !nucleoSel.remessaId && <div className="ajuda">O {nucleoSel.codigo} ainda não está em remessa e será vinculado à {nomeRemessa(db, remessaDe(db, remessaId))}.</div>}
           </div>
           <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mnomer">Nome do requerente</label><input id="mnomer" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="off" /></div>
+          <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtel">WhatsApp ou telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" />{!temContatoMorador(telefone) && <div className="ajuda">Peça o número agora: é por ele que a equipe fala com o cliente.</div>}</div>
           <div>
             <label className="rot" htmlFor="mcpf">CPF (obrigatório)</label>
             <input id="mcpf" className={`inp${tocouCpf && cpf && !cpfOk ? " erro" : ""}`} inputMode="numeric" value={cpf} autoComplete="off" onBlur={() => setTocouCpf(true)} onChange={(e) => { setCpf(fmtCPF(e.target.value)); setConfirmaDup(false); }} aria-required="true" />
             {tocouCpf && !cpf && <div className="msg-erro">O CPF é obrigatório.</div>}
             {tocouCpf && cpf && !cpfOk && <div className="msg-erro">CPF inválido. Confira os dígitos.</div>}
           </div>
-          <div><label className="rot" htmlFor="mtel">Telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" /></div>
           <div>
             <label className="rot" htmlFor="mqtd">Unidades a regularizar</label>
             <select id="mqtd" className="inp" value={qtdUnidades} onChange={(e) => setQtdUnidades(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map((q) => <option key={q} value={q}>{q}</option>)}</select>
@@ -10676,6 +10682,15 @@ function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
   return item;
 }
 
+// Gravação única da aprovação: o botão da meta e a aprovação em lote usam esta mesma mutação.
+function aprovarConclusaoMeta(d, metaId, usuario) {
+  const q = d.metas.find(x => x.id === metaId);
+  if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
+  q.status = "Concluído"; q.solicitacaoConclusao = null;
+  registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
+  novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
+  return d;
+}
 function useConfirmacaoEdicao(mutar, setToast) {
   const tentativa = useRef(null), ocupada = useRef(false);
   const [estado, setEstado] = useState(null);
@@ -10761,7 +10776,7 @@ function ModalOrdemServico({ db, inicial, onSalvar, onFechar, envio }) {
 function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, onDetalhe }) {
   const nova = !meta;
   const [f, setF] = useState(() => nova
-    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: semanaISO(1), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
+    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: prazoSugeridoMeta(), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
   const camposIniciais = useRef(f);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -11019,14 +11034,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       novaNotificacao(d,{titulo:`Conclusão recusada: ${q.titulo}`,texto:motivoRecusa.trim(),rota:{pag:"metas"},usuarios:[...new Set([...(q.responsaveis||[]),...(solicitante?[solicitante]:[])])]});return d;
     }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`}, "Recusa registrada. A meta voltou para Em andamento.", onFechar);
   };
-  const aprovar = () => envio.executar(d => {
-    const q = d.metas.find(x => x.id === m.id);
-    if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
-    q.status = "Concluído"; q.solicitacaoConclusao = null;
-    registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
-    novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
-    return d;
-  }, "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
+  const aprovar = () => envio.executar(d => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
     if (!arq || enviando || envio.bloqueada) return;
@@ -11314,6 +11322,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {gerencia && <ArquivoMetas metas={metasArquivadas} usuario={usuario} mutar={mutar} setToast={setToast} registrarHistorico={registrarHistoricoMeta} Modal={Modal} />}
       {gerencia && <div className="flex flex-wrap gap-2" style={{marginBottom:12}}><button className={`btn${tela==='planejamento'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('planejamento');}}>Planejamento futuro</button><button className={`btn${tela==='home'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('home');}}>Visão atual de Metas</button></div>}
       {barra}
+      {(tela === "home" || tela === "planejamento") && aprovaMetas(usuario) && <AprovacoesPendentesMetas metas={todasVisiveis} usuarios={db.usuarios} hoje={hoje} podeAprovar={(m) => podeAprovarConclusao(m, usuario)} onAbrir={abrir} setToast={setToast} aprovar={(m) => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, { permitirOffline: true })} />}
       {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
 
       {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia ? <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button> : podeGerirDevolutivaPosProtocolo(null,usuario) && <button className="btn btn-primario" onClick={() => setCadastroDevolutiva("nova")}>Cadastrar devolutiva</button>}>
@@ -12749,6 +12758,8 @@ export default function App() {
     }, 20000);
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
+
+  useAvisosMetasVencidas({ db, usuario, mutar, pronto: AMBIENTE.DEMO || (compartilhado.ready() && compartilhado.summaryReady && navigator.onLine !== false) });
 
   mutar.confirmado = (fn,acao,extra={},opcoes) => {
     if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null,opcoes);

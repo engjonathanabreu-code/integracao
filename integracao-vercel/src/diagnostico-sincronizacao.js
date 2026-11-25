@@ -25,6 +25,25 @@ export function coberturaDispositivos(usuarios,relatos,agora=Date.now()){
  });
 }
 
+// USO-C4 — aparelhos cujo último relato tinha pendências e que estão sem
+// contato há mais de dois dias: o que ficou neles só sai quando alguém abrir o
+// sistema ali. Só leitura, sobre os mesmos relatos já consultados acima.
+// O relato não traz a idade de cada pendência; por isso a regra é o tempo sem
+// contato, e aparelho com contato recente nunca entra na lista.
+export const LIMITE_PENDENCIA_PARADA_MS=48*60*60*1000;
+const quantidade=g=>Number.isSafeInteger(g?.quantidade)&&g.quantidade>0?g.quantidade:0;
+export function aparelhosComPendenciaParada(usuarios,relatos,agora=Date.now(),limite=LIMITE_PENDENCIA_PARADA_MS){
+ const nomes=new Map((usuarios||[]).filter(u=>u?.erpRef).map(u=>[u.erpRef,u.nome]));
+ return (relatos||[]).map(r=>{
+  const resumo=Array.isArray(r?.resumo)?r.resumo:[],contato=Date.parse(r?.ultimo_contato);
+  return {usuario_id:r?.usuario_id,instalacao_id:r?.instalacao_id,nome:nomes.get(r?.usuario_id)||'Conta fora da lista de usuários',versao:r?.versao||'',
+   ultimo_contato:r?.ultimo_contato,semContatoMs:Number.isFinite(contato)?agora-contato:NaN,
+   pendencias:resumo.reduce((n,g)=>n+quantidade(g),0),arquivos:resumo.filter(g=>g?.modulo==='arquivos').reduce((n,g)=>n+quantidade(g),0)};
+ }).filter(r=>r.pendencias>0&&r.semContatoMs>limite)
+  .map(r=>({...r,dias:Math.floor(r.semContatoMs/86400000)}))
+  .sort((a,b)=>b.semContatoMs-a.semContatoMs||b.pendencias-a.pendencias||String(a.instalacao_id).localeCompare(String(b.instalacao_id)));
+}
+
 // Local per-operation diagnostics deliberately omit originals, values, paths,
 // record/resource identifiers, server messages and payload/receipt contents.
 export const VERSAO_CLIENTE=import.meta.env?.VITE_BUILD_ID||'sync-evolution-1';
