@@ -407,6 +407,15 @@ const at = (db,b) => {
 // Deterministic local refusals while encoding an edit: nothing was sent and a
 // retry cannot change the outcome, so they are validation (422), not transport.
 const erroLocal=(mensagem,code='EDICAO_LOCAL_INVALIDA')=>Object.assign(new Error(mensagem),{code,status:422});
+// Documento oficial (cpf_cnpj) quando a ficha troca entre pessoa física e jurídica.
+// undefined = não houve troca, ou o documento do novo tipo ainda não foi informado
+// (nesse caso a coluna não é apagada por conta própria).
+export function documentoAoTrocarTipoPessoa(antes,depois) {
+  const pj=x=>x?.requerente?.tipoPessoa==='juridica';
+  if(pj(antes)===pj(depois)) return undefined;
+  const documento=String((pj(depois)?depois?.requerente?.cnpj:depois?.requerente?.cpf)??'').trim();
+  return documento||undefined;
+}
 export function alteracoesCompartilhadas(before,after,state,actor) {
   const ops=[];
   for (const b of state.bindings) {
@@ -437,6 +446,14 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
       const m=after.municipios.find(x=>x.id===next.municipioId);
       if(!m)throw erroLocal('Município não encontrado.','MUNICIPIO_NAO_ENCONTRADO');
       Object.assign(changes,{municipio:m.nome,estado:m.uf});Object.assign(expected,{municipio:b.row.municipio,estado:b.row.estado});
+    }
+    if(b.table==='fin_receb_clientes' && !b.parent) {
+      // EDI-C2: o mapa foi montado com o tipo de pessoa anterior; o documento do novo tipo segue na mesma gravação.
+      const documento=documentoAoTrocarTipoPessoa(old,next);
+      if(documento!==undefined) {
+        if(eq(documento,b.row.cpf_cnpj??null)) {delete changes.cpf_cnpj;delete expected.cpf_cnpj;}
+        else {changes.cpf_cnpj=documento;expected.cpf_cnpj=b.row.cpf_cnpj??null;}
+      }
     }
     if(Object.keys(changes).length) {
       if(b.table==='erp_agendas') ops.push({table:b.table,key:b.key,expected,changes});
