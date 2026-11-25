@@ -1,10 +1,11 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 import {destinoDocumento,linhaDocumentalAtual} from '../src/documentos-pessoas.js';
+import {marcarPlausibilidade} from '../src/documentos-ia-plausibilidade.js';
 import {avaliarPrazoResidencia,INSTRUCAO_RESIDENCIA_SEIS_MESES} from '../src/prazo-residencia.js';
 const source=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const getPath=(o,p)=>p.split('.').reduce((x,k)=>x?.[k],o),setPath=(o,p,v)=>{const a=p.split('.');const k=a.pop();a.reduce((x,k)=>x[k]??=(/^\d+$/.test(k)?[]:{}),o)[k]=v;};
 const extrair=x=>structuredClone(x),clone=structuredClone;
-const deps={destinoDocumento,preenchido:v=>String(v??'').trim()!=='',getPath,normalizar:v=>String(v).toLowerCase(),so:v=>String(v).replace(/\D/g,''),MAPA_IA:{nome:{rot:'Nome',campo:'nome'},rg:{rot:'RG',campo:'rg'},logradouro:{rot:'Logradouro',path:'endereco.logradouro'}}};
+const deps={marcarPlausibilidade,destinoDocumento,preenchido:v=>String(v??'').trim()!=='',getPath,normalizar:v=>String(v).toLowerCase(),so:v=>String(v).replace(/\D/g,''),MAPA_IA:{nome:{rot:'Nome',campo:'nome'},rg:{rot:'RG',campo:'rg'},logradouro:{rot:'Logradouro',path:'endereco.logradouro'}}};
 const montarLinhas=new Function(...Object.keys(deps),source.slice(source.indexOf('function montarLinhas('),source.indexOf('/* ---------------- gerador de PRF'))+';return montarLinhas;')(...Object.values(deps));
 const base=()=>({requerente:{nome:'Requerente Fictício'},conjuge:{},endereco:{},docs:[],ocupantes:[{id:'o1',pessoa:{nome:'Ocupante Fictício'}},{id:'o2',pessoa:{nome:'Outro Fictício'}}]});
 test('linhas reais aplicam somente na pessoa identificada e resolvem reorder por ID',()=>{const p=base(),res={pessoa:'ocupante',campos:{nome:'Ocupante Fictício',rg:'RG-FICTICIO',logradouro:'Não copiar ao requerente'}};const linhas=montarLinhas(res,p);assert.equal(linhas.length,1);assert.equal(linhas[0].pessoaId,'ocupantes:o1');p.ocupantes.reverse();const atual=linhaDocumentalAtual(linhas[0],p);setPath(p,atual.path,atual.sugerido);assert.equal(p.ocupantes[1].pessoa.rg,'RG-FICTICIO');assert.equal(p.requerente.rg,undefined);assert.equal(p.endereco.logradouro,undefined);assert.deepEqual(montarLinhas({pessoa:'terceiro',campos:{nome:'Terceiro',rg:'x',logradouro:'x'}},p),[]);});

@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { criarSessaoDocumentosIA, regrasDocumentoCliente } from '../src/documentos-ia-sessao.js';
+import { selecaoInicialSugestoes, sugestoesSelecionadas } from '../src/documentos-ia-plausibilidade.js';
 
 // Executa os handlers reais da aba com hooks mínimos. Não renderiza JSX nem usa clientes reais.
 const source = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
@@ -18,7 +19,7 @@ function tela({ responder = async () => ({ tipo: 'outro', campos: {}, regras: []
     useState(inicial) { const n = index++; hooks[n] ||= { valor: inicial }; return [hooks[n].valor, v => { hooks[n].valor = typeof v === 'function' ? v(hooks[n].valor) : v; }]; },
     useRef(inicial) { const n = index++; hooks[n] ||= { current: inicial }; return hooks[n]; },
     useEffect(fn, deps) { const n = index++, anterior = hooks[n]; if (!anterior || deps.some((v, i) => v !== anterior.deps[i])) efeitos.push(() => { anterior?.cleanup?.(); hooks[n] = { deps, cleanup: fn() }; }); },
-    criarSessaoDocumentosIA, regrasDocumentoCliente, pessoasDocumentais, destinoDocumento,
+    criarSessaoDocumentosIA, regrasDocumentoCliente, pessoasDocumentais, destinoDocumento, selecaoInicialSugestoes, sugestoesSelecionadas,
     useTimbrado: () => null,
     regrasDoMunicipio: () => [], nucleoDe: () => null, municipioDe: () => null, cpfValido: () => false,
     DOC_TIPOS: { outro: 'Outro' }, montarLinhas: () => [], uid: () => `d${p.docs.length}`,

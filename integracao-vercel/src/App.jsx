@@ -20,6 +20,7 @@ import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
 import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
+import { marcarPlausibilidade, selecaoInicialSugestoes, sugestoesSelecionadas } from "./documentos-ia-plausibilidade.js";
 import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva, marcarAnalisePendenteDevolutiva, analisePendenteDevolutiva, AVISO_ANALISE_PENDENTE } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
@@ -1192,7 +1193,7 @@ function montarLinhas(res, rascunho, pessoaEscolhida = "") {
     const rot = m.path ? m.rot : `${m.rot} (${destino.papel}: ${destino.pessoa.nome})`;
     linhas.push({ path, rot, atual, sugerido, ...(!m.path ? {pessoaId: destino.id, campoPessoa: m.campo} : {}), diverge: atual !== "", cpf: k === "cpf" });
   });
-  return linhas;
+  return marcarPlausibilidade(linhas);
 }
 
 /* ---------------- gerador de PRF ---------------- */
@@ -4157,7 +4158,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     const r2 = { ...res, tipo };
     const destino = destinoDocumento(r2, rascunho, pessoaEscolhida);
     const linhas = montarLinhas(r2, rascunho, pessoaEscolhida);
-    const sel = {}; linhas.forEach((l) => { sel[l.path] = !l.diverge && podeSecao(l.path) && !pessoaEscolhida && !!destino; });
+    const sel = selecaoInicialSugestoes(linhas, (l) => podeSecao(l.path) && !pessoaEscolhida && !!destino);
     setSelecao(sel);
     setResultado({ ...r2, simulado, linhas, regrasAvaliadas: avaliadas, meta });
     if (!processandoRef.current) setEstado("resultado");
@@ -4241,7 +4242,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   };
   const exigidos = ["identidade", ...(temConjuge(p) ? ["identidade_conjuge"] : []), "comp_residencia", "estado_civil", "comp_renda", "comp_posse"];
   const outros = p.docs.filter((d) => !exigidos.includes(d.tipo) || (d.pessoaId && !["requerente", "conjuge"].includes(d.pessoaId)));
-  const qtdSel = resultado ? resultado.linhas.filter((l) => selecao[l.path]).length : 0;
+  const qtdSel = resultado ? sugestoesSelecionadas(resultado.linhas, selecao).length : 0;
   const mostrarValor = (l, v) => (l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
   const tagResultado = (r) => r.resultado === "atende" ? <Tag tipo="ok">Atende</Tag> : r.resultado === "nao_atende" ? <Tag tipo={r.gravidade === "bloqueia" ? "bloq" : "pend"}>Não atende</Tag> : <Tag>Não verificada</Tag>;
 
@@ -4418,11 +4419,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                     {resultado.linhas.map((l) => {
                       const permitido = podeSecao(l.path);
                       return (
-                        <tr key={l.path} style={l.diverge ? { background: "var(--warning-bg)" } : undefined}>
-                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path]} disabled={!permitido} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                        <tr key={l.path} style={l.implausivel ? { background: "var(--danger-bg)" } : l.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path] && !l.implausivel} disabled={!permitido || !!l.implausivel} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                           <td>{l.rot}{!permitido && <div className="ajuda" style={{ margin: 0 }}>Fora da permissão do seu perfil</div>}</td>
                           <td style={{ color: l.atual ? "var(--text)" : "var(--muted)" }}>{mostrarValor(l, l.atual)}</td>
-                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
+                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{l.implausivel} Não pode ser aplicado; confira o documento.</div>}{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
                         </tr>
                       );
                     })}
@@ -4430,7 +4431,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 </table>
               </div>
               <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 12 }}>
-                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(resultado.linhas.filter((l) => selecao[l.path])); setResultado(null); }}>
+                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(sugestoesSelecionadas(resultado.linhas, selecao)); setResultado(null); }}>
                   <Sparkles size={16} />Preencher {qtdSel} {qtdSel === 1 ? "campo" : "campos"} no cadastro
                 </button>
                 <span className="ajuda" style={{ margin: 0 }}>Os campos ficam destacados para você revisar e salvar.</span>
