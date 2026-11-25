@@ -37,3 +37,6 @@
 .rb .metas-grade-continua .metas-setor-titulo{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 0;padding:6px 10px;border-left:4px solid var(--meta-setor-cor);border-radius:6px;background:var(--bg);color:var(--titulo);font-size:14px;font-weight:700}
 .rb .metas-grade-continua .metas-setor-titulo .ajuda{margin:0;font-weight:400}
 .rb .metas-grade-continua .metas-setor-titulo .tag{background:var(--pill);color:var(--text);font-weight:600}
+.rb .metas-encerradas{margin-top:14px;border-top:1px solid var(--line2);padding-top:10px}
+.rb .metas-encerradas>summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--titulo);padding:6px 0;min-height:32px}
+.rb .metas-encerradas[open]>summary{margin-bottom:10px}

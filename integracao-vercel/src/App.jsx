@@ -45,7 +45,7 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta, textoAtraso, ordenarMetasAtrasadas } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta, textoAtraso, ordenarMetasAtrasadas, separarMetasColaborador, ordenarMetasEncerradas } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato} from './contrato-dados.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
@@ -11350,8 +11350,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 
       {tela === "home" && colaborador && (
         <Secao titulo={`Metas de ${colaborador.nome}`} nota={`${SETORES[colaborador.setor]?.nome}. ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status)).length} ativa(s), ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status) && m.prazo && m.prazo < hoje).length} em atraso.`} acao={<button className="btn btn-sm" onClick={() => setColaborador(null)}><ChevronLeft size={14} />Voltar</button>}>
-          <div className="grade-metas">{metasDe(colaborador.id).map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-          {!metasDe(colaborador.id).length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          {(() => { const { abertas, encerradas } = separarMetasColaborador(metasDe(colaborador.id)); return <>
+            {abertas.length > 0 && <MetasAgrupadas metas={abertas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} />} />}
+            {!abertas.length && encerradas.length > 0 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta em aberto para este colaborador.</p>}
+            {encerradas.length > 0 && <details className="metas-encerradas"><summary>Concluídas e canceladas ({encerradas.length})</summary><MetasAgrupadas metas={encerradas} ordenar={ordenarMetasEncerradas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} />} /></details>}
+            {!abertas.length && !encerradas.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          </>; })()}
         </Secao>
       )}
 

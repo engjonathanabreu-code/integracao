@@ -99,3 +99,14 @@ export function secoesPorSetor(ordenadas = [], inicio = 0, fim = ordenadas.lengt
   }
   return secoes;
 }
+// Tela do colaborador: abertas na frente (prazo mais antigo primeiro, logo atrasadas no topo)
+// e encerradas à parte, concluídas antes das canceladas e da mais recente para a mais antiga.
+export function separarMetasColaborador(metas = []) {
+  const abertas = [], encerradas = [];
+  for (const meta of metas) (STATUS_ENCERRADOS.includes(meta.status) ? encerradas : abertas).push(meta);
+  return { abertas: ordenarMetasAtrasadas(abertas), encerradas: ordenarMetasEncerradas(encerradas) };
+}
+export function ordenarMetasEncerradas(metas = []) {
+  return [...metas].sort((a, b) => STATUS_ENCERRADOS.indexOf(a.status) - STATUS_ENCERRADOS.indexOf(b.status)
+    || comparar(b.prazo || '', a.prazo || '') || comparar(a.titulo || '', b.titulo || '') || comparar(a.id, b.id));
+}
