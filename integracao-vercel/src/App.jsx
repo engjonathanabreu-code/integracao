@@ -13,7 +13,7 @@ import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
-import {metaParaEditar} from './metas-semana.js';
+import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
@@ -10813,7 +10813,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       preparandoMeta.current=false; setSalvando(false); return;
     }
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
-    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
+    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: semanaAoSalvar(f.semana_inicio, meta?.semana_inicio), prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
       devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
@@ -10923,7 +10923,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={addItemChecklist}><Plus size={14} />Adicionar item</button>
           <div className="ajuda">Marque os que já estão feitos. O Enter cria o próximo item.</div>
         </div>
-        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} />{semanaAoSalvar(f.semana_inicio, meta?.semana_inicio) !== f.semana_inicio && <div className="ajuda">A semana começa na segunda-feira: será gravada como {dataBR(semanaAoSalvar(f.semana_inicio, meta?.semana_inicio))}.</div>}</div>
         <div><label className="rot" htmlFor="mtp">Prazo (opcional)</label><input id="mtp" type="date" className="inp" value={f.devolutiva ? f.prazoDev : f.prazo} disabled={f.devolutiva} onChange={(e) => set("prazo", e.target.value)} />{f.devolutiva && <div className="ajuda">Vem do prazo final da devolutiva.</div>}</div>
         <div><label className="rot" htmlFor="mtst">Status</label><select id="mtst" className="inp" value={f.status} onChange={(e) => set("status", e.target.value)}>{META_STATUS.map((x) => <option key={x}>{x}</option>)}</select></div>
         <div><label className="rot" htmlFor="mtse">Setor</label><select id="mtse" className="inp" value={f.setor} onChange={(e) => set("setor", e.target.value)}><option value="">Sem setor</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select></div>
@@ -11225,7 +11225,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
-  const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
+  const daSemana = visiveis.filter((m) => metaNaSemana(m, inicioSemana));
   const ativas = visiveis.filter((m) => !["Concluído", "Cancelado"].includes(m.status));
   const atrasadas = ativas.filter((m) => m.prazo && m.prazo < hoje);
   const metasDe = (id) => visiveis.filter((m) => respMeta(m, {id}));

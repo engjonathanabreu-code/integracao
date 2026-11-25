@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {semanaAoSalvar} from '../src/metas-semana.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
@@ -15,7 +16,7 @@ function harness(){
  const empty=()=>null;
  const deps={confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
  useState:initial=>{const n=si++;if(!(n in states)){states[n]=typeof initial==='function'?initial():initial;if(n===0)states[n]={...states[n],titulo:'Meta teste',responsaveis:['destinatario']};}return [states[n],v=>states[n]=typeof v==='function'?v(states[n]):v];},useRef:initial=>refs[ri++]??(refs[ri-1]={current:initial}),
- semanaISO:()=> '2026-11-16',podeUsarAgentes:()=>false,uid:()=>String(++seq),dataBR:String,rotuloAssociacao:()=>'',registrarHistoricoMeta:()=>{},novaNotificacao:()=>{},
+ semanaISO:()=> '2026-11-16',semanaAoSalvar,podeUsarAgentes:()=>false,uid:()=>String(++seq),dataBR:String,rotuloAssociacao:()=>'',registrarHistoricoMeta:()=>{},novaNotificacao:()=>{},
  Modal:empty,Plus:empty,Trash2:empty,SeletorIcone:empty,sugerirIcone:()=>'',META_STATUS:[],ASSOC_TIPOS:[],setoresUnicos:()=>[]};
  const Component=new Function('deps',`const {${Object.keys(deps)}}=deps;${compiled};return ModalMetaERP;`)(deps);
  c.render=()=>{si=0;ri=0;return Component({db:c.db,meta:null,usuario:{id:'autor',nome:'Teste'},mutar,setToast:x=>c.toasts.push(x),onFechar:()=>c.closed++});};
