@@ -1,4 +1,4 @@
--- Reversão de supabase/migrations/20261125122800_conflitos_negocio_sem_retry.sql.
+-- Reversão de supabase/migrations/20261125135233_conflitos_negocio_sem_retry.sql.
 -- Devolve o literal '40001' às seis funções, restaurando o corpo anterior byte a byte.
 -- Tudo ou nada: só age se cada função estiver exatamente como a migration a deixou
 -- (corpo atual, com 'PT409' trocado de volta, igual ao md5 original). Qualquer divergência

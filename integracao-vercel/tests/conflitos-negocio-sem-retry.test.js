@@ -1,4 +1,4 @@
-// Migration 20261125122800_conflitos_negocio_sem_retry.sql e sua reversão.
+// Migration 20261125135233_conflitos_negocio_sem_retry.sql e sua reversão.
 //
 // A migration é tudo-ou-nada e exige as seis funções no mesmo banco. Cada função nasce de
 // um módulo com esquema próprio, então o teste monta um banco PGlite por módulo exatamente
@@ -21,7 +21,7 @@ import { rejeicaoDefinitiva } from '../src/atualizacao-rascunho.js';
 import { buscarREST } from '../src/transporte-rest.js';
 
 const ler = caminho => readFileSync(new URL(caminho, import.meta.url), 'utf8');
-const MIGRATION = ler('../supabase/migrations/20261125122800_conflitos_negocio_sem_retry.sql');
+const MIGRATION = ler('../supabase/migrations/20261125135233_conflitos_negocio_sem_retry.sql');
 const REVERSAO = ler('../supabase/operacoes/conflitos-negocio-sem-retry-reversao.sql');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -177,7 +177,7 @@ test('conflitos de negócio sem retry: migration tudo-ou-nada e reversão nas se
       }
       assert.equal(contar(MIGRATION, 'begin;'), 1); assert.equal(contar(MIGRATION, 'commit;'), 1);
       assert.match(MIGRATION, /set local lock_timeout = '5s';/); assert.match(REVERSAO, /set local lock_timeout = '5s';/);
-      assert.match(REVERSAO, /^-- Reversão de supabase\/migrations\/20261125122800_conflitos_negocio_sem_retry\.sql\./);
+      assert.match(REVERSAO, /^-- Reversão de supabase\/migrations\/20261125135233_conflitos_negocio_sem_retry\.sql\./);
       // Só catálogo de funções: nada de dados, permissões, dono ou regex.
       for (const sql of [MIGRATION, REVERSAO]) assert.doesNotMatch(sql.replace(/--.*$/gm, ''), /\b(grant|revoke|alter|drop|insert|update|delete|truncate|regexp_replace|security definer|owner)\b/i);
     });

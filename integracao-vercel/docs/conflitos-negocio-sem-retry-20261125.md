@@ -10,7 +10,7 @@ que o PostgREST devolve como HTTP 409 sem repetir. Seis funções continuavam co
 
 ## O que muda
 
-`supabase/migrations/20261125122800_conflitos_negocio_sem_retry.sql` troca somente o literal
+`supabase/migrations/20261125135233_conflitos_negocio_sem_retry.sql` troca somente o literal
 `'40001'` por `'PT409'` em:
 
 | Função | md5 do corpo antes | Literais |
@@ -67,3 +67,7 @@ migration confere ao ser aplicada.
 `supabase/operacoes/conflitos-negocio-sem-retry-reversao.sql` devolve o literal `'40001'`. Só age
 se as seis funções estiverem exatamente como a migration deixou; caso contrário aborta sem alterar
 nada. Reverter reintroduz a repetição sem limite nas recusas de conflito.
+
+## Aplicação em produção — 25/11/2026
+
+A migration foi aplicada com autorização específica e o arquivo foi renomeado para a versão registrada (`20261125135233`); o SQL não mudou. Conferido em seguida no banco: as seis funções sem o literal `'40001'`, com a quantidade esperada de `'PT409'`, corpo igual ao original com o literal trocado (md5 conferido), e ACL, dono, `security definer` e `search_path` inalterados; o gatilho de observações continua ativo.
