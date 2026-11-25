@@ -13,6 +13,7 @@ import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
+import {metaParaEditar} from './metas-semana.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
@@ -11457,6 +11458,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const [detalhe, setDetalhe] = useState(null);
   const [nova, setNova] = useState(false);
+  const [editando, setEditando] = useState(null);
   const gerencia = gerenciaMetas(usuario);
   const hoje = new Date().toISOString().slice(0, 10);
   const doNucleo = (db.metas || []).filter((m) => (m.associacao_tipo === "nucleo" && m.associacao_id === n.id) || (m.nucleos || []).includes(n.id)).filter((m) => podeVerMeta(m, usuario));
@@ -11465,7 +11467,8 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
       acao={gerencia && <button className="btn btn-sm btn-primario" onClick={() => setNova(true)}><Plus size={14} />Nova meta</button>}>
       {!doNucleo.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta ligada a este processo.</p>}
       <div className="grade-metas">{doNucleo.map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={(x) => setDetalhe(x.id)} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => {}} onFechar={() => setDetalhe(null)} />}
+      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = metaParaEditar(db.metas, detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
+      {editando && <ModalMetaERP db={db} meta={editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {nova && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNova(false)} />}
     </Secao>
   );
