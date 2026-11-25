@@ -47,7 +47,7 @@ import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
-import {dadosContrato} from './contrato-dados.js';
+import {dadosContrato,reaisPorExtenso} from './contrato-dados.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
 import {validarRegrasEvento} from './diagnostico-validacao.js';
 import {documentoHtml} from './documento-formato.js';
@@ -8795,7 +8795,7 @@ const reais = (v) => {
 };
 const porExtensoReais = (v) => {
   const n = parseNum(v);
-  return Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} reais` : "";
+  return Number.isFinite(n) ? reaisPorExtenso(n) || `${n.toFixed(2).replace(".", ",")} reais` : "";
 };
 function resumoCondicoes(c) {
   if (!c) return "Sem condição definida";
@@ -8816,7 +8816,7 @@ function textoPagamento(c) {
   const venc = c.primeiroVencimento ? `, com o primeiro vencimento em ${dataBR(c.primeiroVencimento)}` : "";
   const dia = c.diaVencimento ? ` e vencimento todo dia ${c.diaVencimento}` : "";
   const reaj = c.reajuste && c.reajuste !== "Sem reajuste" ? ` As parcelas são corrigidas pelo ${c.reajuste.replace(" anual", "")}, uma vez por ano.` : "";
-  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento", ", até")}.`;
+  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento em", ", até")}.`;
   if (c.modalidade.startsWith("Isento")) return "O beneficiário está enquadrado na REURB-S e não paga pelos serviços, conforme a Lei 13.465/2017.";
   if (c.modalidade.startsWith("Custeado")) return "Os serviços são custeados integralmente pela prefeitura, conforme o contrato firmado com o município.";
   const entrada = parseNum(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
