@@ -5,6 +5,7 @@
 // texto das partes nesses três documentos.
 import {ehPJ,temConjuge,cpfValido,cnpjValido,preenchido,so,COM_CONJUGE} from './requisitos-moradores.js';
 import {cpfDispensado} from './pessoa-menor.js';
+import {pendenciasPagamento} from './contrato-dados.js';
 
 export const DOCUMENTOS_COM_BLOQUEIO=['contrato','procuracao','distrato'];
 export const documentoComBloqueio=tipo=>DOCUMENTOS_COM_BLOQUEIO.includes(tipo);
@@ -61,6 +62,7 @@ export function pendenciasQualificacao(p,referencia){
  return f;
 }
 
+// opcoes.condicoes: forma de pagamento em vigor para o cliente (própria ou do núcleo).
 // opcoes.qualificacao: texto da qualificação completa já gerado pela tela. Serve de rede de
 // segurança: se ainda houver campo entre colchetes que as regras acima não listaram, o
 // documento também fica bloqueado, em vez de trocar o texto por uma versão resumida.
@@ -68,6 +70,8 @@ export function pendenciasDocumento(tipo,p,opcoes={}){
  if(!documentoComBloqueio(tipo))return [];
  const f=pendenciasQualificacao(p,opcoes.referencia);
  if(!f.length)for(const [,campo] of String(opcoes.qualificacao||'').matchAll(/\[([^\]]+)\]/g))f.push(`Qualificação: ${campo}`);
+ // Só o contrato imprime preço e parcelas; procuração e distrato não dependem da forma de pagamento.
+ if(tipo==='contrato')f.push(...pendenciasPagamento(opcoes.condicoes));
  return [...new Set(f)];
 }
 // Junta a lista detalhada com as conferências antigas da tela, sem repetir o que a

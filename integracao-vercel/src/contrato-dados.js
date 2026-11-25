@@ -15,6 +15,18 @@ export function reaisPorExtenso(v){
  const ext=numeroExtenso(inteiro);if(!ext)return '';
  return (inteiro||!fracao?ext+(inteiro===1?' real':inteiro>0&&inteiro%1000000===0?' de reais':' reais'):'')+(fracao?(inteiro?' e ':'')+numeroExtenso(fracao)+(fracao===1?' centavo':' centavos'):'');
 }
+// O que dadosContrato deixaria em branco nas cláusulas de preço e pagamento. A entrada
+// parcelada tem validação própria (validarCondicoesVenda) e as modalidades gratuitas não têm valores.
+export function pendenciasPagamento(c){
+ if(!c||c.modalidade===ENTRADA_PARCELADA||/^(Isento|Custeado)/.test(c.modalidade||''))return [];
+ const positivo=v=>parseNum(v)>0,f=[];
+ if(!positivo(c.valorTotal))f.push('Valor total do contrato');
+ if(c.modalidade==='À vista')return f;
+ if(c.modalidade==='Entrada e parcelas'&&!positivo(c.entrada))f.push('Valor da entrada (ou troque a forma de venda para Parcelado sem entrada)');
+ if(!(Number.isInteger(Number(c.parcelas))&&Number(c.parcelas)>0))f.push('Quantidade de parcelas');
+ if(!positivo(c.valorParcela))f.push('Valor da parcela');
+ return f;
+}
 export function dadosContrato(d){
  const c=d.condicoes||{},valorGlobal=c.modalidade===ENTRADA_PARCELADA?calcularEntradaParcelada(c).total/100:c.valorTotal,total=parseNum(valorGlobal),gratuito=/^(Isento|Custeado)/.test(c.modalidade||'');
  const empresa={razaoSocial:'INTEGRAL SOLUÇÕES EM ENGENHARIA',cnpj:'29.212.382/0001-07',endereco:'Rua Tiradentes, nº 262, 1º andar, Bairro Centro, Ibirama/SC, CEP 89.140-000',email:'documentos@minhacasalegal.com',...Object.fromEntries(Object.entries(d.elaboracao||{}).filter(([,v])=>v))};
