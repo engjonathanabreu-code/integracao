@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados} from '../src/confirmacao-criacao-meta.js';
+import {errosVisiveisMeta} from '../src/interface-regras.js';
 const source=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('function ModalMetaERP('),source.indexOf('function ModalDetalheMeta('));
 const compiled=transformSync(code,{loader:'jsx',jsx:'transform'}).code;
@@ -13,7 +14,7 @@ function harness(){
  const mutar=()=>{throw Error('Produção não deve usar mutação otimista');};
  mutar.confirmado=(fn,acao,extra)=>{c.creations++;c.extras.push(extra);c.db=fn(structuredClone(c.db));return wait();};
  const empty=()=>null;
- const deps={confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
+ const deps={errosVisiveisMeta,confirmarSaidaEdicao:()=>true,criarConfirmacaoMeta,emSegundoPlano,MENSAGEM_SEGUNDO_PLANO,camposAlterados,AMBIENTE:{DEMO:false},React:{createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment'},
  useState:initial=>{const n=si++;if(!(n in states)){states[n]=typeof initial==='function'?initial():initial;if(n===0)states[n]={...states[n],titulo:'Meta teste',responsaveis:['destinatario']};}return [states[n],v=>states[n]=typeof v==='function'?v(states[n]):v];},useRef:initial=>refs[ri++]??(refs[ri-1]={current:initial}),
  semanaISO:()=> '2026-11-16',podeUsarAgentes:()=>false,uid:()=>String(++seq),dataBR:String,rotuloAssociacao:()=>'',registrarHistoricoMeta:()=>{},novaNotificacao:()=>{},
  Modal:empty,Plus:empty,Trash2:empty,SeletorIcone:empty,sugerirIcone:()=>'',META_STATUS:[],ASSOC_TIPOS:[],setoresUnicos:()=>[]};

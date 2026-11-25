@@ -104,6 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
+import { errosVisiveisMeta } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -10783,13 +10784,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     if (f.prazoDev && f.chegadaDev && f.prazoDev < f.chegadaDev) erros.push("O prazo não pode ser antes da chegada");
     if (!registroDev && !arquivosDev.length && !meta?.devolutiva?.textoOriginal?.trim() && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
   }
+  const [tocados, setTocados] = useState({}), [tentouSalvar, setTentouSalvar] = useState(false);
+  const tocar = (campo) => setTocados((t) => (t[campo] ? t : { ...t, [campo]: true }));
+  const ev = errosVisiveisMeta(erros, tocados, tentouSalvar);
   const opcoesAssoc = f.associacao_tipo === "plano" ? (db.planos || []).map((p) => [p.id, p.titulo])
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
     if (preparandoMeta.current || salvando) return;
     if (tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
-    if (erros.length) return;
+    if (erros.length) { setTentouSalvar(true); setTimeout(() => document.querySelector(".meta-formulario .msg-erro")?.scrollIntoView?.({ block: "center" }), 0); return; }
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
@@ -10872,7 +10876,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   };
   return (
     <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={fechar}
-      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
+      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (!!tentativaMeta.current && !tentativaMeta.current.podeRetentar())} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
       {erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
       {tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha este mesmo pedido.</p>}
       <fieldset data-estado-edicao={estadoEdicao} disabled={salvando || !!tentativaMeta.current} style={{border:0,padding:0,margin:0,minWidth:0}}>
@@ -10883,12 +10887,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         Esta meta é uma devolutiva
       </label>
       {f.devolutiva && <BuscaItem id="devregistrada" rotulo="Vincular devolutiva cadastrada" mostrarTodos itens={catalogoDevolutivas(db.metas).filter(r => r.meta.id !== meta?.id).map(({meta:m}) => [m.id, m.titulo + " — " + rotuloAssociacao(db,m)])} valor={registroDevId} onEscolher={id => { const m = db.metas.find(x => x.id === id); setRegistroDevId(id); if(m) {setArquivosDev([]);setF(x => ({...x, associacao_tipo:"nucleo", associacao_id:m.associacao_id, origemDev:m.devolutiva.origem, chegadaDev:m.devolutiva.chegada, prazoDev:m.devolutiva.prazo || m.prazo}));} }} placeholder="Buscar por título, município ou núcleo" />}
+      {f.devolutiva && ev.registroDev && <div className="msg-erro" role="alert" style={{ marginBottom: 10 }}>{ev.registroDev}</div>}
       {f.devolutiva && (
         <div className="card" style={{ padding: 14, marginBottom: 12 }}>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
             <div><label className="rot" htmlFor="mtdo">Origem</label><select id="mtdo" className="inp" value={f.origemDev} onChange={(e) => set("origemDev", e.target.value)}>{ORIGENS_DEVOLUTIVA.map((o) => <option key={o}>{o}</option>)}</select></div>
-            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className="inp" value={f.chegadaDev} onChange={(e) => set("chegadaDev", e.target.value)} /></div>
-            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className="inp" value={f.prazoDev} onChange={(e) => set("prazoDev", e.target.value)} /></div>
+            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className={`inp${ev.chegadaDev ? " erro" : ""}`} value={f.chegadaDev} onBlur={() => tocar("chegadaDev")} onChange={(e) => set("chegadaDev", e.target.value)} />{ev.chegadaDev && <div className="msg-erro" role="alert">{ev.chegadaDev}</div>}</div>
+            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className={`inp${ev.prazoDev ? " erro" : ""}`} value={f.prazoDev} onBlur={() => tocar("prazoDev")} onChange={(e) => set("prazoDev", e.target.value)} />{ev.prazoDev && <div className="msg-erro" role="alert">{ev.prazoDev}</div>}</div>
           </div>
           <label className="rot" htmlFor="mtda" style={{ marginTop: 12 }}>Arquivos da devolutiva (até 5)</label>
           <input id="mtda" type="file" multiple disabled={salvando} className="inp" onChange={(e) => {
@@ -10899,12 +10904,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           }} />
           {arquivosDev.map((a, i) => <div key={i} className="flex items-center gap-2" style={{marginTop:6}}><span style={{flex:1}}>{a.name}</span><button className="btn-icone" disabled={salvando} aria-label={`Remover ${a.name}`} onClick={() => {setArquivosDev(atual => atual.filter((_,j) => j !== i));setErroDev("");}}><Trash2 size={14} /></button></div>)}
           {!nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
+          {ev.arquivosDev && <div className="msg-erro" role="alert">{ev.arquivosDev}</div>}
           <div className="ajuda">Os arquivos ficam guardados com a meta e aparecem na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
           {meta && (meta.arquivos || []).length > 0 && <div className="ajuda">Já anexado: {(meta.arquivos || []).map((a) => a.nome).join(", ")}</div>}
         </div>
       )}
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta</label><input id="mtt" className="inp" value={f.titulo} onChange={(e) => set("titulo", e.target.value)} /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta (obrigatório)</label><input id="mtt" className={`inp${ev.titulo ? " erro" : ""}`} value={f.titulo} aria-required="true" aria-invalid={!!ev.titulo} onBlur={() => tocar("titulo")} onChange={(e) => set("titulo", e.target.value)} />{ev.titulo && <div className="msg-erro" role="alert">{ev.titulo}</div>}</div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mto">Observações</label><textarea id="mto" className="inp" rows={2} value={f.observacoes} placeholder="Contexto, instruções ou observações da meta" onChange={(e) => set("observacoes", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}>
           <span className="rot">Checklist ({f.checklistItens.filter((x) => x.concluido).length} de {f.checklistItens.length})</span>
@@ -10928,6 +10934,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="mta">Associar meta a</label>
           <select id="mta" className="inp" value={f.associacao_tipo} onChange={(e) => { set("associacao_tipo", e.target.value); set("associacao_id", ""); }}>{ASSOC_TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
+          {ev.associacao && <div className="msg-erro" role="alert">{ev.associacao}</div>}
         </div>
         {f.associacao_tipo !== "avulsa" && (
           <div style={{ gridColumn: "1 / -1" }}>
@@ -10937,15 +10944,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         )}
       </div>
       <div style={{ marginTop: 14 }}><SeletorIcone valor={f.icone} sugestao={sugerirIcone(f.titulo)} onEscolher={(v) => set("icone", v)} /></div>
-      <span className="rot" style={{ marginTop: 14 }}>Responsáveis</span>
+      <span className="rot" style={{ marginTop: 14 }}>Responsáveis (obrigatório)</span>
       <div className="flex flex-wrap gap-2">
         {(db.usuarios || []).filter((u) => u.ativo && u.setor !== "consulta").map((u) => (
           <label key={u.id} className={`tag ${f.responsaveis.includes(u.id) ? "tag-neutra" : ""}`} style={{ border: "1px solid var(--line)", padding: "5px 10px", cursor: "pointer" }}>
-            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id])} style={{ accentColor: "#0F5F5B" }} />{u.nome}
+            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => { tocar("responsaveis"); set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id]); }} style={{ accentColor: "#0F5F5B" }} />{u.nome}
           </label>
         ))}
       </div>
-      {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 10 }}>{erros.join(". ")}.</div>}
+      {ev.responsaveis && <div className="msg-erro" role="alert">{ev.responsaveis}</div>}
+      {tentouSalvar && erros.length > 0 && <div className="msg-erro" role="alert" style={{ marginTop: 10 }}>Confira os campos destacados acima antes de salvar.{ev.geral ? ` ${ev.geral}` : ""}</div>}
       </div>
       {sugerir && <SugestoesMetas setorMeta={f.setor} onUsar={usarSugestao} />}
       </div>
