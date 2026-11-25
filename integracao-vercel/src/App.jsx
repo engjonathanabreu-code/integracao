@@ -105,6 +105,7 @@ import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
 import {prazoSugeridoMeta} from './metas-uso.js';
+import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -12716,6 +12717,8 @@ export default function App() {
     }, 20000);
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
+
+  useAvisosMetasVencidas({ db, usuario, mutar, pronto: AMBIENTE.DEMO || (compartilhado.ready() && compartilhado.summaryReady && navigator.onLine !== false) });
 
   mutar.confirmado = (fn,acao,extra={},opcoes) => {
     if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null,opcoes);
