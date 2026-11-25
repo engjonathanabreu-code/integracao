@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { ordenarMetasContinuas } from './metas-organizacao.js';
+import { corSetor, ordenarMetasContinuas, secoesPorSetor } from './metas-organizacao.js';
 
-export default function MetasAgrupadas({ metas, renderMeta, ordenar = ordenarMetasContinuas }) {
+export default function MetasAgrupadas({ metas, renderMeta, db, ordenar = ordenarMetasContinuas }) {
   const grade = useRef(null);
   const [colunas, setColunas] = useState(1);
   const [pagina, setPagina] = useState(0);
@@ -22,7 +22,15 @@ export default function MetasAgrupadas({ metas, renderMeta, ordenar = ordenarMet
   const atual = Math.min(pagina, paginas - 1);
   return <div className="metas-continuas">
     <div className="metas-grade-continua" ref={grade}>
-      {ordenadas.slice(atual * porPagina, (atual + 1) * porPagina).map(renderMeta)}
+      {ordenar === ordenarMetasContinuas
+        ? secoesPorSetor(ordenadas, atual * porPagina, (atual + 1) * porPagina).map(secao => [
+          <h4 key={`setor-${secao.setor}`} className="metas-setor-titulo" style={{ '--meta-setor-cor': corSetor(secao.setor, db?.setoresMeta || []) }}>
+            <span>{secao.setor}{secao.continua ? <span className="ajuda"> (continuação)</span> : null}</span>
+            <span className="tag">{secao.total} {secao.total === 1 ? 'meta' : 'metas'}</span>
+          </h4>,
+          ...secao.metas.map(renderMeta),
+        ])
+        : ordenadas.slice(atual * porPagina, (atual + 1) * porPagina).map(renderMeta)}
     </div>
     {paginas > 1 && <nav className="metas-paginacao" aria-label="Páginas de metas">
       <span className="ajuda" aria-live="polite">{atual * porPagina + 1}–{Math.min((atual + 1) * porPagina, ordenadas.length)} de {ordenadas.length} metas · Página {atual + 1} de {paginas}</span>

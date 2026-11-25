@@ -80,3 +80,22 @@ export function ordenarMetasAtrasadas(metas = []) {
   return [...metas].sort((a, b) => comparar(a.prazo || '9999', b.prazo || '9999')
     || comparar(a.titulo || '', b.titulo || '') || comparar(a.id, b.id));
 }
+// Cabeçalhos de setor da grade contínua: recebe a lista já ordenada por setor e devolve
+// as seções do trecho [inicio, fim) da página, com o total do setor na lista inteira.
+export function secoesPorSetor(ordenadas = [], inicio = 0, fim = ordenadas.length) {
+  const nome = meta => meta.setor || 'Sem setor';
+  const totais = [];
+  for (const meta of ordenadas) {
+    const ultimo = totais[totais.length - 1];
+    if (ultimo && comparar(ultimo.setor, nome(meta)) === 0) ultimo.total += 1;
+    else totais.push({ setor: nome(meta), total: 1 });
+  }
+  const secoes = [];
+  let posicao = 0;
+  for (const grupo of totais) {
+    const de = Math.max(inicio, posicao), ate = Math.min(fim, posicao + grupo.total);
+    if (de < ate) secoes.push({ setor: grupo.setor, total: grupo.total, continua: de > posicao, metas: ordenadas.slice(de, ate) });
+    posicao += grupo.total;
+  }
+  return secoes;
+}

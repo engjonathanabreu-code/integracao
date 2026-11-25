@@ -34,3 +34,6 @@
 .rb .setor-meta-linha{flex-wrap:wrap}
 .rb[data-ui-guide] .metas-grade-continua .meta-card{border-top-color:var(--meta-setor-cor)}
 .rb .meta-card .selo-status-meta{display:inline-flex;align-items:center;font-size:12px;font-weight:700;line-height:1.3;border-radius:999px;padding:3px 9px}
+.rb .metas-grade-continua .metas-setor-titulo{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 0;padding:6px 10px;border-left:4px solid var(--meta-setor-cor);border-radius:6px;background:var(--bg);color:var(--titulo);font-size:14px;font-weight:700}
+.rb .metas-grade-continua .metas-setor-titulo .ajuda{margin:0;font-weight:400}
+.rb .metas-grade-continua .metas-setor-titulo .tag{background:var(--pill);color:var(--text);font-weight:600}
