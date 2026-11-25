@@ -18,6 +18,7 @@ import {filaRascunho} from './fila-rascunho.js';
 import {clientesDasOperacoes,clientesComEdicao,clientesDasIntencoes,fichasVisiveis,atualizarFichas,preservarFichaAnterior} from './sincronizacao-clientes.js';
 import {metasLocaisParaCompartilhar} from './metas-identidade.js';
 import {gruposDeLeituraDaIntencao,escopoDaIntencao,tabelasCompletasDoEscopo} from './leitura-intencoes.js';
+import {dispensaReleituraCompleta} from './releitura-periodica.js';
 // A record scope reuses the other tables of a complete server read only while
 // that read is recent; otherwise preparation/confirmation keep the group/full read.
 const VALIDADE_BASE_ESCOPO_MS=10*60*1000,VALIDADE_LEITURA_PASSAGEM_MS=5000;
@@ -60,9 +61,14 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     municipios.current.forEach(id=>desatualizados.current.add(id));
   };
   const baseCompletaEm=useRef(0),leituraPassagem=useRef(null);
+  // SYNC-M5: start time of the last complete read and of the current realtime
+  // connection; periodic/focus rereads are skipped while both prove a fresh base.
+  const completaIniciadaEm=useRef(0),estadoTempoReal=useRef('desconectado'),conectadoDesde=useRef(0);
+  const releituraDispensada=()=>dispensaReleituraCompleta({tempoReal:estadoTempoReal.current,conectadoDesde:conectadoDesde.current,ultimaCompletaEm:completaIniciadaEm.current,agora:Date.now()});
+  const estadoDoTempoReal=estado=>{if(estado==='conectado'&&estadoTempoReal.current!=='conectado')conectadoDesde.current=Date.now();estadoTempoReal.current=estado;setTempoReal(estado);};
   const conferirGeracao=gen=>{if(gen!==generation.current)throw Object.assign(new Error('Sessão encerrada.'),{code:'SESSAO_ALTERADA'});};
   const carregarBase=async(seed,grupos=null,{fichasAvulsas=true,semCache=false,escopo=null}={})=>{
-    const gen=generation.current;
+    const gen=generation.current,iniciadaEm=Date.now();
     if(escopo)grupos=null;
     const completa=!grupos&&!escopo,tabelas=escopo?tabelasCompletasDoEscopo(escopo):grupos?tabelasDosGrupos(grupos):null;
     const lista=municipioAtivo.current&&municipios.current.has(municipioAtivo.current)?[municipioAtivo.current]:[];
@@ -72,7 +78,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     const emCache=passagem?.base&&passagem.chave===chave&&Date.now()-passagem.em<VALIDADE_LEITURA_PASSAGEM_MS?structuredClone(passagem.base):null;
     const base=emCache||await lerBase({municipios:lista,tabelas,anterior:completa?null:server.current?.base,semCache,escopo});
     conferirGeracao(gen);
-    if(completa&&!emCache){baseCompletaEm.current=Date.now();if(passagem)Object.assign(passagem,{base:structuredClone(base),chave,em:Date.now()});}
+    if(completa&&!emCache){baseCompletaEm.current=Date.now();completaIniciadaEm.current=iniciadaEm;if(passagem)Object.assign(passagem,{base:structuredClone(base),chave,em:Date.now()});}
     if(server.current&&(completa||grupos?.includes('clientes'))){
       const antigos=server.current.base,ativos=new Set(base.fin_receb_clientes.map(c=>c.id)),extras=new Set((base.integracao_moradores||[]).map(e=>e.registro_id)), idsAtivos=new Set(antigos.fin_receb_clientes.filter(c=>c.municipio_id===municipioAtivo.current).map(c=>c.id));
       base.fin_receb_clientes=[...antigos.fin_receb_clientes.filter(c=>c.municipio_id!==municipioAtivo.current&&!ativos.has(c.id)),...base.fin_receb_clientes];
@@ -236,7 +242,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     if(avisos.current.size)avisoTimer.current=setTimeout(processarAvisos,ok?500:10000);
   };
   const avisar=grupo=>{if(grupo==='financeiro'){window.dispatchEvent(new CustomEvent('integracao:atualizacao',{detail:{modulo:grupo}}));return;}avisos.current.add(grupo||'*');if(grupo==='clientes'||!grupo){invalidarIndiceClientes();municipios.current.forEach(id=>desatualizados.current.add(id));}window.dispatchEvent(new CustomEvent('integracao:atualizacao',{detail:{modulo:grupo}}));if(!avisoTimer.current)avisoTimer.current=setTimeout(processarAvisos,400);};
-  const iniciarTempoReal=()=>{vivo.current?.fechar();vivo.current=conectarTempoReal({url:configERP.url,chave:configERP.chave,token:tokenTempoReal,alterou:avisar,estado:setTempoReal});};
+  const iniciarTempoReal=()=>{vivo.current?.fechar();vivo.current=conectarTempoReal({url:configERP.url,chave:configERP.chave,token:tokenTempoReal,alterou:avisar,estado:estadoDoTempoReal});};
   const conciliar=async(escolhas={})=>{
     const gen=generation.current,anterior=server.current;
     const base=await carregarBase(current.current);
@@ -355,7 +361,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     } finally {if(gen===generation.current)busy.current=false;}
   };
   const open=async (user,legacy)=>{
-    baseCompletaEm.current=0;leituraPassagem.current=null;
+    baseCompletaEm.current=0;completaIniciadaEm.current=0;leituraPassagem.current=null;
     setAvisoExportacao('');
     rejeitarConfirmacoes('A sessão foi reaberta antes da confirmação. Confira a sincronização do rascunho.','SESSAO_ALTERADA');
     vivo.current?.fechar();clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();
@@ -577,7 +583,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
     if(manual)invalidarIndiceClientes();
     return true;
   };
-  const close=()=>{baseCompletaEm.current=0;leituraPassagem.current=null;setAvisoSessao('');rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');setStatusExportacao('');};
+  const close=()=>{baseCompletaEm.current=0;completaIniciadaEm.current=0;leituraPassagem.current=null;setAvisoSessao('');rejeitarConfirmacoes('A sessão terminou antes da confirmação. O rascunho permanece preservado.','SESSAO_ENCERRADA');vivo.current?.fechar();vivo.current=null;clearTimeout(avisoTimer.current);avisoTimer.current=null;avisos.current.clear();saveDraft().catch(()=>{});generation.current++;busy.current=false;opening.current=false;clearTimeout(timer.current);fecharArquivos();summaryJob.current=null;municipalityLoads.current.clear();actor.current=null;diario.current?.fechar();diario.current=null;setFalhasAtualizacao([]);setPendencias([]);setPreviaPendencia(null);server.current=null;current.current=null;pending.current=false;revisao.current=null;setConflitos([]);retentativas.current=0;definirSessao(null);setStatus('');setError('');setAvisoExportacao('');setStatusExportacao('');};
   const reopen=async()=>{
     setAvisoExportacao('');setStatusExportacao('');
     const gen=generation.current;
@@ -622,7 +628,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       return Promise.resolve().then(()=>d.retomarTransitorias(motivo)).catch(()=>{});
     };
     const retomarEEnviar=motivo=>{const gen=generation.current;return retomar(motivo).then(()=>{if(gen===generation.current&&actor.current&&pending.current&&!sessaoInvalida()&&temConexao())return flush();});};
-    const tick=setInterval(()=>{void retomarEEnviar('tick').finally(()=>refresh());},120000);
+    const tick=setInterval(()=>{void retomarEEnviar('tick').finally(()=>{if(!releituraDispensada())refresh();});},120000);
     const sessao=evento=>{
       const estado=evento?.detail?.estado;
       if(estado==='invalida'){setAvisoSessao('Sessão expirada — entre novamente; suas alterações estão guardadas.');return;}
@@ -640,7 +646,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
       void verificar.then(()=>retomar('online')).then(()=>{if(gen===generation.current&&pending.current&&temConexao()&&!sessaoInvalida())flush();});
       avisar(null);
     };
-    const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){void retomarEEnviar('foco');avisar(null);}};
+    const foco=()=>{if(actor.current&&document.visibilityState!=='hidden'){void retomarEEnviar('foco');if(!releituraDispensada())avisar(null);}};
     const filePending=evento=>{if(!actor.current)return;if(usarDiario&&current.current){const gen=generation.current;diario.current.adicionarArquivos(current.current,evento.detail?.arquivos||capturarArquivos()).catch(e=>{if(gen===generation.current)setError(e.message);});}pending.current=true;setStatus('Arquivos aguardando gravação no Supabase');clearTimeout(timer.current);timer.current=setTimeout(flush,250);};
     // Includes edits still only in memory (IndexedDB write not finished).
     const protegerSaida=e=>{if(pending.current||gravacoesLocais.current>0){e.preventDefault();e.returnValue='';}};
