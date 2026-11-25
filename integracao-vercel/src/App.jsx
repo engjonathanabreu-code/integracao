@@ -104,7 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
-import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro, motivosBotaoBloqueado } from './interface-regras.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro, motivosBotaoBloqueado, podeSimularAnalise, exigirAnaliseReal } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -2686,6 +2686,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       try {
         const meta = arq ? { nome: arq.name, tamanho: arq.size, impressao: await impressaoDigital(arq) } : { nome: item.nome, tamanho: item.tamanho, impressao: "" };
         const np = rascunhoRef.current;
+        exigirAnaliseReal({ demo: AMBIENTE.DEMO, simular, temArquivo: !!arq });
         const res = simular || !arq
           ? simularAnalise(item.tipoEsperado, np, db.regrasIA)
           : await analisarDocumentoIA(arq, item.tipoEsperado, regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome });
@@ -2833,7 +2834,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
                   </td>
                   <td>{i.estado === "fila" ? <Tag>Na fila</Tag> : i.estado === "analisando" ? <Tag tipo="neutra"><Loader2 size={12} className="girando" />Analisando</Tag> : i.estado === "ok" ? <Tag tipo="ok"><Check size={12} />{i.simulado ? "Simulado" : "Analisado"}</Tag> : <Tag tipo="bloq">Erro</Tag>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button></span>}
+                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button>{podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button>}</span>}
                     {(i.estado === "fila" || i.estado === "erro") && <button className="btn-icone" disabled={processando} onClick={() => removerItem(i.id)} aria-label={`Remover ${i.nome}`} style={{ marginLeft: 4 }}><Trash2 size={14} /></button>}
                   </td>
                 </tr>
@@ -2845,7 +2846,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       {pendentesFila > 0 && (
         <div className="flex flex-wrap gap-2" style={{ marginTop: 12 }}>
           <button className="btn btn-primario" disabled={processando} onClick={() => analisar()}>{processando ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}Analisar {pendentesFila} {pendentesFila === 1 ? "documento" : "documentos"} com IA</button>
-          <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>
+          {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>}
         </div>
       )}
 
@@ -4219,7 +4220,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     } finally { processandoRef.current = false; }
   };
   const simular = async () => {
-    if (processandoRef.current || !podeEnviar) return;
+    if (processandoRef.current || !podeEnviar || !podeSimularAnalise(AMBIENTE.DEMO)) return;
     const meta = arquivo ? { nome: arquivo.name, tamanho: arquivo.size, impressao: await impressaoDigital(arquivo) } : { nome: "exemplo-simulado.pdf", tamanho: 0, impressao: "" };
     descartarArquivo();
     finalizar(simularAnalise(tipoEsperado, p, regras), true, meta);
@@ -4330,7 +4331,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 {estado === "analisando" ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}
                 {estado === "analisando" ? (fila ? `Analisando ${fila.atual} de ${fila.total}` : "Analisando") : arquivos.length > 1 ? `Analisar os ${arquivos.length} com IA` : "Analisar com IA"}
               </button>
-              <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>
+              {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>}
             </div>
             {fila && <div className="ajuda" style={{ marginTop: 8 }}>Lendo "{fila.nome}". Não feche a tela até terminar.</div>}
             {lote.length > 0 && (

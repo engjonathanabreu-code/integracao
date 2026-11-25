@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro,avisoErrosCadastro,campoFaltando,irAoPrimeiroErro,MENSAGEM_CAMPO_FALTANDO,motivosBotaoBloqueado} from '../src/interface-regras.js';
+import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro,avisoErrosCadastro,campoFaltando,irAoPrimeiroErro,MENSAGEM_CAMPO_FALTANDO,motivosBotaoBloqueado,podeSimularAnalise,exigirAnaliseReal} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const css=fonte.slice(fonte.indexOf('const CSS'),fonte.indexOf('function Modal('));
@@ -135,4 +135,24 @@ test('UI-C3: Novo morador diz por que Continuar está apagado',()=>{
  const rodape=morador.match(/rodape=\{<>[^\n]*Continuar para os documentos/)[0];
  assert.match(rodape,/\{erros\.length > 0 && <span id="mmotivos" className="ajuda" role="status"[^>]*>\{motivosBotaoBloqueado\(erros\)\}<\/span>\}/,'os motivos vêm da mesma lista que apaga o botão');
  assert.match(rodape,/disabled=\{erros\.length > 0\} aria-describedby=\{erros\.length > 0 \? "mmotivos" : undefined\}/,'leitor de tela anuncia o motivo junto do botão');
+});
+
+test('UI-C4: a análise simulada só é oferecida e executada na demonstração',()=>{
+ assert.equal(podeSimularAnalise(true),true);
+ for(const v of [false,undefined,null,'1',1])assert.equal(podeSimularAnalise(v),false,String(v));
+ assert.doesNotThrow(()=>exigirAnaliseReal({demo:false,simular:false,temArquivo:true}),'análise real com arquivo segue normalmente');
+ assert.throws(()=>exigirAnaliseReal({demo:false,simular:true,temArquivo:true}),/só existe no ambiente de demonstração/);
+ assert.throws(()=>exigirAnaliseReal({demo:false,simular:false,temArquivo:false}),/arquivo não está mais disponível/,'sem arquivo, o cadastro real não recebe dados de exemplo');
+ assert.doesNotThrow(()=>exigirAnaliseReal({demo:true,simular:true,temArquivo:false}));
+ const morador=trecho('function ModalMorador(','function ModalVincular(');
+ const analisar=morador.slice(morador.indexOf('const analisar = async'),morador.indexOf('const resolver ='));
+ assert.ok(analisar.indexOf('exigirAnaliseReal({ demo: AMBIENTE.DEMO, simular, temArquivo: !!arq });')>0);
+ assert.ok(analisar.indexOf('exigirAnaliseReal(')<analisar.indexOf('simularAnalise('),'a trava vem antes de qualquer dado de exemplo');
+ // Todo botão que dispara simulação fica atrás da trava de ambiente.
+ const linhas=fonte.split('\n').filter(l=>/simular: true|onClick=\{simular\}/.test(l));
+ assert.equal(linhas.length,3,'botões de simulação conhecidos: lista de documentos (2) e aba Documentos e IA (1)');
+ for(const l of linhas){const b=l.match(/<button[^\n]*?(simular: true \}\)\}|onClick=\{simular\})/g)||[];assert.ok(b.length>=1);
+  assert.match(l,/\{podeSimularAnalise\(AMBIENTE\.DEMO\) && <button[^<]*(simular: true|onClick=\{simular\})/,l.trim().slice(0,80));}
+ assert.match(fonte,/if \(processandoRef\.current \|\| !podeEnviar \|\| !podeSimularAnalise\(AMBIENTE\.DEMO\)\) return;/);
+ assert.match(fonte,/const AMBIENTE = \{[^\n]*DEMO: \(import\.meta\.env && \(import\.meta\.env\.VITE_DEMO === "1" \|\| import\.meta\.env\.DEMO === "1"\)\) \|\| false \};/,'DEMO é sempre booleano');
 });

@@ -80,3 +80,17 @@ export function motivosBotaoBloqueado(erros, prefixo = "Para continuar") {
   const lista = [...new Set((erros || []).map((e) => String(e || "").trim().replace(/[.;]+$/, "")).filter(Boolean))];
   return lista.length ? `${prefixo}: ${lista.join("; ")}.` : "";
 }
+
+/* ---------- Análise simulada de documentos: só na demonstração ---------- */
+// A simulação preenche a ficha com valores de exemplo; fora do ambiente de
+// demonstração ela não pode ser oferecida nem executada.
+export function podeSimularAnalise(demo) {
+  return demo === true;
+}
+// Chamado antes de analisar um documento: recusa o pedido de simulação e o
+// preenchimento de exemplo por falta de arquivo quando o ambiente é o real.
+export function exigirAnaliseReal({ demo, simular, temArquivo }) {
+  if (podeSimularAnalise(demo)) return;
+  if (simular) throw new Error("A simulação só existe no ambiente de demonstração.");
+  if (!temArquivo) throw new Error("O arquivo não está mais disponível. Remova da lista e envie de novo.");
+}
