@@ -1,6 +1,6 @@
 import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita,arquivoUnicoDaIntencao,provaArquivoSemGravacao,arquivoEmConflito,conflitoArquivoReconciliavel} from './arquivos-intencoes.js';
-import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,atrasoRetentativa,retomavelTransitoria,estadoRetomado,erroServidorDeterministico,marcarReleituraDivergente,podeReprepararConflito,marcarConflitoRepreparado,VERSAO_REGRAS_CONFIRMACAO} from './estado-sincronizacao.js';
+import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,atrasoRetentativa,retomavelTransitoria,estadoRetomado,erroServidorDeterministico,marcarReleituraDivergente,podeReprepararConflito,marcarConflitoRepreparado,VERSAO_REGRAS_CONFIRMACAO,podeConciliarRecusaAutomaticamente} from './estado-sincronizacao.js';
 // Bounds for resumed/session items and for a repeated deterministic server error.
 const PISO_RETOMADA_MS=15000,PAUSA_SESSAO_MS=5000,LIMITE_ERRO_SERVIDOR_REPETIDO=5,JANELA_ERRO_SERVIDOR_REPETIDO_MS=600000;
 import {remapearIdentidades} from './aliases-tipados.js';
@@ -413,6 +413,19 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    return total;
   });
  }
+ // SYNC-M4: durable one-shot marker for the automatic field merge after a
+ // refused conflict. Written before the attempt and never cleared, so a crash,
+ // another tab or a later pass cannot repeat it. State, payload, error and
+ // counters are untouched: the item stays in review unless it is replaced.
+ async function marcarConciliacaoAutomatica(conta,id,modulos){
+  contaValida(conta);
+  return transacao('readwrite',async s=>{
+   const item=await requisicao(s.intencoes.get([conta,id])),tempo=agora();
+   if(!item||!podeConciliarRecusaAutomaticamente(item,tempo,modulos))return null;
+   item.conciliacaoAutomatica={em:tempo};item.atualizadoEm=tempo;
+   await requisicao(s.intencoes.put(item));return item;
+  });
+ }
  async function retomar(conta,id){
   contaValida(conta);return transacao('readwrite',async s=>{
    const item=await requisicao(s.intencoes.get([conta,id]));
@@ -476,7 +489,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,retomarTransitorias,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,dispensarArquivoSemGravacao,dispensarJaPresente,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,marcarConciliacaoAutomatica,retomarTransitorias,rearmarCadastro,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,dispensarArquivoSemGravacao,dispensarJaPresente,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.

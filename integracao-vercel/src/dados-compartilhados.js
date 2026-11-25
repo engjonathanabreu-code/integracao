@@ -11,6 +11,7 @@ import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
 import {falhaTransitoria} from './sincronizacao-regras.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
+import {tempoLimiteEnvioMs,anexoJaEnviado,registrarAnexoEnviado} from './envio-anexos.js';
 // Canonical ERP rows are read in place. Only explicit user edits produce writes.
 // Tokens stay in memory; local storage contains drafts, never credentials.
 export const configERP = {
@@ -766,10 +767,13 @@ export async function prepararArquivos(before,after,storage,actor) {
     const blob=await (await fetch(data)).blob();
     const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
     const path=`${actor.erpRef}/metas/${m.id}/${a.id}-${digest}`;
+    // SYNC-M2: bytes already stored by an earlier attempt are not sent again.
+    if(!anexoJaEnviado(path)){
     scope.conferir();await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
-    scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob});
+    scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob,signal:AbortSignal.any([scope.signal,AbortSignal.timeout(tempoLimiteEnvioMs(blob.size))])}).catch(e=>{scope.conferir();throw e;});
     const result=await response.json().catch(()=>({}));scope.conferir();
     if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw Object.assign(new Error(result.message||'Não foi possível enviar o arquivo.'),{status:response.status,code:String(result.code||result.error||'STORAGE_UPLOAD')});
+    registrarAnexoEnviado(path);}
     operations.push({table:'meta_arquivos',key:{id:a.id},insert:true,changes:{meta_id:m.id,nome:a.nome,caminho_storage:path,mime_type:a.tipo||null,tamanho_bytes:blob.size,enviado_por:actor.erpRef}});
   }
   return operations;

@@ -125,3 +125,23 @@ Causas levantadas pelo diagnóstico agregado dos aparelhos e corrigidas nesta en
 Pendente de decisão de produto: o pacote de Campo é um registro por conta; contas usadas em vários aparelhos
 continuam gerando um conflito por aparelho a cada ciclo. Tornar o pacote por aparelho elimina a causa, mas
 remove a restauração do pacote em outro aparelho.
+
+## Adendo — pente fino, onda 1 de sincronização (25/11/2026)
+
+- **C3, leitura periódica (SYNC-M5):** com o tempo real `conectado` e uma leitura completa iniciada depois da
+  conexão atual, o tick de 120 s e a troca de janela não releem a base (`src/releitura-periodica.js`); rede de
+  segurança de 7 min, abaixo dos 10 min de validade da base do escopo. A retomada da fila (C5) continua em todo
+  tick/foco. Reconexão, avisos do tempo real e atualização manual não mudam.
+- **C3, escopo de Clientes (SYNC-C1):** a edição de uma ficha **existente** passa a ter escopo (complemento legado
+  por `registro_id`; as linhas da ficha continuam sendo relidas por `lerFichaCliente`). Criação e remoção de
+  cliente, núcleos e misturas não mapeadas seguem em leitura completa.
+- **Garantia 5 / C1 `conflito` (SYNC-M4, SYNC-C2) — alteração de contrato, explícita:** a recusa de conflito
+  comprovada no **envio** (HTTP 409 / `PT409`, sem recibo) continua levando o item a `bloqueado_conflito`. Em
+  seguida, para Metas e fichas de Clientes sem anexos, a fila faz **uma única** conciliação automática por
+  campo (`podeConciliarRecusaAutomaticamente`, marcador durável `conciliacaoAutomatica` gravado antes da
+  tentativa): consulta `integracao_consultar_pedido` do pedido recusado (só `null` explícito prossegue), relê
+  pelo escopo e aplica a mesma conciliação por campo da preparação. Sem conflito de campo, o pedido recusado
+  vira `substituido` (original preservado) e um novo pedido segue o caminho já existente de "manter minha
+  versão" (`substituirId`); esse novo pedido nunca é conciliado de novo. Com conflito no mesmo campo, recibo
+  encontrado, consulta inconclusiva ou qualquer falha, o item permanece em revisão como antes. Conflitos achados
+  na preparação, validação, permissão e os demais módulos não mudam.
