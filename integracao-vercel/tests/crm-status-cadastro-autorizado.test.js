@@ -50,7 +50,7 @@ test('espelha status sem autoria própria, sem liberar a ficha de outro comercia
   await actor(1);
   await assert.rejects(db.query(u(1)),/responsável ou administrador/);
   await db.exec('reset role');
-  await db.exec(await readFile(new URL('../supabase/migrations/20261125182500_crm_status_pelo_cadastro_autorizado.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261125184230_crm_status_pelo_cadastro_autorizado.sql',import.meta.url),'utf8'));
   for(const n of [3,4,5]){await actor(n);await assert.rejects(db.query(u(n)),/exige permissão/);}
   await actor(1);
   assert.equal((await db.query(u(1,'Cliente Ativo',30))).rows.length,0);
