@@ -39,3 +39,58 @@ test('SYNC-M1: o envio do anexo leva sinal de tempo-limite e de sessão; estouro
  // C1: espera crescente e limitada; nunca MAX_SAFE_INTEGER.
  assert.ok(atrasoRetentativa(20,0,()=>1)<=300000);
 });
+
+const memoriaLocal=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),m};};
+test('SYNC-M2: marcador de anexo enviado vale por caminho, expira em 24 h e nunca falha por armazenamento',()=>{
+ anexos.esquecerAnexosEnviados();
+ const armazenamento=memoriaLocal(),t=1_000_000;
+ assert.equal(anexos.anexoJaEnviado('c/m/a-1',{agora:t,armazenamento}),false);
+ anexos.registrarAnexoEnviado('c/m/a-1',{agora:t,armazenamento});
+ assert.equal(anexos.anexoJaEnviado('c/m/a-1',{agora:t+1,armazenamento}),true);
+ assert.equal(anexos.anexoJaEnviado('c/m/a-2',{agora:t+1,armazenamento}),false,'outro conteúdo/anexo sobe normalmente');
+ assert.equal(anexos.anexoJaEnviado('c/m/a-1',{agora:t+24*3600*1000,armazenamento}),false,'expirado');
+ assert.equal(anexos.anexoJaEnviado('c/m/a-1',{agora:t-1,armazenamento}),false,'relógio retrocedido');
+ // Persistido para outra sessão do mesmo aparelho; só caminho e horário.
+ const guardado=JSON.parse(armazenamento.m.get('integracao-anexos-enviados-v1'));
+ assert.deepEqual(guardado,{'c/m/a-1':t});
+ anexos.esquecerAnexosEnviados({armazenamento:null});
+ assert.equal(anexos.anexoJaEnviado('c/m/a-1',{agora:t+1,armazenamento}),true,'lido do armazenamento do aparelho');
+ const quebrado={getItem(){throw new Error('bloqueado');},setItem(){throw new Error('cheio');},removeItem(){}};
+ anexos.esquecerAnexosEnviados({armazenamento});
+ assert.doesNotThrow(()=>anexos.registrarAnexoEnviado('c/m/a-3',{agora:t,armazenamento:quebrado}));
+ assert.equal(anexos.anexoJaEnviado('c/m/a-3',{agora:t+1,armazenamento:quebrado}),true,'memória da sessão ainda evita o reenvio');
+ assert.equal(anexos.anexoJaEnviado('',{agora:t}),false);assert.equal(anexos.anexoJaEnviado(null,{agora:t}),false);
+ anexos.esquecerAnexosEnviados();
+});
+
+test('SYNC-M2: falha no segundo anexo não reenvia o primeiro na nova tentativa',async()=>{
+ anexos.esquecerAnexosEnviados();
+ const envios=[];let falhar=true;
+ const servidor=async url=>{
+  const nome=url.split('/').pop();envios.push(nome.split('-')[0]);
+  if(nome.startsWith('b-')&&falhar)return Response.json({message:'indisponível'},{status:503});
+  return Response.json({Key:'ok'});
+ };
+ const depois=meta('a','b','c');
+ await comFetch(servidor,()=>assert.rejects(prepararArquivos({metas:[]},depois,storage,{erpRef:'fixture'}),{status:503}));
+ assert.deepEqual(envios,['a','b'],'primeira tentativa para no anexo que falhou');
+ falhar=false;envios.length=0;
+ const ops=await comFetch(servidor,()=>prepararArquivos({metas:[]},depois,storage,{erpRef:'fixture'}));
+ assert.deepEqual(envios,['b','c'],'o anexo que já subiu é pulado; os demais sobem');
+ // A gravação continua completa: uma linha por anexo, com o mesmo caminho imutável.
+ assert.deepEqual(ops.map(o=>[o.table,o.key.id,o.insert]),[['meta_arquivos','a',true],['meta_arquivos','b',true],['meta_arquivos','c',true]]);
+ assert.ok(ops.every(o=>/^fixture\/metas\/m\/[abc]-[0-9a-f]{64}$/.test(o.changes.caminho_storage)));
+ console.log('SYNC-M2 medição: envios de bytes na nova tentativa de 3 anexos = 3 antes, 2 depois (só os que faltavam)');
+ // "Duplicate" (objeto já existente) também registra o envio.
+ envios.length=0;anexos.esquecerAnexosEnviados();
+ await comFetch(async url=>{envios.push(url.split('/').pop().split('-')[0]);return Response.json({error:'Duplicate'},{status:409});},()=>prepararArquivos({metas:[]},meta('a'),storage,{erpRef:'fixture'}));
+ await comFetch(async url=>{envios.push('x');return Response.json({},{status:500});},()=>prepararArquivos({metas:[]},meta('a'),storage,{erpRef:'fixture'}));
+ assert.deepEqual(envios,['a']);
+ // Recusa definitiva não registra nada.
+ anexos.esquecerAnexosEnviados();
+ await comFetch(async()=>Response.json({error:'AccessDenied'},{status:403}),()=>assert.rejects(prepararArquivos({metas:[]},meta('a'),storage,{erpRef:'fixture'}),{status:403}));
+ envios.length=0;
+ await comFetch(async url=>{envios.push('a');return Response.json({Key:'ok'});},()=>prepararArquivos({metas:[]},meta('a'),storage,{erpRef:'fixture'}));
+ assert.deepEqual(envios,['a']);
+ anexos.esquecerAnexosEnviados();
+});
