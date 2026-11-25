@@ -16,6 +16,9 @@ import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
 import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
 import {conferirNovoMorador} from './novo-morador.js';
+import {mesclarChecklistEditado} from './metas-checklist.js';
+import {arquivarMeta,metaArquivada,metasAtivas} from './metas-arquivo.js';
+import ArquivoMetas from './ArquivoMetas.jsx';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador, proximoNumeroLivreMorador, codigoMoradorAoGravar } from "./codigo-morador.js";
@@ -10845,9 +10848,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         if (alterado.associacao_tipo || alterado.associacao_id) q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
         const antesChecklist = q.checklist || [];
         if (checklistAlterado) {
-          q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
-          itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
-          antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
+          const checklistMesclado = mesclarChecklistEditado(antesChecklist, fi.checklistItens, itens, () => uid("c"));
+          q.checklist = checklistMesclado.checklist;
+          checklistMesclado.adicionados.forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
+          checklistMesclado.removidos.forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
         }
         if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
@@ -11027,7 +11031,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     : vePendenteAprovacao(m) && respMeta(m, usuario) ? <Tag tipo="pend">Aguardando aprovação</Tag> : null;
   return (
     <Modal titulo={m.titulo} largura={680} onFechar={fechar}
-      rodape={<><button className="btn" onClick={fechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" disabled={envio.bloqueada} onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
+      rodape={<><button className="btn" onClick={fechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><FolderOpen size={15} />Arquivar</button>}{gerencia && <button className="btn" disabled={envio.bloqueada} onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
       <EstadoConfirmacaoEdicao envio={envio} />
       {recusando && <section className="bloco-modal" aria-label="Recusar conclusão">
         <label className="rot" htmlFor="motivo-recusa-meta">Motivo da recusa</label>
@@ -11139,7 +11143,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </section>
       {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
       {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
-      {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta excluída na demonstração." : "Exclusão da meta aguardando confirmação."); }} />}
+      {excluir && <ModalMotivo titulo="Arquivar esta meta?" texto="A meta sai das listas e dos indicadores e fica guardada no Arquivo de metas, com checklist, comentários, anexos e histórico. A Diretoria pode restaurá-la quando quiser." rotuloBotao="Arquivar meta" perigo onFechar={() => setExcluir(false)} onConfirmar={(motivo) => { try { Promise.resolve(mutar((d) => { arquivarMeta(d, m.id, motivo, usuario); registrarHistoricoMeta(d, m, "Arquivada", `Meta arquivada por ${usuario.nome}. Motivo: ${motivo}`, usuario); return d; }, "Meta arquivada", { detalhe: `${m.titulo}. Meta arquivada. Motivo: ${motivo}` })).catch((e) => setToast(e.message)); } catch (e) { setToast(e.message); return; } setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta arquivada na demonstração." : "Arquivamento da meta aguardando confirmação."); }} />}
     </Modal>
   );
 }
@@ -11192,7 +11196,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     </div>
   );
 }
-function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [] }) {
+function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [], metasArquivadas = [] }) {
   const timbradoOficios = useTimbrado(db);
   const arrasteMeta = useRef(null);
   const envioSetor = useConfirmacaoEdicao(mutar, setToast), envioOS = useConfirmacaoEdicao(mutar, setToast);
@@ -11275,6 +11279,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
     <div className="contem largo pagina-metas">
       {!AMBIENTE.DEMO && metasLocais.length>0 && <p role="status" className="card" style={{padding:14}}>Há {metasLocais.length} meta(s) neste aparelho ainda sem confirmação de envio. Elas só aparecerão aos responsáveis após a sincronização. Confira o aviso de salvamento no topo.</p>}
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
+      {gerencia && <ArquivoMetas metas={metasArquivadas} usuario={usuario} mutar={mutar} setToast={setToast} registrarHistorico={registrarHistoricoMeta} Modal={Modal} />}
       {gerencia && <div className="flex flex-wrap gap-2" style={{marginBottom:12}}><button className={`btn${tela==='planejamento'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('planejamento');}}>Planejamento futuro</button><button className={`btn${tela==='home'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('home');}}>Visão atual de Metas</button></div>}
       {barra}
       {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
@@ -12846,7 +12851,7 @@ export default function App() {
   };
   const mutarAgente=(fn,acao,extra={})=>salvarPorAgente(mutar,fn,acao,extra);
   mutarAgente.confirmado=(fn,acao,extra={},opcoes)=>salvarPorAgente(mutar.confirmado,fn,acao,extra,opcoes);
-  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:db.metas.filter(metaOperacional)}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:metasAtivas(db.metas.filter(metaOperacional))}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
@@ -12905,7 +12910,7 @@ export default function App() {
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
-          {rota.pag === "mailing" && <Mailing key={usuario.id} db={db} usuario={{...usuario,id:`erp_${usuario.erpRef}`}} ir={ir} itensMailing={{eventos:(db.eventos||[]).filter(e=>podeVerEventoCalendario(e,db,usuario)),metas:(db.metas||[]).filter(m=>podeVerMeta(m,usuario)),planos:db.planos||[]}} abrirAgente={()=>ir({pag:"pessoalIA"})} />}
+          {rota.pag === "mailing" && <Mailing key={usuario.id} db={db} usuario={{...usuario,id:`erp_${usuario.erpRef}`}} ir={ir} itensMailing={{eventos:(db.eventos||[]).filter(e=>podeVerEventoCalendario(e,db,usuario)),metas:metasAtivas(db.metas).filter(m=>podeVerMeta(m,usuario)),planos:db.planos||[]}} abrirAgente={()=>ir({pag:"pessoalIA"})} />}
           {rota.pag === "pessoalIA" && <AgentePessoalTeste key={usuario.id} {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
@@ -12915,7 +12920,7 @@ export default function App() {
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
-          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} ideiasPlanejamento={db.metas.filter(ideiaPlanejamento)} metaInicial={rota.id} />}
+          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} ideiasPlanejamento={db.metas.filter(ideiaPlanejamento)} metasArquivadas={db.metas.filter(metaArquivada)} metaInicial={rota.id} />}
           {rota.pag === "financeiro" && <Financeiro db={db} usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}
