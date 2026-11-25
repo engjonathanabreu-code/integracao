@@ -118,6 +118,7 @@ import {prazoSugeridoMeta} from './metas-uso.js';
 import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
 import AprovacoesPendentesMetas from './AprovacoesPendentesMetas.jsx';
 import {alertaSemContatoMorador,temContatoMorador} from './contato-morador.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro, motivosBotaoBloqueado, podeSimularAnalise, exigirAnaliseReal } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -1833,6 +1834,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .toast{position:fixed;bottom:88px;left:calc(50% + 122px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 16px;border-radius:10px;font-size:14px;z-index:90;max-width:92vw;box-shadow:0 10px 30px rgba(15,95,91,.25)}
 .rb .modal-fundo{position:fixed;inset:0;background:rgba(16,42,42,.45);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
 .rb .modal{width:100%;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(15,95,91,.25)}
+.rb .modal-rodape{position:sticky;bottom:0;z-index:2;margin:0 -22px -22px;padding:12px 22px 16px;background:var(--card);border-top:1px solid var(--line2);border-radius:0 0 18px 18px}
 .rb .girando{animation:girar 1s linear infinite}
 .rb .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 .rb .grade-lote{background-color:var(--bg);background-image:linear-gradient(rgba(20,122,116,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,122,116,.07) 1px,transparent 1px);background-size:46px 46px}
@@ -1969,6 +1971,8 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (min-width:1500px){.rb .quadro-cheio{flex-wrap:wrap}}
 .rb .item-checklist{display:flex;align-items:center;gap:8px;margin-top:6px}
 .rb .item-checklist .inp{flex:1}
+.rb .linha-checklist label{flex:1;display:flex;flex-wrap:wrap;align-items:center;align-self:stretch}
+@media (max-width:640px){.rb .linha-checklist{min-height:44px}.rb .linha-checklist input[type=checkbox],.rb .item-checklist input[type=checkbox]{width:24px!important;height:24px!important;flex:none}.rb .modal .btn-icone{width:44px;height:44px;flex:none}.rb .modal .btn{min-height:44px}.rb .modal label.tag{min-height:44px}}
 .rb .lista-flutuante{position:absolute;left:0;right:0;top:100%;z-index:30;border-radius:12px;border-top:1px solid var(--line);box-shadow:0 12px 30px rgba(15,95,91,.18)}
 .rb .campo-busca{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 10px;background:var(--card);color:var(--muted)}
 .rb .campo-busca .inp{border:none;padding-left:0;background:none}
@@ -2200,7 +2204,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (max-width:1100px){.rb .layout-proc{grid-template-columns:1fr}.rb .lateral{position:static}}
 @media (max-width:900px){.rb .app{grid-template-columns:minmax(0,1fr)}.rb .nav{position:fixed;left:0;top:0;bottom:0;width:265px;z-index:70;transform:translateX(-100%);transition:transform .2s}.rb .nav.aberta{transform:none}.rb .btn-menu{display:inline-flex}.rb .barra-salvar{left:0}.rb .toast{left:50%}
  .rb .trilha{grid-template-columns:1fr 1fr;gap:16px 8px}.rb .trilha .eixo,.rb .trilha .eixo-feito{display:none}}
-@media (max-width:640px){.rb .fg{grid-template-columns:1fr}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
+@media (max-width:640px){.rb .fg{grid-template-columns:1fr!important}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
  .rb .trilha{grid-template-columns:1fr}.rb .estaca{flex-direction:row;gap:14px;text-align:left}.rb .estaca .nome{margin-top:0}}
 @media (prefers-reduced-motion: reduce){.rb *{transition:none!important;animation:none!important}}
 `;
@@ -2356,7 +2360,7 @@ function Modal({ titulo, children, onFechar, largura = 480, rodape }) {
           <button className="btn-icone" onClick={onFechar} aria-label="Fechar"><X size={16} /></button>
         </div>
         {children}
-        {rodape && <div className="flex flex-wrap justify-end gap-2" style={{ marginTop: 18 }}>{rodape}</div>}
+        {rodape && <div className="flex flex-wrap justify-end gap-2 modal-rodape" style={{ marginTop: 18 }}>{rodape}</div>}
       </div>
     </div>
   );
@@ -2406,7 +2410,7 @@ function Campo({ form, rot, path, span = 1, dis, opcoes, tipo = "text", fmt, err
 
 function CampoCPF({ form, rot, path, dis }) {
   const v = getPath(form.rascunho, path) || "";
-  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : "";
+  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : campoFaltando(form, path, v);
   const ia = form.ia.includes(path);
   return (
     <div>
@@ -2688,6 +2692,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       try {
         const meta = arq ? { nome: arq.name, tamanho: arq.size, impressao: await impressaoDigital(arq) } : { nome: item.nome, tamanho: item.tamanho, impressao: "" };
         const np = rascunhoRef.current;
+        exigirAnaliseReal({ demo: AMBIENTE.DEMO, simular, temArquivo: !!arq });
         const res = simular || !arq
           ? simularAnalise(item.tipoEsperado, np, db.regrasIA)
           : await analisarDocumentoIA(arq, item.tipoEsperado, regrasDocumentoCliente(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome }, { regrasObrigatorias: regrasDoMunicipio(db, municipio?.id) });
@@ -2742,7 +2747,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   if (passo === 1) {
     return (
       <Modal titulo="Novo morador" largura={560} onFechar={fechar}
-        rodape={<><button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
+        rodape={<>{erros.length > 0 && <span id="mmotivos" className="ajuda" role="status" style={{ flex: "1 1 100%", margin: 0, textAlign: "right" }}>{motivosBotaoBloqueado(erros)}</span>}<button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} aria-describedby={erros.length > 0 ? "mmotivos" : undefined} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
         {etapas}
         <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>
@@ -2839,7 +2844,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
                   </td>
                   <td>{i.estado === "fila" ? <Tag>Na fila</Tag> : i.estado === "analisando" ? <Tag tipo="neutra"><Loader2 size={12} className="girando" />Analisando</Tag> : i.estado === "ok" ? <Tag tipo="ok"><Check size={12} />{i.simulado ? "Simulado" : "Analisado"}</Tag> : <Tag tipo="bloq">Erro</Tag>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button></span>}
+                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button>{podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button>}</span>}
                     {(i.estado === "fila" || i.estado === "erro") && <button className="btn-icone" disabled={processando} onClick={() => removerItem(i.id)} aria-label={`Remover ${i.nome}`} style={{ marginLeft: 4 }}><Trash2 size={14} /></button>}
                   </td>
                 </tr>
@@ -2851,7 +2856,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       {pendentesFila > 0 && (
         <div className="flex flex-wrap gap-2" style={{ marginTop: 12 }}>
           <button className="btn btn-primario" disabled={processando} onClick={() => analisar()}>{processando ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}Analisar {pendentesFila} {pendentesFila === 1 ? "documento" : "documentos"} com IA</button>
-          <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>
+          {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>}
         </div>
       )}
 
@@ -3818,7 +3823,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
       {pj ? (
         <>
           <Campo form={form} rot="Razão social" path={P("nome")} span={2} dis={dis} />
-          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : ""} />
+          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : campoFaltando(form, P("cnpj"), x.cnpj)} />
           {campoCodigoMorador}
           <Campo form={form} rot="Representante legal" path={P("representante")} opcoes={representantes.length ? representantes : undefined} vazio="Escolha ou informe abaixo" span={representantes.length ? 1 : 2} dis={dis} ajuda={representantes.length ? "Um dos requerentes cadastrados nesta ficha." : "Nome de quem assina pela empresa. Cadastre a pessoa em Outros requerentes para ter a qualificação completa."} />
           <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
@@ -3910,11 +3915,11 @@ function ListaPessoas({ form, chave, dis, perm, titulo, vazio, novo, cabecalho }
   );
 }
 
-function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado }) {
+function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, faltando, perm, cancelado }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
-  const form = { rascunho, ia: iaPaths, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
+  const form = { rascunho, ia: iaPaths, faltando, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
   const pode = (k) => !cancelado && (perm.editarClientes || !!perm[k]);
   const pd = { ...p, ...rascunho };
   const nucleoDraft = db.nucleos.find((n) => n.id === pd.nucleoId) || null;
@@ -4252,7 +4257,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     } finally { processandoRef.current = false; }
   };
   const simular = async () => {
-    if (processandoRef.current || !podeEnviar) return;
+    if (processandoRef.current || !podeEnviar || !podeSimularAnalise(AMBIENTE.DEMO)) return;
     const meta = arquivo ? { nome: arquivo.name, tamanho: arquivo.size, impressao: await impressaoDigital(arquivo) } : { nome: "exemplo-simulado.pdf", tamanho: 0, impressao: "" };
     descartarArquivo();
     finalizar(simularAnalise(tipoEsperado, p, regras), true, meta);
@@ -4363,7 +4368,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 {estado === "analisando" ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}
                 {estado === "analisando" ? (fila ? `Analisando ${fila.atual} de ${fila.total}` : "Analisando") : arquivos.length > 1 ? `Analisar os ${arquivos.length} com IA` : "Analisar com IA"}
               </button>
-              <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>
+              {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>}
             </div>
             {fila && <div className="ajuda" style={{ marginTop: 8 }}>Lendo "{fila.nome}". Não feche a tela até terminar.</div>}
             {lote.length > 0 && (
@@ -4670,6 +4675,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   fichaAtual.current = p;
   const [confirmandoCadastro, setConfirmandoCadastro] = useState(false);
   const [erroCadastro, setErroCadastro] = useState("");
+  const [faltandoCadastro, setFaltandoCadastro] = useState([]);
 
   if (!p || !rascunho) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Morador não encontrado.</p></div>;
   const r = remessaDe(db, p.remessaId);
@@ -4718,7 +4724,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
     if (rascunho.endereco.cep && so(rascunho.endereco.cep).length !== 8) invalidos.push("CEP da residência");
     if (rascunho.enderecoImovel?.cep && so(rascunho.enderecoImovel.cep).length !== 8) invalidos.push("CEP do imóvel");
-    if (invalidos.length) { setToast(`Corrija antes de salvar: ${invalidos.join(", ")}.`); return; }
+    const avisoCadastro = avisoErrosCadastro(invalidos); setFaltandoCadastro(avisoCadastro.faltando);
+    if (invalidos.length) { setErroCadastro(avisoCadastro.mensagem); if (aba !== "cadastro" && !observacaoPendente) setAba("cadastro"); setTimeout(() => irAoPrimeiroErro(document), 0); return; }
     const remessaNova = remessaDe(db, rascunho.remessaId);
     if (!remessaNova || remessaNova.municipioId !== p.municipioId) { setToast("Escolha uma remessa do município do morador."); return; }
     const nucleoSel = rascunho.nucleoId ? nucleoDe(db, rascunho.nucleoId) : null;
@@ -4822,7 +4829,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </button>
             ))}
           </div>
-          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} /></fieldset>}
+          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} faltando={faltandoCadastro} perm={perm} cancelado={cancelado} /></fieldset>}
           {aba === "documentos" && <div data-observacao-pendente={observacaoPendente ? "true" : undefined}><AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} onEdicaoPendente={setObservacaoPendente} recarregar={recarregar} /></div>}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
@@ -4853,7 +4860,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             <span role="status">{confirmandoCadastro ? "Aguardando confirmação do cadastro…" : tentativaCadastro.current ? "Confirmação do cadastro pendente" : `${alterados.length} ${alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro`}</span>
             {erroCadastro && <span role="alert">{erroCadastro}</span>}
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => { baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); }}>Descartar</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => setModal({ tipo: "confirmar", ...confirmacaoDescarteCadastro(alterados.length), onConfirmar: () => { setModal(null); baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); } })}>Descartar</button>
               <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} disabled={confirmandoCadastro || (tentativaCadastro.current ? !tentativaCadastro.current.podeRetentar() : !sujo)} onClick={salvar}><Check size={16} />{confirmandoCadastro ? "Confirmando…" : tentativaCadastro.current ? "Confirmar mesmo pedido" : "Salvar alterações"}</button>
             </div>
           </div>
@@ -10833,13 +10840,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     if (f.prazoDev && f.chegadaDev && f.prazoDev < f.chegadaDev) erros.push("O prazo não pode ser antes da chegada");
     if (!registroDev && !arquivosDev.length && !meta?.devolutiva?.textoOriginal?.trim() && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
   }
+  const [tocados, setTocados] = useState({}), [tentouSalvar, setTentouSalvar] = useState(false);
+  const tocar = (campo) => setTocados((t) => (t[campo] ? t : { ...t, [campo]: true }));
+  const ev = errosVisiveisMeta(erros, tocados, tentouSalvar);
   const opcoesAssoc = f.associacao_tipo === "plano" ? (db.planos || []).map((p) => [p.id, p.titulo])
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
     if (preparandoMeta.current || salvando) return;
     if (tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
-    if (erros.length) return;
+    if (erros.length) { setTentouSalvar(true); setTimeout(() => document.querySelector(".meta-formulario .msg-erro")?.scrollIntoView?.({ block: "center" }), 0); return; }
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
@@ -10927,7 +10937,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   };
   return (
     <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={fechar}
-      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
+      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (!!tentativaMeta.current && !tentativaMeta.current.podeRetentar())} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
       {erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
       {tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha este mesmo pedido.</p>}
       <fieldset data-estado-edicao={estadoEdicao} disabled={salvando || !!tentativaMeta.current} style={{border:0,padding:0,margin:0,minWidth:0}}>
@@ -10938,12 +10948,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         Esta meta é uma devolutiva
       </label>
       {f.devolutiva && <BuscaItem id="devregistrada" rotulo="Vincular devolutiva cadastrada" mostrarTodos itens={catalogoDevolutivas(db.metas).filter(r => r.meta.id !== meta?.id).map(({meta:m}) => [m.id, m.titulo + " — " + rotuloAssociacao(db,m)])} valor={registroDevId} onEscolher={id => { const m = db.metas.find(x => x.id === id); setRegistroDevId(id); if(m) {setArquivosDev([]);setF(x => ({...x, associacao_tipo:"nucleo", associacao_id:m.associacao_id, origemDev:m.devolutiva.origem, chegadaDev:m.devolutiva.chegada, prazoDev:m.devolutiva.prazo || m.prazo}));} }} placeholder="Buscar por título, município ou núcleo" />}
+      {f.devolutiva && ev.registroDev && <div className="msg-erro" role="alert" style={{ marginBottom: 10 }}>{ev.registroDev}</div>}
       {f.devolutiva && (
         <div className="card" style={{ padding: 14, marginBottom: 12 }}>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
             <div><label className="rot" htmlFor="mtdo">Origem</label><select id="mtdo" className="inp" value={f.origemDev} onChange={(e) => set("origemDev", e.target.value)}>{ORIGENS_DEVOLUTIVA.map((o) => <option key={o}>{o}</option>)}</select></div>
-            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className="inp" value={f.chegadaDev} onChange={(e) => set("chegadaDev", e.target.value)} /></div>
-            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className="inp" value={f.prazoDev} onChange={(e) => set("prazoDev", e.target.value)} /></div>
+            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className={`inp${ev.chegadaDev ? " erro" : ""}`} value={f.chegadaDev} onBlur={() => tocar("chegadaDev")} onChange={(e) => set("chegadaDev", e.target.value)} />{ev.chegadaDev && <div className="msg-erro" role="alert">{ev.chegadaDev}</div>}</div>
+            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className={`inp${ev.prazoDev ? " erro" : ""}`} value={f.prazoDev} onBlur={() => tocar("prazoDev")} onChange={(e) => set("prazoDev", e.target.value)} />{ev.prazoDev && <div className="msg-erro" role="alert">{ev.prazoDev}</div>}</div>
           </div>
           <label className="rot" htmlFor="mtda" style={{ marginTop: 12 }}>Arquivos da devolutiva (até 5)</label>
           <input id="mtda" type="file" multiple disabled={salvando} className="inp" onChange={(e) => {
@@ -10954,12 +10965,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           }} />
           {arquivosDev.map((a, i) => <div key={i} className="flex items-center gap-2" style={{marginTop:6}}><span style={{flex:1}}>{a.name}</span><button className="btn-icone" disabled={salvando} aria-label={`Remover ${a.name}`} onClick={() => {setArquivosDev(atual => atual.filter((_,j) => j !== i));setErroDev("");}}><Trash2 size={14} /></button></div>)}
           {!nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
+          {ev.arquivosDev && <div className="msg-erro" role="alert">{ev.arquivosDev}</div>}
           <div className="ajuda">Os arquivos ficam guardados com a meta e aparecem na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
           {meta && (meta.arquivos || []).length > 0 && <div className="ajuda">Já anexado: {(meta.arquivos || []).map((a) => a.nome).join(", ")}</div>}
         </div>
       )}
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta</label><input id="mtt" className="inp" value={f.titulo} onChange={(e) => set("titulo", e.target.value)} /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta (obrigatório)</label><input id="mtt" className={`inp${ev.titulo ? " erro" : ""}`} value={f.titulo} aria-required="true" aria-invalid={!!ev.titulo} onBlur={() => tocar("titulo")} onChange={(e) => set("titulo", e.target.value)} />{ev.titulo && <div className="msg-erro" role="alert">{ev.titulo}</div>}</div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mto">Observações</label><textarea id="mto" className="inp" rows={2} value={f.observacoes} placeholder="Contexto, instruções ou observações da meta" onChange={(e) => set("observacoes", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}>
           <span className="rot">Checklist ({f.checklistItens.filter((x) => x.concluido).length} de {f.checklistItens.length})</span>
@@ -10983,6 +10995,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="mta">Associar meta a</label>
           <select id="mta" className="inp" value={f.associacao_tipo} onChange={(e) => { set("associacao_tipo", e.target.value); set("associacao_id", ""); }}>{ASSOC_TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
+          {ev.associacao && <div className="msg-erro" role="alert">{ev.associacao}</div>}
         </div>
         {f.associacao_tipo !== "avulsa" && (
           <div style={{ gridColumn: "1 / -1" }}>
@@ -10992,15 +11005,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         )}
       </div>
       <div style={{ marginTop: 14 }}><SeletorIcone valor={f.icone} sugestao={sugerirIcone(f.titulo)} onEscolher={(v) => set("icone", v)} /></div>
-      <span className="rot" style={{ marginTop: 14 }}>Responsáveis</span>
+      <span className="rot" style={{ marginTop: 14 }}>Responsáveis (obrigatório)</span>
       <div className="flex flex-wrap gap-2">
         {(db.usuarios || []).filter((u) => u.ativo && u.setor !== "consulta").map((u) => (
           <label key={u.id} className={`tag ${f.responsaveis.includes(u.id) ? "tag-neutra" : ""}`} style={{ border: "1px solid var(--line)", padding: "5px 10px", cursor: "pointer" }}>
-            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id])} style={{ accentColor: "#0F5F5B" }} />{u.nome}
+            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => { tocar("responsaveis"); set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id]); }} style={{ accentColor: "#0F5F5B" }} />{u.nome}
           </label>
         ))}
       </div>
-      {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 10 }}>{erros.join(". ")}.</div>}
+      {ev.responsaveis && <div className="msg-erro" role="alert">{ev.responsaveis}</div>}
+      {tentouSalvar && erros.length > 0 && <div className="msg-erro" role="alert" style={{ marginTop: 10 }}>Confira os campos destacados acima antes de salvar.{ev.geral ? ` ${ev.geral}` : ""}</div>}
       </div>
       {sugerir && <SugestoesMetas setorMeta={f.setor} onUsar={usarSugestao} />}
       </div>
@@ -11013,6 +11027,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [item, setItem] = useState("");
   const [comentario, setComentario] = useState("");
   const [excluir, setExcluir] = useState(false);
+  const [remocao, setRemocao] = useState(null);
   const [recusando, setRecusando] = useState(false);
   const [motivoRecusa, setMotivoRecusa] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -11130,11 +11145,11 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       <section className="bloco-modal">
       <h3 className="titulo-bloco">Checklist <span className="conta-bloco">{(m.checklist || []).filter((c) => c.concluido).length} de {(m.checklist || []).length}</span></h3>
       {(m.checklist || []).map((c) => (
-        <div key={c.id} className="flex items-center gap-2" style={{ padding: "4px 0" }}>
-          <input type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
+        <div key={c.id} className="flex items-center gap-2 linha-checklist" style={{ padding: "4px 0" }}>
+          <input id={`ck-${c.id}`} type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
             onChange={() => alterar((q) => { const x = q.checklist.find((y) => y.id === c.id); x.concluido = !x.concluido; x.concluido_por = x.concluido ? usuario.nome : ""; x.concluido_em = x.concluido ? new Date().toISOString() : ""; }, c.concluido ? "Checklist reaberto" : "Checklist concluído", c.titulo)} />
-          <span style={{ flex: 1, textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</span>
-          {colabora && <button className="btn-icone" onClick={() => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo)} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
+          <label htmlFor={`ck-${c.id}`} style={{ flex: 1, cursor: colabora ? "pointer" : "default", textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</label>
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("checklist", c.titulo), onConfirmar: () => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo) })} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
         </div>
       ))}
       {colabora && (
@@ -11154,7 +11169,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
           <span style={{ flex: 1, minWidth: 140 }}><strong style={{ fontWeight: 650 }}>{a.nome}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{(a.tamanho / 1024).toFixed(0)} KB, enviado por {a.por} em {dataBR(a.data)}</span></span>
           <VerArquivoMeta arquivo={a} />
           <button className="btn btn-sm" onClick={() => baixarAnexo(a)}><Download size={13} />Baixar</button>
-          {colabora && <button className="btn-icone" onClick={() => removerAnexo(a)} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("anexo", a.nome), onConfirmar: () => removerAnexo(a) })} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
         </div>
       ))}
       {!(m.arquivos || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhum arquivo enviado.</p>}
@@ -11193,6 +11208,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </section>
       {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
       {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
+      {remocao && <div onKeyDown={(e) => e.stopPropagation()}><ModalConfirmar {...remocao} onFechar={() => setRemocao(null)} onConfirmar={() => { setRemocao(null); remocao.onConfirmar(); }} /></div>}
       {excluir && <ModalMotivo titulo="Arquivar esta meta?" texto="A meta sai das listas e dos indicadores e fica guardada no Arquivo de metas, com checklist, comentários, anexos e histórico. A Diretoria pode restaurá-la quando quiser." rotuloBotao="Arquivar meta" perigo onFechar={() => setExcluir(false)} onConfirmar={(motivo) => { try { Promise.resolve(mutar((d) => { arquivarMeta(d, m.id, motivo, usuario); registrarHistoricoMeta(d, m, "Arquivada", `Meta arquivada por ${usuario.nome}. Motivo: ${motivo}`, usuario); return d; }, "Meta arquivada", { detalhe: `${m.titulo}. Meta arquivada. Motivo: ${motivo}` })).catch((e) => setToast(e.message)); } catch (e) { setToast(e.message); return; } setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta arquivada na demonstração." : "Arquivamento da meta aguardando confirmação."); }} />}
     </Modal>
   );
@@ -11257,6 +11273,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
   const [cadastroDevolutiva, setCadastroDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
+  const [setorRemocao, setSetorRemocao] = useState(null);
   const [osModal, setOsModal] = useState(null);
   const [osAberta, setOsAberta] = useState(null);
   const [comentarioOS, setComentarioOS] = useState("");
@@ -11389,7 +11406,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
                     <span className="flex items-center gap-2">
                       <label className="setor-cor-controle">Cor<input type="color" aria-label={`Cor do setor ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} onChange={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.nome === s.nome ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /></label>
                       <button className="btn-icone" onClick={() => setSetorModal(s)} aria-label={`Editar ${s.nome}`}><Pencil size={14} /></button>
-                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
+                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => setSetorRemocao({ ...confirmacaoRemocaoMeta("setor", s.nome), onConfirmar: () => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome }) })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
                     </span>
                   </div>
                 );
@@ -11500,6 +11517,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
       {cadastroDevolutiva && <ModalCadastroDevolutiva db={db} meta={cadastroDevolutiva === "nova" ? null : cadastroDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setCadastroDevolutiva(null)} />}
+      {setorRemocao && <ModalConfirmar {...setorRemocao} onFechar={() => setSetorRemocao(null)} onConfirmar={() => { setSetorRemocao(null); setorRemocao.onConfirmar(); }} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} envio={envioSetor} onFechar={() => { if (envioSetor.fechar()) setSetorModal(null); }} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} envio={envioOS} onFechar={() => { if (envioOS.fechar()) setOsModal(null); }} />}
     </div>

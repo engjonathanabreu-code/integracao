@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { destinoDocumento } from '../src/documentos-pessoas.js';
 import { marcarPlausibilidade, selecaoInicialSugestoes, sugestoesSelecionadas } from '../src/documentos-ia-plausibilidade.js';
 import { regrasDocumentoCliente, validarResultadoDocumentoCliente } from '../src/documentos-ia-sessao.js';
+import { exigirAnaliseReal } from '../src/interface-regras.js';
 
 // Executa os handlers reais do "Novo morador" com hooks mínimos e IA simulada. Sem rede e sem JSX.
 const fonte = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
@@ -30,7 +31,7 @@ function tela({ ia }) {
     DOC_TIPOS: { identidade: 'Identidade', outro: 'Outro' }, destinoDocumento, extrair: x => structuredClone(x), montarLinhas, clone: structuredClone, setPath,
     regrasAplicaveis: (r, t) => r.filter(x => x.tipos.includes(t)), regrasDoMunicipio: () => REGRAS, db: {}, municipio: { id: 'm1' },
     INSTRUCAO_RESIDENCIA_SEIS_MESES: 'n/a', avaliarPrazoResidencia: () => null, usuario: { nome: 'Atendente fictícia' },
-    setProcessando: aplicarSetter('processando'), impressaoDigital: async () => 'impressao-ficticia', simularAnalise: () => { throw new Error('simulação não usada neste teste'); },
+    setProcessando: aplicarSetter('processando'), impressaoDigital: async () => 'impressao-ficticia', simularAnalise: () => { throw new Error('simulação não usada neste teste'); }, exigirAnaliseReal, AMBIENTE: { DEMO: false },
     regrasDocumentoCliente, selecaoInicialSugestoes, sugestoesSelecionadas,
     analisarDocumentoIA: async (...args) => { chamadas.push(args); const r = await ia(...args); validarResultadoDocumentoCliente(r, args[4].regrasObrigatorias, { identidade: 'Identidade' }); return r; },
     setPreenchidos: aplicarSetter('preenchidos'), setDivergencias: aplicarSetter('divergencias'), setSelecaoIA: aplicarSetter('selecaoIA'),

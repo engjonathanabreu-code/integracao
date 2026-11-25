@@ -22,5 +22,5 @@ test('USO-C3: o novo morador pede o contato logo após o nome e só alerta ao co
  // Alerta, não bloqueio: a falta de contato não entra na lista que desabilita o botão.
  const erros=modal.slice(modal.indexOf('const erros = [];'),modal.indexOf('if (!remessas.length)'));
  assert.doesNotMatch(erros,/telefone|contato/i);
- assert.match(modal,/disabled=\{erros\.length > 0\} onClick=\{avancar\}/);
+ assert.match(modal,/disabled=\{erros\.length > 0\}.{0,200}onClick=\{avancar\}/);
 });
