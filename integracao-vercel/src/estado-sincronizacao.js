@@ -180,7 +180,8 @@ export function orientacaoPendencia(i){
 // Limite explícito, sem laço: o marcador `conciliacaoAutomatica` é gravado
 // antes da tentativa e nunca é removido; um pedido que já é uma substituição
 // (`original.substitui`, manual ou automática) nunca é conciliado de novo.
-export const MODULOS_CONCILIACAO_AUTOMATICA=Object.freeze(['metas']);
+// SYNC-C2: fichas de Clientes (edição de ficha existente, relida pelo escopo de SYNC-C1).
+export const MODULOS_CONCILIACAO_AUTOMATICA=Object.freeze(['metas','processos']);
 const idsAnexos=v=>Array.isArray(v?.arquivos)?v.arquivos.map(a=>a?.id).join('|'):'';
 export function podeConciliarRecusaAutomaticamente(i,agora,modulos=MODULOS_CONCILIACAO_AUTOMATICA){
  const o=i?.original,edicoes=o?.intencao?.edicoes;
