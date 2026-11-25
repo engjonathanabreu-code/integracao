@@ -73,3 +73,10 @@ export function irAoPrimeiroErro(raiz) {
   campo.focus?.();
   return true;
 }
+
+/* ---------- Botão apagado: dizer o motivo ---------- */
+// Texto curto para ficar ao lado de um botão desabilitado por pendências.
+export function motivosBotaoBloqueado(erros, prefixo = "Para continuar") {
+  const lista = [...new Set((erros || []).map((e) => String(e || "").trim().replace(/[.;]+$/, "")).filter(Boolean))];
+  return lista.length ? `${prefixo}: ${lista.join("; ")}.` : "";
+}

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro,avisoErrosCadastro,campoFaltando,irAoPrimeiroErro,MENSAGEM_CAMPO_FALTANDO} from '../src/interface-regras.js';
+import {CAMPO_DO_ERRO_META,errosVisiveisMeta,confirmacaoRemocaoMeta,confirmacaoDescarteCadastro,avisoErrosCadastro,campoFaltando,irAoPrimeiroErro,MENSAGEM_CAMPO_FALTANDO,motivosBotaoBloqueado} from '../src/interface-regras.js';
 
 const fonte=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 const css=fonte.slice(fonte.indexOf('const CSS'),fonte.indexOf('function Modal('));
@@ -124,4 +124,15 @@ test('UI-C2: erros ao salvar a ficha ficam na barra de salvar e os campos são d
  assert.match(fonte,/const erro = v && !cpfValido\(v\) \? "CPF inválido\. Confira os dígitos\." : campoFaltando\(form, path, v\);/);
  assert.match(fonte,/campoFaltando\(form, P\("cnpj"\), x\.cnpj\)/);
  assert.match(fonte,/const form = \{ rascunho, ia: iaPaths, faltando, set:/);
+});
+
+test('UI-C3: Novo morador diz por que Continuar está apagado',()=>{
+ assert.equal(motivosBotaoBloqueado([]),'');assert.equal(motivosBotaoBloqueado(undefined),'');
+ assert.equal(motivosBotaoBloqueado(['Informe o nome do requerente','Informe o CPF, ele é obrigatório']),'Para continuar: Informe o nome do requerente; Informe o CPF, ele é obrigatório.');
+ assert.equal(motivosBotaoBloqueado(['Escolha a remessa','Escolha a remessa','Este código já existe. Confira o prefixo no cadastro do município.']),'Para continuar: Escolha a remessa; Este código já existe. Confira o prefixo no cadastro do município.','sem repetição nem ponto dobrado');
+ assert.equal(motivosBotaoBloqueado(['Informe o título'],'Para salvar'),'Para salvar: Informe o título.');
+ const morador=trecho('function ModalMorador(','function ModalVincular(');
+ const rodape=morador.match(/rodape=\{<>[^\n]*Continuar para os documentos/)[0];
+ assert.match(rodape,/\{erros\.length > 0 && <span id="mmotivos" className="ajuda" role="status"[^>]*>\{motivosBotaoBloqueado\(erros\)\}<\/span>\}/,'os motivos vêm da mesma lista que apaga o botão');
+ assert.match(rodape,/disabled=\{erros\.length > 0\} aria-describedby=\{erros\.length > 0 \? "mmotivos" : undefined\}/,'leitor de tela anuncia o motivo junto do botão');
 });

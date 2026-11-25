@@ -104,7 +104,7 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
-import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro } from './interface-regras.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro, motivosBotaoBloqueado } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -2736,7 +2736,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   if (passo === 1) {
     return (
       <Modal titulo="Novo morador" largura={560} onFechar={fechar}
-        rodape={<><button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
+        rodape={<>{erros.length > 0 && <span id="mmotivos" className="ajuda" role="status" style={{ flex: "1 1 100%", margin: 0, textAlign: "right" }}>{motivosBotaoBloqueado(erros)}</span>}<button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} aria-describedby={erros.length > 0 ? "mmotivos" : undefined} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
         {etapas}
         <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>
