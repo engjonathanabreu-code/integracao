@@ -5,10 +5,27 @@ const esc=v=>String(v??'____________').replaceAll('&','&amp;').replaceAll(String
 const moeda=v=>parseNum(v)==null?'____________':parseNum(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 export function moedaExtenso(v){
  const n=parseNum(v);if(n==null)return '____________';
+ const palavras=reaisPorExtenso(v);
+ return palavras?moeda(v)+' ('+palavras+')':moeda(v);
+}
+// Só as palavras ("seis mil reais"); '' quando não há valor ou ele não cabe no extenso.
+export function reaisPorExtenso(v){
+ const n=parseNum(v);if(n==null||n<0)return '';
  const cents=Math.round(n*100),inteiro=Math.floor(cents/100),fracao=cents%100;
- const ext=numeroExtenso(inteiro);if(!ext)return moeda(v);
- const palavras=(inteiro||!fracao?ext+(inteiro===1?' real':inteiro>0&&inteiro%1000000===0?' de reais':' reais'):'')+(fracao?(inteiro?' e ':'')+numeroExtenso(fracao)+(fracao===1?' centavo':' centavos'):'');
- return moeda(v)+' ('+palavras+')';
+ const ext=numeroExtenso(inteiro);if(!ext)return '';
+ return (inteiro||!fracao?ext+(inteiro===1?' real':inteiro>0&&inteiro%1000000===0?' de reais':' reais'):'')+(fracao?(inteiro?' e ':'')+numeroExtenso(fracao)+(fracao===1?' centavo':' centavos'):'');
+}
+// O que dadosContrato deixaria em branco nas cláusulas de preço e pagamento. A entrada
+// parcelada tem validação própria (validarCondicoesVenda) e as modalidades gratuitas não têm valores.
+export function pendenciasPagamento(c){
+ if(!c||c.modalidade===ENTRADA_PARCELADA||/^(Isento|Custeado)/.test(c.modalidade||''))return [];
+ const positivo=v=>parseNum(v)>0,f=[];
+ if(!positivo(c.valorTotal))f.push('Valor total do contrato');
+ if(c.modalidade==='À vista')return f;
+ if(c.modalidade==='Entrada e parcelas'&&!positivo(c.entrada))f.push('Valor da entrada (ou troque a forma de venda para Parcelado sem entrada)');
+ if(!(Number.isInteger(Number(c.parcelas))&&Number(c.parcelas)>0))f.push('Quantidade de parcelas');
+ if(!positivo(c.valorParcela))f.push('Valor da parcela');
+ return f;
 }
 export function dadosContrato(d){
  const c=d.condicoes||{},valorGlobal=c.modalidade===ENTRADA_PARCELADA?calcularEntradaParcelada(c).total/100:c.valorTotal,total=parseNum(valorGlobal),gratuito=/^(Isento|Custeado)/.test(c.modalidade||'');

@@ -7,6 +7,7 @@ import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoRes
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
 import {documentoPorDeclarante,opcoesDeclaracao} from './declarantes-comerciais.js';
+import {documentoComBloqueio,pendenciasDocumento,unirPendencias,assinantesDocumento} from './documentos-bloqueio.js';
 import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
@@ -49,7 +50,7 @@ import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
 import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
-import {dadosContrato} from './contrato-dados.js';
+import {dadosContrato,reaisPorExtenso} from './contrato-dados.js';
 import {numeroDinheiro} from './leitor-dinheiro.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
 import {validarRegrasEvento} from './diagnostico-validacao.js';
@@ -8789,7 +8790,7 @@ const reais = (v, ler = numeroDinheiro) => {
 };
 const porExtensoReais = (v) => {
   const n = numeroDinheiro(v);
-  return Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} reais` : "";
+  return Number.isFinite(n) ? reaisPorExtenso(n) || `${n.toFixed(2).replace(".", ",")} reais` : "";
 };
 function resumoCondicoes(c) {
   if (!c) return "Sem condição definida";
@@ -8810,7 +8811,7 @@ function textoPagamento(c) {
   const venc = c.primeiroVencimento ? `, com o primeiro vencimento em ${dataBR(c.primeiroVencimento)}` : "";
   const dia = c.diaVencimento ? ` e vencimento todo dia ${c.diaVencimento}` : "";
   const reaj = c.reajuste && c.reajuste !== "Sem reajuste" ? ` As parcelas são corrigidas pelo ${c.reajuste.replace(" anual", "")}, uma vez por ano.` : "";
-  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento", ", até")}.`;
+  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento em", ", até")}.`;
   if (c.modalidade.startsWith("Isento")) return "O beneficiário está enquadrado na REURB-S e não paga pelos serviços, conforme a Lei 13.465/2017.";
   if (c.modalidade.startsWith("Custeado")) return "Os serviços são custeados integralmente pela prefeitura, conforme o contrato firmado com o município.";
   const entrada = numeroDinheiro(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
@@ -8883,8 +8884,7 @@ function dadosDocumento(db, p, usuario) {
     historicoPosse: p.imovel?.historicoPosse || "____________",
     qualificacaoCompleta: gerarQualificacao(p, "completa", true).texto,
     requerentes: [p.requerente.nome, ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
-    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome && p.conjuge.beneficiario !== "nao" ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
-      ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome && c.conjuge.beneficiario !== "nao" ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
+    assinantes: assinantesDocumento(p, { fmtCPF, fmtCNPJ }),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
     qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
@@ -8927,6 +8927,7 @@ function faltandoPara(doc, d, p, declarante) {
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
   if (doc.precisa.includes("procurador") && !(d.advogados || []).length) falta.push("representante cadastrado em Configurações");
   if (doc.precisa.includes("distrato") && !p.distrato?.registradoEm) falta.push("distrato registrado na seção acima");
+  if (documentoComBloqueio(doc.id)) return unirPendencias(pendenciasDocumento(doc.id, p, { condicoes: d.condicoes, qualificacao: d.qualificacaoCompleta }), falta);
   return falta;
 }
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
