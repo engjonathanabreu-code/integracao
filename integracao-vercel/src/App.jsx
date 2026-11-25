@@ -25,7 +25,9 @@ import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, prox
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
-import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
+import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA, conferirPaginasPDF } from "./documentos-ia-envio.js";
+import { marcarPlausibilidade, selecaoInicialSugestoes, sugestoesSelecionadas } from "./documentos-ia-plausibilidade.js";
+import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva, marcarAnalisePendenteDevolutiva, analisePendenteDevolutiva, AVISO_ANALISE_PENDENTE } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -999,6 +1001,7 @@ async function analisarDocumentoIA(arquivoBruto, tipoEsperado, regras, pessoas, 
   validarDocumentoIA(arquivoBruto);
   const grande = arquivoBruto.type === "application/pdf" && arquivoBruto.size > LIMITE_ENVIO_IA;
   const arquivo = grande ? arquivoBruto : await prepararParaIA(arquivoBruto, LIMITE_ENVIO_IA);
+  if (!grande && arquivo.type === "application/pdf") await conferirPaginasPDF(arquivo);
   const headers = processamento?.headers || await cabecalhosIA();
   const enviar = processamento?.enviar || ((content, maxTokens) => enviarPedidoIA(URL_IA, headers, content, maxTokens));
   const transcricao = grande ? await transcreverPDFGrande(arquivo, (content, maxTokens) => enviar(content, maxTokens, "ocr"), undefined, processamento?.paginas) : null;
@@ -1104,7 +1107,7 @@ Se houver trechos da devolutiva que você não conseguiu interpretar com seguran
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a devolutiva","itens":[{"categoria":"pessoas|areas|memoriais|lei|decreto|tabela_planta|vertices|nome_lote|outro","descricao":"o que o município pediu para alterar","statusEsperado":"o que deve constar depois de corrigido"}],"naoIdentificado":["trecho ou ponto que não deu para interpretar com segurança"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+  return validarAnaliseTeorDevolutiva(await chamarIA([...blocos, { type: "text", text: instrucao }]).catch(erroRespostaDevolutivaIA));
 }
 // Etapa 2: a mesma IA recebe a devolutiva original (arquivos e/ou texto) e o trabalho já corrigido,
 // confere item a item o que a etapa 1 apontou e diz o que ainda falta fazer antes de responder ao município.
@@ -1129,7 +1132,7 @@ Se encontrar no trabalho corrigido alguma alteração relevante que a devolutiva
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a conferência","pronto":true,"itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"pendencias":[{"refItemId":"id do item da lista, ou vazio se for algo novo","descricao":"o que ainda falta","oQueFazer":"orientação objetiva para a equipe, até 40 palavras"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000);
+  return validarConferenciaDevolutiva(await chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000).catch(erroRespostaDevolutivaIA), itensEtapa1);
 }
 // Recupera um anexo guardado com a meta como File, para reenviar à IA
 async function arquivoDoArmazenamento(arq) {
@@ -1198,7 +1201,7 @@ function montarLinhas(res, rascunho, pessoaEscolhida = "") {
     const rot = m.path ? m.rot : `${m.rot} (${destino.papel}: ${destino.pessoa.nome})`;
     linhas.push({ path, rot, atual, sugerido, ...(!m.path ? {pessoaId: destino.id, campoPessoa: m.campo} : {}), diverge: atual !== "", cpf: k === "cpf" });
   });
-  return linhas;
+  return marcarPlausibilidade(linhas);
 }
 
 /* ---------------- gerador de PRF ---------------- */
@@ -2603,6 +2606,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const [processando, setProcessando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
   const [divergencias, setDivergencias] = useState([]);
+  const [selecaoIA, setSelecaoIA] = useState({});
   const [preenchidos, setPreenchidos] = useState(0);
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const inputRef = useRef(null);
@@ -2653,20 +2657,20 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     const destino = destinoDocumento(r2, extrair(np));
     const linhas = montarLinhas(r2, extrair(np));
     const novo = clone(np);
-    const aplicar = linhas.filter((l) => !l.diverge);
-    aplicar.forEach((l) => setPath(novo, l.path, l.sugerido));
+    // A IA não preenche a ficha sozinha: tudo o que ela leu vira sugestão para aceite campo a campo.
     const avaliadas = regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), tipo).map((r) => {
       const got = tipo === "comp_residencia" && r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES ? avaliarPrazoResidencia(res.campos) : (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     novo.docs.push({ id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
     const falhas = avaliadas.filter((x) => x.resultado === "nao_atende");
-    const div = linhas.filter((l) => l.diverge).map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
-    const partes = [`${aplicar.length} ${aplicar.length === 1 ? "campo preenchido" : "campos preenchidos"}`];
-    if (div.length) partes.push(`${div.length} para conferir`);
+    const div = linhas.map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
+    const conferir = linhas.filter((l) => l.diverge || l.implausivel).length;
+    const partes = [`${linhas.length} ${linhas.length === 1 ? "campo sugerido" : "campos sugeridos"}`];
+    if (conferir) partes.push(`${conferir} para conferir`);
     if (falhas.length) partes.push(`${falhas.length} ${falhas.length === 1 ? "regra não atendida" : "regras não atendidas"}`);
     if (res.legivel === false) partes.push("documento ilegível");
-    return { novo, aplicados: aplicar.length, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
+    return { novo, aplicados: 0, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
   };
   const analisar = async ({ simular = false, soId = null } = {}) => {
     setProcessando(true);
@@ -2679,11 +2683,12 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
         const np = rascunhoRef.current;
         const res = simular || !arq
           ? simularAnalise(item.tipoEsperado, np, db.regrasIA)
-          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome });
+          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasDocumentoCliente(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome }, { regrasObrigatorias: regrasDoMunicipio(db, municipio?.id) });
         const out = aplicarAnalise(np, res, simular || !arq, meta);
         definirRascunho(out.novo);
         setPreenchidos((x) => x + out.aplicados);
         setDivergencias((ds) => [...ds.filter((d) => !out.divergencias.some((o) => o.path === d.path)), ...out.divergencias]);
+        setSelecaoIA((sel) => ({ ...sel, ...selecaoInicialSugestoes(out.divergencias) }));
         delete arquivosRef.current[item.id];
         atualizarItem(item.id, { estado: "ok", resumo: out.resumo, simulado: simular || !arq });
       } catch (e) {
@@ -2692,9 +2697,11 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     }
     setProcessando(false);
   };
-  const resolver = (d, usarDocumento) => {
-    if (usarDocumento) { const c = clone(rascunhoRef.current); setPath(c, d.path, d.sugerido); definirRascunho(c); setPreenchidos((x) => x + 1); }
-    setDivergencias((ds) => ds.filter((x) => x.path !== d.path));
+  const dispensarSugestoes = () => { setDivergencias([]); setSelecaoIA({}); };
+  const aplicarSugestoes = () => {
+    const escolhidas = sugestoesSelecionadas(divergencias, selecaoIA);
+    if (escolhidas.length) { const c = clone(rascunhoRef.current); escolhidas.forEach((l) => setPath(c, l.path, l.sugerido)); definirRascunho(c); setPreenchidos((x) => x + escolhidas.length); }
+    dispensarSugestoes();
   };
   const removerItem = (id) => { delete arquivosRef.current[id]; filaRef.current = filaRef.current.filter((i) => i.id !== id); setFila(filaRef.current); };
   const descartarTudo = () => { arquivosRef.current = {}; };
@@ -2703,6 +2710,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const pendentesFila = fila.filter((i) => i.estado === "fila").length;
   const cpfDivergente = divergencias.some((d) => d.cpf);
+  const qtdSugestoesIA = sugestoesSelecionadas(divergencias, selecaoIA).length;
   const docsRecebidos = new Set((rascunho?.docs || []).map((d) => d.tipo));
   const sugeridos = ["identidade", "comp_residencia", "estado_civil", "comp_renda", "comp_posse", ...(rascunho && COM_CONJUGE.includes(rascunho.requerente.estadoCivil) ? ["identidade_conjuge"] : [])];
   const mostrarValor = (path, v) => (/cpf$/.test(path) ? fmtCPF(v) : /(nascimento|dataUniao)$/.test(path) ? dataBR(v) : v);
@@ -2781,7 +2789,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
           </div>
         )}
         {nomeDup && <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}><AlertTriangle size={14} />Já existe {nomeDup.codigo} com o mesmo nome nesta remessa. Confira antes de continuar.</div>}
-        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA preenche o restante da ficha.</div>
+        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA sugere o restante da ficha, para você aceitar campo a campo.</div>
       </Modal>
     );
   }
@@ -2790,10 +2798,10 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     <Modal titulo={`Documentos de ${rascunho.requerente.nome}`} largura={860} onFechar={fechar}
       rodape={<>
         <button className="btn" disabled={processando || fila.some((i) => i.estado === "ok")} onClick={() => { descartarTudo(); filaRef.current = []; setFila([]); setPasso(1); }} title="Só é possível voltar antes de analisar documentos"><ChevronLeft size={15} />Dados básicos</button>
-        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || cpfDivergente} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
+        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || divergencias.length > 0} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
       </>}>
       {etapas}
-      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, preenche a ficha e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
+      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, sugere os campos da ficha para você aceitar e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
 
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
         {sugeridos.map((t) => <Tag key={t} tipo={docsRecebidos.has(t) ? "ok" : undefined}>{docsRecebidos.has(t) ? <Check size={12} /> : null}{DOC_TIPOS[t]}</Tag>)}
@@ -2842,16 +2850,31 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
       {divergencias.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Conferir antes de concluir</h3>
-          {divergencias.map((d) => (
-            <div key={d.path} className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 12px", borderRadius: 10, marginBottom: 6, background: d.cpf ? "var(--danger-bg)" : "var(--warning-bg)" }}>
-              <span style={{ fontSize: 14 }}>
-                <strong>{d.rot}</strong>{d.cpf ? ": o CPF do documento é diferente do digitado." : ""}<br />
-                Digitado: <strong>{mostrarValor(d.path, d.atual)}</strong>. No documento ({d.doc}): <strong>{mostrarValor(d.path, d.sugerido)}</strong>
-              </span>
-              <span className="flex gap-1"><button className="btn btn-sm" onClick={() => resolver(d, false)}>Manter o digitado</button><button className="btn btn-sm btn-primario" onClick={() => resolver(d, true)}>Usar o do documento</button></span>
-            </div>
-          ))}
+          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Sugestões da IA para a ficha</h3>
+          <p className="ajuda" style={{ margin: "0 0 8px" }}>Nada disto foi preenchido ainda. Marque os campos que quer aceitar e confirme; os desmarcados ficam como estão.</p>
+          <div className="rolagem">
+            <table className="tab">
+              <thead><tr><th style={{ width: 36 }}><span className="sr-only">Aplicar</span></th><th>Campo</th><th>Na ficha</th><th>No documento</th></tr></thead>
+              <tbody>
+                {divergencias.map((d) => (
+                  <tr key={d.path} style={d.implausivel || d.cpf ? { background: "var(--danger-bg)" } : d.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                    <td><input type="checkbox" aria-label={`Aplicar ${d.rot}`} checked={!!selecaoIA[d.path] && !d.implausivel} disabled={processando || !!d.implausivel} onChange={() => setSelecaoIA((sel) => ({ ...sel, [d.path]: !sel[d.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                    <td>{d.rot}<div className="ajuda" style={{ margin: 0 }}>{d.doc}</div></td>
+                    <td style={{ color: d.atual ? "var(--text)" : "var(--muted)" }}>{d.atual ? mostrarValor(d.path, d.atual) : "vazio"}</td>
+                    <td><strong style={{ fontWeight: 650 }}>{mostrarValor(d.path, d.sugerido)}</strong>
+                      {d.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{d.implausivel} Não pode ser aplicado; confira o documento.</div>}
+                      {d.cpf && !d.implausivel && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>O CPF do documento é diferente do digitado.</div>}
+                      {d.diverge && !d.cpf && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do digitado. Confira antes de trocar.</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
+            <button className="btn btn-primario" disabled={processando || !qtdSugestoesIA} onClick={aplicarSugestoes}><Sparkles size={16} />Preencher {qtdSugestoesIA} {qtdSugestoesIA === 1 ? "campo" : "campos"} na ficha</button>
+            <button className="btn" disabled={processando} onClick={dispensarSugestoes}>Dispensar sugestões</button>
+          </div>
         </div>
       )}
 
@@ -2869,7 +2892,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
         </div>
       )}
       <div className="ajuda" style={{ marginTop: 12 }}>
-        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
+        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : divergencias.length > 0 ? "Preencha os campos escolhidos ou dispense as sugestões da IA para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
       </div>
       {confirmarSaida && <ModalConfirmar titulo="Sair sem cadastrar?" texto="O morador não será criado e o resultado das análises será perdido." rotuloBotao="Sair sem cadastrar" onFechar={() => setConfirmarSaida(false)} onConfirmar={() => { setConfirmarSaida(false); descartarTudo(); onFechar(); }} />}
     </Modal>
@@ -4154,7 +4177,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     const r2 = { ...res, tipo };
     const destino = destinoDocumento(r2, rascunho, pessoaEscolhida);
     const linhas = montarLinhas(r2, rascunho, pessoaEscolhida);
-    const sel = {}; linhas.forEach((l) => { sel[l.path] = !l.diverge && podeSecao(l.path) && !pessoaEscolhida && !!destino; });
+    const sel = selecaoInicialSugestoes(linhas, (l) => podeSecao(l.path) && !pessoaEscolhida && !!destino);
     setSelecao(sel);
     setResultado({ ...r2, simulado, linhas, regrasAvaliadas: avaliadas, meta });
     if (!processandoRef.current) setEstado("resultado");
@@ -4238,7 +4261,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   };
   const exigidos = ["identidade", ...(temConjuge(p) ? ["identidade_conjuge"] : []), "comp_residencia", "estado_civil", "comp_renda", "comp_posse"];
   const outros = p.docs.filter((d) => !exigidos.includes(d.tipo) || (d.pessoaId && !["requerente", "conjuge"].includes(d.pessoaId)));
-  const qtdSel = resultado ? resultado.linhas.filter((l) => selecao[l.path]).length : 0;
+  const qtdSel = resultado ? sugestoesSelecionadas(resultado.linhas, selecao).length : 0;
   const mostrarValor = (l, v) => (l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
   const tagResultado = (r) => r.resultado === "atende" ? <Tag tipo="ok">Atende</Tag> : r.resultado === "nao_atende" ? <Tag tipo={r.gravidade === "bloqueia" ? "bloq" : "pend"}>Não atende</Tag> : <Tag>Não verificada</Tag>;
 
@@ -4415,11 +4438,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                     {resultado.linhas.map((l) => {
                       const permitido = podeSecao(l.path);
                       return (
-                        <tr key={l.path} style={l.diverge ? { background: "var(--warning-bg)" } : undefined}>
-                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path]} disabled={!permitido} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                        <tr key={l.path} style={l.implausivel ? { background: "var(--danger-bg)" } : l.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path] && !l.implausivel} disabled={!permitido || !!l.implausivel} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                           <td>{l.rot}{!permitido && <div className="ajuda" style={{ margin: 0 }}>Fora da permissão do seu perfil</div>}</td>
                           <td style={{ color: l.atual ? "var(--text)" : "var(--muted)" }}>{mostrarValor(l, l.atual)}</td>
-                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
+                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{l.implausivel} Não pode ser aplicado; confira o documento.</div>}{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
                         </tr>
                       );
                     })}
@@ -4427,7 +4450,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 </table>
               </div>
               <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 12 }}>
-                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(resultado.linhas.filter((l) => selecao[l.path])); setResultado(null); }}>
+                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(sugestoesSelecionadas(resultado.linhas, selecao)); setResultado(null); }}>
                   <Sparkles size={16} />Preencher {qtdSel} {qtdSel === 1 ? "campo" : "campos"} no cadastro
                 </button>
                 <span className="ajuda" style={{ margin: 0 }}>Os campos ficam destacados para você revisar e salvar.</span>
@@ -8366,7 +8389,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
         const vencida = d.prazo && d.prazo < hoje && m.status !== "Concluído";
         const etapa1 = d.analiseIA?.etapa1;
         const etapa2 = d.analiseIA?.etapa2;
-        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <div key={m.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <div className="flex flex-wrap items-center gap-2">
@@ -8527,14 +8550,14 @@ function ModalRelatorioDevolutiva({ meta, onFechar }) {
 
 // Resultado da etapa 2: veredito, item a item, o que ainda falta e pontos para revisar
 const ROTULO_STATUS_ETAPA2 = { corrigido: ["ok", "Corrigido"], nao_corrigido: ["bloq", "Não corrigido"], nao_verificavel: ["pend", "Não foi possível verificar"] };
-function resumoEtapa2(etapa2) {
+function resumoEtapa2(etapa2, etapa1) {
   const contagem = (etapa2?.itens || []).reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {});
   const pendentes = (etapa2?.pendencias || []).length;
-  const pronto = etapa2 ? (typeof etapa2.pronto === "boolean" ? etapa2.pronto : !pendentes && !contagem.nao_corrigido && !contagem.nao_verificavel) : false;
+  const pronto = prontoParaReenviarDevolutiva(etapa2, etapa1 ? etapa1.itens : null);
   return { contagem, pendentes, pronto };
 }
 function RelatorioEtapa2({ etapa1, etapa2 }) {
-  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
   const descricaoItem = (id) => (etapa1?.itens || []).find((x) => x.id === id)?.descricao;
   return (
     <div>
@@ -8636,7 +8659,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
       const resultado = await analisarRespostaDevolutivaIA({ itensEtapa1: etapa1?.itens || [], arquivosOriginais, textoOriginal, arquivosResposta: arquivosEtapa2 });
       const itens = resultado.itens || [];
       const pendencias = resultado.pendencias || [];
-      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status !== "corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
+      const pronto = prontoParaReenviarDevolutiva(resultado, etapa1?.itens || []);
       setEtapa2({ geradoEm: new Date().toISOString(), por: usuario.nome, resumo: resultado.resumo || "", pronto, itens, pendencias, naoIdentificado: resultado.naoIdentificado || [], comOriginal: arquivosOriginais.length > 0 || !!textoOriginal, arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
@@ -8650,11 +8673,14 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     if (!podeSalvar) return;
     setSalvando(true); setErro("");
     try {
-      let etapa1Salvar = etapa1;
+      let etapa1Salvar = etapa1, falhaIA = null;
       if (!etapa1Salvar) {
+        // IA indisponível não cancela o salvamento: a devolutiva e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais(), textoLivre);
         etapa1Salvar = {geradoEm:new Date().toISOString(),resumo:resultado.resumo || "",itens:(resultado.itens || []).map(it => ({...it,id:uid("iv")})),naoIdentificado:resultado.naoIdentificado || []};
         setEtapa1(etapa1Salvar);
+        } catch (e) { falhaIA = e; }
       }
       const gravarLote = async (arquivos) => {
         const anexos = [];
@@ -8673,6 +8699,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         origem: meta?.devolutiva?.origem || "Prefeitura",
         ...meta?.devolutiva, chegada, prazo, textoOriginal: textoLivre.trim(),
         analiseIA: {
+          ...(falhaIA ? marcarAnalisePendenteDevolutiva(null, falhaIA) : {}),
           etapa1: etapa1Salvar ? { ...etapa1Salvar, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1Salvar.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
           etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: anexosEtapa2.length ? anexosEtapa2.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa2.arquivosAnalisados || []) } : null,
         },
@@ -8692,18 +8719,18 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         };
         await envio.executar((d) => {
           d.metas.unshift(m);
-          registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
+          registrarHistoricoMeta(d, m, "Devolutiva registrada", falhaIA ? `Registrada por ${usuario.nome}. Análise de IA pendente.` : `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
           if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência do trabalho corrigido) gerada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, "Devolutiva registrada com o relatório da IA.", onFechar);
+        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, falhaIA ? `Devolutiva registrada.${AVISO_ANALISE_PENDENTE}` : "Devolutiva registrada com o relatório da IA.", onFechar);
       } else {
         await envio.executar((d) => {
           const q = d.metas.find((x) => x.id === meta.id);
           q.devolutiva = devolutiva;
           q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
-          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
+          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : falhaIA ? "Devolutiva salva. Análise de IA pendente." : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, "Relatório da IA atualizado.", onFechar);
+        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, falhaIA ? `Devolutiva salva.${AVISO_ANALISE_PENDENTE}` : "Relatório da IA atualizado.", onFechar);
       }
     } catch (e) { setErro(`Não foi possível salvar: ${e.message}`); } finally { setSalvando(false); }
   };
@@ -10742,7 +10769,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const [registroDevId, setRegistroDevId] = useState("");
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
-  const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  const tentativaMeta = useRef(null), preparandoMeta = useRef(false), avisoAnalisePendente = useRef("");
   // One operation (and one goal id) per opening of the form: saving again
   // resumes the same request instead of creating a second goal.
   const idOperacaoMeta = useRef(null), idMetaNova = useRef(null);
@@ -10753,7 +10780,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     setSalvando(true); setErroDev("");
     try {
       await tentativaMeta.current.executar();
-      setToast(nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada."));
+      setToast((nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada.")) + avisoAnalisePendente.current);
       onFechar(); if (nova && onDetalhe) onDetalhe();
     } catch (e) {
       // Still queued and not in review: not a failure, and no new goal may be created.
@@ -10791,11 +10818,14 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
-    let novaAnalise = null;
+    let novaAnalise = null, falhaIA = null;
     try {
       if (f.devolutiva && arquivosDev.length) {
+        // IA indisponível não cancela o salvamento: a meta e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosDev, f.observacoes);
         novaAnalise = { geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map(it => ({...it,id:uid("iv")})), naoIdentificado: resultado.naoIdentificado || [] };
+        } catch (e) { falhaIA = e; }
       }
       for (const arquivo of f.devolutiva ? arquivosDev : []) {
         const base64 = await lerBase64(arquivo);
@@ -10808,9 +10838,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
       preparandoMeta.current=false; setSalvando(false); return;
     }
+    avisoAnalisePendente.current = falhaIA ? AVISO_ANALISE_PENDENTE : "";
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
     const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: semanaAoSalvar(f.semana_inicio, meta?.semana_inicio), prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
-      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
+      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : falhaIA ? {analiseIA:marcarAnalisePendenteDevolutiva((registroDev || meta)?.devolutiva?.analiseIA, falhaIA)} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
@@ -11055,12 +11086,13 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       {m.devolutiva && (() => {
         const etapa1 = m.devolutiva.analiseIA?.etapa1;
         const etapa2 = m.devolutiva.analiseIA?.etapa2;
-        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <section className="bloco-modal">
             <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
             {etapa1?.resumo && <p>{etapa1.resumo}</p>}
             {!etapa1 && <p className="ajuda" style={{ margin: "0 0 8px" }}>A devolutiva ainda não foi analisada pela IA.</p>}
+            {analisePendenteDevolutiva(m.devolutiva) && <p className="msg-erro" role="status" style={{ margin: "0 0 8px" }}>Análise de IA pendente{analisePendenteDevolutiva(m.devolutiva).desde ? ` desde ${dataHoraBR(analisePendenteDevolutiva(m.devolutiva).desde)}` : ""}: a devolutiva e os anexos foram salvos, mas a IA não respondeu ({analisePendenteDevolutiva(m.devolutiva).motivo || "serviço indisponível"}).</p>}
             {etapa1 && (
               <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
                 <Tag tipo="neutra"><Sparkles size={12} />Etapa 1: {etapa1.itens.length} item(ns) a corrigir</Tag>

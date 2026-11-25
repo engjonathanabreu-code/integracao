@@ -3,12 +3,25 @@ export const LIMITE_ENVIO_IA = 3 * 1024 * 1024;
 export function validarDocumentoIA(arquivo) {
   if (!arquivo || arquivo.size > LIMITE_DOCUMENTO_IA) throw new Error('Cada documento pode ter até 20 MB.');
 }
+// Cada página de PDF grande é uma leitura paga. O limite é conferido antes de qualquer envio.
+export const LIMITE_PAGINAS_PDF_IA = 30;
+export function validarPaginasPDF(total) {
+  if (Number.isFinite(total) && total > LIMITE_PAGINAS_PDF_IA) throw new Error(`Este PDF tem ${total} páginas e o limite por análise é de ${LIMITE_PAGINAS_PDF_IA} páginas, porque cada página é uma leitura paga pela IA. Nada foi enviado: divida o arquivo e analise as partes separadamente.`);
+}
+// PDF pequeno vai inteiro num envio só; mesmo assim as páginas são contadas antes. Se o navegador não
+// conseguir abrir o arquivo para contar, a análise segue e o servidor ainda confere o limite.
+export async function conferirPaginasPDF(arquivo, carregarPDF = carregarPDFBrowser) {
+  let pdf;
+  try { pdf = await carregarPDF(arquivo); } catch { return null; }
+  try { validarPaginasPDF(pdf.numPages); return pdf.numPages; } finally { await pdf.destroy(); }
+}
 // Nenhum resultado parcial sai desta função. Uma falha preserva o cadastro e o arquivo original.
 export async function transcreverPDFGrande(arquivo, enviar, carregarPDF = carregarPDFBrowser, cachePaginas = null) {
   validarDocumentoIA(arquivo);
   const pdf = await carregarPDF(arquivo);
   const paginas = [];
   try {
+    validarPaginasPDF(pdf.numPages);
     for (let numero = 1; numero <= pdf.numPages; numero++) {
       const recuperado = cachePaginas?.obter(numero, pdf.numPages);
       if (recuperado) { paginas.push(`Página ${numero}/${pdf.numPages}:\n${recuperado}`); continue; }
