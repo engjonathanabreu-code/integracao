@@ -6,7 +6,7 @@ import {suporteRemotoApi,SUPORTE_REMOTO_HABILITADO} from './suporte-remoto-api.j
 import {obterVinculoSuporte} from './suporte-remoto-vinculo.js';
 
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-const tipos=new Set(['diagnostico','consultar_recibo','retomar_automaticas','reler_confirmacao','solicitar_atualizacao','revisar_bloqueios']);
+const tipos=new Set(['diagnostico','consultar_recibo','retomar_automaticas','reler_confirmacao','solicitar_atualizacao','revisar_bloqueios','retomar_validacao_crm']);
 const estados=new Set(['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura','bloqueado_conflito','bloqueado_validacao','persistencia_falhou','legado_revisao','confirmado','dispensado','substituido']);
 const fases=new Set(['preparacao','envio','recibo','releitura']);
 const codigos=new Set(['SEM_ERRO','OUTRO','SESSAO_EXPIRADA','SESSAO_AUSENTE','TRANSPORTE','LEITURA_DIVERGENTE','ARQUIVO_LOCAL_AUSENTE','RESPONSAVEL_INDISPONIVEL','IDENTIDADE_OUTRA_META','PERSISTENCIA_INDISPONIVEL','PERSISTENCIA_ABORTADA','FILA_BLOQUEADA']);
@@ -31,7 +31,7 @@ export function sanitizarResultadoSuporte(resultado){
 
 export function criarExecutorSuporte({usuario,api=suporteRemotoApi,sync,capturarSessao=capturarSessaoReal,agora=Date.now,
  habilitado=SUPORTE_REMOTO_HABILITADO,obterVinculo=obterVinculoSuporte,diagnosticoInstalacao=()=>instalacaoDiagnostico(),consumidor=crypto.randomUUID(),
- versao=VERSAO_CLIENTE,ativo=()=>true,ambiente=()=>globalThis.navigator?.onLine!==false,onAtualizacao=()=>{}}={}){
+ versao=VERSAO_CLIENTE.slice(0,59)+'-crm1',ativo=()=>true,ambiente=()=>globalThis.navigator?.onLine!==false,onAtualizacao=()=>{}}={}){
  const owner=typeof usuario==='string'?usuario:usuario?.erpRef;
  const obterSync=typeof sync==='function'?sync:()=>sync;
  let encerrado=false,emCurso=false,vinculo;
@@ -58,7 +58,8 @@ export function criarExecutorSuporte({usuario,api=suporteRemotoApi,sync,capturar
    if(entrega?.habilitado===false||!entrega?.comando)return null;
    comando=entrega.comando;
    if(!objeto(comando)||!uuid(comando.id)||comando.usuario_id!==owner||comando.instalacao_id!==instalacaoId||!tipos.has(comando.tipo)||
-    (comando.pedido!=null&&!uuid(comando.pedido))||(['consultar_recibo','reler_confirmacao'].includes(comando.tipo)&&!uuid(comando.pedido)))return null;
+    (comando.pedido!=null&&!uuid(comando.pedido))||(['consultar_recibo','reler_confirmacao','retomar_validacao_crm'].includes(comando.tipo)&&!uuid(comando.pedido))||
+    (comando.tipo==='retomar_validacao_crm'&&(typeof comando.revisao!=='string'||!/^[a-f0-9]{64}$/.test(comando.revisao))))return null;
    conferir(scope,comando);
    if(vistos.has(comando.id))return null;
    // Remember before authorizing. If its response is lost, this instance never
@@ -72,7 +73,7 @@ export function criarExecutorSuporte({usuario,api=suporteRemotoApi,sync,capturar
    const revalidar=async()=>{const r=await chamar('validar_execucao',alvo);if(r?.autorizado!==true)throw Object.assign(Error('Solicitação não autorizada.'),{code:'SUPORTE_RECUSADO'});};
    await revalidar();
    efeitoIniciado=true;
-   const resultado=sanitizarResultadoSuporte(await obterSync().executarSuporte({tipo:comando.tipo,pedido:comando.pedido||null},()=>conferir(scope,comando),revalidar));
+   const resultado=sanitizarResultadoSuporte(await obterSync().executarSuporte({tipo:comando.tipo,pedido:comando.pedido||null,...(comando.tipo==='retomar_validacao_crm'?{revisao:comando.revisao}:{})},()=>conferir(scope,comando),revalidar));
    conferir(scope,comando);
    const estado=resultado.codigo==='RESULTADO_INCERTO'?'resultado_incerto':'concluida';
    conclusaoEnviada=true;const ack=await chamar('concluir',{...alvo,estado,resultado});

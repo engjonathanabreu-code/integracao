@@ -1,3 +1,5 @@
+import {elegivelRetomadaCrm} from './retomada-remota-validacao.js';
+import {motivoEspera} from './estado-sincronizacao.js';
 import {elegivelReconciliacaoMetas,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {escopoArquivosDaIntencao,recursosEfetivosDaIntencao,dependenciasEfetivasDaIntencao,provaCampoSemEscrita,arquivoUnicoDaIntencao,provaArquivoSemGravacao,arquivoEmConflito,conflitoArquivoReconciliavel} from './arquivos-intencoes.js';
 import {classificarFalha,revisaoDeRecusa,podeRearmarCadastro,podeVerificarPreparacaoAoReconectar,podeRetomarLeituraAutomaticamente,atrasoRetentativa,retomavelTransitoria,estadoRetomado,erroServidorDeterministico,marcarReleituraDivergente,podeReprepararConflito,marcarConflitoRepreparado,VERSAO_REGRAS_CONFIRMACAO} from './estado-sincronizacao.js';
@@ -148,7 +150,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    if(escopo){item.escopoArquivos=escopo;await requisicao(s.intencoes.put(item));}
   }
  }
- async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null,substituirId=null}){
+ async function enfileirar({conta,id=crypto.randomUUID(),unidade,modulo,dependencias=[],operacoes,base,intencao,preparar=false,recursos=[unidade],referencias=[],criadas=[],legado=null,substituirId=null,retomadaRemota=null}){
   contaValida(conta);
   if(!unidade||!modulo||!Array.isArray(operacoes)||(!operacoes.length&&!preparar)||dependencias.includes(id))throw erro('Unidade, módulo ou operações inválidos.','INTENCAO_INVALIDA');
   // Copy before the first await; callers may keep editing their objects.
@@ -164,6 +166,11 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    if(substituirId&&(!substituida||substituirId===id||substituida.recibo||substituida.leaseAte>agora()||!revisaoDeRecusa(substituida)))throw erro('Revisão mudou; atualize a prévia.','REVISAO_NECESSARIA');
    for(const dep of original.dependencias)if(!await requisicao(s.intencoes.get([conta,dep])))throw erro('Dependência indisponível nesta conta.','DEPENDENCIA_INDISPONIVEL');
    const anteriores=await requisicao(s.intencoes.index('conta').getAll(conta));
+   if(retomadaRemota){
+    retomadaRemota.verificar();
+    if(!elegivelRetomadaCrm(substituida,{conta,pedido:substituirId,revisao:retomadaRemota.revisao,agora:agora()})||motivoEspera(substituida,anteriores))
+     throw erro('Revisão mudou; a retomada remota não foi registrada.','REVISAO_NECESSARIA');
+   }
    // Persist proven pre-send scopes before capturing successor resources. The
    // removed attachment must not reappear if its unrelated data edit later fails.
    await congelarEscopos(s,anteriores);
@@ -173,6 +180,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
    const item={conta,id,pedido:id,checksum,original,ordem:(seq?.valor||0)+1,estado:'pendente_local',clienteVersao:VERSAO_CLIENTE,tentativas:0,tentativasTotais:0,criadoEm:agora(),atualizadoEm:agora(),proximaTentativa:0,dependencias:[...new Set([...original.dependencias,...deps])]};
    if(substituida){
     item.dependencias=dependenciasEfetivasDaIntencao(substituida);item.ordem=substituida.ordem;
+    if(retomadaRemota)retomadaRemota.verificar();
     substituida.estado='substituido';substituida.substituidaPor=id;
     await requisicao(s.intencoes.put(substituida));
    }

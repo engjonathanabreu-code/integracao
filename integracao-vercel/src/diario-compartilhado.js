@@ -1,3 +1,5 @@
+import {conferirRetomadaCrm,elegivelRetomadaCrm} from './retomada-remota-validacao.js';
+import {motivoEspera} from './estado-sincronizacao.js';
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
@@ -52,7 +54,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   if(opcoes.substituirId)payload.substituirId=opcoes.substituirId;
   volateis.set(id,payload);
   // Serialization stays local to this controller; the database also orders other tabs.
-  const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar(payload);}catch(e){if(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA')volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
+  const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar({...payload,retomadaRemota:opcoes.retomadaRemota});}catch(e){if(opcoes.retomadaRemota||(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA'))volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
  }
  function adicionarArquivos(db,arquivos){
   const snapshot=structuredClone(arquivos),dados=structuredClone(db);
@@ -202,6 +204,29 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const leitura=await revisarLeitura(item,remoto);conferir();
   revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos,leitura,snapshot:snapshotLeitura(item,remoto,edicoes)};return {...revisao,dados:r.dados};
  }
+ async function retomarRecusaCrm({pedido,revisao:revisaoSolicitada,validar,verificar}){
+  await capturas;await corrente;conferir();verificar();await atualizar();verificar();
+  const item=items.find(i=>i.id===pedido),alvo={conta,pedido,revisao:revisaoSolicitada};
+  if(!elegivelRetomadaCrm(item,alvo)||motivoEspera(item,items))return null;
+  let leitura=null;
+  const resposta=await conferirRetomadaCrm({item,alvo,consultarRecibo,revalidar:validar,verificar,reler:async()=>{
+   leitura=await lerItem(item);
+   // A remapped ID is a distinct recovery target and must be reviewed locally.
+   if(!igualSemantico(leitura.edicoes,item.original.intencao.edicoes))return null;
+   const {db}=leitura.remoto;
+   const e=leitura.edicoes.find(x=>x.colecao==='processos'),l=leitura.edicoes.find(x=>x.colecao==='auditoria');
+   if(!Array.isArray(db.processos)||!Array.isArray(db.auditoria))return null;
+   return {cadastro:db.processos.find(x=>x.id===e.id),auditoria:db.auditoria.find(x=>x.id===l.id)??null};
+  }});
+  if(resposta.codigo!=='PREVIA_VALIDADA')return null;
+  const {remoto,edicoes}=leitura;
+  const proposta=aplicarIntencao(remoto.db,edicoes);
+  if(proposta.conflitos.length||extrairIntencao(remoto.db,proposta.dados).length!==2)return null;
+  await validar();verificar();
+  if(await consultarRecibo(item)!==null)return null;
+  await validar();verificar();conferir();
+  return adicionar(remoto.db,proposta.dados,{},{substituirId:pedido,retomadaRemota:{revisao:revisaoSolicitada,verificar}});
+ }
  async function reconhecerLeitura(id){
   if(!revisao||revisao.id!==id||!revisao.item.recibo)throw Error('Abra a prévia de uma gravação com recibo antes de reconhecer os valores atuais.');
   const mostrada=revisao;await atualizar();
@@ -316,5 +341,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,retomarRecusaCrm,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

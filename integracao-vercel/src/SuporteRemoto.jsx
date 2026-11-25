@@ -6,7 +6,9 @@ import './suporte-remoto.css';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const idSeguro=v=>typeof v==='string'&&UUID.test(v)?v:null;
-const tipos={diagnostico:'Solicitar diagnóstico',consultar_recibo:'Consultar recibo',retomar_automaticas:'Retomar tentativas automáticas',reler_confirmacao:'Repetir leitura de confirmação',solicitar_atualizacao:'Solicitar atualização do aplicativo',revisar_bloqueios:'Ver bloqueios para revisão'};
+const tipos={diagnostico:'Solicitar diagnóstico',consultar_recibo:'Consultar recibo',retomar_automaticas:'Retomar tentativas automáticas',reler_confirmacao:'Repetir leitura de confirmação',solicitar_atualizacao:'Solicitar atualização do aplicativo',revisar_bloqueios:'Ver bloqueios para revisão',retomar_validacao_crm:'Retomar validação corrigida do CRM'};
+const crm='retomar_validacao_crm';
+const revisaoValida=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const estados={criada:'Criada',recebida:'Recebida',iniciada:'Iniciada',concluida:'Concluída',negada:'Negada',vencida:'Vencida',cancelada:'Cancelada',resultado_incerto:'Resultado incerto'};
 const estadosFila=new Set(['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura','bloqueado_conflito','bloqueado_validacao','persistencia_falhou','legado_revisao','confirmado','substituido','dispensado']);
 const codigos=new Set(['DIAGNOSTICO','RECIBO_LOCAL','RECIBO_ENCONTRADO','SEM_RECIBO','LEITURA_CONFIRMADA','LEITURA_DIVERGENTE','REVISAO_NECESSARIA','EM_ANDAMENTO','ATUALIZACAO_SOLICITADA','SESSAO_ALTERADA','SEM_ALTERACAO','PERSISTENCIA_INDISPONIVEL','ARQUIVO_LOCAL_AUSENTE','RESULTADO_INCERTO','PEDIDO_AUSENTE','SEM_ERRO','OUTRO','SESSAO_EXPIRADA','SESSAO_AUSENTE','TRANSPORTE','RESPONSAVEL_INDISPONIVEL','IDENTIDADE_OUTRA_META','PERSISTENCIA_ABORTADA','FILA_BLOQUEADA']);
@@ -46,9 +48,9 @@ export function estadoDispositivo(d,agora=Date.now()){
  return Number.isFinite(instante)&&intervalo>=-10000&&intervalo<=120000?(d.protocolo===1?'disponivel':'incompativel'):Number.isFinite(instante)?'antigo':'desconhecido';
 }
 const chaveMemoria=conta=>'integracao-suporte-solicitacoes-v1-'+conta;
-function pedidoValido(v){return v&&idSeguro(v.id)&&idSeguro(v.atendimento)&&idSeguro(v.usuario_id)&&idSeguro(v.instalacao_id)&&Object.hasOwn(tipos,v.tipo)&&(v.pedido===null||idSeguro(v.pedido));}
+function pedidoValido(v){return v&&idSeguro(v.id)&&idSeguro(v.atendimento)&&idSeguro(v.usuario_id)&&idSeguro(v.instalacao_id)&&Object.hasOwn(tipos,v.tipo)&&(v.pedido===null||idSeguro(v.pedido))&&(v.tipo!==crm||idSeguro(v.pedido)&&revisaoValida(v.revisao));}
 function rascunhosSalvos(conta){
- try{const rows=JSON.parse(sessionStorage.getItem(chaveMemoria(conta))||'[]');return Array.isArray(rows)?Object.fromEntries(rows.filter(pedidoValido).slice(0,100).map(v=>[v.instalacao_id,{id:v.id,atendimento:v.atendimento,usuario_id:v.usuario_id,instalacao_id:v.instalacao_id,tipo:v.tipo,pedido:v.pedido}])):{};}catch{return {};}
+ try{const rows=JSON.parse(sessionStorage.getItem(chaveMemoria(conta))||'[]');return Array.isArray(rows)?Object.fromEntries(rows.filter(pedidoValido).slice(0,100).map(v=>[v.instalacao_id,{id:v.id,atendimento:v.atendimento,usuario_id:v.usuario_id,instalacao_id:v.instalacao_id,tipo:v.tipo,pedido:v.pedido,...(v.tipo===crm?{revisao:v.revisao}:{})}])):{};}catch{return {};}
 }
 function gravarRascunhos(conta,rascunhos){sessionStorage.setItem(chaveMemoria(conta),JSON.stringify(Object.values(rascunhos)));}
 function Resultado({resultado,reciboNoServidor}){
@@ -101,10 +103,11 @@ export default function SuporteRemoto({usuario,acesso,api=suporteRemotoApi}){
  function solicitar(d){
   if(preparadas[d.instalacao_id])return enviar(d,preparadas[d.instalacao_id]);
   const f=formularios[d.instalacao_id]||{tipo:'diagnostico',pedido:''};
-  const pedido=f.pedido?.trim()||null;
-  if(!Object.hasOwn(tipos,f.tipo)||pedido&&!idSeguro(pedido)||['consultar_recibo','reler_confirmacao'].includes(f.tipo)&&!pedido){setErro('Informe o UUID do pedido original para esta ação.');return;}
-  const args={id:crypto.randomUUID(),atendimento:crypto.randomUUID(),usuario_id:d.usuario_id,instalacao_id:d.instalacao_id,tipo:f.tipo,pedido};
-  if(['retomar_automaticas','solicitar_atualizacao'].includes(f.tipo)){setConfirmacao({d,args});return;}
+  const pedido=f.pedido?.trim()||null,revisao=f.revisao?.trim().toLowerCase();
+  if(!Object.hasOwn(tipos,f.tipo)||pedido&&!idSeguro(pedido)||['consultar_recibo','reler_confirmacao',crm].includes(f.tipo)&&!pedido){setErro('Informe o UUID do pedido original para esta ação.');return;}
+  if(f.tipo===crm&&(!dados?.config?.retomada_crm||!d.versao?.endsWith('-crm1')||!revisaoValida(revisao))){setErro('Ação exige aparelho compatível e revisão exata do pedido.');return;}
+  const args={id:crypto.randomUUID(),atendimento:crypto.randomUUID(),usuario_id:d.usuario_id,instalacao_id:d.instalacao_id,tipo:f.tipo,pedido,...(f.tipo===crm?{revisao}:{})};
+  if(['retomar_automaticas','solicitar_atualizacao',crm].includes(f.tipo)){setConfirmacao({d,args});return;}
   enviar(d,args);
  }
  async function cancelar(id){
@@ -128,8 +131,9 @@ export default function SuporteRemoto({usuario,acesso,api=suporteRemotoApi}){
      return <article className="card suporte-dispositivo" key={d.instalacao_id} aria-label={`Dispositivo ${d.instalacao_id}`}>
       <h4>{typeof d.nome==='string'?d.nome.slice(0,100):'Usuário'}</h4><dl><dt>Instalação</dt><dd><code>{d.instalacao_id}</code></dd><dt>Versão</dt><dd>{typeof d.versao==='string'&&/^[a-zA-Z0-9._-]{1,64}$/.test(d.versao)?d.versao:'Não informada'}</dd><dt>{d.protocolo===1?'Último contato do suporte':'Contato do último relato'}</dt><dd>{hora(d.ultimo_contato)}</dd><dt>Aplicativo compatível</dt><dd>{d.protocolo===1?'Sim — protocolo de suporte 1':'Ainda não registrado no suporte'}</dd><dt>Horário do relato de sincronização</dt><dd>{hora(d.ultimo_relato)}</dd>{idSeguro(d.diagnostico_instalacao_id)&&<><dt>Relato associado</dt><dd><code>{d.diagnostico_instalacao_id}</code></dd></>}<dt>Disponibilidade</dt><dd>{disponivel?'Disponível para solicitação':estado==='incompativel'?'Aplicativo compatível ainda não registrado':estado==='antigo'?'Relato antigo — estado atual desconhecido':'Sem contato — estado desconhecido'}</dd><dt>{relatoAntigo?'Pendências no relato antigo':'Pendências no último relato'}</dt><dd>{total===null?'Não informadas':total}</dd></dl>
       <p>{total===null?'Ainda não há relato de fila disponível para esta instalação.':relatoAntigo?'O relato de fila está antigo; o estado atual das pendências é desconhecido.':'Uma contagem vazia é somente o último relato desta instalação.'}</p><ul>{(Array.isArray(d.resumo)?d.resumo:[]).slice(0,100).map((g,n)=><li key={n}>{modulos.has(g.modulo)?g.modulo:'outros'} · {estadosFila.has(g.estado)?g.estado:'Estado não reconhecido'} · {codigoSeguro(g.codigo)}: {Number.isSafeInteger(g.quantidade)&&g.quantidade>=0?g.quantidade:0}</li>)}</ul>
-      <label className="rot" htmlFor={'suporte-acao-'+d.instalacao_id}>Ação</label><select className="inp" id={'suporte-acao-'+d.instalacao_id} value={f.tipo} disabled={ocupado||!!preparada||!habilitado||!disponivel} onChange={e=>setFormularios({...formularios,[d.instalacao_id]:{...f,tipo:e.target.value}})}>{Object.entries(tipos).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
+      <label className="rot" htmlFor={'suporte-acao-'+d.instalacao_id}>Ação</label><select className="inp" id={'suporte-acao-'+d.instalacao_id} value={f.tipo} disabled={ocupado||!!preparada||!habilitado||!disponivel} onChange={e=>setFormularios({...formularios,[d.instalacao_id]:{...f,tipo:e.target.value}})}>{Object.entries(tipos).filter(([k])=>k!==crm||dados?.config?.retomada_crm===true&&d.versao?.endsWith('-crm1')).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
       <label className="rot" htmlFor={'suporte-pedido-'+d.instalacao_id}>UUID do pedido original</label><input className="inp" id={'suporte-pedido-'+d.instalacao_id} value={f.pedido} disabled={ocupado||!!preparada||!habilitado||!disponivel} placeholder="Opcional para diagnóstico" onChange={e=>setFormularios({...formularios,[d.instalacao_id]:{...f,pedido:e.target.value}})}/>
+      {f.tipo===crm&&<><label className="rot" htmlFor={'suporte-revisao-'+d.instalacao_id}>Checksum da revisão original (64 caracteres)</label><input className="inp" id={'suporte-revisao-'+d.instalacao_id} value={f.revisao||''} disabled={ocupado||!!preparada||!habilitado||!disponivel} onChange={e=>setFormularios({...formularios,[d.instalacao_id]:{...f,revisao:e.target.value}})}/></>}
       {preparada&&<p role="status">Resposta anterior incerta. Identificador preservado: <code>{preparada.id}</code>.</p>}
       <button className="btn" disabled={ocupado||!habilitado||!disponivel} onClick={()=>solicitar(d)}>{preparada?'Recuperar solicitação':'Enviar solicitação'}</button>
      </article>;
@@ -141,6 +145,6 @@ export default function SuporteRemoto({usuario,acesso,api=suporteRemotoApi}){
    </section>
    <section aria-label="Auditoria do suporte"><h3>Auditoria do suporte</h3><p>Registros técnicos preservados. A interface não permite apagar ou editar a auditoria.</p><ul>{(Array.isArray(dados.auditoria)?dados.auditoria:[]).slice(0,100).map((a,n)=><li key={idSeguro(a.id)||n}>{hora(a.em)} · {eventoSeguro(a.evento)} · solicitação <code>{idSeguro(a.solicitacao_id)||'Identificador indisponível'}</code> · ator <code>{idSeguro(a.ator)||'Não informado'}</code></li>)}</ul></section>
   </>}
-  {confirmacao&&<section className="card suporte-confirmacao" role="group" aria-label="Confirmar solicitação de suporte"><h3>Confirmar solicitação</h3><p>{tipos[confirmacao.args.tipo]} para a instalação <code>{confirmacao.args.instalacao_id}</code>{confirmacao.args.pedido?<> e pedido <code>{confirmacao.args.pedido}</code></>:null}.</p><p>{confirmacao.args.tipo==='solicitar_atualizacao'?'O funcionário receberá uma orientação local. A tela não será recarregada à força.':'Somente as tentativas permitidas pelo protocolo serão retomadas. Bloqueios exigem revisão; pedidos com recibo fazem apenas releitura.'}</p><button className="btn btn-primario" disabled={ocupado} onClick={()=>enviar(confirmacao.d,confirmacao.args)}>Confirmar para este aparelho</button><button className="btn" disabled={ocupado} onClick={()=>setConfirmacao(null)}>Voltar sem solicitar</button></section>}
+  {confirmacao&&<section className="card suporte-confirmacao" role="group" aria-label="Confirmar solicitação de suporte"><h3>Confirmar solicitação</h3><p>{tipos[confirmacao.args.tipo]} para a instalação <code>{confirmacao.args.instalacao_id}</code>{confirmacao.args.pedido?<> e pedido <code>{confirmacao.args.pedido}</code></>:null}.</p><p>{confirmacao.args.tipo==='solicitar_atualizacao'?'O funcionário receberá uma orientação local. A tela não será recarregada à força.':confirmacao.args.tipo===crm?'Apenas este pedido e revisão, sem recibo ou conflito, passam pelas validações atuais. Nenhum outro envio é incluído no comando.':'Somente as tentativas permitidas pelo protocolo serão retomadas. Bloqueios exigem revisão; pedidos com recibo fazem apenas releitura.'}</p><button className="btn btn-primario" disabled={ocupado} onClick={()=>enviar(confirmacao.d,confirmacao.args)}>Confirmar para este aparelho</button><button className="btn" disabled={ocupado} onClick={()=>setConfirmacao(null)}>Voltar sem solicitar</button></section>}
  </section>;
 }
