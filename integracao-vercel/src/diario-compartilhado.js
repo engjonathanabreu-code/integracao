@@ -1,7 +1,7 @@
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
-import {revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
+import {revisaoDeRecusa,classificarFalha,podeConciliarRecusaAutomaticamente} from './estado-sincronizacao.js';
 export {motivoEspera} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
 import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
@@ -145,6 +145,31 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
  function verificarMetas(item,remoto,edicoes){
   try{return provarMetasNoServidor(item,edicoes,projetarProvaMetas(remoto,edicoes),items,planejarMetas);}catch{return null;}
  }
+ // SYNC-M4: after a conflict refused by the server on send, reread the record
+ // and merge by field once. Order of guards: durable one-shot marker first;
+ // then the receipt lookup of the refused request (only an explicit null proves
+ // it wrote nothing); then the same field merge used by preparation. A clean
+ // merge replaces the refused request through the review path (`substituirId`);
+ // anything else leaves it in review exactly as before. Never repeated.
+ async function conciliarRecusas(){
+  const sessaoUtilizavel=()=>typeof estadoSessao!=='function'||['valida','renovando'].includes(estadoSessao());
+  const candidatos=items.filter(i=>podeConciliarRecusaAutomaticamente(i,Date.now())).map(i=>i.id);
+  let total=0;
+  for(const id of candidatos){
+   conferir();if(!sessaoUtilizavel())break;
+   try{
+    const item=await fila.marcarConciliacaoAutomatica?.(conta,id);conferir();
+    if(!item)continue;
+    if(await consultarRecibo(item)!==null)continue;
+    conferir();
+    const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
+    if(r.conflitos.length||!extrairIntencao(remoto.db,r.dados).length)continue;
+    await adicionar(remoto.db,r.dados,{},{substituirId:id});conferir();total++;
+   }catch(e){if(e.code==='SESSAO_ALTERADA')throw e;/* stays in review */}
+  }
+  if(candidatos.length){await atualizar();if(total)sinalizar();}
+  return total;
+ }
  async function executar({id=null,validar=async()=>{},verificar=()=>{}}={}){
   await capturas.catch(()=>{});await corrente.catch(()=>{});conferir();await atualizar();
   // Bound each pass; a later pass resumes independently ready entries.
@@ -185,6 +210,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    }
    await atualizar();if(!resultado)break;sinalizar();
   }
+  if(!id)await conciliarRecusas();
   return items;
  }
  async function consultarExistente(id,{modo='consulta',validar=async()=>{},verificar=()=>{}}={}){

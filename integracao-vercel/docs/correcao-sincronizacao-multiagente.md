@@ -135,3 +135,13 @@ remove a restauração do pacote em outro aparelho.
 - **C3, escopo de Clientes (SYNC-C1):** a edição de uma ficha **existente** passa a ter escopo (complemento legado
   por `registro_id`; as linhas da ficha continuam sendo relidas por `lerFichaCliente`). Criação e remoção de
   cliente, núcleos e misturas não mapeadas seguem em leitura completa.
+- **Garantia 5 / C1 `conflito` (SYNC-M4, SYNC-C2) — alteração de contrato, explícita:** a recusa de conflito
+  comprovada no **envio** (HTTP 409 / `PT409`, sem recibo) continua levando o item a `bloqueado_conflito`. Em
+  seguida, para Metas e fichas de Clientes sem anexos, a fila faz **uma única** conciliação automática por
+  campo (`podeConciliarRecusaAutomaticamente`, marcador durável `conciliacaoAutomatica` gravado antes da
+  tentativa): consulta `integracao_consultar_pedido` do pedido recusado (só `null` explícito prossegue), relê
+  pelo escopo e aplica a mesma conciliação por campo da preparação. Sem conflito de campo, o pedido recusado
+  vira `substituido` (original preservado) e um novo pedido segue o caminho já existente de "manter minha
+  versão" (`substituirId`); esse novo pedido nunca é conciliado de novo. Com conflito no mesmo campo, recibo
+  encontrado, consulta inconclusiva ou qualquer falha, o item permanece em revisão como antes. Conflitos achados
+  na preparação, validação, permissão e os demais módulos não mudam.
