@@ -7,6 +7,7 @@ import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoRes
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
 import {documentoPorDeclarante,opcoesDeclaracao} from './declarantes-comerciais.js';
+import {documentoComBloqueio,pendenciasDocumento,unirPendencias} from './documentos-bloqueio.js';
 import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
@@ -8933,6 +8934,7 @@ function faltandoPara(doc, d, p, declarante) {
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
   if (doc.precisa.includes("procurador") && !(d.advogados || []).length) falta.push("representante cadastrado em Configurações");
   if (doc.precisa.includes("distrato") && !p.distrato?.registradoEm) falta.push("distrato registrado na seção acima");
+  if (documentoComBloqueio(doc.id)) return unirPendencias(pendenciasDocumento(doc.id, p, { condicoes: d.condicoes, qualificacao: d.qualificacaoCompleta }), falta);
   return falta;
 }
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
