@@ -73,3 +73,17 @@ test('UI-M4: remover item do checklist, anexo ou setor pergunta antes, no padrã
  assert.match(pagina,/onClick=\{\(\) => setSetorRemocao\(\{ \.\.\.confirmacaoRemocaoMeta\("setor", s\.nome\), onConfirmar: \(\) => mutar\(/);
  assert.match(pagina,/\{setorRemocao && <ModalConfirmar \{\.\.\.setorRemocao\}/);
 });
+
+test('UI-M5: a linha do checklist é clicável e os alvos de toque têm 44 px no celular',()=>{
+ const detalhe=trecho('function ModalDetalheMeta(','function CartaoMeta(');
+ assert.match(detalhe,/className="flex items-center gap-2 linha-checklist"/);
+ assert.match(detalhe,/<input id=\{`ck-\$\{c\.id\}`\} type="checkbox"/);
+ assert.match(detalhe,/<label htmlFor=\{`ck-\$\{c\.id\}`\}[^\n]*\{c\.titulo\}/,'tocar no texto marca o item');
+ const movel=css.match(/@media \(max-width:640px\)\{\.rb \.linha-checklist\{min-height:44px\}([^\n]*)\}\n/);
+ assert.ok(movel,'regras de toque do celular existem');
+ assert.match(movel[1],/\.rb \.linha-checklist input\[type=checkbox\],\.rb \.item-checklist input\[type=checkbox\]\{width:24px!important;height:24px!important/,'vence os 17 px definidos na própria caixa');
+ assert.match(movel[1],/\.rb \.modal \.btn-icone\{width:44px;height:44px/);
+ assert.match(movel[1],/\.rb \.modal \.btn\{min-height:44px\}/);
+ assert.match(movel[1],/\.rb \.modal label\.tag\{min-height:44px\}/,'etiquetas de responsáveis');
+ assert.match(css,/\.rb \.linha-checklist label\{flex:1;display:flex;[^}]*align-self:stretch\}/,'o texto ocupa a altura toda da linha');
+});

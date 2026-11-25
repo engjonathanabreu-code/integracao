@@ -1956,6 +1956,8 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (min-width:1500px){.rb .quadro-cheio{flex-wrap:wrap}}
 .rb .item-checklist{display:flex;align-items:center;gap:8px;margin-top:6px}
 .rb .item-checklist .inp{flex:1}
+.rb .linha-checklist label{flex:1;display:flex;flex-wrap:wrap;align-items:center;align-self:stretch}
+@media (max-width:640px){.rb .linha-checklist{min-height:44px}.rb .linha-checklist input[type=checkbox],.rb .item-checklist input[type=checkbox]{width:24px!important;height:24px!important;flex:none}.rb .modal .btn-icone{width:44px;height:44px;flex:none}.rb .modal .btn{min-height:44px}.rb .modal label.tag{min-height:44px}}
 .rb .lista-flutuante{position:absolute;left:0;right:0;top:100%;z-index:30;border-radius:12px;border-top:1px solid var(--line);box-shadow:0 12px 30px rgba(15,95,91,.18)}
 .rb .campo-busca{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 10px;background:var(--card);color:var(--muted)}
 .rb .campo-busca .inp{border:none;padding-left:0;background:none}
@@ -11091,10 +11093,10 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       <section className="bloco-modal">
       <h3 className="titulo-bloco">Checklist <span className="conta-bloco">{(m.checklist || []).filter((c) => c.concluido).length} de {(m.checklist || []).length}</span></h3>
       {(m.checklist || []).map((c) => (
-        <div key={c.id} className="flex items-center gap-2" style={{ padding: "4px 0" }}>
-          <input type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
+        <div key={c.id} className="flex items-center gap-2 linha-checklist" style={{ padding: "4px 0" }}>
+          <input id={`ck-${c.id}`} type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
             onChange={() => alterar((q) => { const x = q.checklist.find((y) => y.id === c.id); x.concluido = !x.concluido; x.concluido_por = x.concluido ? usuario.nome : ""; x.concluido_em = x.concluido ? new Date().toISOString() : ""; }, c.concluido ? "Checklist reaberto" : "Checklist concluído", c.titulo)} />
-          <span style={{ flex: 1, textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</span>
+          <label htmlFor={`ck-${c.id}`} style={{ flex: 1, cursor: colabora ? "pointer" : "default", textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</label>
           {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("checklist", c.titulo), onConfirmar: () => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo) })} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
         </div>
       ))}
