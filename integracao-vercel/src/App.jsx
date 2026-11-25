@@ -19,7 +19,7 @@ import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, prox
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
-import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
+import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA, conferirPaginasPDF } from "./documentos-ia-envio.js";
 import { marcarPlausibilidade, selecaoInicialSugestoes, sugestoesSelecionadas } from "./documentos-ia-plausibilidade.js";
 import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva, marcarAnalisePendenteDevolutiva, analisePendenteDevolutiva, AVISO_ANALISE_PENDENTE } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
@@ -994,6 +994,7 @@ async function analisarDocumentoIA(arquivoBruto, tipoEsperado, regras, pessoas, 
   validarDocumentoIA(arquivoBruto);
   const grande = arquivoBruto.type === "application/pdf" && arquivoBruto.size > LIMITE_ENVIO_IA;
   const arquivo = grande ? arquivoBruto : await prepararParaIA(arquivoBruto, LIMITE_ENVIO_IA);
+  if (!grande && arquivo.type === "application/pdf") await conferirPaginasPDF(arquivo);
   const headers = processamento?.headers || await cabecalhosIA();
   const enviar = processamento?.enviar || ((content, maxTokens) => enviarPedidoIA(URL_IA, headers, content, maxTokens));
   const transcricao = grande ? await transcreverPDFGrande(arquivo, (content, maxTokens) => enviar(content, maxTokens, "ocr"), undefined, processamento?.paginas) : null;
