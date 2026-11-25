@@ -14,6 +14,7 @@ import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
 import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
+import {conferirNovoMorador} from './novo-morador.js';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
 import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador, proximoNumeroLivreMorador, codigoMoradorAoGravar } from "./codigo-morador.js";
@@ -2609,19 +2610,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const nucleos = db.nucleos.filter((n) => n.municipioId === municipio.id && (n.remessaId === remessaId || !n.remessaId));
   const nucleoSel = nucleoDe(db, nucleoId);
-  const cpfOk = cpfValido(cpf);
-  const cpfDup = cpfOk && db.processos.find((p) => p.remessaId === remessaId && so(p.requerente.cpf) === so(cpf));
-  const nomeDup = !cpfDup && nome.trim().length > 3 && db.processos.find((p) => p.remessaId === remessaId && normalizar(p.requerente.nome) === normalizar(nome));
-  const erros = [];
-  if (!remessaId) erros.push("Escolha a remessa");
-  if (!prefixoMunicipio) erros.push("Cadastre o prefixo em Editar município antes de adicionar um morador");
-  const codigoDuplicado = (db._baseArquivo || db).processos.some(p => normalizarCodigoMorador(p.codigo) === normalizarCodigoMorador(codigoGerado));
-  if (codigoDuplicado) erros.push("Este código já existe. Confira o prefixo no cadastro do município.");
-  else if (remessaId && prefixoMunicipio && !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(normalizarCodigoMorador(codigoGerado))) erros.push(`O código ${codigoGerado} tem caracteres não aceitos. Use só letras sem acento e números no prefixo do município`);
-  if (nome.trim().length < 3) erros.push("Informe o nome do requerente");
-  if (!cpf) erros.push("Informe o CPF, ele é obrigatório");
-  else if (!cpfOk) erros.push("CPF inválido, confira os dígitos");
-  if (cpfDup && !confirmaDup) erros.push("Confirme o cadastro com CPF repetido");
+  const { cpfOk, cpfDup, nomeDup, codigoDuplicado, erros } = conferirNovoMorador({ remessaId, prefixoMunicipio, codigoGerado, nome, cpf, confirmaDup }, db.processos, (db._baseArquivo || db).processos);
 
   if (!remessas.length) {
     return (
