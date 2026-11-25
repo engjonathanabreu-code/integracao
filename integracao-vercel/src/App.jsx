@@ -53,7 +53,7 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta, textoAtraso, ordenarMetasAtrasadas, separarMetasColaborador, ordenarMetasEncerradas } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
 import {dadosContrato,reaisPorExtenso} from './contrato-dados.js';
 import {numeroDinheiro} from './leitor-dinheiro.js';
@@ -85,6 +85,7 @@ import {acessoCRM, ETAPAS_CRM} from './crm-regras.js';
 import {solicitarConclusaoMeta, recusarConclusaoMeta, totalRecusasMeta, totalRecusasUsuario} from './recusas-metas.js';
 import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
+import {faixaDaPagina, textoDaFaixa} from './paginacao.js';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import ImportadorPerimetro from "../geojson/ImportadorPerimetro.jsx";
@@ -3015,7 +3016,7 @@ function PendenciasMunicipio({municipio,carregarMunicipio}) {
   </div>;
 }
 
-function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio }) {
+function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio, abrirCliente }) {
   const ordem = useOrdenacao("nome");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [municipioPRF, setMunicipioPRF] = useState(null);
@@ -3038,6 +3039,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
           {cad.perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "municipio" })}><Plus size={16} />Novo município</button>}
         </div>
       </div>
+      <div style={{ marginBottom: 14 }}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} incluirConjuge /></div>
       <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 14 }}>
         <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Filtrar por UF">
           {ufs.map((u) => <button key={u} role="tab" aria-selected={u === uf} className={`btn btn-sm${u === uf ? " btn-primario" : ""}`} onClick={() => setUf(u)}>{u}</button>)}
@@ -3641,6 +3643,9 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
     return normalizar(`${p.codigo} ${p.requerente.nome} ${p.conjuge.nome}`).includes(b) || (bd.length >= 3 && (so(p.requerente.cpf).includes(bd) || so(p.conjuge.cpf).includes(bd)));
   });
   const naoAtivos = ps.filter((p) => !ativo(p)).length;
+  const [pagina, setPagina] = useState(0);
+  useEffect(() => { setPagina(0); }, [busca, etapa, situacao]);
+  const faixa = faixaDaPagina(lista.length, pagina);
   return (
     <>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
@@ -3658,7 +3663,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
         <table className="tab">
           <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}<th><span className="sr-only">Ações</span></th></tr></thead>
           <tbody>
-            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).map((p) => {
+            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).slice(faixa.inicio, faixa.fim).map((p) => {
               const pend = pendencias(db, p);
               const ctx = contexto(db, p);
               const alertas = alertasDados(p, ctx);
@@ -3686,6 +3691,11 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
           </tbody>
         </table>
       </div>
+      {faixa.paginas > 1 && <nav className="metas-paginacao" aria-label="Páginas de moradores">
+        <span className="ajuda" aria-live="polite">{textoDaFaixa(faixa)}</span>
+        <button className="btn btn-sm" disabled={faixa.atual === 0} onClick={() => setPagina(faixa.atual - 1)}><ChevronLeft size={16} />Anterior</button>
+        <button className="btn btn-sm" disabled={faixa.atual === faixa.paginas - 1} onClick={() => setPagina(faixa.atual + 1)}>Próxima<ChevronRight size={16} /></button>
+      </nav>}
     </>
   );
 }
@@ -11194,13 +11204,10 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
   const acao = podeSolicitarConclusao(m, usuario) ? "Concluir" : podeAprovarConclusao(m, usuario) ? "Aprovar conclusão" : vePendenteAprovacao(m) && respMeta(m, usuario) ? "Aguardando aprovação" : "";
   const icone = normalizarEscolhaIcone(m.icone) || sugerirIcone(`${m.titulo} ${m.setor || ""}`);
   const feitos = (m.checklist || []).filter((c) => c.concluido).length;
-  const sinal = atrasada ? { Ic: AlertTriangle, cor: "var(--danger)", fundo: "var(--danger-bg)", titulo: "Atrasada" }
-    : m.status === "Aguardando aprovação" ? { Ic: AlertCircle, cor: "#2563B8", fundo: "#E5EFFB", titulo: "Aguardando aprovação" }
-    : m.status === "Em andamento" ? { Ic: MoreHorizontal, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Em andamento" }
-    : m.status === "Concluído" ? { Ic: Check, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Concluído" }
-    : { Ic: X, cor: "var(--muted)", fundo: "var(--pill)", titulo: "Cancelado" };
+  const selo = seloStatusMeta(m.status, !!atrasada);
+  const sinal = { Ic: { atrasada: AlertTriangle, aprovacao: AlertCircle, andamento: MoreHorizontal, concluido: Check }[selo.chave] || X, cor: selo.cor, fundo: selo.fundo, titulo: (selo.chave === "atrasada" && textoAtraso(m.prazo, diaCivilEvento(new Date()))) || selo.rotulo };
   return (
-    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
+    <div className={`meta-card${selo.chave === "atrasada" ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
       draggable={!!acoesOrdem}
       onDragStart={e => { if (!acoesOrdem) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); acoesOrdem.iniciar(); }}
       onDragOver={e => { if (!acoesOrdem?.aceita()) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDestinoArraste(true); }}
@@ -11222,6 +11229,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         <span className="meta-card-rodape">
           <span className="flex flex-wrap items-center gap-2">
             <span className="chip-setor">{m.setor || "Sem setor"}</span>
+            <span className="selo-status-meta" style={{ background: sinal.fundo, color: sinal.cor }}>{sinal.titulo}</span>
             {(m.checklist || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><ListTodo size={12} /> {feitos}/{m.checklist.length}</span>}
             {(m.comentarios || []).length > 0 && !compacto && <span className="ajuda" style={{ margin: 0 }}><MessageSquare size={12} /> {m.comentarios.length}</span>}
             {(m.arquivos || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><Paperclip size={12} /> {m.arquivos.length}</span>}
@@ -11354,8 +11362,8 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
             {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>{buscaTitulo.trim() ? "Nenhuma meta com esse título nesta semana." : "Nenhuma meta programada para esta semana."}</p>}
           </Secao>
-          <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
-            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
+          <Secao titulo="Metas atrasadas" nota="Metas vencidas, da mais atrasada para a mais recente, com setor, responsáveis e dias de atraso em cada card.">
+            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
           </Secao>
           <h3 style={{ fontSize: 17, margin: "18px 0 10px" }}>Colaboradores</h3>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
@@ -11393,8 +11401,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 
       {tela === "home" && colaborador && (
         <Secao titulo={`Metas de ${colaborador.nome}`} nota={`${SETORES[colaborador.setor]?.nome}. ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status)).length} ativa(s), ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status) && m.prazo && m.prazo < hoje).length} em atraso.`} acao={<button className="btn btn-sm" onClick={() => setColaborador(null)}><ChevronLeft size={14} />Voltar</button>}>
-          <div className="grade-metas">{metasDe(colaborador.id).map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-          {!metasDe(colaborador.id).length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          {(() => { const { abertas, encerradas } = separarMetasColaborador(metasDe(colaborador.id)); return <>
+            {abertas.length > 0 && <MetasAgrupadas metas={abertas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} />} />}
+            {!abertas.length && encerradas.length > 0 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta em aberto para este colaborador.</p>}
+            {encerradas.length > 0 && <details className="metas-encerradas"><summary>Concluídas e canceladas ({encerradas.length})</summary><MetasAgrupadas metas={encerradas} ordenar={ordenarMetasEncerradas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} />} /></details>}
+            {!abertas.length && !encerradas.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          </>; })()}
         </Secao>
       )}
 

@@ -49,3 +49,64 @@ export function corSetor(setor, setores = []) {
   const hash = [...String(setor || '')].reduce((v,c) => (v * 31 + c.charCodeAt(0)) >>> 0, 0);
   return paleta[(indice < 0 ? hash : indice) % paleta.length];
 }
+// Selo de status do cartão: uma cor da paleta do app por estado e o nome sempre escrito.
+// Só usa variáveis já existentes (claro e escuro), sem criar tokens novos.
+const SELOS_STATUS_META = {
+  atrasada: { rotulo: 'Atrasada', cor: 'var(--danger)', fundo: 'var(--danger-bg)' },
+  aprovacao: { rotulo: 'Aguardando aprovação', cor: 'var(--warning)', fundo: 'var(--warning-bg)' },
+  andamento: { rotulo: 'Em andamento', cor: 'var(--primary)', fundo: 'var(--soft)' },
+  concluido: { rotulo: 'Concluído', cor: 'var(--ok)', fundo: 'var(--ok-bg)' },
+  cancelado: { rotulo: 'Cancelado', cor: 'var(--text)', fundo: 'var(--pill)' },
+};
+const CHAVE_POR_STATUS = { 'Aguardando aprovação': 'aprovacao', 'Em andamento': 'andamento', 'Concluído': 'concluido', 'Cancelado': 'cancelado' };
+const STATUS_ENCERRADOS = ['Concluído', 'Cancelado'];
+export function seloStatusMeta(status, atrasada = false) {
+  const chave = atrasada && !STATUS_ENCERRADOS.includes(status) ? 'atrasada' : CHAVE_POR_STATUS[status];
+  if (chave) return { chave, ...SELOS_STATUS_META[chave] };
+  return { chave: 'outro', rotulo: String(status || '').trim() || 'Sem status', cor: 'var(--text)', fundo: 'var(--pill)' };
+}
+// Atraso em dias civis entre o prazo e hoje (ambos AAAA-MM-DD); 0 quando não venceu ou a data é inválida.
+const diaEmUTC = dia => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dia || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN; };
+export function diasDeAtraso(prazo, hoje) {
+  const dias = Math.round((diaEmUTC(hoje) - diaEmUTC(prazo)) / 86400000);
+  return Number.isFinite(dias) && dias > 0 ? dias : 0;
+}
+export function textoAtraso(prazo, hoje) {
+  const dias = diasDeAtraso(prazo, hoje);
+  return dias ? `Atrasada há ${dias} ${dias === 1 ? 'dia' : 'dias'}` : '';
+}
+// Atrasadas: prazo mais antigo primeiro, em todos os setores. Ordenação apenas visual.
+export function ordenarMetasAtrasadas(metas = []) {
+  return [...metas].sort((a, b) => comparar(a.prazo || '9999', b.prazo || '9999')
+    || comparar(a.titulo || '', b.titulo || '') || comparar(a.id, b.id));
+}
+// Cabeçalhos de setor da grade contínua: recebe a lista já ordenada por setor e devolve
+// as seções do trecho [inicio, fim) da página, com o total do setor na lista inteira.
+export function secoesPorSetor(ordenadas = [], inicio = 0, fim = ordenadas.length) {
+  const nome = meta => meta.setor || 'Sem setor';
+  const totais = [];
+  for (const meta of ordenadas) {
+    const ultimo = totais[totais.length - 1];
+    if (ultimo && comparar(ultimo.setor, nome(meta)) === 0) ultimo.total += 1;
+    else totais.push({ setor: nome(meta), total: 1 });
+  }
+  const secoes = [];
+  let posicao = 0;
+  for (const grupo of totais) {
+    const de = Math.max(inicio, posicao), ate = Math.min(fim, posicao + grupo.total);
+    if (de < ate) secoes.push({ setor: grupo.setor, total: grupo.total, continua: de > posicao, metas: ordenadas.slice(de, ate) });
+    posicao += grupo.total;
+  }
+  return secoes;
+}
+// Tela do colaborador: abertas na frente (prazo mais antigo primeiro, logo atrasadas no topo)
+// e encerradas à parte, concluídas antes das canceladas e da mais recente para a mais antiga.
+export function separarMetasColaborador(metas = []) {
+  const abertas = [], encerradas = [];
+  for (const meta of metas) (STATUS_ENCERRADOS.includes(meta.status) ? encerradas : abertas).push(meta);
+  return { abertas: ordenarMetasAtrasadas(abertas), encerradas: ordenarMetasEncerradas(encerradas) };
+}
+export function ordenarMetasEncerradas(metas = []) {
+  return [...metas].sort((a, b) => STATUS_ENCERRADOS.indexOf(a.status) - STATUS_ENCERRADOS.indexOf(b.status)
+    || comparar(b.prazo || '', a.prazo || '') || comparar(a.titulo || '', b.titulo || '') || comparar(a.id, b.id));
+}

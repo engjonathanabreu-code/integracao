@@ -27,3 +27,16 @@ export function filtrarClientes(clientes, busca, municipioId, {incluirConjuge=fa
     && [p.requerente?.nome, p.codigo, incluirConjuge?p.conjuge?.nome:null].some(v => normalizar(v || '').includes(termo)))
     .sort((a,b) => compararTextos(a.requerente?.nome,b.requerente?.nome) || compararTextos(a.codigo,b.codigo) || compararTextos(a.id,b.id));
 }
+
+// Regras de exibição da busca: a base tem milhares de clientes, então a lista só abre com
+// um termo mínimo e desenha um lote por vez. Todos os resultados continuam alcançáveis.
+export const MINIMO_BUSCA_CLIENTES = 2;
+export const LOTE_BUSCA_CLIENTES = 50;
+export function termoBuscaSuficiente(busca, minimo = MINIMO_BUSCA_CLIENTES) {
+  return normalizar(String(busca || '').trim()).length >= minimo;
+}
+export function limitarResultados(resultados = [], limite = LOTE_BUSCA_CLIENTES) {
+  const teto = Math.max(0, Math.floor(Number(limite) || 0));
+  const visiveis = resultados.length > teto ? resultados.slice(0, teto) : resultados;
+  return { visiveis, total: resultados.length, restantes: resultados.length - visiveis.length };
+}
