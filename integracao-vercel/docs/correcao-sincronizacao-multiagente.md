@@ -125,3 +125,13 @@ Causas levantadas pelo diagnóstico agregado dos aparelhos e corrigidas nesta en
 Pendente de decisão de produto: o pacote de Campo é um registro por conta; contas usadas em vários aparelhos
 continuam gerando um conflito por aparelho a cada ciclo. Tornar o pacote por aparelho elimina a causa, mas
 remove a restauração do pacote em outro aparelho.
+
+## Adendo — pente fino, onda 1 de sincronização (25/11/2026)
+
+- **C3, leitura periódica (SYNC-M5):** com o tempo real `conectado` e uma leitura completa iniciada depois da
+  conexão atual, o tick de 120 s e a troca de janela não releem a base (`src/releitura-periodica.js`); rede de
+  segurança de 7 min, abaixo dos 10 min de validade da base do escopo. A retomada da fila (C5) continua em todo
+  tick/foco. Reconexão, avisos do tempo real e atualização manual não mudam.
+- **C3, escopo de Clientes (SYNC-C1):** a edição de uma ficha **existente** passa a ter escopo (complemento legado
+  por `registro_id`; as linhas da ficha continuam sendo relidas por `lerFichaCliente`). Criação e remoção de
+  cliente, núcleos e misturas não mapeadas seguem em leitura completa.

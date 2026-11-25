@@ -159,7 +159,8 @@ test('equivalência Ordens de serviço: comentário novo e complemento',async()=
 
 test('escopo devolve null para módulos sem recorte seguro, criação definida pelo servidor e coleção sem id',()=>{
  const nulos={
-  processos:[ed('processos',uuid(5),{id:uuid(5)},{id:uuid(5),codigo:'1'})],
+  'cliente novo':[ed('processos',uuid(5),undefined,{id:uuid(5),codigo:'1'})],
+  'cliente removido':[ed('processos',uuid(5),{id:uuid(5)},undefined)],
   nucleos:[ed('nucleos',uuid(6),{id:uuid(6)},{id:uuid(6),nome:'n'})],
   planos:[ed('planos',uuid(7),{id:uuid(7)},{id:uuid(7),titulo:'p'})],
   usuarios:[ed('usuarios','erp_'+U1,{id:'erp_'+U1},{id:'erp_'+U1,tema:'escuro'})],
@@ -167,7 +168,7 @@ test('escopo devolve null para módulos sem recorte seguro, criação definida p
   'evento novo':[ed('eventos','evento_local',undefined,{id:'evento_local',titulo:'novo'})],
   'agenda nova':[ed('agendas','agenda_local',undefined,{id:'agenda_local',nome:'nova'})],
   'config sem id':[{colecao:'regrasIA',antes:{existe:true,valor:[]},depois:{existe:true,valor:[{id:'r'}]}}],
-  'mista com módulo não mapeado':[ed('metas',M1,meta(M1),meta(M1,{titulo:'y'})),ed('processos',uuid(5),{id:uuid(5)},{id:uuid(5),codigo:'2'})],
+  'mista com módulo não mapeado':[ed('metas',M1,meta(M1),meta(M1,{titulo:'y'})),ed('nucleos',uuid(5),{id:uuid(5)},{id:uuid(5),codigo:'2'})],
  };
  for(const [nome,edicoes] of Object.entries(nulos))assert.equal(escopoDaIntencao({edicoes},{}),null,nome);
  assert.equal(escopoDaIntencao({edicoes:[]},{}),null);
