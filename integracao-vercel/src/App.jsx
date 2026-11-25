@@ -2988,7 +2988,7 @@ function PendenciasMunicipio({municipio,carregarMunicipio}) {
   </div>;
 }
 
-function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio }) {
+function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio, abrirCliente }) {
   const ordem = useOrdenacao("nome");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [municipioPRF, setMunicipioPRF] = useState(null);
@@ -3011,6 +3011,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
           {cad.perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "municipio" })}><Plus size={16} />Novo município</button>}
         </div>
       </div>
+      <div style={{ marginBottom: 14 }}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} incluirConjuge /></div>
       <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 14 }}>
         <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Filtrar por UF">
           {ufs.map((u) => <button key={u} role="tab" aria-selected={u === uf} className={`btn btn-sm${u === uf ? " btn-primario" : ""}`} onClick={() => setUf(u)}>{u}</button>)}
