@@ -107,6 +107,7 @@ import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } fr
 import {prazoSugeridoMeta} from './metas-uso.js';
 import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
 import AprovacoesPendentesMetas from './AprovacoesPendentesMetas.jsx';
+import {alertaSemContatoMorador,temContatoMorador} from './contato-morador.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -2635,6 +2636,8 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const atualizarItem = (id, mud) => { filaRef.current = filaRef.current.map((i) => (i.id === id ? { ...i, ...mud } : i)); setFila(filaRef.current); };
   const definirRascunho = (np) => { rascunhoRef.current = np; setRascunho(np); };
   const avancar = () => {
+    const semContato = alertaSemContatoMorador(telefone);
+    if (semContato && !window.confirm(semContato)) return;
     const np = montarMorador(db, municipio.id, { remessaId, nucleoId: acessoCRM(usuario).comercial ? "" : nucleoId, nome, telefone, cpf, qtdUnidades });
     np.id = idMorador.current;
     definirRascunho(np);
@@ -2757,13 +2760,13 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
             {nucleoSel && !nucleoSel.remessaId && <div className="ajuda">O {nucleoSel.codigo} ainda não está em remessa e será vinculado à {nomeRemessa(db, remessaDe(db, remessaId))}.</div>}
           </div>
           <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mnomer">Nome do requerente</label><input id="mnomer" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="off" /></div>
+          <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtel">WhatsApp ou telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" />{!temContatoMorador(telefone) && <div className="ajuda">Peça o número agora: é por ele que a equipe fala com o cliente.</div>}</div>
           <div>
             <label className="rot" htmlFor="mcpf">CPF (obrigatório)</label>
             <input id="mcpf" className={`inp${tocouCpf && cpf && !cpfOk ? " erro" : ""}`} inputMode="numeric" value={cpf} autoComplete="off" onBlur={() => setTocouCpf(true)} onChange={(e) => { setCpf(fmtCPF(e.target.value)); setConfirmaDup(false); }} aria-required="true" />
             {tocouCpf && !cpf && <div className="msg-erro">O CPF é obrigatório.</div>}
             {tocouCpf && cpf && !cpfOk && <div className="msg-erro">CPF inválido. Confira os dígitos.</div>}
           </div>
-          <div><label className="rot" htmlFor="mtel">Telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" /></div>
           <div>
             <label className="rot" htmlFor="mqtd">Unidades a regularizar</label>
             <select id="mqtd" className="inp" value={qtdUnidades} onChange={(e) => setQtdUnidades(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map((q) => <option key={q} value={q}>{q}</option>)}</select>
