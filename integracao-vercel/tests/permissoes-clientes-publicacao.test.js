@@ -86,7 +86,8 @@ test('todos os setores ativos editam os quatro cadastros; anônimos e inativos c
   for(const [t] of alvos)await db.exec(`create policy leitura_teste_ativos on ${ident(t)} for select to authenticated using (exists(select 1 from profiles where id=auth.uid() and ativo))`);
   for(const tipo of tipos){
    const {usuario}=await perfil(db,tipo);const perm=permissoes(usuario);
-   assert.equal(perm.editarClientes,true,tipo);assert.equal(perm.editarEstrutura,true,tipo);
+   // EDI-C1: na tela, o setor de consulta (Marketing e Consulta nesta lista) não edita a ficha; o banco muda só com a migration preparada.
+   assert.equal(perm.editarClientes,!['Marketing','Consulta'].includes(tipo),tipo);assert.equal(perm.editarEstrutura,true,tipo);
    for(const [t,,chave] of alvos){
     const campo=t==='processos_kanban'?'nucleo':'nome';
     const ops=[{table:t,key:{id:id(chave)},changes:{[campo]:tipo}}];
@@ -129,7 +130,7 @@ test('todos os usuários ativos criam moradores pela RPC; inativos e anônimos n
   for(const tipo of tipos){
    const {usuario}=await perfil(db,tipo);
    assert.equal(permissoes(usuario).criarMoradores,true,tipo);
-   assert.equal(permissoes(usuario).editarClientes,true,tipo);
+   assert.equal(permissoes(usuario).editarClientes,!['Marketing','Consulta'].includes(tipo),tipo);
    await criar();
    await perfil(db,tipo,false);
    await assert.rejects(()=>criar(),/Sessão inválida/);

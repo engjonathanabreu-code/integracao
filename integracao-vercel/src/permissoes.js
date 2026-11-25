@@ -35,7 +35,8 @@ export function permissoes(u) {
   const financeiroResumo = financeiro || (ativo && (perfilCanonico ? diretorERP : dir));
   return {
     setor: s, diretor: dir, nome: SETORES[s]?.nome || "Consulta",
-    editarClientes: !!u && u.ativo !== false,
+    // EDI-C1: o setor de consulta (inclui tipos do ERP sem setor próprio) só lê a ficha.
+    editarClientes: !!u && u.ativo !== false && s !== "consulta",
     editarEstrutura: !!u && u.ativo !== false,
     criarNucleosRemessas: !!u && u.ativo !== false,
     criarMoradores: !!u && u.ativo !== false,
