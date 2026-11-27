@@ -4,8 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {escopoDaIntencao,tabelasCompletasDoEscopo,gruposDeLeituraDaIntencao} from '../src/leitura-intencoes.js';
-import {definirSessao,lerBase,lerFichaCliente,projetar,baseCompleta} from '../src/dados-compartilhados.js';
-import {recortarIntencao} from '../src/intencoes-edicao.js';
+import {definirSessao,lerBase,lerFichaCliente,projetar,baseCompleta,prepararEdicao} from '../src/dados-compartilhados.js';
+import {recortarIntencao,aplicarIntencao} from '../src/intencoes-edicao.js';
 import {atualizarFichas,clientesDasIntencoes} from '../src/sincronizacao-clientes.js';
 import {tabelasProprias} from '../src/persistencia-modulos.js';
 import {uuid} from './apoio-sync-fila.js';
@@ -114,4 +114,25 @@ test('SYNC-C1: ficha apagada ou oculta no servidor some também na leitura por e
  const porEscopo=await lerComo(novo,edicoes,{escopo:escopoDaIntencao({edicoes},{}),anterior:structuredClone(anterior)});
  assert.equal(porEscopo.r.fin_receb_clientes.some(c=>c.id===F1),false);
  assert.equal(porEscopo.r.integracao_moradores.some(e=>e.registro_id===P1),false);
+});
+
+test('a fila recupera o vínculo atual por identidade e prepara uma edição sem criar nem trocar a ficha',async()=>{
+ const antigo=servidorInicial(),novo=structuredClone(antigo),vinculoAtual=uuid(203);
+ novo.fin_receb_clientes[0]={...novo.fin_receb_clientes[0],id:vinculoAtual};
+ novo.integracao_moradores[0].referencia_id=vinculoAtual;
+ const anterior=projetar((await comServidor(antigo,()=>lerBase({municipios:[MUN]}))).r,{}).base;
+ const fichaAntes=projetar(anterior,{}).db.processos.find(p=>p.id===P1);
+ const edicoes=[ed('processos',P1,fichaAntes,{...fichaAntes,etapa:2})];
+ const {r}=await lerComo(novo,edicoes,{escopo:escopoDaIntencao({edicoes}),anterior:structuredClone(anterior)});
+ const state=projetar(r,{}),merge=aplicarIntencao(state.db,edicoes);
+ assert.equal(state.db.processos.find(p=>p.id===P1).financeiroRef,vinculoAtual);
+ assert.equal(state.db.processos.filter(p=>p.id===P1).length,1);
+ assert.deepEqual(merge.conflitos,[]);
+ const ops=prepararEdicao(state.db,merge.dados,state,state.db.usuarios[0]);
+ assert.equal(ops.length,1);
+ assert.equal(ops[0].table,'integracao_moradores');
+ assert.equal(ops[0].key.registro_id,P1);
+ assert.equal(ops[0].changes.dados.etapa,2);
+ assert.equal(ops[0].insert,undefined);
+ assert.equal(ops[0].changes.referencia_id,undefined);
 });

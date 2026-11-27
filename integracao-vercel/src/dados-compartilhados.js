@@ -829,8 +829,14 @@ export async function lerFichaCliente(cliente,{permitirAusente=false}={}) {
     referencia ? lerTabela('fin_receb_clientes', COLUNAS_FICHA_CLIENTE, `&id=eq.${encodeURIComponent(referencia)}`) : [],
     requisicao(`integracao_moradores?colecao=eq.processos&${filtro}`),
   ]);
-  const vinculo=complementos.find(e=>e.referencia_tabela==='fin_receb_clientes'&&e.referencia_id);
-  if(!clientes.length&&vinculo&&vinculo.referencia_id!==referencia)clientes=await lerTabela('fin_receb_clientes',COLUNAS_FICHA_CLIENTE,`&id=eq.${encodeURIComponent(vinculo.referencia_id)}`);
+  // A queued edit may carry an old financial reference. Only fall back once
+  // neither side recognizes it, and only to the exact integration record.
+  // A failed read (including 403) must not authorize fallback or creation.
+  if(!clientes.length&&!complementos.length&&cliente.financeiroRef)
+    complementos=await requisicao(`integracao_moradores?colecao=eq.processos&registro_id=eq.${encodeURIComponent(cliente.id)}`);
+  const vinculos=new Set(complementos.filter(e=>e.registro_id===cliente.id&&e.referencia_tabela==='fin_receb_clientes'&&uuid(e.referencia_id)).map(e=>e.referencia_id));
+  const [vinculo]=vinculos;
+  if(!clientes.length&&vinculos.size===1&&vinculo!==referencia)clientes=await lerTabela('fin_receb_clientes',COLUNAS_FICHA_CLIENTE,`&id=eq.${encodeURIComponent(vinculo)}`);
   if (!clientes.length && !complementos.length) {
     if(permitirAusente)return {clientes,complementos,indisponivel:true};
     throw Object.assign(new Error('Cliente indisponível para esta conta.'),{code:'CLIENTE_INDISPONIVEL'});
