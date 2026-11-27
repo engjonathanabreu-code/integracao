@@ -113,3 +113,12 @@ test('USO-M2: no banco, dois aparelhos e duas contas gravando o mesmo aviso deix
  await login(b);await assert.rejects(()=>gravar(b,{...aviso,data:new Date().toISOString()}),e=>e.code==='PT409');
  }finally{await db.close();}
 });
+
+test('implantação não cria avisos retroativos para metas de antes da data de corte',()=>{
+ const usuario={id:'diretor',setor:'diretoria'};
+ const base={metas:[
+  {id:'antes',titulo:'Legado',prazo:'2026-11-26',status:'Em andamento'},
+  {id:'depois',titulo:'Atual',prazo:'2026-11-27',status:'Em andamento'},
+ ]};
+ assert.deepEqual(avisosMetasVencidas(base,usuario,'2026-11-28',{prazoMinimo:'2026-11-27'}).map(a=>a.titulo),['Meta vencida: Atual']);
+});

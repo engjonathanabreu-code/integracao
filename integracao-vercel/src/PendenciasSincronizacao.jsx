@@ -1,3 +1,4 @@
+import {detalhesValidacaoLocal} from './diagnostico-validacao.js';
 import {diagnosticoOperacao} from './diagnostico-sincronizacao.js';
 import {useState} from 'react';
 import RevisaoConcorrencia from './RevisaoConcorrencia.jsx';
@@ -40,6 +41,15 @@ function agruparPorCausa(itens){
  // A root that is itself listed keeps its position; a missing one is shown by its dependents.
  return [...grupos.values()].map(g=>({...g,listada:itens.includes(g.raiz)}));
 }
+function DetalhesValidacao({item}){
+ const dados=detalhesValidacaoLocal(item);
+ if(!dados)return null;
+ return <p><strong>Pedido {String(item.id||'').slice(0,8)}</strong>
+  {dados.regra&&<> · Regra: {dados.regra}</>}
+  {dados.campo&&<> · Campo: {dados.campo}</>}
+  {dados.referencias.length>0&&<> · {dados.referencias.length===1?'Referência no pedido':'Referências candidatas'}: {dados.referencias.join(', ')}</>}
+ </p>;
+}
 const valor=v=>v===undefined?'Não disponível nesta leitura':v===null?'Ausente':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 export default function PendenciasSincronizacao({sync}){
  const [ocupado,setOcupado]=useState(false);
@@ -49,6 +59,7 @@ export default function PendenciasSincronizacao({sync}){
   const atraso=atrasada(i),indisponivel=registroIndisponivel(i);
   return <>{i.original.modulo} · {raiz?`aguardando ${tituloPendencia(raiz)}`:atraso?'atrasado (tentando novamente automaticamente)':indisponivel?'Registro indisponível — recriar ou descartar':rotulo(i)} · tentativa {i.tentativas}{motivos[i.erro?.codigo]&&<span> · {motivos[i.erro.codigo]}</span>}
    <p>{raiz?'Esta alteração será enviada depois que a anterior for concluída. Ela continua guardada neste aparelho.':atraso?'A conexão com o servidor está instável. As tentativas continuam automaticamente; nenhuma ação é necessária.':indisponivel?'O registro foi apagado ou ficou sem permissão para esta conta. Na revisão você pode descartar esta alteração; para recriá-lo, cadastre o registro novamente. O original continua preservado.':orientacaoPendencia(i)}</p>
+   {!raiz&&<DetalhesValidacao item={i}/>}
    <details><summary>Diagnóstico desta alteração</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(sync.diagnosticarPendencia?.(i.id)||diagnosticoOperacao(i),null,2)}</pre><p>A propagação para outros aparelhos exige observação na outra sessão.</p></details>
    {!atraso&&<button className="btn btn-sm" disabled={ocupado} onClick={()=>executar(()=>sync.abrirPendencia(i.id))}>Revisar esta alteração</button>}</>;
  };
@@ -68,6 +79,7 @@ export default function PendenciasSincronizacao({sync}){
    {dependentes.length>0&&<ul aria-label={`Aguardando ${tituloPendencia(raiz)}`}>{dependentes.map(i=><li key={i.id}>{item(i,raiz)}</li>)}</ul>}</li>)}</ul>
   {p&&<section aria-label="Prévia da recuperação"><strong>Revisão: {p.item.original.modulo}</strong>
    <p>Pedido {p.id.slice(0,8)}. {orientacaoPendencia(p.item)}</p>
+   <DetalhesValidacao item={p.item}/>
    {p.somenteExportar?<p>{p.item.motivo}<button className="btn btn-sm" onClick={sync.reopen}>Baixar original preservado</button></p>:<>
     {p.leitura&&(p.leitura.campos.length>0||p.leitura.arquivos.length>0)?<section aria-label="Revisar leitura após recibo" style={{overflowWrap:'anywhere'}}>
      <p>A gravação tem recibo, mas estes valores não aparecem na leitura atual. Reconhecer essa leitura não reenvia a alteração. O conteúdo original continuará no histórico local, disponível para exportação.</p>

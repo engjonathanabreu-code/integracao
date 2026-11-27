@@ -50,11 +50,12 @@ export function avisoMetaVencida(meta){
   rota:{pag:'metas'},setores:['diretoria'],usuarios};
 }
 // Só quem recebe o aviso o gera: responsáveis da meta e a Diretoria.
-export function avisosMetasVencidas(db,usuario,hoje){
+export const INICIO_AVISOS_METAS_VENCIDAS = "2026-11-27";
+export function avisosMetasVencidas(db,usuario,hoje,{prazoMinimo}={}){
  if(!db||!usuario||usuario.ativo===false)return [];
  const existentes=new Set((db.notificacoes||[]).map(n=>n.id)),vistos=new Set(),avisos=[];
  for(const meta of db.metas||[]){
-  if(!metaVencidaParaAviso(meta,hoje)||!(usuario.setor==='diretoria'||responsavelMeta(meta,usuario)))continue;
+  if((prazoMinimo&&meta?.prazo<prazoMinimo)||!metaVencidaParaAviso(meta,hoje)||!(usuario.setor==='diretoria'||responsavelMeta(meta,usuario)))continue;
   const aviso=avisoMetaVencida(meta);
   if(existentes.has(aviso.id)||vistos.has(aviso.id))continue;
   vistos.add(aviso.id);avisos.push(aviso);

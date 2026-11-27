@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PGlite} from '@electric-sql/pglite';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+// Deterministic credentials exist only in disposable fixtures. Production uses random 256-bit local proofs.
+const prova=(inst,n=2)=>createHash('sha256').update('fixture:'+n+':'+inst).digest('hex');
+const vinculo=(inst,n=2)=>({instalacao_id:inst,prova_instalacao:prova(inst,n)});
+const diagnostico=inst=>id(10000+Number(inst.slice(-12)));
+const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
+const migration='../supabase/migrations/20261112202826_suporte_remoto_exclusivo.sql';
+const fixture=`create role authenticated;create role anon;create role service_role;create schema auth;
+ create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+ create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
+ grant usage on schema auth to authenticated;grant execute on function auth.uid(),auth.jwt() to authenticated;
+ create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+ create table profiles(id uuid primary key,nome text,ativo boolean,tipo text);
+ create table integracao_pedidos(usuario_id uuid,pedido uuid,resultado jsonb,primary key(usuario_id,pedido));
+ create table integracao_sincronizacao_dispositivos(usuario_id uuid,instalacao_id uuid,versao text,ultimo_contato timestamptz,resumo jsonb);
+ insert into profiles values('${id(1)}','Operador de teste',true,'Administrador'),('${id(2)}','Conta A',true,'Topografia'),('${id(3)}','Outro administrador',true,'Administrador'),('${id(4)}','Outro diretor',true,'Diretor Técnico'),('${id(5)}','Conta inativa',false,'Administrador');`;
+const nova='../supabase/migrations/20261125202348_suporte_retomada_validacao_crm.sql';
+test('retomada é desligada por padrão e exige usuário, dispositivo, revisão e lease exatos',async()=>{
+ const db=new PGlite(),inst=id(305),pedido=id(450),rev='a'.repeat(64),consumidor=id(900);
+ const login=async(n,sid=id(100+n))=>{
+  await db.exec('reset role');
+  await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",[id(n),JSON.stringify({sub:id(n),session_id:sid})]);
+  await db.exec('set role authenticated');
+ };
+ const rpc=async(a,args={})=>(await db.query('select public.integracao_suporte_operar($1,$2::jsonb) r',[a,JSON.stringify(args)])).rows[0].r;
+ const evento={id:id(901),atendimento:id(902),usuario_id:id(2),instalacao_id:inst,tipo:'retomar_validacao_crm',pedido,revisao:rev};
+ const aparelho={...vinculo(inst),diagnostico_instalacao_id:diagnostico(inst),versao:'versao-testar',protocolo:1};
+ const ref={id:evento.id,...vinculo(inst),consumidor};
+ try{
+  await db.exec(fixture);
+  for(const [s,n] of [[101,1],[102,2],[103,3],[202,2]])await db.query('insert into auth.sessions(id,user_id) values($1,$2)',[id(s),id(n)]);
+  await db.exec(read(migration));await db.exec(read(nova));
+  await db.query('update integracao_suporte_privado.config set operador=$1,habilitado=true',[id(1)]);
+  await login(2);await rpc('contatar',aparelho);
+  await login(1);await assert.rejects(rpc('solicitar',evento),{code:'42501'});
+  await db.exec('reset role');await db.query('update integracao_suporte_privado.config set retomada_crm=true,retomada_crm_alvo=$1',[id(2)]);
+  await login(1);await assert.rejects(rpc('solicitar',evento),{code:'22023'});
+  await login(2);await rpc('contatar',{...aparelho,versao:'versao-testar-crm1'});
+  await login(3);await assert.rejects(rpc('solicitar',evento),{code:'42501'});
+  await login(1);
+  await assert.rejects(rpc('solicitar',{...evento,usuario_id:id(3)}),{code:'42501'});
+  await assert.rejects(rpc('solicitar',{...evento,revisao:null}),{code:'22023'});
+  await assert.rejects(rpc('solicitar',{...evento,pedido:null}),{code:'22023'});
+  assert.equal((await rpc('solicitar',evento)).revisao,rev);
+  assert.equal((await rpc('solicitar',evento)).id,evento.id);
+  await assert.rejects(rpc('solicitar',{...evento,revisao:'b'.repeat(64)}),{code:'22023'});
+  await login(2);
+  const entrega=await rpc('receber',{...vinculo(inst),consumidor});
+  assert.equal(entrega.comando.revisao,rev);
+  await login(2,id(202));await assert.rejects(rpc('autorizar',ref),{code:'42501'});
+  await login(2);assert.equal((await rpc('autorizar',ref)).autorizado,true);
+  assert.equal((await rpc('validar_execucao',ref)).autorizado,true);
+  await db.exec('reset role');await db.query("insert into integracao_pedidos values($1,$2,'{}')",[id(2),pedido]);
+  await login(2);assert.equal((await rpc('validar_execucao',ref)).autorizado,false);
+  await db.exec('reset role');await db.query('delete from integracao_pedidos where pedido=$1',[pedido]);
+  await db.exec("update integracao_suporte_privado.solicitacoes set estado='concluida',criado_em=now()-interval '2 days'");
+  await login(1);await assert.rejects(rpc('solicitar',{...evento,id:id(903)}),{code:'23505'});
+  assert.equal((await rpc('listar')).config.retomada_crm_alvo,undefined);
+ }finally{await db.close()}
+});

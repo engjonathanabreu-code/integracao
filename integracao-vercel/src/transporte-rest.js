@@ -41,6 +41,9 @@ export async function buscarREST(url, opcoes = {}) {
         const retry=response.headers?.get?.('Retry-After');
         if(retry){const segundos=Number(retry),ms=Number.isFinite(segundos)?segundos*1000:Date.parse(retry)-Date.now();if(Number.isFinite(ms)&&ms>=0)erro.retryAfterMs=ms;}
         erro.code = body?.code;
+        // Some gateways expose the name separately. The queue still validates
+        // it against its fixed rules; never persist the response body.
+        if(typeof body?.constraint==='string')erro.constraint=body.constraint;
         erro.details = body?.details;
         throw erro;
       }

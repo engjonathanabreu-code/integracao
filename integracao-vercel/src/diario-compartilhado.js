@@ -1,10 +1,13 @@
+import {conflitoReconciliavelPreferencias,escopoPreferencias,provarPreferenciasNoServidor} from './reconciliacao-preferencias.js';
+import {conferirRetomadaCrm,elegivelRetomadaCrm} from './retomada-remota-validacao.js';
+import {motivoEspera} from './estado-sincronizacao.js';
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
 import {provarMetasNoServidor,conflitoReconciliavelMetas} from './reconciliacao-metas.js';
 import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa,classificarFalha,podeConciliarRecusaAutomaticamente} from './estado-sincronizacao.js';
 export {motivoEspera} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
-import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
+import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,recusadoComReciboConsultavel,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
@@ -52,7 +55,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   if(opcoes.substituirId)payload.substituirId=opcoes.substituirId;
   volateis.set(id,payload);
   // Serialization stays local to this controller; the database also orders other tabs.
-  const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar(payload);}catch(e){if(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA')volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
+  const trabalho=corrente.catch(()=>{}).then(async()=>{let item;try{item=await fila.enfileirar({...payload,retomadaRemota:opcoes.retomadaRemota});}catch(e){if(opcoes.retomadaRemota||(opcoes.substituirId&&e.code==='REVISAO_NECESSARIA'))volateis.delete(id);throw e;}volateis.delete(id);sinalizar();if(ativo())await atualizar();return item;});corrente=trabalho;return trabalho;
  }
  function adicionarArquivos(db,arquivos){
   const snapshot=structuredClone(arquivos),dados=structuredClone(db);
@@ -151,20 +154,23 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
  // it wrote nothing); then the same field merge used by preparation. A clean
  // merge replaces the refused request through the review path (`substituirId`);
  // anything else leaves it in review exactly as before. Never repeated.
- async function conciliarRecusas(){
+ async function conciliarRecusas(tentados,validar,verificar){
+  const destaPassagem=new Set(tentados);
   const sessaoUtilizavel=()=>typeof estadoSessao!=='function'||['valida','renovando'].includes(estadoSessao());
-  const candidatos=items.filter(i=>podeConciliarRecusaAutomaticamente(i,Date.now())).map(i=>i.id);
+  const candidatos=items.filter(i=>destaPassagem.has(i.id)&&podeConciliarRecusaAutomaticamente(i,Date.now())).map(i=>i.id);
   let total=0;
   for(const id of candidatos){
    conferir();if(!sessaoUtilizavel())break;
    try{
-    const item=await fila.marcarConciliacaoAutomatica?.(conta,id);conferir();
+    await validar();conferir();verificar();
+    const item=await fila.marcarConciliacaoAutomatica?.(conta,id);conferir();verificar();
     if(!item)continue;
     if(await consultarRecibo(item)!==null)continue;
-    conferir();
+    conferir();verificar();
     const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
     if(r.conflitos.length||!extrairIntencao(remoto.db,r.dados).length)continue;
-    await adicionar(remoto.db,r.dados,{},{substituirId:id});conferir();total++;
+    await validar();conferir();verificar();
+    await adicionar(remoto.db,r.dados,{},{substituirId:id});conferir();verificar();total++;
    }catch(e){if(e.code==='SESSAO_ALTERADA')throw e;/* stays in review */}
   }
   if(candidatos.length){await atualizar();if(total)sinalizar();}
@@ -179,8 +185,16 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    // Read-only blocked conflicts first, so their dependent requests can then be
    // evaluated in order. No repeated queries for the same item within the pass.
    const lidos=[];
-   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())));n++){
-    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())||conflitoReconciliavelPreferencias(i,Date.now())||recusadoComReciboConsultavel(i,Date.now())));n++){
+    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();conferir();verificar();return consultarRecibo(item);},reler:async item=>{
+     const {remoto}=await lerItem(item);conferir();verificar();await confirmar(item,remoto);conferir();verificar();
+    },provar:async item=>{
+     if(escopoPreferencias(item)){
+      await validar();conferir();
+      const {remoto,edicoes}=await lerItem(item);
+      const prova=provarPreferenciasNoServidor(item,edicoes,remoto);
+      if(prova)return {prova,aposConfirmar:()=>confirmarEstado(item,remoto,{...prova,depois:recortarIntencao(remoto.db,edicoes),operacoes:item.payload})};
+     }
      if(arquivoEmConflito(item))return provarArquivoPresente(item);
      if(!planejarMetas)return null;
      const {remoto,edicoes}=await lerItem(item);
@@ -210,7 +224,7 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    }
    await atualizar();if(!resultado)break;sinalizar();
   }
-  if(!id)await conciliarRecusas();
+  if(!id)await conciliarRecusas(tentados,validar,verificar);
   return items;
  }
  async function consultarExistente(id,{modo='consulta',validar=async()=>{},verificar=()=>{}}={}){
@@ -227,6 +241,29 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const r=aplicarIntencao(remoto.db,edicoes,{preservarDerivadas:preservarDerivadasFixadas(item)});
   const leitura=await revisarLeitura(item,remoto);conferir();
   revisao={id,item,remoto:remoto.db,edicoes,conflitos:r.conflitos,leitura,snapshot:snapshotLeitura(item,remoto,edicoes)};return {...revisao,dados:r.dados};
+ }
+ async function retomarRecusaCrm({pedido,revisao:revisaoSolicitada,validar,verificar}){
+  await capturas;await corrente;conferir();verificar();await atualizar();verificar();
+  const item=items.find(i=>i.id===pedido),alvo={conta,pedido,revisao:revisaoSolicitada};
+  if(!elegivelRetomadaCrm(item,alvo)||motivoEspera(item,items))return null;
+  let leitura=null;
+  const resposta=await conferirRetomadaCrm({item,alvo,consultarRecibo,revalidar:validar,verificar,reler:async()=>{
+   leitura=await lerItem(item);
+   // A remapped ID is a distinct recovery target and must be reviewed locally.
+   if(!igualSemantico(leitura.edicoes,item.original.intencao.edicoes))return null;
+   const {db}=leitura.remoto;
+   const e=leitura.edicoes.find(x=>x.colecao==='processos'),l=leitura.edicoes.find(x=>x.colecao==='auditoria');
+   if(!Array.isArray(db.processos)||!Array.isArray(db.auditoria))return null;
+   return {cadastro:db.processos.find(x=>x.id===e.id),auditoria:db.auditoria.find(x=>x.id===l.id)??null};
+  }});
+  if(resposta.codigo!=='PREVIA_VALIDADA')return null;
+  const {remoto,edicoes}=leitura;
+  const proposta=aplicarIntencao(remoto.db,edicoes);
+  if(proposta.conflitos.length||extrairIntencao(remoto.db,proposta.dados).length!==2)return null;
+  await validar();verificar();
+  if(await consultarRecibo(item)!==null)return null;
+  await validar();verificar();conferir();
+  return adicionar(remoto.db,proposta.dados,{},{substituirId:pedido,retomadaRemota:{revisao:revisaoSolicitada,verificar}});
  }
  async function reconhecerLeitura(id){
   if(!revisao||revisao.id!==id||!revisao.item.recibo)throw Error('Abra a prévia de uma gravação com recibo antes de reconhecer os valores atuais.');
@@ -342,5 +379,5 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const salvo=await fila.exportar(conta),ids=new Set(salvo.intencoes.map(i=>i.id));
   return {...salvo,naoPersistidas:emCurso.filter(i=>!ids.has(i.id))};
  }
- return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
+ return {fechar:()=>{canal?.close();Promise.allSettled([corrente,capturas]).then(()=>fila.fechar()).catch(()=>{});},adicionar,adicionarArquivos,migrar,atualizar,materializar,executar,consultarExistente,retomarRecusaCrm,previa,resolver,reconhecerLeitura,descartar,retomarAutomaticas,retomarTransitorias,rearmarCadastro,verificarPreparacoesAoReconectar,verificarReleiturasTemporarias,esperar:()=>Promise.all([corrente,capturas]),snapshotPendencias,exportar,itens:()=>[...items,...avisos,...[...volateis.values()].map(p=>({id:p.id,original:{modulo:p.modulo,intencao:p.intencao},estado:'persistencia_falhou',tentativas:0,proximaTentativa:Number.MAX_SAFE_INTEGER}))]};
 }

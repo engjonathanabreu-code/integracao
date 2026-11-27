@@ -674,7 +674,7 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
   const tentarNovamente=async()=>{const gen=generation.current;retentativas.current=0;if(usarDiario&&diario.current){try{await diario.current.retomarAutomaticas();conferirGeracao(gen);}catch(e){if(gen===generation.current)setError(e.message);return;}}return flush();};
   const contextoEspera=()=>({diarioPronto:usarDiario&&!!diario.current,abrindo:opening.current,basePronta:!!server.current,sessaoPronta:temSessao(),processando:busy.current,editando:temEdicaoEmAndamento()});
   const diagnosticarPendencia=id=>{const itens=diario.current?.itens()||[],item=itens.find(i=>i.id===id);return item?diagnosticoOperacao(item,Date.now(),itens,contextoEspera()):null;};
-  const executarSuporte=async({tipo,pedido=null},conferirComando=()=>{},revalidar=async()=>{})=>{
+  const executarSuporte=async({tipo,pedido=null,revisao=null},conferirComando=()=>{},revalidar=async()=>{})=>{
     const gen=generation.current,d=diario.current;
     const verificar=()=>{conferirGeracao(gen);try{conferirComando();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}};
     const validar=async()=>{verificar();try{await revalidar();}catch{throw Object.assign(Error('Solicitação de suporte interrompida.'),{code:'SESSAO_ALTERADA'});}verificar();};
@@ -694,6 +694,15 @@ export function useDadosCompartilhados({setDb,storage,baseLimpa,usarDiario=true}
         const lido=await d.consultarExistente(pedido,{modo:tipo==='consultar_recibo'?'consulta':'releitura',validar,verificar});verificar();
         publish(d.materializar(server.current.db));await saveDraft();verificar();
         return resultado(!lido?'EM_ANDAMENTO':tipo==='reler_confirmacao'?'LEITURA_CONFIRMADA':lido.recibo?alvo.recibo?'RECIBO_LOCAL':'RECIBO_ENCONTRADO':'SEM_RECIBO');
+      }
+      if(tipo==='retomar_validacao_crm'){
+        const novo=await d.retomarRecusaCrm({pedido,revisao,validar,verificar});verificar();
+        if(!novo)return resultado('REVISAO_NECESSARIA');
+        await d.executar({id:novo.id,validar,verificar});verificar();
+        publish(d.materializar(server.current.db));await saveDraft();verificar();
+        const envio=d.itens().find(i=>i.id===novo.id);
+        return {codigo:envio?.estado==='confirmado'&&envio.recibo?'LEITURA_CONFIRMADA':envio?.estado?.startsWith('bloqueado')?'REVISAO_NECESSARIA':'EM_ANDAMENTO',
+          itens:diagnosticosSuporte(d.itens(),novo.id)};
       }
       if(tipo!=='retomar_automaticas')return resultado('REVISAO_NECESSARIA');
       if(alvo&&(alvo.estado.startsWith('bloqueado')||['persistencia_falhou','legado_revisao'].includes(alvo.estado)))return resultado('REVISAO_NECESSARIA');

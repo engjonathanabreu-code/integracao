@@ -118,3 +118,19 @@ test('SYNC-M4: a regra só vale para recusa comprovada no envio, sem recibo, sem
  assert.equal(await fila.marcarConciliacaoAutomatica(CONTA,'inexistente'),null);
  await fila.fechar();
 });
+
+test('o novo conciliador não retoma pendência que já estava bloqueada antes desta passagem',async()=>{
+ const a=ambienteConciliacao({colecao:'metas',registro:META});
+ try{
+  const original=await editar(a,{titulo:'Minha edição'});
+  a.ganchos.antesDoEnvio.push(()=>{a.atual(M).observacoes='Edição concorrente'});
+  await a.diario.executar({id:original.id});
+  await a.diario.executar();
+  const itens=await a.itens();
+  assert.equal(itens.length,1);
+  assert.equal(itens[0].estado,'bloqueado_conflito');
+  assert.equal(itens[0].conciliacaoAutomatica,undefined);
+  assert.deepEqual(a.chamadas.consultas,[]);
+  assert.equal(a.chamadas.envios,1);
+ }finally{a.diario.fechar();}
+});

@@ -16,7 +16,8 @@
       "fix/cadeia-apenas-recibos": false,
       "fix/retomada-sincronizacao-20261123": false,
       "codex/otimizar-sincronizacao-confirmacao": false,
-      "correcao/sincronizacao-pendencias": false
+      "correcao/sincronizacao-pendencias": false,
+      "fix/reconciliacao-e-diagnostico": false
     }
   }
 }
