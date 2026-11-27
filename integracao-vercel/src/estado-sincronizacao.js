@@ -186,7 +186,7 @@ const idsAnexos=v=>Array.isArray(v?.arquivos)?v.arquivos.map(a=>a?.id).join('|')
 export function podeConciliarRecusaAutomaticamente(i,agora,modulos=MODULOS_CONCILIACAO_AUTOMATICA){
  const o=i?.original,edicoes=o?.intencao?.edicoes;
  return !!i&&i.estado==='bloqueado_conflito'&&i.erro?.codigo==='PT409'&&i.erro.fase==='envio'&&i.erro.rejeicaoConfirmada===true&&revisaoDeRecusa(i)&&
-  !i.recibo&&!(i.leaseAte>agora)&&!i.conciliacaoAutomatica&&!o.substitui&&!o.legado&&o.preparar===true&&Array.isArray(i.payload)&&i.payload.length>0&&
+  !i.recibo&&!(i.leaseAte>agora)&&!i.conciliacaoAutomatica&&!i.vinculoCanonicoReavaliado&&!o.substitui&&!o.legado&&o.preparar===true&&Array.isArray(i.payload)&&i.payload.length>0&&
   Array.isArray(edicoes)&&edicoes.some(e=>modulos.includes(e?.colecao))&&
   edicoes.every(e=>e&&typeof e.id==='string'&&!!e.id&&[...modulos,'auditoria','notificacoes'].includes(e.colecao)&&
    // Anexos têm envio e confirmação próprios; ficam na revisão manual.
