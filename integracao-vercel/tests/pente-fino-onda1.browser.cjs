@@ -3,6 +3,7 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const assert=require('node:assert/strict');
 const ORIGEM=process.env.TEST_ORIGIN||'http://127.0.0.1:5178';
 (async()=>{const browser=await chromium.launch({headless:true});try{
+ const fixarData=page=>page.clock.setFixedTime(new Date('2026-12-04T15:00:00Z'));
  const entrar=async(page)=>{await page.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');await page.getByLabel('Senha',{exact:true}).fill('fixture');await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.getByRole('navigation').waitFor();};
  // Metas do cenário: uma vencida há exatamente 5 dias (com item de checklist) e uma no prazo.
  const semearMetas=()=>{const b=window.baseFixture,dia=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -17,7 +18,7 @@ const ORIGEM=process.env.TEST_ORIGIN||'http://127.0.0.1:5178';
 
  // 1, 2 e USO-M2: cartão de meta, confirmações do detalhe e aviso único de meta vencida.
  {const page=await browser.newPage({viewport:{width:1440,height:1000}}),erros=[];page.on('pageerror',e=>erros.push(e.message));page.setDefaultTimeout(15000);
-  await page.goto(ORIGEM+'/tests/browser.html');await page.evaluate(semearMetas);await entrar(page);await visaoAtual(page,false);
+  await fixarData(page);await page.goto(ORIGEM+'/tests/browser.html');await page.evaluate(semearMetas);await entrar(page);await visaoAtual(page,false);
   const vencida=cartao(page,'Meta vencida fictícia'),noPrazo=cartao(page,'Meta no prazo fictícia');
   assert.equal(await vencida.locator('.selo-status-meta').innerText(),'Atrasada há 5 dias');assert.match(await vencida.getAttribute('class'),/\batrasada\b/);
   assert.equal(await noPrazo.locator('.selo-status-meta').innerText(),'Em andamento');assert.doesNotMatch(await noPrazo.getAttribute('class'),/\batrasada\b/);
@@ -40,7 +41,7 @@ const ORIGEM=process.env.TEST_ORIGIN||'http://127.0.0.1:5178';
 
  // 3: em 390 px o formulário de meta fica em uma coluna e as ações ficam visíveis sem rolar.
  {const page=await browser.newPage({viewport:{width:390,height:844}}),erros=[];page.on('pageerror',e=>erros.push(e.message));page.setDefaultTimeout(15000);
-  await page.goto(ORIGEM+'/tests/browser.html?mobile');await page.evaluate(semearMetas);await entrar(page);await visaoAtual(page,true);
+  await fixarData(page);await page.goto(ORIGEM+'/tests/browser.html?mobile');await page.evaluate(semearMetas);await entrar(page);await visaoAtual(page,true);
   await page.getByRole('button',{name:'Nova Meta',exact:true}).click();const modal=page.getByRole('dialog',{name:'Nova Meta',exact:true});await modal.waitFor();
   const medidas=await modal.evaluate(el=>{const campos=[...el.querySelectorAll('.meta-formulario input:not([type=checkbox]):not([type=hidden]),.meta-formulario select,.meta-formulario textarea')].filter(c=>c.offsetParent).map(c=>c.getBoundingClientRect());
    const lado=campos.some((a,i)=>campos.some((b,j)=>i<j&&a.top<b.bottom-4&&b.top<a.bottom-4&&(a.right<=b.left||b.right<=a.left)));
