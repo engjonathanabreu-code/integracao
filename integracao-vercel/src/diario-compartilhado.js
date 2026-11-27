@@ -1,3 +1,4 @@
+import {vinculoConfirmadoParaRetomada,limitarOperacoesRetomada} from './retomada-vinculo-ficha.js';
 import {conflitoReconciliavelPreferencias,escopoPreferencias,provarPreferenciasNoServidor} from './reconciliacao-preferencias.js';
 import {conferirRetomadaCrm,elegivelRetomadaCrm} from './retomada-remota-validacao.js';
 import {motivoEspera} from './estado-sincronizacao.js';
@@ -113,11 +114,16 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
   const remoto=await carregar(edicoes);conferir();return {remoto,edicoes};
  }
  async function prepararItem(item){
-  const {remoto,edicoes}=await lerItem(item),r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
+  const {remoto,edicoes}=await lerItem(item);
+  const vinculo=item.vinculoCanonicoReavaliado?vinculoConfirmadoParaRetomada(item,edicoes,remoto):null;
+  if(item.vinculoCanonicoReavaliado&&!vinculo)
+   throw Object.assign(Error('O vínculo da ficha ainda não pôde ser confirmado no servidor.'),{code:'CLIENTE_SEM_VINCULO_CANONICO',status:422});
+  const r=aplicarIntencao(remoto.db,ajustarComparacaoFinanceira(edicoes,remoto));
   const prova=planejarMetas&&(r.conflitos.length||igualSemantico(recortarIntencao(r.dados,edicoes),recortarIntencao(remoto.db,edicoes)))&&verificarMetas(item,remoto,edicoes);
   if(prova)return {provaEstado:prova,aposConfirmar:()=>confirmarEstado(item,remoto,prova)};
   if(r.conflitos.length)throw Object.assign(Error('Há valores diferentes no servidor. Revise esta alteração.'),{code:'PT409',status:409});
-  const pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();
+  let pronto=await preparar(remoto,r.dados,arquivosDaIntencao(item,items));conferir();
+  if(vinculo)pronto=limitarOperacoesRetomada(item,pronto,vinculo);
   // Nothing to write and no file involved: if every edited record, after the
   // merge, is what this fresh read already returns (same confirmation contract,
   // no payload), the request is closed as already present instead of parking as
