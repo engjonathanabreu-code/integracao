@@ -1,3 +1,4 @@
+import {conflitoReconciliavelPreferencias,escopoPreferencias,provarPreferenciasNoServidor} from './reconciliacao-preferencias.js';
 import {conferirRetomadaCrm,elegivelRetomadaCrm} from './retomada-remota-validacao.js';
 import {motivoEspera} from './estado-sincronizacao.js';
 import {validarVinculoMoradoresDoEnvio} from './dados-compartilhados.js';
@@ -6,7 +7,7 @@ import {ajustarComparacaoFinanceira} from './contrato-financeiro.js';
 import {revisaoDeRecusa,classificarFalha} from './estado-sincronizacao.js';
 export {motivoEspera} from './estado-sincronizacao.js';
 import {edicaoDerivada,preservarDerivadasFixadas} from './projecoes-derivadas.js';
-import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,checksumIntencao} from './fila-intencoes.js';
+import {abrirFilaIntencoes,processarIntencao,lerIntencaoExistente,reconciliarIntencaoMetas,recusadoComReciboConsultavel,checksumIntencao} from './fila-intencoes.js';
 import {extrairIntencao,recursosIntencao,aplicarIntencao,semearOriginais,recortarIntencao} from './intencoes-edicao.js';
 import {referenciasIdentidades,remapearIdentidades} from './aliases-tipados.js';
 import {igualSemantico} from './igualdade-semantica.js';
@@ -156,8 +157,16 @@ export function criarDiarioCompartilhado({conta,ativo,carregar,preparar,projetar
    // Read-only blocked conflicts first, so their dependent requests can then be
    // evaluated in order. No repeated queries for the same item within the pass.
    const lidos=[];
-   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())));n++){
-    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:ativo,provar:async item=>{
+   for(let n=0;n<limite&&items.some(i=>!lidos.includes(i.id)&&(planejarMetas&&conflitoReconciliavelMetas(i,Date.now())||conflitoArquivoReconciliavel(i,Date.now())||conflitoReconciliavelPreferencias(i,Date.now())||recusadoComReciboConsultavel(i,Date.now())));n++){
+    const resultado=await reconciliarIntencaoMetas(fila,{conta,dono,estadoSessao,ignorarIds:lidos,aoReservar:id=>lidos.push(id),sessaoAtual:()=>{verificar();return ativo();},consultarRecibo:async item=>{await validar();conferir();verificar();return consultarRecibo(item);},reler:async item=>{
+     const {remoto}=await lerItem(item);conferir();verificar();await confirmar(item,remoto);conferir();verificar();
+    },provar:async item=>{
+     if(escopoPreferencias(item)){
+      await validar();conferir();
+      const {remoto,edicoes}=await lerItem(item);
+      const prova=provarPreferenciasNoServidor(item,edicoes,remoto);
+      if(prova)return {prova,aposConfirmar:()=>confirmarEstado(item,remoto,{...prova,depois:recortarIntencao(remoto.db,edicoes),operacoes:item.payload})};
+     }
      if(arquivoEmConflito(item))return provarArquivoPresente(item);
      if(!planejarMetas)return null;
      const {remoto,edicoes}=await lerItem(item);
