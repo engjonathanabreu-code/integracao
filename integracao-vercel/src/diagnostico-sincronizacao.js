@@ -4,11 +4,15 @@ import {escopoArquivosDaIntencao} from './arquivos-intencoes.js';
 const estados=new Set(['persistencia_falhou','legado_revisao','pendente_local','resultado_desconhecido','confirmado_aguardando_leitura','bloqueado_conflito','bloqueado_validacao','falha_transitoria']);
 const modulos=new Set(['processos','municipios','remessas','nucleos','metas','planos','ordensServico','eventos','usuarios','arquivos','auditoria','config','crmCards','crmAtendimentos','crmTarefas','conversas','mensagens','pontoBatidas','pontoSolicitacoes','marketingGrupos']);
 const codigos=new Set(['SESSAO_EXPIRADA','SESSAO_AUSENTE','TRANSPORTE','LEITURA_DIVERGENTE','ARQUIVO_LOCAL_AUSENTE','RESPONSAVEL_INDISPONIVEL','IDENTIDADE_OUTRA_META','PERSISTENCIA_INDISPONIVEL','PERSISTENCIA_ABORTADA','FILA_BLOQUEADA']);
+// Fixed five-character code accepted by the existing server validator. Do
+// not transmit the original message, row identifier, or any business data.
+const codigoPublico=bruto=>bruto==='CLIENTE_SEM_VINCULO_CANONICO'?'SVINC':
+ bruto==='SEM_ERRO'||codigos.has(bruto)||/^[0-9A-Z]{5}$/.test(bruto)?bruto:'OUTRO';
 export function resumoDiagnostico(itens){
  const grupos=new Map();
  for(const i of itens.filter(i=>!terminal(i))){
   const estado=estados.has(i.estado)?i.estado:'legado_revisao',modulo=modulos.has(i.original?.modulo)?i.original.modulo:'outros';
-  const bruto=String(i.erro?.codigo||'SEM_ERRO'),codigo=bruto==='SEM_ERRO'||codigos.has(bruto)||/^[0-9A-Z]{5}$/.test(bruto)?bruto:'OUTRO';
+  const bruto=String(i.erro?.codigo||'SEM_ERRO'),codigo=codigoPublico(bruto);
   const chave=JSON.stringify([estado,modulo,codigo]),grupo=grupos.get(chave)||{estado,modulo,codigo,quantidade:0};grupo.quantidade++;grupos.set(chave,grupo);
  }
  return [...grupos.values()];
@@ -75,7 +79,7 @@ export function motivoEsperaLocal({diarioPronto=true,abrindo=false,basePronta=tr
 export function diagnosticoOperacao(i,agora=Date.now(),itens=null,contexto=null){
  const fase=fases.has(i.fase)?i.fase:fases.has(i.erro?.fase)?i.erro.fase:null;
  const bruto=String(i.erro?.codigo||'SEM_ERRO');
- const codigo=bruto==='SEM_ERRO'||codigos.has(bruto)||/^[0-9A-Z]{5}$/.test(bruto)?bruto:'OUTRO';
+ const codigo=codigoPublico(bruto);
  const situacao=i.recibo?(i.lidoEm?'leitura_confirmada':i.erro?.codigo==='LEITURA_DIVERGENTE'?'gravado_leitura_divergente':'gravado_leitura_pendente')
   :i.enviadoEm?(i.erro?.rejeicaoConfirmada?'recusado':'resultado_incerto'):i.estado?.startsWith('bloqueado')?'recusado':'nao_enviado';
  const versao=typeof i.clienteVersao==='string'&&/^[a-zA-Z0-9._-]{1,80}$/.test(i.clienteVersao)?i.clienteVersao:'anterior';

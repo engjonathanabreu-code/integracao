@@ -35,3 +35,10 @@ test('diagnóstico mostra ordem da unidade, reserva, intervalo e retomada manual
  assert.equal(diagnosticoOperacao(b,100,[{...a,estado:'dispensado'},b]).espera.motivo,'pronto_para_verificacao');
  assert.equal(diagnosticoOperacao(b,100,[a,b]).outrosAparelhos,'nao_verificado');
 });
+
+test('recusa de vínculo tem classificação fixa sem expor a ficha',()=>{
+ const item={estado:'bloqueado_validacao',original:{modulo:'processos'},erro:{codigo:'CLIENTE_SEM_VINCULO_CANONICO',message:'dado privado'}};
+ assert.deepEqual(resumoDiagnostico([item]),[{estado:'bloqueado_validacao',modulo:'processos',codigo:'SVINC',quantidade:1}]);
+ assert.equal(diagnosticoOperacao(item).codigo,'SVINC');
+ assert.doesNotMatch(JSON.stringify(diagnosticoOperacao(item)),/dado privado/);
+});

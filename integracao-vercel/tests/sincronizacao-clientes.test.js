@@ -54,3 +54,34 @@ test('intenção antiga sem marcador sempre identifica a ficha que deve ser reli
  assert.deepEqual([...fichasVisiveis({fin_receb_clientes:[],integracao_moradores:[]},clientes)],[]);
  assert.deepEqual([...fichasVisiveis({integracao_moradores:[{registro_id:id(3)}]},clientes)],[id(3)]);
 });
+
+test('referência financeira antiga é corrigida na leitura pelo vínculo exato da ficha',async()=>{
+ const original=global.fetch,registro=id(11),anterior=id(12),atual=id(13),requests=[];
+ definirSessao({access_token:'fixture',expires_in:3600});
+ try{
+  global.fetch=async(url,options)=>{
+   const u=new URL(url);requests.push(u);assert.equal(options.headers.Authorization,'Bearer fixture');
+   if(u.searchParams.get('registro_id')==='eq.'+registro)
+    return Response.json([{registro_id:registro,referencia_tabela:'fin_receb_clientes',referencia_id:atual}]);
+   if(u.searchParams.get('id')==='eq.'+atual)return Response.json([{id:atual}]);
+   return Response.json([]);
+  };
+  const carga=await lerFichaCliente({id:registro,financeiroRef:anterior});
+  assert.equal(carga.clientes[0].id,atual);
+  assert.equal(carga.complementos[0].registro_id,registro);
+  assert.equal(requests.length,4);
+  global.fetch=async(url)=>{
+   const u=new URL(url);
+   if(u.searchParams.get('registro_id')==='eq.'+registro)
+    return Response.json([{registro_id:id(99),referencia_tabela:'fin_receb_clientes',referencia_id:atual}]);
+   assert.notEqual(u.searchParams.get('id'),'eq.'+atual);
+   return Response.json([]);
+  };
+  assert.equal((await lerFichaCliente({id:registro,financeiroRef:anterior})).clientes.length,0);
+  global.fetch=async(url)=>{
+   const u=new URL(url);assert.equal(u.searchParams.has('registro_id'),false);
+   return Response.json({message:'Sem acesso'},{status:403});
+  };
+  await assert.rejects(lerFichaCliente({id:registro,financeiroRef:anterior}),{status:403});
+ }finally{global.fetch=original;definirSessao(null);}
+});

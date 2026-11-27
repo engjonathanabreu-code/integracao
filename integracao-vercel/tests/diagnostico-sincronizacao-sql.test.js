@@ -17,7 +17,7 @@ test('diagnóstico: RLS por conta/diretoria, identidade imutável, campos limita
   await assert.rejects(db.query('delete from integracao_sincronizacao_dispositivos'),/permission denied/);
   const grupo={estado:'bloqueado_validacao',modulo:'metas',codigo:'23503',quantidade:2};
   for(const resumo of [[{...grupo,cpf:'privado'}],[{...grupo,modulo:'conteudo privado'}],[{...grupo,estado:null}],[{...grupo,quantidade:0}],[{...grupo,codigo:'senha privada'}],{},null])await assert.rejects(salvar(1,crypto.randomUUID(),resumo));
-  await salvar(1,id(11),[grupo]);
+  await salvar(1,id(11),[grupo,{...grupo,modulo:'processos',codigo:'SVINC'}]);
   await login(2);assert.equal((await db.query('select * from integracao_sincronizacao_dispositivos')).rows.length,2);await salvar(2);
   assert.equal((await db.query('update integracao_sincronizacao_dispositivos set versao=$1 where usuario_id=$2 returning *',['outro',id(1)])).rows.length,0);
   await login(1);assert.equal((await db.query('select * from integracao_sincronizacao_dispositivos')).rows.length,2);
