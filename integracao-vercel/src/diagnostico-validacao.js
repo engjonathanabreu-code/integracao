@@ -43,6 +43,15 @@ export const REGRAS_VALIDACAO=Object.freeze({
  processos_kanban_prioridade_check:{campo:'prioridade',orientacao:orientacoes.processos_kanban_prioridade_check},
  profiles_tipo_check:{campo:'tipoERP',orientacao:orientacoes.profiles_tipo_check},
  processos_kanban_historico_fluxo_check:{campo:'historicoEtapas.fluxo',orientacao:'O fluxo da etapa deve ser interno ou prefeitura.'},
+ processos_kanban_observacoes_texto_check:{campo:'observacoes.texto',orientacao:'A observação não pode ficar em branco.'},
+ crm_lead_cpf_formato:{campo:'lead_cpf',orientacao:'Revise o formato do CPF ou CNPJ do lead.'},
+ crm_negociacao_valida:{campo:'negociacao',orientacao:'Revise a combinação de valor, forma de pagamento, parcelas, desconto e entrada do card.'},
+ integracao_crm_cards_check:{campo:'cliente_id / lead_nome',orientacao:'Vincule o cadastro ou informe o nome do lead.'},
+ integracao_crm_cards_status_check:{campo:'status',orientacao:'Escolha uma etapa válida do funil comercial.'},
+ integracao_arquivos_colecao_check:{campo:'colecao',orientacao:'A coleção informada para o arquivo não é aceita.'},
+ integracao_arquivos_dados_check:{campo:'dados',orientacao:'O formato dos metadados do arquivo não é aceito.'},
+ integracao_auditoria_colecao_check:{campo:'colecao',orientacao:'A coleção do registro de auditoria não é aceita.'},
+ integracao_auditoria_dados_check:{campo:'dados',orientacao:'O formato do registro de auditoria não é aceito.'},
  // 23P01: compartilhamento.sql, EXCLUDE (agenda_id =, tstzrange(inicio,fim,'[)') &&) com status ativo.
  integracao_reserva_sem_sobreposicao:{campo:'inicio',orientacao:'Já existe uma reserva ativa nesta agenda no mesmo horário. Escolha outro horário ou outra agenda.'},
  // P0001 de integracao_validar_evento e integracao_gravar.
@@ -79,6 +88,28 @@ export function regraDaFalha(e){
 }
 export const orientacaoRegra=regra=>typeof regra==='string'&&Object.hasOwn(REGRAS_VALIDACAO,regra)?REGRAS_VALIDACAO[regra].orientacao:null;
 
+// Local authenticated UI only. Remote telemetry and exports keep their
+// existing minimization. A rule can identify a table, not a row in a batch.
+const tabelaPorRegra=Object.freeze({
+ crm_lead_cpf_formato:'integracao_crm_cards',crm_negociacao_valida:'integracao_crm_cards',
+ integracao_crm_cards_check:'integracao_crm_cards',integracao_crm_cards_status_check:'integracao_crm_cards',
+ integracao_reserva_sem_sobreposicao:'erp_eventos',
+ ...Object.fromEntries(Object.keys(REGRAS_VALIDACAO).flatMap(regra=>{
+  const tabela=/^(fin_receb_clientes|integracao_moradores|integracao_arquivos|integracao_auditoria|processos_kanban_historico|processos_kanban_observacoes|processos_kanban|profiles)_/.exec(regra)?.[1];
+  return tabela?[[regra,tabela]]:[];
+ }))
+});
+const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v);
+export function detalhesValidacaoLocal(item){
+ if(item?.estado!=='bloqueado_validacao'&&item?.estado!=='bloqueado_conflito'||item.recibo)return null;
+ const {regra,restricao,codigo}=item.erro||{}, chave=orientacaoRegra(regra)?regra:restricaoPermitida(restricao);
+ if(!chave&&!['23514','23P01','P0001'].includes(codigo))return null;
+ if(!chave)return {regra:null,campo:null,tabela:null,referencias:[]};
+ const tabela=tabelaPorRegra[chave]||null;
+ const candidatos=tabela?(item.payload||[]).filter(op=>op.table===tabela||tabela==='erp_eventos'&&op.action==='evento'):[];
+ const referencias=[...new Set(candidatos.map(op=>op.key?.id??op.key?.registro_id??op.tempId).filter(uuid))].map(id=>id.slice(0,8));
+ return {regra:chave,campo:REGRAS_VALIDACAO[chave].campo,tabela,referencias};
+}
 // Pure pre-checks for forms (A5). Each returns a list of problems
 // {regra,campo,mensagem}; an empty list means the server rule is not violated.
 const problema=(regra,extra={})=>({regra,campo:REGRAS_VALIDACAO[regra]?.campo??null,mensagem:REGRAS_VALIDACAO[regra]?.orientacao??'',...extra});
