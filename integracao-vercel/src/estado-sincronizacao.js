@@ -23,7 +23,7 @@ export function classificarFalha(e){
   :codigo.startsWith('PERSISTENCIA')||['QuotaExceededError','InvalidStateError'].some(n=>nomes.has(n))?'armazenamento'
   :codigo==='LEITURA_DIVERGENTE'?'leitura'
   :codigo==='P0001'&&mensagens.some(m=>REGISTRO_INDISPONIVEL.test(m))?'registro_indisponivel'
-  :['P0001','INTENCAO_SEM_OPERACOES'].includes(codigo)?'validacao'
+  :['P0001','23514','23P01','INTENCAO_SEM_OPERACOES'].includes(codigo)?'validacao'
   :status===409||codigo==='PT409'?'conflito'
   :rede&&!Number.isFinite(status)?'transitoria'
   :[400,404,422].includes(status)||/^(22|23)/.test(codigo)?'validacao':'transitoria';
@@ -155,7 +155,7 @@ export function orientacaoPendencia(i){
  if(i.erro?.codigo==='INTENCAO_SEM_OPERACOES')return 'A preparação não produziu operações de gravação verificáveis. Não há confirmação do servidor para esta alteração; o original permanece preservado para revisão.';
  if(!i.recibo&&i.erro?.categoria==='registro_indisponivel')return 'O registro foi apagado ou não está disponível para esta conta. Recrie o registro ou descarte esta alteração; o original continua preservado.';
  if(!i.recibo&&orientacaoRegra(i.erro?.regra))return orientacaoRegra(i.erro.regra)+' O original continua preservado; corrija e confirme somente nesta alteração.';
- if(!i.recibo&&i.erro?.codigo==='P0001')return 'Este pedido exige revisão. O código P0001 não identifica sozinho a regra ou o campo; o original continua preservado.';
+ if(!i.recibo&&['23514','23P01','P0001'].includes(i.erro?.codigo)&&!orientacaoRestricao(i.erro?.restricao))return 'Este pedido exige revisão. A recusa '+i.erro.codigo+' não identifica a regra ou o campo exato. O original continua preservado.';
  if(falhaPreparacaoSemEnvio(i))return 'O sistema falhou antes de enviar esta alteração. O rascunho continua preservado neste aparelho.';
  if(i.estado==='legado_revisao')return 'O rascunho antigo precisa de análise. Baixe o original preservado; ele não será reenviado automaticamente.';
  const categoria=i.erro?.categoria||classificarFalha({status:i.erro?.status,code:i.erro?.codigo}).categoria;
