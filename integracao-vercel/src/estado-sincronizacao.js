@@ -170,3 +170,26 @@ export function orientacaoPendencia(i){
  if(itemAtrasado(i))return 'O envio está atrasado por falhas temporárias de conexão. As alterações continuam preservadas e serão tentadas novamente automaticamente.';
  return 'As alterações continuam preservadas; falhas temporárias são tentadas novamente com intervalos crescentes.';
 }
+// SYNC-M4: uma recusa de conflito comprovada pelo servidor no ENVIO (HTTP 409 /
+// PT409 recebido, sem recibo) significa que o registro mudou depois que o
+// pedido foi preparado. A fila pode, UMA única vez por intenção, reler o
+// registro e juntar por campo (a mesma conciliação da preparação e da revisão
+// manual). Sem conflito de campo, a intenção recusada é substituída por um
+// novo pedido (o mesmo caminho de "manter minha versão" da revisão); com
+// conflito, falha ou resultado inconclusivo, continua em revisão como antes.
+// Limite explícito, sem laço: o marcador `conciliacaoAutomatica` é gravado
+// antes da tentativa e nunca é removido; um pedido que já é uma substituição
+// (`original.substitui`, manual ou automática) nunca é conciliado de novo.
+// SYNC-C2: fichas de Clientes (edição de ficha existente, relida pelo escopo de SYNC-C1).
+export const MODULOS_CONCILIACAO_AUTOMATICA=Object.freeze(['metas','processos']);
+const idsAnexos=v=>Array.isArray(v?.arquivos)?v.arquivos.map(a=>a?.id).join('|'):'';
+export function podeConciliarRecusaAutomaticamente(i,agora,modulos=MODULOS_CONCILIACAO_AUTOMATICA){
+ const o=i?.original,edicoes=o?.intencao?.edicoes;
+ return !!i&&i.estado==='bloqueado_conflito'&&i.erro?.codigo==='PT409'&&i.erro.fase==='envio'&&i.erro.rejeicaoConfirmada===true&&revisaoDeRecusa(i)&&
+  !i.recibo&&!(i.leaseAte>agora)&&!i.conciliacaoAutomatica&&!o.substitui&&!o.legado&&o.preparar===true&&Array.isArray(i.payload)&&i.payload.length>0&&
+  Array.isArray(edicoes)&&edicoes.some(e=>modulos.includes(e?.colecao))&&
+  edicoes.every(e=>e&&typeof e.id==='string'&&!!e.id&&[...modulos,'auditoria','notificacoes'].includes(e.colecao)&&
+   // Anexos têm envio e confirmação próprios; ficam na revisão manual.
+   idsAnexos(e.antes?.valor)===idsAnexos(e.depois?.valor))&&
+  !Object.keys(o.intencao.arquivos||{}).length&&!Object.keys(i.preparado?.sent||{}).length;
+}

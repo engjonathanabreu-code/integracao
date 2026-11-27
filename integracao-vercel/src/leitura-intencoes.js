@@ -29,6 +29,12 @@ const MAPA={
  agendas:e=>criacao(e)?null:[['erp_agendas','id',[e.id]],...extensoes('integracao_calendario',[e.id])],
  auditoria:e=>extensoes('integracao_auditoria',[e.id]),
  notificacoes:e=>extensoes('integracao_notificacoes',[e.id]),
+ // SYNC-C1: edição de uma ficha que já existe. As linhas da ficha
+ // (fin_receb_clientes e integracao_moradores) ficam fora da base geral e são
+ // relidas por registro por quem chama (lerFichaCliente); aqui entra só o
+ // complemento legado da própria ficha. Criação e remoção mantêm a leitura
+ // completa (código, vínculo financeiro e resumo do município vêm do servidor).
+ processos:e=>e.antes?.existe===true&&e.depois?.existe===true?[['integracao_complementos','registro_id',[e.id]]]:null,
 };
 export const colecoesComEscopo=Object.freeze(Object.keys(MAPA));
 export function escopoDaIntencao(intencao,aliases={}){

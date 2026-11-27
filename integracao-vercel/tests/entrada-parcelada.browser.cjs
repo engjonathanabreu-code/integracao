@@ -10,7 +10,7 @@ const fs=require('node:fs/promises'),JSZip=require('jszip');
    const errors=[];page.on('pageerror',e=>errors.push(e.message));
    await page.goto((process.env.TEST_URL||'http://127.0.0.1:5188')+'/tests/browser.html'+(mobile?'?mobile':''));
    await page.getByLabel('E-mail',{exact:true}).waitFor();
-   await page.evaluate(()=>{const b=window.baseFixture,c=b.fin_receb_clientes[0];c.cpf_cnpj='52998224725';c.valor_global=7500;c.valor_entrada=700;c.numero_parcelas=10;c.valor_parcela=680;b.integracao_moradores.push({colecao:'processos',registro_id:c.id,referencia_id:c.id,referencia_tabela:'fin_receb_clientes',dados:{nucleoId:b.processos_kanban[0].id,etapa:4,requerente:{profissao:'Autônomo',estadoCivil:'Solteiro(a)'},endereco:{logradouro:'Rua de Teste',numero:'123'},comercial:{modalidade:'Entrada e parcelas'}}});});
+   await page.evaluate(()=>{const b=window.baseFixture,c=b.fin_receb_clientes[0];c.cpf_cnpj='52998224725';c.valor_global=7500;c.valor_entrada=700;c.numero_parcelas=10;c.valor_parcela=680;b.integracao_moradores.push({colecao:'processos',registro_id:c.id,referencia_id:c.id,referencia_tabela:'fin_receb_clientes',dados:{nucleoId:b.processos_kanban[0].id,etapa:4,requerente:{profissao:'Autônomo',estadoCivil:'Solteiro(a)',rg:'1234567',mae:'Mãe de Teste'},endereco:{logradouro:'Rua de Teste',numero:'123',bairro:'Centro',municipio:'Município teste',uf:'SC',cep:'89000000'},comercial:{modalidade:'Entrada e parcelas'}}});});
    const finAntes=await page.evaluate(()=>structuredClone(window.baseFixture.fin_receb_clientes[0]));
    await page.getByLabel('E-mail',{exact:true}).fill('teste@example.invalid');
    await page.getByLabel('Senha',{exact:true}).fill('fixture');

@@ -7,9 +7,10 @@ import {parseHTML} from 'linkedom';
 import {montar,dadosExemplo} from './documentos-comerciais.fixture.js';
 import {preenchido,ehPJ} from '../src/requisitos-moradores.js';
 import {documentoPorDeclarante} from '../src/declarantes-comerciais.js';
+import {documentoComBloqueio,pendenciasDocumento,unirPendencias} from '../src/documentos-bloqueio.js';
 import {ENTRADA_PARCELADA,validarCondicoesVenda} from '../src/condicoes-venda.js';
 const source=fs.readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
-const ctx={preenchido,ehPJ,cpfDispensado,documentoPorDeclarante,ENTRADA_PARCELADA,validarCondicoesVenda};vm.createContext(ctx);
+const ctx={preenchido,ehPJ,cpfDispensado,documentoPorDeclarante,ENTRADA_PARCELADA,validarCondicoesVenda,documentoComBloqueio,pendenciasDocumento,unirPendencias};vm.createContext(ctx);
 vm.runInContext(source.slice(source.indexOf('function faltandoPara('),source.indexOf('const paragrafo ='))+';this.verificar=faltandoPara;',ctx);
 test('CNPJ satisfaz identificação de PJ sem exigir CPF, endereço ausente vira pendência',()=>{
  const doc={precisa:['nome','cpf','endereco']},p={requerente:{tipoPessoa:'juridica',nome:'Empresa',cnpj:'29212382000107'}};
@@ -29,7 +30,7 @@ test('assinatura e qualificação de PJ usam CNPJ',()=>{
 });
 test('renda numérica zero é formatada e renda ausente continua em branco',()=>{
  const expr=source.match(/renda: (preenchido\(p\.social\?\.rendaFamiliar\)[^\n]+),/)[1];
- const avaliar=new Function('p','preenchido','reais','return '+expr);
+ const avaliar=new Function('p','preenchido','reais','parseNum','return '+expr);
  const reais=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
  assert.match(avaliar({social:{rendaFamiliar:0}},preenchido,reais),/0,00/);
  assert.equal(avaliar({social:{}},preenchido,reais),'____________');

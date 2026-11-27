@@ -11,6 +11,7 @@ import {setorDoPerfilERP} from './permissoes.js';
 import {expandirResumo} from './resumo-transporte.js';
 import {falhaTransitoria} from './sincronizacao-regras.js';
 import {tabelasProprias,destinoComplemento,unirCampos,reunirComplementos} from './persistencia-modulos.js';
+import {tempoLimiteEnvioMs,anexoJaEnviado,registrarAnexoEnviado} from './envio-anexos.js';
 // Canonical ERP rows are read in place. Only explicit user edits produce writes.
 // Tokens stay in memory; local storage contains drafts, never credentials.
 export const configERP = {
@@ -407,6 +408,15 @@ const at = (db,b) => {
 // Deterministic local refusals while encoding an edit: nothing was sent and a
 // retry cannot change the outcome, so they are validation (422), not transport.
 const erroLocal=(mensagem,code='EDICAO_LOCAL_INVALIDA')=>Object.assign(new Error(mensagem),{code,status:422});
+// Documento oficial (cpf_cnpj) quando a ficha troca entre pessoa física e jurídica.
+// undefined = não houve troca, ou o documento do novo tipo ainda não foi informado
+// (nesse caso a coluna não é apagada por conta própria).
+export function documentoAoTrocarTipoPessoa(antes,depois) {
+  const pj=x=>x?.requerente?.tipoPessoa==='juridica';
+  if(pj(antes)===pj(depois)) return undefined;
+  const documento=String((pj(depois)?depois?.requerente?.cnpj:depois?.requerente?.cpf)??'').trim();
+  return documento||undefined;
+}
 export function alteracoesCompartilhadas(before,after,state,actor) {
   const ops=[];
   for (const b of state.bindings) {
@@ -437,6 +447,14 @@ export function alteracoesCompartilhadas(before,after,state,actor) {
       const m=after.municipios.find(x=>x.id===next.municipioId);
       if(!m)throw erroLocal('Município não encontrado.','MUNICIPIO_NAO_ENCONTRADO');
       Object.assign(changes,{municipio:m.nome,estado:m.uf});Object.assign(expected,{municipio:b.row.municipio,estado:b.row.estado});
+    }
+    if(b.table==='fin_receb_clientes' && !b.parent) {
+      // EDI-C2: o mapa foi montado com o tipo de pessoa anterior; o documento do novo tipo segue na mesma gravação.
+      const documento=documentoAoTrocarTipoPessoa(old,next);
+      if(documento!==undefined) {
+        if(eq(documento,b.row.cpf_cnpj??null)) {delete changes.cpf_cnpj;delete expected.cpf_cnpj;}
+        else {changes.cpf_cnpj=documento;expected.cpf_cnpj=b.row.cpf_cnpj??null;}
+      }
     }
     if(Object.keys(changes).length) {
       if(b.table==='erp_agendas') ops.push({table:b.table,key:b.key,expected,changes});
@@ -749,10 +767,13 @@ export async function prepararArquivos(before,after,storage,actor) {
     const blob=await (await fetch(data)).blob();
     const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
     const path=`${actor.erpRef}/metas/${m.id}/${a.id}-${digest}`;
+    // SYNC-M2: bytes already stored by an earlier attempt are not sent again.
+    if(!anexoJaEnviado(path)){
     scope.conferir();await requisicao('rpc/erp_collab_directory',{method:'POST',body:'{}'});
-    scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob});
+    scope.conferir();const response=await fetch(`${configERP.url}/storage/v1/object/documentos/${path}`,{method:'POST',headers:{apikey:configERP.chave,Authorization:`Bearer ${session.access_token}`,'Content-Type':a.tipo||'application/octet-stream','x-upsert':'false'},body:blob,signal:AbortSignal.any([scope.signal,AbortSignal.timeout(tempoLimiteEnvioMs(blob.size))])}).catch(e=>{scope.conferir();throw e;});
     const result=await response.json().catch(()=>({}));scope.conferir();
     if(!response.ok && !['Duplicate','409'].includes(String(result.error||result.statusCode)))throw Object.assign(new Error(result.message||'Não foi possível enviar o arquivo.'),{status:response.status,code:String(result.code||result.error||'STORAGE_UPLOAD')});
+    registrarAnexoEnviado(path);}
     operations.push({table:'meta_arquivos',key:{id:a.id},insert:true,changes:{meta_id:m.id,nome:a.nome,caminho_storage:path,mime_type:a.tipo||null,tamanho_bytes:blob.size,enviado_por:actor.erpRef}});
   }
   return operations;

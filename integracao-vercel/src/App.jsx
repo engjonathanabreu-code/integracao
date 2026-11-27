@@ -7,19 +7,27 @@ import {INSTRUCAO_RESIDENCIA_SEIS_MESES, regrasResidenciaPadrao, avaliarPrazoRes
 import {empresaDoMunicipio, timbradoDoMunicipio, prepararEmpresaMunicipal} from './empresa-municipio.js';
 import {pessoasDocumentais, destinoDocumento, linhaDocumentalAtual} from './documentos-pessoas.js';
 import {documentoPorDeclarante,opcoesDeclaracao} from './declarantes-comerciais.js';
+import {documentoComBloqueio,pendenciasDocumento,unirPendencias,assinantesDocumento} from './documentos-bloqueio.js';
 import {registrarVerificacaoHumana,documentoMaisRecente} from './documentos-verificacao-humana.js';
 import {cpfDispensado, menorDeIdade} from './pessoa-menor.js';
 import NotificacoesUsuario from './NotificacoesUsuario.jsx';
 import PlanejamentoMetas from './PlanejamentoMetas.jsx';
 import PermissoesAtuais from './PermissoesAtuais.jsx';
 import {ideiaPlanejamento,metaOperacional,gerenciaPlanejamento} from './planejamento-metas.js';
+import {metaParaEditar,semanaAoSalvar,metaNaSemana} from './metas-semana.js';
+import {conferirNovoMorador} from './novo-morador.js';
+import {mesclarChecklistEditado} from './metas-checklist.js';
+import {arquivarMeta,metaArquivada,metasAtivas} from './metas-arquivo.js';
+import ArquivoMetas from './ArquivoMetas.jsx';
 import Mailing from './Mailing.jsx';
 import {useMailingCount} from './use-mailing-count.js';
-import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador } from "./codigo-morador.js";
+import { normalizarCodigoMorador, erroCodigoMorador, resolverCodigoMorador, proximoNumeroMorador, proximoNumeroLivreMorador, codigoMoradorAoGravar } from "./codigo-morador.js";
 import {escopoRegrasMunicipio,alterarRegrasMunicipio,requisitosDoMunicipio} from './regras-municipio.js';
 import {podeUsarAgenteComercial} from './agente-comercial-regras.js';
 import { criarSessaoDocumentosIA, obterConfiguracaoDocumentosIA, regrasDocumentoCliente, validarResultadoDocumentoCliente } from "./documentos-ia-sessao.js";
-import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA } from "./documentos-ia-envio.js";
+import { LIMITE_DOCUMENTO_IA, LIMITE_ENVIO_IA, validarDocumentoIA, transcreverPDFGrande, enviarPedidoIA, conferirPaginasPDF } from "./documentos-ia-envio.js";
+import { marcarPlausibilidade, selecaoInicialSugestoes, sugestoesSelecionadas } from "./documentos-ia-plausibilidade.js";
+import { validarAnaliseTeorDevolutiva, validarConferenciaDevolutiva, erroRespostaDevolutivaIA, prontoParaReenviarDevolutiva, marcarAnalisePendenteDevolutiva, analisePendenteDevolutiva, AVISO_ANALISE_PENDENTE } from "./devolutivas-ia-validacao.js";
 import {compararTextos} from './ordenacao.js';
 import {temConexao, observarConexao} from './conexao-rede.js';
 import {useRespostaChat, CitacaoMensagem, PreviaResposta, BotaoResponder, irParaMensagem} from './ChatResposta.jsx';
@@ -45,9 +53,10 @@ import * as documentoPdf from "./documento-pdf.js";
 import * as documentoDocx from "./documento-docx.js";
 import MetasAgrupadas from "./MetasAgrupadas.jsx";
 import "./metas-visual.css";
-import { agruparOrdens, corSetor, setoresUnicos } from "./metas-organizacao.js";
+import { agruparOrdens, corSetor, setoresUnicos, seloStatusMeta, textoAtraso, ordenarMetasAtrasadas, separarMetasColaborador, ordenarMetasEncerradas } from "./metas-organizacao.js";
 import {MODELO_CONTRATO} from './contrato-modelo.js';
-import {dadosContrato} from './contrato-dados.js';
+import {dadosContrato,reaisPorExtenso} from './contrato-dados.js';
+import {numeroDinheiro} from './leitor-dinheiro.js';
 import {ENTRADA_PARCELADA,entradaParcelaVazia,calcularEntradaParcelada,descreverEntradaParcelada,condicaoVendaRegistrada,gravarCondicaoVenda,atualizarCondicoes,validarCondicoesVenda,erroRestricoesCondicoes,ultimaParcela} from './condicoes-venda.js';
 import {validarRegrasEvento} from './diagnostico-validacao.js';
 import {documentoHtml} from './documento-formato.js';
@@ -76,6 +85,7 @@ import {acessoCRM, ETAPAS_CRM} from './crm-regras.js';
 import {solicitarConclusaoMeta, recusarConclusaoMeta, totalRecusasMeta, totalRecusasUsuario} from './recusas-metas.js';
 import CarregandoLoteamento from './CarregandoLoteamento.jsx';
 import {CampoBusca, BuscaClientes} from './BuscaClientes.jsx';
+import {faixaDaPagina, textoDaFaixa} from './paginacao.js';
 import { MARGENS_PADRAO, timbradoPadrao, configTimbrado, imagemPadrao, versaoTimbrado, aplicarTimbrado } from "./timbrado.js";
 import ImportadorGeoJSON from "../geojson/ImportadorGeoJSON.jsx";
 import ImportadorPerimetro from "../geojson/ImportadorPerimetro.jsx";
@@ -104,6 +114,11 @@ import { SECAO_CONFRONTANTES, CONFRONTANTES, campoConfrontante, confrontantesDe,
 import {useCardCalendario} from './use-card-calendario.js';
 import {ocorrenciasDoEvento,diaCivilEvento} from './calendario-ocorrencias.js';
 import { SEM_SETOR_META, metaNoSetor, colunaMetasAtivas, colunasMetasAtivas } from './metas-kanban.js';
+import {prazoSugeridoMeta} from './metas-uso.js';
+import {useAvisosMetasVencidas} from './use-avisos-metas-vencidas.js';
+import AprovacoesPendentesMetas from './AprovacoesPendentesMetas.jsx';
+import {alertaSemContatoMorador,temContatoMorador} from './contato-morador.js';
+import { errosVisiveisMeta, confirmacaoRemocaoMeta, confirmacaoDescarteCadastro, avisoErrosCadastro, campoFaltando, irAoPrimeiroErro, motivosBotaoBloqueado, podeSimularAnalise, exigirAnaliseReal } from './interface-regras.js';
 import { exigeDocumentoCRM } from './crm-edicao.js';
 import { pendencias, campoCompleto, ativo, TOTAL, requisitosEtapa, ETAPAS, contexto, itensCampoFaltando, checklistDoMunicipio, aplicarAjustesRequisitos, requisitosPadrao, acharDuplicado, itemRespondido, ajustesDoMunicipio, preenchido, so, ehPJ, documentoValido, faltantesPessoa, temConjuge, faltantesQualificacao, DOC_TIPOS, docOk, docStatusTexto, parseNum, criterioNucleo, unidadesDe, codigoUnidade, MIN_MEMORIAL, campoPreenchido, normalizar, cnpjValido, cpfValido, COM_CONJUGE, docBloqueado, letraUnidade } from './requisitos-moradores.js';
 import {prazosDoCalendario,eventoDoFiltro,setorCalendario,rotuloPrazo,gestaoCalendario,podeVerEventoCalendario} from './calendario-prazos.js';
@@ -992,6 +1007,7 @@ async function analisarDocumentoIA(arquivoBruto, tipoEsperado, regras, pessoas, 
   validarDocumentoIA(arquivoBruto);
   const grande = arquivoBruto.type === "application/pdf" && arquivoBruto.size > LIMITE_ENVIO_IA;
   const arquivo = grande ? arquivoBruto : await prepararParaIA(arquivoBruto, LIMITE_ENVIO_IA);
+  if (!grande && arquivo.type === "application/pdf") await conferirPaginasPDF(arquivo);
   const headers = processamento?.headers || await cabecalhosIA();
   const enviar = processamento?.enviar || ((content, maxTokens) => enviarPedidoIA(URL_IA, headers, content, maxTokens));
   const transcricao = grande ? await transcreverPDFGrande(arquivo, (content, maxTokens) => enviar(content, maxTokens, "ocr"), undefined, processamento?.paginas) : null;
@@ -1097,7 +1113,7 @@ Se houver trechos da devolutiva que você não conseguiu interpretar com seguran
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a devolutiva","itens":[{"categoria":"pessoas|areas|memoriais|lei|decreto|tabela_planta|vertices|nome_lote|outro","descricao":"o que o município pediu para alterar","statusEsperado":"o que deve constar depois de corrigido"}],"naoIdentificado":["trecho ou ponto que não deu para interpretar com segurança"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocos, { type: "text", text: instrucao }]);
+  return validarAnaliseTeorDevolutiva(await chamarIA([...blocos, { type: "text", text: instrucao }]).catch(erroRespostaDevolutivaIA));
 }
 // Etapa 2: a mesma IA recebe a devolutiva original (arquivos e/ou texto) e o trabalho já corrigido,
 // confere item a item o que a etapa 1 apontou e diz o que ainda falta fazer antes de responder ao município.
@@ -1122,7 +1138,7 @@ Se encontrar no trabalho corrigido alguma alteração relevante que a devolutiva
 Responda apenas com um objeto JSON válido, sem markdown e sem texto fora do JSON, neste formato:
 {"resumo":"até 40 palavras resumindo a conferência","pronto":true,"itens":[{"refItemId":"id do item da lista acima","status":"corrigido|nao_corrigido|nao_verificavel","observacao":"até 25 palavras explicando o que foi visto no documento"}],"pendencias":[{"refItemId":"id do item da lista, ou vazio se for algo novo","descricao":"o que ainda falta","oQueFazer":"orientação objetiva para a equipe, até 40 palavras"}],"naoIdentificado":["alteração ou ponto encontrado no documento que não estava na lista, ou item que não deu para conferir e por quê"]}
 Escreva em português do Brasil, direto e sem jargão desnecessário.`;
-  return chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000);
+  return validarConferenciaDevolutiva(await chamarIA([...blocosOriginais, ...blocosResposta, { type: "text", text: instrucao }], 6000).catch(erroRespostaDevolutivaIA), itensEtapa1);
 }
 // Recupera um anexo guardado com a meta como File, para reenviar à IA
 async function arquivoDoArmazenamento(arq) {
@@ -1191,7 +1207,7 @@ function montarLinhas(res, rascunho, pessoaEscolhida = "") {
     const rot = m.path ? m.rot : `${m.rot} (${destino.papel}: ${destino.pessoa.nome})`;
     linhas.push({ path, rot, atual, sugerido, ...(!m.path ? {pessoaId: destino.id, campoPessoa: m.campo} : {}), diverge: atual !== "", cpf: k === "cpf" });
   });
-  return linhas;
+  return marcarPlausibilidade(linhas);
 }
 
 /* ---------------- gerador de PRF ---------------- */
@@ -1491,7 +1507,7 @@ const pad3 = (n) => String(n).padStart(3, "0");
 
 
 function codigosUnidades(p) { return unidadesDe(p).map((_, i) => codigoUnidade(p, i)); }
-function proximoNumeroCliente(db, remessaId) { return proximoNumeroMorador((db._baseArquivo || db).processos, remessaId); }
+function proximoNumeroCliente(db, remessaId) { return proximoNumeroLivreMorador((db._baseArquivo || db).processos, remessaId, (n) => codigoCliente(db, remessaId, n)); }
 function codigoCliente(db, remessaId, numero) {
   const r = remessaDe(db, remessaId); const m = r ? municipioDe(db, r.municipioId) : null;
   const prefixo = `${m?.prefixo || "MUN"}${pad2(r?.numero || 0)}`;
@@ -1818,6 +1834,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 .rb .toast{position:fixed;bottom:88px;left:calc(50% + 122px);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 16px;border-radius:10px;font-size:14px;z-index:90;max-width:92vw;box-shadow:0 10px 30px rgba(15,95,91,.25)}
 .rb .modal-fundo{position:fixed;inset:0;background:rgba(16,42,42,.45);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
 .rb .modal{width:100%;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(15,95,91,.25)}
+.rb .modal-rodape{position:sticky;bottom:-22px;z-index:2;margin:0 -22px -22px;padding:12px 22px 16px;background:var(--card);border-top:1px solid var(--line2);border-radius:0 0 18px 18px}
 .rb .girando{animation:girar 1s linear infinite}
 .rb .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 .rb .grade-lote{background-color:var(--bg);background-image:linear-gradient(rgba(20,122,116,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,122,116,.07) 1px,transparent 1px);background-size:46px 46px}
@@ -1954,6 +1971,8 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (min-width:1500px){.rb .quadro-cheio{flex-wrap:wrap}}
 .rb .item-checklist{display:flex;align-items:center;gap:8px;margin-top:6px}
 .rb .item-checklist .inp{flex:1}
+.rb .linha-checklist label{flex:1;display:flex;flex-wrap:wrap;align-items:center;align-self:stretch}
+@media (max-width:640px){.rb .linha-checklist{min-height:44px}.rb .linha-checklist input[type=checkbox],.rb .item-checklist input[type=checkbox]{width:24px!important;height:24px!important;flex:none}.rb .modal .btn-icone{width:44px;height:44px;flex:none}.rb .modal .btn{min-height:44px}.rb .modal label.tag{min-height:44px}}
 .rb .lista-flutuante{position:absolute;left:0;right:0;top:100%;z-index:30;border-radius:12px;border-top:1px solid var(--line);box-shadow:0 12px 30px rgba(15,95,91,.18)}
 .rb .campo-busca{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 10px;background:var(--card);color:var(--muted)}
 .rb .campo-busca .inp{border:none;padding-left:0;background:none}
@@ -2185,7 +2204,7 @@ font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text
 @media (max-width:1100px){.rb .layout-proc{grid-template-columns:1fr}.rb .lateral{position:static}}
 @media (max-width:900px){.rb .app{grid-template-columns:minmax(0,1fr)}.rb .nav{position:fixed;left:0;top:0;bottom:0;width:265px;z-index:70;transform:translateX(-100%);transition:transform .2s}.rb .nav.aberta{transform:none}.rb .btn-menu{display:inline-flex}.rb .barra-salvar{left:0}.rb .toast{left:50%}
  .rb .trilha{grid-template-columns:1fr 1fr;gap:16px 8px}.rb .trilha .eixo,.rb .trilha .eixo-feito{display:none}}
-@media (max-width:640px){.rb .fg{grid-template-columns:1fr}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
+@media (max-width:640px){.rb .fg{grid-template-columns:1fr!important}.rb .fg>div{grid-column:auto!important}.rb .contem{padding:16px 14px 110px}.rb .topo{padding:12px 14px}
  .rb .trilha{grid-template-columns:1fr}.rb .estaca{flex-direction:row;gap:14px;text-align:left}.rb .estaca .nome{margin-top:0}}
 @media (prefers-reduced-motion: reduce){.rb *{transition:none!important;animation:none!important}}
 `;
@@ -2341,7 +2360,7 @@ function Modal({ titulo, children, onFechar, largura = 480, rodape }) {
           <button className="btn-icone" onClick={onFechar} aria-label="Fechar"><X size={16} /></button>
         </div>
         {children}
-        {rodape && <div className="flex flex-wrap justify-end gap-2" style={{ marginTop: 18 }}>{rodape}</div>}
+        {rodape && <div className="flex flex-wrap justify-end gap-2 modal-rodape" style={{ marginTop: 18 }}>{rodape}</div>}
       </div>
     </div>
   );
@@ -2391,7 +2410,7 @@ function Campo({ form, rot, path, span = 1, dis, opcoes, tipo = "text", fmt, err
 
 function CampoCPF({ form, rot, path, dis }) {
   const v = getPath(form.rascunho, path) || "";
-  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : "";
+  const erro = v && !cpfValido(v) ? "CPF inválido. Confira os dígitos." : campoFaltando(form, path, v);
   const ia = form.ia.includes(path);
   return (
     <div>
@@ -2596,6 +2615,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const [processando, setProcessando] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
   const [divergencias, setDivergencias] = useState([]);
+  const [selecaoIA, setSelecaoIA] = useState({});
   const [preenchidos, setPreenchidos] = useState(0);
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const inputRef = useRef(null);
@@ -2607,19 +2627,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const nucleos = db.nucleos.filter((n) => n.municipioId === municipio.id && (n.remessaId === remessaId || !n.remessaId));
   const nucleoSel = nucleoDe(db, nucleoId);
-  const cpfOk = cpfValido(cpf);
-  const cpfDup = cpfOk && db.processos.find((p) => p.remessaId === remessaId && so(p.requerente.cpf) === so(cpf));
-  const nomeDup = !cpfDup && nome.trim().length > 3 && db.processos.find((p) => p.remessaId === remessaId && normalizar(p.requerente.nome) === normalizar(nome));
-  const erros = [];
-  if (!remessaId) erros.push("Escolha a remessa");
-  if (!prefixoMunicipio) erros.push("Cadastre o prefixo em Editar município antes de adicionar um morador");
-  const codigoDuplicado = (db._baseArquivo || db).processos.some(p => normalizarCodigoMorador(p.codigo) === normalizarCodigoMorador(codigoGerado));
-  if (codigoDuplicado) erros.push("Este código já existe. Confira o prefixo no cadastro do município.");
-  else if (remessaId && prefixoMunicipio && !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(normalizarCodigoMorador(codigoGerado))) erros.push(`O código ${codigoGerado} tem caracteres não aceitos. Use só letras sem acento e números no prefixo do município`);
-  if (nome.trim().length < 3) erros.push("Informe o nome do requerente");
-  if (!cpf) erros.push("Informe o CPF, ele é obrigatório");
-  else if (!cpfOk) erros.push("CPF inválido, confira os dígitos");
-  if (cpfDup && !confirmaDup) erros.push("Confirme o cadastro com CPF repetido");
+  const { cpfOk, cpfDup, nomeDup, codigoDuplicado, erros } = conferirNovoMorador({ remessaId, prefixoMunicipio, codigoGerado, nome, cpf, confirmaDup }, db.processos, (db._baseArquivo || db).processos);
 
   if (!remessas.length) {
     return (
@@ -2632,6 +2640,8 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   const atualizarItem = (id, mud) => { filaRef.current = filaRef.current.map((i) => (i.id === id ? { ...i, ...mud } : i)); setFila(filaRef.current); };
   const definirRascunho = (np) => { rascunhoRef.current = np; setRascunho(np); };
   const avancar = () => {
+    const semContato = alertaSemContatoMorador(telefone);
+    if (semContato && !window.confirm(semContato)) return;
     const np = montarMorador(db, municipio.id, { remessaId, nucleoId: acessoCRM(usuario).comercial ? "" : nucleoId, nome, telefone, cpf, qtdUnidades });
     np.id = idMorador.current;
     definirRascunho(np);
@@ -2658,20 +2668,20 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     const destino = destinoDocumento(r2, extrair(np));
     const linhas = montarLinhas(r2, extrair(np));
     const novo = clone(np);
-    const aplicar = linhas.filter((l) => !l.diverge);
-    aplicar.forEach((l) => setPath(novo, l.path, l.sugerido));
+    // A IA não preenche a ficha sozinha: tudo o que ela leu vira sugestão para aceite campo a campo.
     const avaliadas = regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), tipo).map((r) => {
       const got = tipo === "comp_residencia" && r.id === "rg_residencia_90" && r.instrucao === INSTRUCAO_RESIDENCIA_SEIS_MESES ? avaliarPrazoResidencia(res.campos) : (res.regras || []).find((x) => x.id === r.id);
       return { id: r.id, nome: r.nome, gravidade: r.gravidade, resultado: got?.resultado || "nao_verificada", observacao: got?.observacao || "" };
     }).filter((x) => x.resultado !== "nao_aplicavel");
     novo.docs.push({ id: uid("d"), tipo, pessoaId: destino?.id || "nao_identificada", pessoaNome: destino?.pessoa.nome || "Pessoa não identificada", nomeArquivo: meta.nome, tamanho: meta.tamanho, impressao: meta.impressao, status: "recebido", data: new Date().toISOString(), por: usuario.nome, origem: simulado ? "simulação" : "análise por IA", confianca: res.confianca, legivel: res.legivel !== false, alertas: res.alertas || [], regras: avaliadas, arquivoDescartado: true });
     const falhas = avaliadas.filter((x) => x.resultado === "nao_atende");
-    const div = linhas.filter((l) => l.diverge).map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
-    const partes = [`${aplicar.length} ${aplicar.length === 1 ? "campo preenchido" : "campos preenchidos"}`];
-    if (div.length) partes.push(`${div.length} para conferir`);
+    const div = linhas.map((l) => ({ ...l, doc: DOC_TIPOS[tipo] }));
+    const conferir = linhas.filter((l) => l.diverge || l.implausivel).length;
+    const partes = [`${linhas.length} ${linhas.length === 1 ? "campo sugerido" : "campos sugeridos"}`];
+    if (conferir) partes.push(`${conferir} para conferir`);
     if (falhas.length) partes.push(`${falhas.length} ${falhas.length === 1 ? "regra não atendida" : "regras não atendidas"}`);
     if (res.legivel === false) partes.push("documento ilegível");
-    return { novo, aplicados: aplicar.length, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
+    return { novo, aplicados: 0, divergencias: div, resumo: `${DOC_TIPOS[tipo]}: ${partes.join(", ")}`, falhas };
   };
   const analisar = async ({ simular = false, soId = null } = {}) => {
     setProcessando(true);
@@ -2682,13 +2692,15 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       try {
         const meta = arq ? { nome: arq.name, tamanho: arq.size, impressao: await impressaoDigital(arq) } : { nome: item.nome, tamanho: item.tamanho, impressao: "" };
         const np = rascunhoRef.current;
+        exigirAnaliseReal({ demo: AMBIENTE.DEMO, simular, temArquivo: !!arq });
         const res = simular || !arq
           ? simularAnalise(item.tipoEsperado, np, db.regrasIA)
-          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasAplicaveis(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome });
+          : await analisarDocumentoIA(arq, item.tipoEsperado, regrasDocumentoCliente(regrasDoMunicipio(db, municipio?.id), item.tipoEsperado), { requerente: np.requerente.nome, conjuge: np.conjuge.nome }, { regrasObrigatorias: regrasDoMunicipio(db, municipio?.id) });
         const out = aplicarAnalise(np, res, simular || !arq, meta);
         definirRascunho(out.novo);
         setPreenchidos((x) => x + out.aplicados);
         setDivergencias((ds) => [...ds.filter((d) => !out.divergencias.some((o) => o.path === d.path)), ...out.divergencias]);
+        setSelecaoIA((sel) => ({ ...sel, ...selecaoInicialSugestoes(out.divergencias) }));
         delete arquivosRef.current[item.id];
         atualizarItem(item.id, { estado: "ok", resumo: out.resumo, simulado: simular || !arq });
       } catch (e) {
@@ -2697,9 +2709,11 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     }
     setProcessando(false);
   };
-  const resolver = (d, usarDocumento) => {
-    if (usarDocumento) { const c = clone(rascunhoRef.current); setPath(c, d.path, d.sugerido); definirRascunho(c); setPreenchidos((x) => x + 1); }
-    setDivergencias((ds) => ds.filter((x) => x.path !== d.path));
+  const dispensarSugestoes = () => { setDivergencias([]); setSelecaoIA({}); };
+  const aplicarSugestoes = () => {
+    const escolhidas = sugestoesSelecionadas(divergencias, selecaoIA);
+    if (escolhidas.length) { const c = clone(rascunhoRef.current); escolhidas.forEach((l) => setPath(c, l.path, l.sugerido)); definirRascunho(c); setPreenchidos((x) => x + escolhidas.length); }
+    dispensarSugestoes();
   };
   const removerItem = (id) => { delete arquivosRef.current[id]; filaRef.current = filaRef.current.filter((i) => i.id !== id); setFila(filaRef.current); };
   const descartarTudo = () => { arquivosRef.current = {}; };
@@ -2708,6 +2722,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
 
   const pendentesFila = fila.filter((i) => i.estado === "fila").length;
   const cpfDivergente = divergencias.some((d) => d.cpf);
+  const qtdSugestoesIA = sugestoesSelecionadas(divergencias, selecaoIA).length;
   const docsRecebidos = new Set((rascunho?.docs || []).map((d) => d.tipo));
   const sugeridos = ["identidade", "comp_residencia", "estado_civil", "comp_renda", "comp_posse", ...(rascunho && COM_CONJUGE.includes(rascunho.requerente.estadoCivil) ? ["identidade_conjuge"] : [])];
   const mostrarValor = (path, v) => (/cpf$/.test(path) ? fmtCPF(v) : /(nascimento|dataUniao)$/.test(path) ? dataBR(v) : v);
@@ -2732,7 +2747,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
   if (passo === 1) {
     return (
       <Modal titulo="Novo morador" largura={560} onFechar={fechar}
-        rodape={<><button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
+        rodape={<>{erros.length > 0 && <span id="mmotivos" className="ajuda" role="status" style={{ flex: "1 1 100%", margin: 0, textAlign: "right" }}>{motivosBotaoBloqueado(erros)}</span>}<button className="btn" onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={erros.length > 0} aria-describedby={erros.length > 0 ? "mmotivos" : undefined} onClick={avancar}>Continuar para os documentos<ChevronRight size={15} /></button></>}>
         {etapas}
         <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>
@@ -2754,13 +2769,13 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
             {nucleoSel && !nucleoSel.remessaId && <div className="ajuda">O {nucleoSel.codigo} ainda não está em remessa e será vinculado à {nomeRemessa(db, remessaDe(db, remessaId))}.</div>}
           </div>
           <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mnomer">Nome do requerente</label><input id="mnomer" className="inp" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="off" /></div>
+          <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtel">WhatsApp ou telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" />{!temContatoMorador(telefone) && <div className="ajuda">Peça o número agora: é por ele que a equipe fala com o cliente.</div>}</div>
           <div>
             <label className="rot" htmlFor="mcpf">CPF (obrigatório)</label>
             <input id="mcpf" className={`inp${tocouCpf && cpf && !cpfOk ? " erro" : ""}`} inputMode="numeric" value={cpf} autoComplete="off" onBlur={() => setTocouCpf(true)} onChange={(e) => { setCpf(fmtCPF(e.target.value)); setConfirmaDup(false); }} aria-required="true" />
             {tocouCpf && !cpf && <div className="msg-erro">O CPF é obrigatório.</div>}
             {tocouCpf && cpf && !cpfOk && <div className="msg-erro">CPF inválido. Confira os dígitos.</div>}
           </div>
-          <div><label className="rot" htmlFor="mtel">Telefone</label><input id="mtel" className="inp" inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} autoComplete="off" /></div>
           <div>
             <label className="rot" htmlFor="mqtd">Unidades a regularizar</label>
             <select id="mqtd" className="inp" value={qtdUnidades} onChange={(e) => setQtdUnidades(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map((q) => <option key={q} value={q}>{q}</option>)}</select>
@@ -2786,7 +2801,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
           </div>
         )}
         {nomeDup && <div className="tag tag-pend" style={{ marginTop: 12, borderRadius: 10, padding: "8px 12px", whiteSpace: "normal" }}><AlertTriangle size={14} />Já existe {nomeDup.codigo} com o mesmo nome nesta remessa. Confira antes de continuar.</div>}
-        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA preenche o restante da ficha.</div>
+        <div className="ajuda" style={{ marginTop: 10 }}>Na próxima etapa você adiciona os documentos e a IA sugere o restante da ficha, para você aceitar campo a campo.</div>
       </Modal>
     );
   }
@@ -2795,10 +2810,10 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
     <Modal titulo={`Documentos de ${rascunho.requerente.nome}`} largura={860} onFechar={fechar}
       rodape={<>
         <button className="btn" disabled={processando || fila.some((i) => i.estado === "ok")} onClick={() => { descartarTudo(); filaRef.current = []; setFila([]); setPasso(1); }} title="Só é possível voltar antes de analisar documentos"><ChevronLeft size={15} />Dados básicos</button>
-        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || cpfDivergente} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
+        <button className="btn btn-primario" disabled={processando || pendentesFila > 0 || divergencias.length > 0} onClick={concluir}><UserPlus size={15} />{fila.some((i) => i.estado === "ok") ? "Concluir cadastro" : "Concluir sem documentos"}</button>
       </>}>
       {etapas}
-      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, preenche a ficha e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
+      <p style={{ margin: "0 0 12px", color: "var(--muted)" }}>Adicione os documentos do morador. A IA lê cada um, sugere os campos da ficha para você aceitar e confere as regras da Integral. Depois da análise os arquivos são descartados; fica só o resultado.</p>
 
       <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
         {sugeridos.map((t) => <Tag key={t} tipo={docsRecebidos.has(t) ? "ok" : undefined}>{docsRecebidos.has(t) ? <Check size={12} /> : null}{DOC_TIPOS[t]}</Tag>)}
@@ -2829,7 +2844,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
                   </td>
                   <td>{i.estado === "fila" ? <Tag>Na fila</Tag> : i.estado === "analisando" ? <Tag tipo="neutra"><Loader2 size={12} className="girando" />Analisando</Tag> : i.estado === "ok" ? <Tag tipo="ok"><Check size={12} />{i.simulado ? "Simulado" : "Analisado"}</Tag> : <Tag tipo="bloq">Erro</Tag>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button></span>}
+                    {i.estado === "erro" && <span className="flex gap-1"><button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id })}>Tentar de novo</button>{podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn btn-sm" disabled={processando} onClick={() => analisar({ soId: i.id, simular: true })}>Simular</button>}</span>}
                     {(i.estado === "fila" || i.estado === "erro") && <button className="btn-icone" disabled={processando} onClick={() => removerItem(i.id)} aria-label={`Remover ${i.nome}`} style={{ marginLeft: 4 }}><Trash2 size={14} /></button>}
                   </td>
                 </tr>
@@ -2841,22 +2856,37 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
       {pendentesFila > 0 && (
         <div className="flex flex-wrap gap-2" style={{ marginTop: 12 }}>
           <button className="btn btn-primario" disabled={processando} onClick={() => analisar()}>{processando ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}Analisar {pendentesFila} {pendentesFila === 1 ? "documento" : "documentos"} com IA</button>
-          <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>
+          {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={processando} onClick={() => analisar({ simular: true })} title="Mostra o fluxo sem enviar arquivos à IA">Simular análise</button>}
         </div>
       )}
 
       {divergencias.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Conferir antes de concluir</h3>
-          {divergencias.map((d) => (
-            <div key={d.path} className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 12px", borderRadius: 10, marginBottom: 6, background: d.cpf ? "var(--danger-bg)" : "var(--warning-bg)" }}>
-              <span style={{ fontSize: 14 }}>
-                <strong>{d.rot}</strong>{d.cpf ? ": o CPF do documento é diferente do digitado." : ""}<br />
-                Digitado: <strong>{mostrarValor(d.path, d.atual)}</strong>. No documento ({d.doc}): <strong>{mostrarValor(d.path, d.sugerido)}</strong>
-              </span>
-              <span className="flex gap-1"><button className="btn btn-sm" onClick={() => resolver(d, false)}>Manter o digitado</button><button className="btn btn-sm btn-primario" onClick={() => resolver(d, true)}>Usar o do documento</button></span>
-            </div>
-          ))}
+          <h3 style={{ fontSize: 15, margin: "0 0 6px" }}>Sugestões da IA para a ficha</h3>
+          <p className="ajuda" style={{ margin: "0 0 8px" }}>Nada disto foi preenchido ainda. Marque os campos que quer aceitar e confirme; os desmarcados ficam como estão.</p>
+          <div className="rolagem">
+            <table className="tab">
+              <thead><tr><th style={{ width: 36 }}><span className="sr-only">Aplicar</span></th><th>Campo</th><th>Na ficha</th><th>No documento</th></tr></thead>
+              <tbody>
+                {divergencias.map((d) => (
+                  <tr key={d.path} style={d.implausivel || d.cpf ? { background: "var(--danger-bg)" } : d.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                    <td><input type="checkbox" aria-label={`Aplicar ${d.rot}`} checked={!!selecaoIA[d.path] && !d.implausivel} disabled={processando || !!d.implausivel} onChange={() => setSelecaoIA((sel) => ({ ...sel, [d.path]: !sel[d.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                    <td>{d.rot}<div className="ajuda" style={{ margin: 0 }}>{d.doc}</div></td>
+                    <td style={{ color: d.atual ? "var(--text)" : "var(--muted)" }}>{d.atual ? mostrarValor(d.path, d.atual) : "vazio"}</td>
+                    <td><strong style={{ fontWeight: 650 }}>{mostrarValor(d.path, d.sugerido)}</strong>
+                      {d.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{d.implausivel} Não pode ser aplicado; confira o documento.</div>}
+                      {d.cpf && !d.implausivel && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>O CPF do documento é diferente do digitado.</div>}
+                      {d.diverge && !d.cpf && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do digitado. Confira antes de trocar.</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
+            <button className="btn btn-primario" disabled={processando || !qtdSugestoesIA} onClick={aplicarSugestoes}><Sparkles size={16} />Preencher {qtdSugestoesIA} {qtdSugestoesIA === 1 ? "campo" : "campos"} na ficha</button>
+            <button className="btn" disabled={processando} onClick={dispensarSugestoes}>Dispensar sugestões</button>
+          </div>
         </div>
       )}
 
@@ -2874,7 +2904,7 @@ function ModalMorador({ db, usuario, municipio, remessaPadrao, nucleoPadrao, onS
         </div>
       )}
       <div className="ajuda" style={{ marginTop: 12 }}>
-        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
+        {cpfDivergente ? "Resolva a diferença de CPF para concluir." : divergencias.length > 0 ? "Preencha os campos escolhidos ou dispense as sugestões da IA para concluir." : pendentesFila > 0 ? "Analise os documentos da fila ou remova-os para concluir." : "Documentos que faltarem podem ser adicionados depois, na aba Documentos e IA da ficha."}
       </div>
       {confirmarSaida && <ModalConfirmar titulo="Sair sem cadastrar?" texto="O morador não será criado e o resultado das análises será perdido." rotuloBotao="Sair sem cadastrar" onFechar={() => setConfirmarSaida(false)} onConfirmar={() => { setConfirmarSaida(false); descartarTudo(); onFechar(); }} />}
     </Modal>
@@ -2940,13 +2970,16 @@ function useCadastros({ db, usuario, ir, mutar, setToast }) {
     fechar(); setToast("Núcleo salvo.");
   };
   const salvarMorador = (municipio) => (np, info = {}) => {
+    // O código foi calculado quando o formulário abriu: refaz a conta agora e de novo dentro da gravação.
+    const recodificar = (base) => { const r = codigoMoradorAoGravar(np, (base._baseArquivo || base).processos || [], (n) => codigoCliente(base, np.remessaId, n)); if (r.mudou) { np.codigo = r.codigo; np.numeroCliente = r.numeroCliente; } return r.mudou; };
+    const codigoPrevisto = np.codigo, renumerado = recodificar(db);
     const nuc = nucleoDe(db, np.nucleoId);
     const vincular = nuc && !nuc.remessaId;
     const nomeR = nomeRemessa(db, remessaDe(db, np.remessaId));
     const textoDocs = info.docs ? `. ${info.docs} ${info.docs === 1 ? "documento analisado" : "documentos analisados"}${info.simulados ? ` (${info.simulados} em simulação)` : ""}, ${info.campos} ${info.campos === 1 ? "campo preenchido" : "campos preenchidos"} pela IA, arquivos descartados` : ". Sem documentos no cadastro";
-    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
+    mutar((d) => { if (d.processos.some((p) => p.id === np.id)) return d; recodificar(d); d.processos.push(np); if (vincular) d.nucleos.find((n) => n.id === nuc.id).remessaId = np.remessaId; return d; }, "Morador cadastrado", { ...(info.idOperacao ? { id: info.idOperacao } : {}), municipioId: municipio.id, remessaId: np.remessaId, nucleoId: np.nucleoId || undefined, processoId: np.id, detalhe: `${np.codigo} em ${nomeR}${nuc ? `, ${nuc.codigo}` : ", sem núcleo"}${vincular ? `. ${nuc.codigo} vinculado à ${nomeR}` : ""}${textoDocs}` });
     fechar(); ir({ pag: "processo", id: np.id });
-    setToast(info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`);
+    setToast((renumerado ? `O código ${codigoPrevisto} já estava em uso; o morador recebeu ${np.codigo}. ` : "") + (info.docs ? `${np.codigo} cadastrado com ${info.campos} campos preenchidos pela IA. Revise a ficha.` : `${np.codigo} cadastrado. Adicione os documentos na aba Documentos e IA.`));
   };
   const adicionarUnidade = (p) => {
     const total = unidadesDe(p).length + 1;
@@ -2988,7 +3021,7 @@ function PendenciasMunicipio({municipio,carregarMunicipio}) {
   </div>;
 }
 
-function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio }) {
+function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio, abrirCliente }) {
   const ordem = useOrdenacao("nome");
   const cad = useCadastros({ db, usuario, ir, mutar, setToast });
   const [municipioPRF, setMunicipioPRF] = useState(null);
@@ -3011,6 +3044,7 @@ function PaginaMunicipios({ db, usuario, ir, mutar, setToast, carregarMunicipio 
           {cad.perm.estrutura && <button className="btn btn-primario" onClick={() => cad.abrir({ tipo: "municipio" })}><Plus size={16} />Novo município</button>}
         </div>
       </div>
+      <div style={{ marginBottom: 14 }}><BuscaClientes db={db} abrirCliente={abrirCliente} demo={AMBIENTE.DEMO} incluirConjuge /></div>
       <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 14 }}>
         <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Filtrar por UF">
           {ufs.map((u) => <button key={u} role="tab" aria-selected={u === uf} className={`btn btn-sm${u === uf ? " btn-primario" : ""}`} onClick={() => setUf(u)}>{u}</button>)}
@@ -3614,6 +3648,9 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
     return normalizar(`${p.codigo} ${p.requerente.nome} ${p.conjuge.nome}`).includes(b) || (bd.length >= 3 && (so(p.requerente.cpf).includes(bd) || so(p.conjuge.cpf).includes(bd)));
   });
   const naoAtivos = ps.filter((p) => !ativo(p)).length;
+  const [pagina, setPagina] = useState(0);
+  useEffect(() => { setPagina(0); }, [busca, etapa, situacao]);
+  const faixa = faixaDaPagina(lista.length, pagina);
   return (
     <>
       <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
@@ -3631,7 +3668,7 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
         <table className="tab">
           <thead><tr>{ordem.cabecalho("codigo", "Código")}{ordem.cabecalho("nome", "Morador")}{ordem.cabecalho("cpf", "CPF")}{mostrarNucleo && ordem.cabecalho("nucleo", "Núcleo")}{ordem.cabecalho("etapa", "Etapa")}{ordem.cabecalho("pendencias", "Pendências")}<th><span className="sr-only">Ações</span></th></tr></thead>
           <tbody>
-            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).map((p) => {
+            {ordem.ordenar(lista, { codigo:p=>p.codigo, nome:p=>p.requerente.nome, cpf:p=>so(p.requerente.cpf), nucleo:p=>nucleoDe(db,p.nucleoId)?.codigo, etapa:p=>p.etapa, pendencias:p=>ativo(p) && p.etapa < TOTAL ? pendencias(db,p).length : null }).slice(faixa.inicio, faixa.fim).map((p) => {
               const pend = pendencias(db, p);
               const ctx = contexto(db, p);
               const alertas = alertasDados(p, ctx);
@@ -3659,6 +3696,11 @@ function TabProcessos({ db, ps, ir, mostrarNucleo }) {
           </tbody>
         </table>
       </div>
+      {faixa.paginas > 1 && <nav className="metas-paginacao" aria-label="Páginas de moradores">
+        <span className="ajuda" aria-live="polite">{textoDaFaixa(faixa)}</span>
+        <button className="btn btn-sm" disabled={faixa.atual === 0} onClick={() => setPagina(faixa.atual - 1)}><ChevronLeft size={16} />Anterior</button>
+        <button className="btn btn-sm" disabled={faixa.atual === faixa.paginas - 1} onClick={() => setPagina(faixa.atual + 1)}>Próxima<ChevronRight size={16} /></button>
+      </nav>}
     </>
   );
 }
@@ -3781,7 +3823,7 @@ function BlocoPessoa({ form, base, papel = "requerente", dis, perm, permitirPJ =
       {pj ? (
         <>
           <Campo form={form} rot="Razão social" path={P("nome")} span={2} dis={dis} />
-          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : ""} />
+          <Campo form={form} rot="CNPJ" path={P("cnpj")} fmt={fmtCNPJ} im="numeric" dis={dis} erro={x.cnpj && !cnpjValido(x.cnpj) ? "CNPJ inválido. Confira os dígitos." : campoFaltando(form, P("cnpj"), x.cnpj)} />
           {campoCodigoMorador}
           <Campo form={form} rot="Representante legal" path={P("representante")} opcoes={representantes.length ? representantes : undefined} vazio="Escolha ou informe abaixo" span={representantes.length ? 1 : 2} dis={dis} ajuda={representantes.length ? "Um dos requerentes cadastrados nesta ficha." : "Nome de quem assina pela empresa. Cadastre a pessoa em Outros requerentes para ter a qualificação completa."} />
           <Campo form={form} rot="Telefone" path={P("telefone")} im="tel" dis={dis} />
@@ -3873,11 +3915,11 @@ function ListaPessoas({ form, chave, dis, perm, titulo, vazio, novo, cabecalho }
   );
 }
 
-function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, perm, cancelado }) {
+function AbaCadastro({ p, db, rascunho, setRascunho, iaPaths, faltando, perm, cancelado }) {
   const municipio = municipioDe(db, p.municipioId);
   const remessasMun = db.remessas.filter((r) => r.municipioId === p.municipioId).sort((a, b) => a.numero - b.numero);
   const defs = (db.campos?.lista || []).filter((c) => !campoConfrontante(c.id));
-  const form = { rascunho, ia: iaPaths, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
+  const form = { rascunho, ia: iaPaths, faltando, set: (path, v) => setRascunho((r) => { const c = clone(r); setPath(c, path, v); return c; }) };
   const pode = (k) => !cancelado && (perm.editarClientes || !!perm[k]);
   const pd = { ...p, ...rascunho };
   const nucleoDraft = db.nucleos.find((n) => n.id === pd.nucleoId) || null;
@@ -4156,7 +4198,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     const r2 = { ...res, tipo };
     const destino = destinoDocumento(r2, rascunho, pessoaEscolhida);
     const linhas = montarLinhas(r2, rascunho, pessoaEscolhida);
-    const sel = {}; linhas.forEach((l) => { sel[l.path] = !l.diverge && podeSecao(l.path) && !pessoaEscolhida && !!destino; });
+    const sel = selecaoInicialSugestoes(linhas, (l) => podeSecao(l.path) && !pessoaEscolhida && !!destino);
     setSelecao(sel);
     setResultado({ ...r2, simulado, linhas, regrasAvaliadas: avaliadas, meta });
     if (!processandoRef.current) setEstado("resultado");
@@ -4215,7 +4257,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
     } finally { processandoRef.current = false; }
   };
   const simular = async () => {
-    if (processandoRef.current || !podeEnviar) return;
+    if (processandoRef.current || !podeEnviar || !podeSimularAnalise(AMBIENTE.DEMO)) return;
     const meta = arquivo ? { nome: arquivo.name, tamanho: arquivo.size, impressao: await impressaoDigital(arquivo) } : { nome: "exemplo-simulado.pdf", tamanho: 0, impressao: "" };
     descartarArquivo();
     finalizar(simularAnalise(tipoEsperado, p, regras), true, meta);
@@ -4240,7 +4282,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
   };
   const exigidos = ["identidade", ...(temConjuge(p) ? ["identidade_conjuge"] : []), "comp_residencia", "estado_civil", "comp_renda", "comp_posse"];
   const outros = p.docs.filter((d) => !exigidos.includes(d.tipo) || (d.pessoaId && !["requerente", "conjuge"].includes(d.pessoaId)));
-  const qtdSel = resultado ? resultado.linhas.filter((l) => selecao[l.path]).length : 0;
+  const qtdSel = resultado ? sugestoesSelecionadas(resultado.linhas, selecao).length : 0;
   const mostrarValor = (l, v) => (l.path.endsWith("nascimento") || l.path.endsWith("dataUniao") ? dataBR(v) : v || "vazio");
   const tagResultado = (r) => r.resultado === "atende" ? <Tag tipo="ok">Atende</Tag> : r.resultado === "nao_atende" ? <Tag tipo={r.gravidade === "bloqueia" ? "bloq" : "pend"}>Não atende</Tag> : <Tag>Não verificada</Tag>;
 
@@ -4326,7 +4368,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 {estado === "analisando" ? <Loader2 size={16} className="girando" /> : <Sparkles size={16} />}
                 {estado === "analisando" ? (fila ? `Analisando ${fila.atual} de ${fila.total}` : "Analisando") : arquivos.length > 1 ? `Analisar os ${arquivos.length} com IA` : "Analisar com IA"}
               </button>
-              <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>
+              {podeSimularAnalise(AMBIENTE.DEMO) && <button className="btn" disabled={estado === "analisando"} onClick={simular} title="Mostra o fluxo sem enviar arquivo à IA">Rodar simulação</button>}
             </div>
             {fila && <div className="ajuda" style={{ marginTop: 8 }}>Lendo "{fila.nome}". Não feche a tela até terminar.</div>}
             {lote.length > 0 && (
@@ -4417,11 +4459,11 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                     {resultado.linhas.map((l) => {
                       const permitido = podeSecao(l.path);
                       return (
-                        <tr key={l.path} style={l.diverge ? { background: "var(--warning-bg)" } : undefined}>
-                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path]} disabled={!permitido} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
+                        <tr key={l.path} style={l.implausivel ? { background: "var(--danger-bg)" } : l.diverge ? { background: "var(--warning-bg)" } : undefined}>
+                          <td><input type="checkbox" aria-label={`Aplicar ${l.rot}`} checked={!!selecao[l.path] && !l.implausivel} disabled={!permitido || !!l.implausivel} onChange={() => setSelecao((s) => ({ ...s, [l.path]: !s[l.path] }))} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} /></td>
                           <td>{l.rot}{!permitido && <div className="ajuda" style={{ margin: 0 }}>Fora da permissão do seu perfil</div>}</td>
                           <td style={{ color: l.atual ? "var(--text)" : "var(--muted)" }}>{mostrarValor(l, l.atual)}</td>
-                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
+                          <td><strong style={{ fontWeight: 650 }}>{mostrarValor(l, l.sugerido)}</strong>{l.implausivel && <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>{l.implausivel} Não pode ser aplicado; confira o documento.</div>}{l.diverge && <div style={{ fontSize: 12.5, color: "var(--warning)" }}>Diferente do cadastro. Confira antes de trocar.</div>}</td>
                         </tr>
                       );
                     })}
@@ -4429,7 +4471,7 @@ function AbaDocumentos({ p, db, usuario, perm, mutar, setToast, rascunho, aplica
                 </table>
               </div>
               <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 12 }}>
-                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(resultado.linhas.filter((l) => selecao[l.path])); setResultado(null); }}>
+                <button className="btn btn-primario" disabled={!qtdSel} onClick={() => { aplicarIA(sugestoesSelecionadas(resultado.linhas, selecao)); setResultado(null); }}>
                   <Sparkles size={16} />Preencher {qtdSel} {qtdSel === 1 ? "campo" : "campos"} no cadastro
                 </button>
                 <span className="ajuda" style={{ margin: 0 }}>Os campos ficam destacados para você revisar e salvar.</span>
@@ -4633,6 +4675,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
   fichaAtual.current = p;
   const [confirmandoCadastro, setConfirmandoCadastro] = useState(false);
   const [erroCadastro, setErroCadastro] = useState("");
+  const [faltandoCadastro, setFaltandoCadastro] = useState([]);
 
   if (!p || !rascunho) return <div className="contem"><Migalhas itens={caminho(db, {})} ir={ir} /><p>Morador não encontrado.</p></div>;
   const r = remessaDe(db, p.remessaId);
@@ -4681,7 +4724,8 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
     (rascunho.ocupantes || []).forEach((o) => { if (o.pessoa?.cpf && !cpfValido(o.pessoa.cpf)) invalidos.push(`CPF de ${o.pessoa.nome || "ocupante"}`); });
     if (rascunho.endereco.cep && so(rascunho.endereco.cep).length !== 8) invalidos.push("CEP da residência");
     if (rascunho.enderecoImovel?.cep && so(rascunho.enderecoImovel.cep).length !== 8) invalidos.push("CEP do imóvel");
-    if (invalidos.length) { setToast(`Corrija antes de salvar: ${invalidos.join(", ")}.`); return; }
+    const avisoCadastro = avisoErrosCadastro(invalidos); setFaltandoCadastro(avisoCadastro.faltando);
+    if (invalidos.length) { setErroCadastro(avisoCadastro.mensagem); if (aba !== "cadastro" && !observacaoPendente) setAba("cadastro"); setTimeout(() => irAoPrimeiroErro(document), 0); return; }
     const remessaNova = remessaDe(db, rascunho.remessaId);
     if (!remessaNova || remessaNova.municipioId !== p.municipioId) { setToast("Escolha uma remessa do município do morador."); return; }
     const nucleoSel = rascunho.nucleoId ? nucleoDe(db, rascunho.nucleoId) : null;
@@ -4785,7 +4829,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
               </button>
             ))}
           </div>
-          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} perm={perm} cancelado={cancelado} /></fieldset>}
+          {aba === "cadastro" && <fieldset disabled={confirmandoCadastro || !!tentativaCadastro.current} style={{border:0,margin:0,padding:0,minWidth:0}}><AbaCadastro p={p} db={db} rascunho={rascunho} setRascunho={setRascunho} iaPaths={iaPaths} faltando={faltandoCadastro} perm={perm} cancelado={cancelado} /></fieldset>}
           {aba === "documentos" && <div data-observacao-pendente={observacaoPendente ? "true" : undefined}><AbaDocumentos p={p} db={db} usuario={usuario} perm={perm} mutar={mutar} setToast={setToast} rascunho={rascunho} aplicarIA={aplicarIA} cancelado={cancelado} onEdicaoPendente={setObservacaoPendente} recarregar={recarregar} /></div>}
           {aba === "cadastro" && p.geo && (
             <div className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
@@ -4816,7 +4860,7 @@ function PaginaProcesso({ db, usuario, processoId, ir, mutar, setToast, abaInici
             <span role="status">{confirmandoCadastro ? "Aguardando confirmação do cadastro…" : tentativaCadastro.current ? "Confirmação do cadastro pendente" : `${alterados.length} ${alterados.length === 1 ? "alteração não salva" : "alterações não salvas"} no cadastro`}</span>
             {erroCadastro && <span role="alert">{erroCadastro}</span>}
             <div className="flex gap-2">
-              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => { baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); }}>Descartar</button>
+              <button className="btn" style={{ background: "transparent", color: "var(--bg)", borderColor: "currentColor" }} disabled={confirmandoCadastro || !!tentativaCadastro.current} onClick={() => setModal({ tipo: "confirmar", ...confirmacaoDescarteCadastro(alterados.length), onConfirmar: () => { setModal(null); baseFormulario.current = { ...extrair(p), codigo: p.codigo }; setRascunho(baseFormulario.current); setIaPaths([]); setErroCadastro(""); } })}>Descartar</button>
               <button className="btn btn-primario" style={{ background: "var(--primary-3)", borderColor: "var(--primary-3)" }} disabled={confirmandoCadastro || (tentativaCadastro.current ? !tentativaCadastro.current.podeRetentar() : !sujo)} onClick={salvar}><Check size={16} />{confirmandoCadastro ? "Confirmando…" : tentativaCadastro.current ? "Confirmar mesmo pedido" : "Salvar alterações"}</button>
             </div>
           </div>
@@ -8368,7 +8412,7 @@ function AbaDevolutivas({ db, n, usuario, ir, mutar, setToast }) {
         const vencida = d.prazo && d.prazo < hoje && m.status !== "Concluído";
         const etapa1 = d.analiseIA?.etapa1;
         const etapa2 = d.analiseIA?.etapa2;
-        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem: contagemEtapa2, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <div key={m.id} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line2)" : "none" }}>
             <div className="flex flex-wrap items-center gap-2">
@@ -8529,14 +8573,14 @@ function ModalRelatorioDevolutiva({ meta, onFechar }) {
 
 // Resultado da etapa 2: veredito, item a item, o que ainda falta e pontos para revisar
 const ROTULO_STATUS_ETAPA2 = { corrigido: ["ok", "Corrigido"], nao_corrigido: ["bloq", "Não corrigido"], nao_verificavel: ["pend", "Não foi possível verificar"] };
-function resumoEtapa2(etapa2) {
+function resumoEtapa2(etapa2, etapa1) {
   const contagem = (etapa2?.itens || []).reduce((acc, it) => { acc[it.status] = (acc[it.status] || 0) + 1; return acc; }, {});
   const pendentes = (etapa2?.pendencias || []).length;
-  const pronto = etapa2 ? (typeof etapa2.pronto === "boolean" ? etapa2.pronto : !pendentes && !contagem.nao_corrigido && !contagem.nao_verificavel) : false;
+  const pronto = prontoParaReenviarDevolutiva(etapa2, etapa1 ? etapa1.itens : null);
   return { contagem, pendentes, pronto };
 }
 function RelatorioEtapa2({ etapa1, etapa2 }) {
-  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+  const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
   const descricaoItem = (id) => (etapa1?.itens || []).find((x) => x.id === id)?.descricao;
   return (
     <div>
@@ -8638,7 +8682,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
       const resultado = await analisarRespostaDevolutivaIA({ itensEtapa1: etapa1?.itens || [], arquivosOriginais, textoOriginal, arquivosResposta: arquivosEtapa2 });
       const itens = resultado.itens || [];
       const pendencias = resultado.pendencias || [];
-      const pronto = typeof resultado.pronto === "boolean" ? resultado.pronto && !pendencias.length && !itens.some((it) => it.status !== "corrigido") : !pendencias.length && !itens.some((it) => it.status !== "corrigido");
+      const pronto = prontoParaReenviarDevolutiva(resultado, etapa1?.itens || []);
       setEtapa2({ geradoEm: new Date().toISOString(), por: usuario.nome, resumo: resultado.resumo || "", pronto, itens, pendencias, naoIdentificado: resultado.naoIdentificado || [], comOriginal: arquivosOriginais.length > 0 || !!textoOriginal, arquivosAnalisados: arquivosEtapa2.map((a) => ({ nome: a.name })) });
     } catch (e) { setErro(e.message); } finally { setCarregando(false); }
   };
@@ -8652,11 +8696,14 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
     if (!podeSalvar) return;
     setSalvando(true); setErro("");
     try {
-      let etapa1Salvar = etapa1;
+      let etapa1Salvar = etapa1, falhaIA = null;
       if (!etapa1Salvar) {
+        // IA indisponível não cancela o salvamento: a devolutiva e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosEtapa1.length ? arquivosEtapa1 : await carregarOriginais(), textoLivre);
         etapa1Salvar = {geradoEm:new Date().toISOString(),resumo:resultado.resumo || "",itens:(resultado.itens || []).map(it => ({...it,id:uid("iv")})),naoIdentificado:resultado.naoIdentificado || []};
         setEtapa1(etapa1Salvar);
+        } catch (e) { falhaIA = e; }
       }
       const gravarLote = async (arquivos) => {
         const anexos = [];
@@ -8675,6 +8722,7 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         origem: meta?.devolutiva?.origem || "Prefeitura",
         ...meta?.devolutiva, chegada, prazo, textoOriginal: textoLivre.trim(),
         analiseIA: {
+          ...(falhaIA ? marcarAnalisePendenteDevolutiva(null, falhaIA) : {}),
           etapa1: etapa1Salvar ? { ...etapa1Salvar, arquivosAnalisados: anexosEtapa1.length ? anexosEtapa1.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa1Salvar.arquivosAnalisados || []) } : (meta?.devolutiva?.analiseIA?.etapa1 || null),
           etapa2: etapa2 ? { ...etapa2, arquivosAnalisados: anexosEtapa2.length ? anexosEtapa2.map((a) => ({ id:a.id, nome:a.nome, chave:a.chave })) : (etapa2.arquivosAnalisados || []) } : null,
         },
@@ -8694,18 +8742,18 @@ function ModalAnaliseDevolutiva({ db, meta, usuario, mutar, setToast, onFechar }
         };
         await envio.executar((d) => {
           d.metas.unshift(m);
-          registrarHistoricoMeta(d, m, "Devolutiva registrada", `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
+          registrarHistoricoMeta(d, m, "Devolutiva registrada", falhaIA ? `Registrada por ${usuario.nome}. Análise de IA pendente.` : `Análise de IA (etapa 1) gerada por ${usuario.nome}.`, usuario);
           if (etapa2) registrarHistoricoMeta(d, m, "Análise de IA", "Etapa 2 (conferência do trabalho corrigido) gerada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, "Devolutiva registrada com o relatório da IA.", onFechar);
+        }, "Devolutiva: análise de IA", { detalhe: m.titulo }, falhaIA ? `Devolutiva registrada.${AVISO_ANALISE_PENDENTE}` : "Devolutiva registrada com o relatório da IA.", onFechar);
       } else {
         await envio.executar((d) => {
           const q = d.metas.find((x) => x.id === meta.id);
           q.devolutiva = devolutiva;
           q.arquivos = [...(q.arquivos || []), ...anexosEtapa1, ...anexosEtapa2];
-          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
+          registrarHistoricoMeta(d, q, "Análise de IA", etapa2 ? `Etapa 2 (conferência do trabalho corrigido) gerada por ${usuario.nome}: ${resumoEtapa2(etapa2).pronto ? "pronto para responder ao município" : `ainda falta ${resumoEtapa2(etapa2).pendentes || resumoEtapa2(etapa2).contagem.nao_corrigido || 0} ponto(s)`}.` : falhaIA ? "Devolutiva salva. Análise de IA pendente." : "Etapa 1 (teor da devolutiva) atualizada.", usuario);
           return d;
-        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, "Relatório da IA atualizado.", onFechar);
+        }, "Devolutiva: análise de IA atualizada", { detalhe: meta.titulo }, falhaIA ? `Devolutiva salva.${AVISO_ANALISE_PENDENTE}` : "Relatório da IA atualizado.", onFechar);
       }
     } catch (e) { setErro(`Não foi possível salvar: ${e.message}`); } finally { setSalvando(false); }
   };
@@ -8789,13 +8837,13 @@ const condicoesDoCliente = (db, p) => {
   return null;
 };
 // Valor em reais a partir do texto digitado ("2.400,00")
-const reais = (v) => {
-  const n = parseNum(v);
+const reais = (v, ler = numeroDinheiro) => {
+  const n = ler(v);
   return Number.isFinite(n) ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "____________";
 };
 const porExtensoReais = (v) => {
-  const n = parseNum(v);
-  return Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} reais` : "";
+  const n = numeroDinheiro(v);
+  return Number.isFinite(n) ? reaisPorExtenso(n) || `${n.toFixed(2).replace(".", ",")} reais` : "";
 };
 function resumoCondicoes(c) {
   if (!c) return "Sem condição definida";
@@ -8806,7 +8854,7 @@ function resumoCondicoes(c) {
   if (c.modalidade === "À vista") return `À vista, ${reais(c.valorTotal)}`;
   if (c.modalidade.startsWith("Isento") || c.modalidade.startsWith("Custeado")) return c.modalidade;
   const partes = [];
-  if (parseNum(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
+  if (numeroDinheiro(c.entrada) > 0) partes.push(`entrada de ${reais(c.entrada)}`);
   if (parseNum(c.parcelas) > 0) partes.push(`${c.parcelas}x de ${reais(c.valorParcela)}`);
   return `${reais(c.valorTotal)}${partes.length ? `, ${partes.join(" e ")}` : ""}`;
 }
@@ -8816,10 +8864,10 @@ function textoPagamento(c) {
   const venc = c.primeiroVencimento ? `, com o primeiro vencimento em ${dataBR(c.primeiroVencimento)}` : "";
   const dia = c.diaVencimento ? ` e vencimento todo dia ${c.diaVencimento}` : "";
   const reaj = c.reajuste && c.reajuste !== "Sem reajuste" ? ` As parcelas são corrigidas pelo ${c.reajuste.replace(" anual", "")}, uma vez por ano.` : "";
-  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento", ", até")}.`;
+  if (c.modalidade === "À vista") return `O valor de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago à vista${venc.replace(", com o primeiro vencimento em", ", até")}.`;
   if (c.modalidade.startsWith("Isento")) return "O beneficiário está enquadrado na REURB-S e não paga pelos serviços, conforme a Lei 13.465/2017.";
   if (c.modalidade.startsWith("Custeado")) return "Os serviços são custeados integralmente pela prefeitura, conforme o contrato firmado com o município.";
-  const entrada = parseNum(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
+  const entrada = numeroDinheiro(c.entrada) > 0 ? `uma entrada de ${reais(c.entrada)} (${porExtensoReais(c.entrada)}) e ` : "";
   return `O valor total de ${reais(c.valorTotal)} (${porExtensoReais(c.valorTotal)}) será pago em ${entrada}${c.parcelas || "___"} parcelas mensais de ${reais(c.valorParcela)}${dia}${venc}.${reaj}`;
 }
 
@@ -8843,7 +8891,7 @@ const ITENS_COMPROMISSO = [
 ];
 const compromissoVazio = () => ({ itens: {}, prazos: {}, observacao: "", atualizadoEm: "", por: "" });
 const distratoVazio = () => ({ tipo: "devolucao", valorMulta: "", vencimentoMulta: "", formaMulta: "", data: new Date().toISOString().slice(0, 10), motivo: "", valorDevolucao: "", parcelas: "", valorParcela: "", diaVencimento: "10", formaDevolucao: "pix", pixTipo: "", pixChave: "", comarca: "", por: "", registradoEm: "" });
-function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,parseNum); }
+function textoDevolucao(dt) { return textoAcertoDistrato(dt,reais,porExtensoReais,numeroDinheiro); }
 function textoCompromissos(c, remessaPrazos) {
   const itens = ITENS_COMPROMISSO.filter((i) => c?.itens?.[i.id]);
   if (!itens.length) return "Nenhum compromisso de infraestrutura assumido para esta unidade.";
@@ -8889,8 +8937,7 @@ function dadosDocumento(db, p, usuario) {
     historicoPosse: p.imovel?.historicoPosse || "____________",
     qualificacaoCompleta: gerarQualificacao(p, "completa", true).texto,
     requerentes: [p.requerente.nome, ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").map((c) => c.pessoa?.nome)].filter(Boolean).join(", ") || "____________",
-    assinantes: [[p.requerente.nome, ehPJ(p.requerente) ? fmtCNPJ(p.requerente.cnpj) : fmtCPF(p.requerente.cpf)], ...(temConjuge(p) && p.conjuge?.nome && p.conjuge.beneficiario !== "nao" ? [[p.conjuge.nome, fmtCPF(p.conjuge.cpf)]] : []),
-      ...(p.corequerentes || []).filter((c) => c.beneficiario !== "nao").flatMap((c) => [[c.pessoa?.nome, ehPJ(c.pessoa) ? fmtCNPJ(c.pessoa.cnpj) : fmtCPF(c.pessoa?.cpf)], ...(c.conjuge?.nome && c.conjuge.beneficiario !== "nao" ? [[c.conjuge.nome, fmtCPF(c.conjuge.cpf)]] : [])])].filter(([nome]) => nome),
+    assinantes: assinantesDocumento(p, { fmtCPF, fmtCNPJ }),
     dataContrato: (() => { const g = (p.documentosGerados || []).filter((x) => x.tipo === "contrato").slice(-1)[0]; return g ? dataBR(g.data) : "____________"; })(),
     motivo_distrato: p.distrato?.motivo || "____________", devolucao: textoDevolucao(p.distrato), comarca_distrato: p.distrato?.comarca || (m ? m.nome : "____________"),
     qualificacaoCompromisso: p.qualificacaoRequerente?.quali_compromisso || "",
@@ -8899,7 +8946,7 @@ function dadosDocumento(db, p, usuario) {
     nucleo: n ? nomeNucleo(n) : "____________", codigo: p.codigo, unidades: codigosUnidades(p).join(", "),
     area: un[0]?.area || p.imovel?.area || "____________", tipoPosse: p.imovel?.tipoPosse || "posse",
     tempoPosse: p.imovel?.tempoPosse || p.extras?.tempo_posse || tempoDesde(p.imovel?.aquisicao) || "____________",
-    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar) : "____________",
+    renda: preenchido(p.social?.rendaFamiliar) ? reais(p.social.rendaFamiliar, parseNum) : "____________",
     modalidade: p.social?.modalidade || "REURB-S",
     condicoes: c, pagamento: textoPagamento(c),
     dataExtenso: `${m ? m.nome : "____________"}, ${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
@@ -8933,6 +8980,7 @@ function faltandoPara(doc, d, p, declarante) {
   if (doc.precisa.includes("renda") && !preenchido(p.social?.rendaFamiliar)) falta.push("renda familiar");
   if (doc.precisa.includes("procurador") && !(d.advogados || []).length) falta.push("representante cadastrado em Configurações");
   if (doc.precisa.includes("distrato") && !p.distrato?.registradoEm) falta.push("distrato registrado na seção acima");
+  if (documentoComBloqueio(doc.id)) return unirPendencias(pendenciasDocumento(doc.id, p, { condicoes: d.condicoes, qualificacao: d.qualificacaoCompleta }), falta);
   return falta;
 }
 const paragrafo = (t) => `<p style="text-align:justify;margin:0 0 10px">${t}</p>`;
@@ -9144,7 +9192,7 @@ function FormaDeVenda({ titulo, nota, valor, pode, onSalvar, rodape }) {
       <label className="rot" htmlFor={`${titulo}-obs`} style={{ marginTop: 12 }}>Observações que entram no contrato</label>
       <textarea id={`${titulo}-obs`} className="inp" rows={2} value={f.observacoes} disabled={!pode} onChange={(e) => set("observacoes", e.target.value)} />
       <div className="faixa-especifica" style={{ marginTop: 12 }}>
-        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && parseNum(ultimaParcela(f)) !== parseNum(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
+        <span className="ajuda" style={{ margin: 0 }}>{textoPagamento(f)}{ultimaParcela(f) && numeroDinheiro(ultimaParcela(f)) !== numeroDinheiro(f.valorParcela) && !semParcelas && !entradaParcelada ? ` Última parcela ajustada para ${reais(ultimaParcela(f))}.` : ""}</span>
         {pode && <button className="btn btn-primario" disabled={!sujo} onClick={() => { const mensagem=validarCondicoesVenda(f); setErro(mensagem); if(!mensagem)onSalvar(f); }}><Check size={15} />Salvar</button>}
       </div>
       {erro && <p role="alert" className="msg-erro">{erro}</p>}
@@ -9162,11 +9210,11 @@ function SecaoDistrato({ db, p, usuario, pode, mutar, setToast, onGerar }) {
   const registrado = !!p.distrato?.registradoEm;
   const sujo = JSON.stringify(f) !== JSON.stringify({ ...distratoVazio(), ...(p.distrato || {}) });
   const log = { processoId: p.id, nucleoId: p.nucleoId || undefined, remessaId: p.remessaId, municipioId: p.municipioId };
-  const calcular = () => { const total = parseNum(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
+  const calcular = () => { const total = numeroDinheiro(f.valorDevolucao) || 0; const qtd = parseInt(f.parcelas, 10) || 0; if (qtd > 0) set("valorParcela", (total / qtd).toFixed(2).replace(".", ",")); };
   const salvar = () => {
-    const erroDistrato=validarDistrato(f,parseNum);if(erroDistrato){setToast(erroDistrato);return;}
+    const erroDistrato=validarDistrato(f,numeroDinheiro);if(erroDistrato){setToast(erroDistrato);return;}
     const novo = { ...f, motivo: f.motivo.trim(), por: usuario.nome, registradoEm: p.distrato?.registradoEm || new Date().toISOString() };
-    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : parseNum(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
+    mutar((d) => { const q = d.processos.find((x) => x.id === p.id); q.distrato = novo; return d; }, registrado ? "Distrato alterado" : "Distrato registrado", { ...log, detalhe: `${p.codigo}: ${novo.motivo.slice(0, 60)}${tipoDistrato(novo)==="multa" ? `, multa de ${reais(novo.valorMulta)} a pagar à empresa` : tipoDistrato(novo)==="sem_acerto" ? ", sem multa e sem devolução" : numeroDinheiro(novo.valorDevolucao) > 0 ? `, devolução de ${reais(novo.valorDevolucao)}` : ""}` });
     setToast("Distrato guardado neste aparelho e aguardando sincronização. Após confirmar o envio, gere o documento.");
   };
   const desfazer = () => {
@@ -10651,6 +10699,15 @@ function registrarHistoricoMeta(d, m, acao, descricao, usuario) {
   return item;
 }
 
+// Gravação única da aprovação: o botão da meta e a aprovação em lote usam esta mesma mutação.
+function aprovarConclusaoMeta(d, metaId, usuario) {
+  const q = d.metas.find(x => x.id === metaId);
+  if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
+  q.status = "Concluído"; q.solicitacaoConclusao = null;
+  registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
+  novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
+  return d;
+}
 function useConfirmacaoEdicao(mutar, setToast) {
   const tentativa = useRef(null), ocupada = useRef(false);
   const [estado, setEstado] = useState(null);
@@ -10736,7 +10793,7 @@ function ModalOrdemServico({ db, inicial, onSalvar, onFechar, envio }) {
 function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, onDetalhe }) {
   const nova = !meta;
   const [f, setF] = useState(() => nova
-    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: semanaISO(1), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
+    ? { devolutiva: false, origemDev: "Prefeitura", chegadaDev: new Date().toISOString().slice(0, 10), prazoDev: "", titulo: "", observacoes: "", checklistItens: [], semana_inicio: semanaISO(), prazo: prazoSugeridoMeta(), status: "Em andamento", setor: prefill?.setor || "", associacao_tipo: prefill?.associacao_tipo || "avulsa", associacao_id: prefill?.associacao_id || "", responsaveis: prefill?.responsaveis || [], icone: "" }
     : { devolutiva: !!meta.devolutiva, origemDev: meta.devolutiva?.origem || "Prefeitura", chegadaDev: meta.devolutiva?.chegada || "", prazoDev: meta.devolutiva?.prazo || "", titulo: meta.titulo, observacoes: meta.observacoes || "", checklistItens: (meta.checklist || []).map((c) => ({ id: c.id, titulo: c.titulo, concluido: !!c.concluido })), semana_inicio: meta.semana_inicio || semanaISO(), prazo: meta.prazo || "", status: meta.status, setor: meta.setor || "", associacao_tipo: meta.associacao_tipo || "avulsa", associacao_id: meta.associacao_id || "", responsaveis: [...(meta.responsaveis || [])], icone: meta.icone || "" });
   const camposIniciais = useRef(f);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -10744,7 +10801,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   const [registroDevId, setRegistroDevId] = useState("");
   const registroDev = (db.metas || []).find(m => m.id === registroDevId && m.devolutiva);
   const [salvando, setSalvando] = useState(false);
-  const tentativaMeta = useRef(null), preparandoMeta = useRef(false);
+  const tentativaMeta = useRef(null), preparandoMeta = useRef(false), avisoAnalisePendente = useRef("");
   // One operation (and one goal id) per opening of the form: saving again
   // resumes the same request instead of creating a second goal.
   const idOperacaoMeta = useRef(null), idMetaNova = useRef(null);
@@ -10755,7 +10812,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     setSalvando(true); setErroDev("");
     try {
       await tentativaMeta.current.executar();
-      setToast(nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada."));
+      setToast((nova ? (AMBIENTE.DEMO ? "Meta criada na demonstração." : "Meta criada e atribuída. Gravação confirmada.") : (AMBIENTE.DEMO ? "Meta atualizada na demonstração." : "Dados da meta atualizados. Gravação confirmada.")) + avisoAnalisePendente.current);
       onFechar(); if (nova && onDetalhe) onDetalhe();
     } catch (e) {
       // Still queued and not in review: not a failure, and no new goal may be created.
@@ -10783,21 +10840,27 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
     if (f.prazoDev && f.chegadaDev && f.prazoDev < f.chegadaDev) erros.push("O prazo não pode ser antes da chegada");
     if (!registroDev && !arquivosDev.length && !meta?.devolutiva?.textoOriginal?.trim() && !(meta && (meta.arquivos || []).length)) erros.push("Envie o arquivo da devolutiva");
   }
+  const [tocados, setTocados] = useState({}), [tentouSalvar, setTentouSalvar] = useState(false);
+  const tocar = (campo) => setTocados((t) => (t[campo] ? t : { ...t, [campo]: true }));
+  const ev = errosVisiveisMeta(erros, tocados, tentouSalvar);
   const opcoesAssoc = f.associacao_tipo === "plano" ? (db.planos || []).map((p) => [p.id, p.titulo])
     : f.associacao_tipo === "nucleo" ? (db.nucleos || []).map((n) => [n.id, `${rotuloNucleo(db, n)}${n.nome ? `, ${n.nome}` : ""}${n.responsavel ? ` — ${n.responsavel}` : ""}`])
     : f.associacao_tipo === "ordem_servico" ? (db.ordensServico || []).map((o) => [o.id, o.nome]) : [];
   const salvar = async () => {
     if (preparandoMeta.current || salvando) return;
     if (tentativaMeta.current) { preparandoMeta.current=true; await confirmarCriacao(); return; }
-    if (erros.length) return;
+    if (erros.length) { setTentouSalvar(true); setTimeout(() => document.querySelector(".meta-formulario .msg-erro")?.scrollIntoView?.({ block: "center" }), 0); return; }
     preparandoMeta.current=true;
     setSalvando(true); setErroDev("");
     const anexos = registroDev ? clone(arquivosOriginaisDevolutiva(registroDev)) : [];
-    let novaAnalise = null;
+    let novaAnalise = null, falhaIA = null;
     try {
       if (f.devolutiva && arquivosDev.length) {
+        // IA indisponível não cancela o salvamento: a meta e os anexos são gravados e a análise fica pendente.
+        try {
         const resultado = await analisarTeorDevolutivaIA(arquivosDev, f.observacoes);
         novaAnalise = { geradoEm: new Date().toISOString(), resumo: resultado.resumo || "", itens: (resultado.itens || []).map(it => ({...it,id:uid("iv")})), naoIdentificado: resultado.naoIdentificado || [] };
+        } catch (e) { falhaIA = e; }
       }
       for (const arquivo of f.devolutiva ? arquivosDev : []) {
         const base64 = await lerBase64(arquivo);
@@ -10810,9 +10873,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
       setErroDev(`Não foi possível guardar os arquivos: ${e.message}. Tente novamente.`);
       preparandoMeta.current=false; setSalvando(false); return;
     }
+    avisoAnalisePendente.current = falhaIA ? AVISO_ANALISE_PENDENTE : "";
     const itens = f.checklistItens.map((x) => ({ ...x, titulo: x.titulo.trim() })).filter((x) => x.titulo);
-    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: f.semana_inicio, prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
-      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
+    const base = { titulo: f.titulo.trim(), observacoes: f.observacoes.trim(), semana_inicio: semanaAoSalvar(f.semana_inicio, meta?.semana_inicio), prazo: f.devolutiva ? f.prazoDev : f.prazo, status: f.status, setor: f.setor, associacao_tipo: f.associacao_tipo, associacao_id: f.associacao_tipo === "avulsa" ? "" : f.associacao_id, responsaveis: f.responsaveis, icone: f.icone,
+      devolutiva: f.devolutiva ? { ...meta?.devolutiva, ...(registroDev ? clone(registroDev.devolutiva) : {}), ...(registroDev ? {registroId:registroDev.devolutiva.registroId || registroDev.id} : {}), ...(novaAnalise ? {analiseIA:{etapa1:{...novaAnalise,arquivosAnalisados:anexos.map(a => ({id:a.id,nome:a.nome,chave:a.chave}))},etapa2:null}} : falhaIA ? {analiseIA:marcarAnalisePendenteDevolutiva((registroDev || meta)?.devolutiva?.analiseIA, falhaIA)} : {}), origem: f.origemDev, chegada: f.chegadaDev, prazo: f.prazoDev } : null };
     if (nova) {
       const m = { id: idMetaNova.current, erpId: null, ...base, criadoPor: usuario.id, nucleos: base.associacao_tipo === "nucleo" ? [base.associacao_id] : [], checklist: itens.map((x) => ({ id: x.id || uid("c"), titulo: x.titulo, concluido: !!x.concluido })), comentarios: [], historico: [], arquivos: anexos };
       tentativaMeta.current=criarConfirmacaoMeta(() => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => {
@@ -10850,9 +10914,10 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         if (alterado.associacao_tipo || alterado.associacao_id) q.nucleos = base.associacao_tipo === "nucleo" ? [base.associacao_id] : q.nucleos;
         const antesChecklist = q.checklist || [];
         if (checklistAlterado) {
-          q.checklist = itens.map((x) => { const velho = antesChecklist.find((c) => c.id === x.id); return velho ? { ...velho, titulo: x.titulo, concluido: x.concluido } : { id: uid("c"), titulo: x.titulo, concluido: x.concluido }; });
-          itens.filter((x) => !antesChecklist.some((c) => c.id === x.id)).forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
-          antesChecklist.filter((c) => !itens.some((x) => x.id === c.id)).forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
+          const checklistMesclado = mesclarChecklistEditado(antesChecklist, fi.checklistItens, itens, () => uid("c"));
+          q.checklist = checklistMesclado.checklist;
+          checklistMesclado.adicionados.forEach((x) => registrarHistoricoMeta(d, q, "Checklist adicionado", x.titulo, usuario));
+          checklistMesclado.removidos.forEach((c) => registrarHistoricoMeta(d, q, "Checklist removido", c.titulo, usuario));
         }
         if (anexos.length) { q.arquivos = [...(q.arquivos || []), ...anexos]; anexos.forEach(anexo => registrarHistoricoMeta(d, q, "Arquivo enviado", `${anexo.nome}, ${(anexo.tamanho / 1024).toFixed(0)} KB`, usuario)); }
         registrarHistoricoMeta(d, q, "Editada", `Dados da meta atualizados: ${mud.join(", ") || "sem mudanças"}.`, usuario);
@@ -10872,7 +10937,7 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
   };
   return (
     <Modal titulo={nova ? "Nova Meta" : "Editar meta"} largura={sugerir ? 1040 : 640} onFechar={fechar}
-      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (tentativaMeta.current ? !tentativaMeta.current.podeRetentar() : erros.length > 0)} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
+      rodape={<><button className="btn" disabled={salvando} onClick={fechar}>Voltar</button><button className="btn btn-primario" disabled={salvando || (!!tentativaMeta.current && !tentativaMeta.current.podeRetentar())} onClick={salvar}>{salvando ? "Confirmando…" : tentativaMeta.current ? "Confirmar mesmo pedido" : "Salvar"}</button></>}>
       {erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
       {tentativaMeta.current && <p role="status">Formulário preservado. Uma nova tentativa acompanha este mesmo pedido.</p>}
       <fieldset data-estado-edicao={estadoEdicao} disabled={salvando || !!tentativaMeta.current} style={{border:0,padding:0,margin:0,minWidth:0}}>
@@ -10883,12 +10948,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         Esta meta é uma devolutiva
       </label>
       {f.devolutiva && <BuscaItem id="devregistrada" rotulo="Vincular devolutiva cadastrada" mostrarTodos itens={catalogoDevolutivas(db.metas).filter(r => r.meta.id !== meta?.id).map(({meta:m}) => [m.id, m.titulo + " — " + rotuloAssociacao(db,m)])} valor={registroDevId} onEscolher={id => { const m = db.metas.find(x => x.id === id); setRegistroDevId(id); if(m) {setArquivosDev([]);setF(x => ({...x, associacao_tipo:"nucleo", associacao_id:m.associacao_id, origemDev:m.devolutiva.origem, chegadaDev:m.devolutiva.chegada, prazoDev:m.devolutiva.prazo || m.prazo}));} }} placeholder="Buscar por título, município ou núcleo" />}
+      {f.devolutiva && ev.registroDev && <div className="msg-erro" role="alert" style={{ marginBottom: 10 }}>{ev.registroDev}</div>}
       {f.devolutiva && (
         <div className="card" style={{ padding: 14, marginBottom: 12 }}>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
             <div><label className="rot" htmlFor="mtdo">Origem</label><select id="mtdo" className="inp" value={f.origemDev} onChange={(e) => set("origemDev", e.target.value)}>{ORIGENS_DEVOLUTIVA.map((o) => <option key={o}>{o}</option>)}</select></div>
-            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className="inp" value={f.chegadaDev} onChange={(e) => set("chegadaDev", e.target.value)} /></div>
-            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className="inp" value={f.prazoDev} onChange={(e) => set("prazoDev", e.target.value)} /></div>
+            <div><label className="rot" htmlFor="mtdc">Data de chegada</label><input id="mtdc" type="date" className={`inp${ev.chegadaDev ? " erro" : ""}`} value={f.chegadaDev} onBlur={() => tocar("chegadaDev")} onChange={(e) => set("chegadaDev", e.target.value)} />{ev.chegadaDev && <div className="msg-erro" role="alert">{ev.chegadaDev}</div>}</div>
+            <div><label className="rot" htmlFor="mtdp">Prazo final</label><input id="mtdp" type="date" className={`inp${ev.prazoDev ? " erro" : ""}`} value={f.prazoDev} onBlur={() => tocar("prazoDev")} onChange={(e) => set("prazoDev", e.target.value)} />{ev.prazoDev && <div className="msg-erro" role="alert">{ev.prazoDev}</div>}</div>
           </div>
           <label className="rot" htmlFor="mtda" style={{ marginTop: 12 }}>Arquivos da devolutiva (até 5)</label>
           <input id="mtda" type="file" multiple disabled={salvando} className="inp" onChange={(e) => {
@@ -10899,12 +10965,13 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           }} />
           {arquivosDev.map((a, i) => <div key={i} className="flex items-center gap-2" style={{marginTop:6}}><span style={{flex:1}}>{a.name}</span><button className="btn-icone" disabled={salvando} aria-label={`Remover ${a.name}`} onClick={() => {setArquivosDev(atual => atual.filter((_,j) => j !== i));setErroDev("");}}><Trash2 size={14} /></button></div>)}
           {!nova && erroDev && <div className="msg-erro" role="alert">{erroDev}</div>}
+          {ev.arquivosDev && <div className="msg-erro" role="alert">{ev.arquivosDev}</div>}
           <div className="ajuda">Os arquivos ficam guardados com a meta e aparecem na aba Devolutivas do processo. O prazo da meta passa a ser o prazo final da devolutiva.</div>
           {meta && (meta.arquivos || []).length > 0 && <div className="ajuda">Já anexado: {(meta.arquivos || []).map((a) => a.nome).join(", ")}</div>}
         </div>
       )}
       <div className="fg" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta</label><input id="mtt" className="inp" value={f.titulo} onChange={(e) => set("titulo", e.target.value)} /></div>
+        <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mtt">Título da nova meta (obrigatório)</label><input id="mtt" className={`inp${ev.titulo ? " erro" : ""}`} value={f.titulo} aria-required="true" aria-invalid={!!ev.titulo} onBlur={() => tocar("titulo")} onChange={(e) => set("titulo", e.target.value)} />{ev.titulo && <div className="msg-erro" role="alert">{ev.titulo}</div>}</div>
         <div style={{ gridColumn: "1 / -1" }}><label className="rot" htmlFor="mto">Observações</label><textarea id="mto" className="inp" rows={2} value={f.observacoes} placeholder="Contexto, instruções ou observações da meta" onChange={(e) => set("observacoes", e.target.value)} /></div>
         <div style={{ gridColumn: "1 / -1" }}>
           <span className="rot">Checklist ({f.checklistItens.filter((x) => x.concluido).length} de {f.checklistItens.length})</span>
@@ -10921,13 +10988,14 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
           <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={addItemChecklist}><Plus size={14} />Adicionar item</button>
           <div className="ajuda">Marque os que já estão feitos. O Enter cria o próximo item.</div>
         </div>
-        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} /></div>
+        <div><label className="rot" htmlFor="mts">Semana</label><input id="mts" type="date" className="inp" value={f.semana_inicio} onChange={(e) => set("semana_inicio", e.target.value)} />{semanaAoSalvar(f.semana_inicio, meta?.semana_inicio) !== f.semana_inicio && <div className="ajuda">A semana começa na segunda-feira: será gravada como {dataBR(semanaAoSalvar(f.semana_inicio, meta?.semana_inicio))}.</div>}</div>
         <div><label className="rot" htmlFor="mtp">Prazo (opcional)</label><input id="mtp" type="date" className="inp" value={f.devolutiva ? f.prazoDev : f.prazo} disabled={f.devolutiva} onChange={(e) => set("prazo", e.target.value)} />{f.devolutiva && <div className="ajuda">Vem do prazo final da devolutiva.</div>}</div>
         <div><label className="rot" htmlFor="mtst">Status</label><select id="mtst" className="inp" value={f.status} onChange={(e) => set("status", e.target.value)}>{META_STATUS.map((x) => <option key={x}>{x}</option>)}</select></div>
         <div><label className="rot" htmlFor="mtse">Setor</label><select id="mtse" className="inp" value={f.setor} onChange={(e) => set("setor", e.target.value)}><option value="">Sem setor</option>{setoresUnicos(db.setoresMeta).filter((s) => s.ativo !== false).map((s) => <option key={s.id}>{s.nome}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}>
           <label className="rot" htmlFor="mta">Associar meta a</label>
           <select id="mta" className="inp" value={f.associacao_tipo} onChange={(e) => { set("associacao_tipo", e.target.value); set("associacao_id", ""); }}>{ASSOC_TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
+          {ev.associacao && <div className="msg-erro" role="alert">{ev.associacao}</div>}
         </div>
         {f.associacao_tipo !== "avulsa" && (
           <div style={{ gridColumn: "1 / -1" }}>
@@ -10937,15 +11005,16 @@ function ModalMetaERP({ db, meta, usuario, prefill, mutar, setToast, onFechar, o
         )}
       </div>
       <div style={{ marginTop: 14 }}><SeletorIcone valor={f.icone} sugestao={sugerirIcone(f.titulo)} onEscolher={(v) => set("icone", v)} /></div>
-      <span className="rot" style={{ marginTop: 14 }}>Responsáveis</span>
+      <span className="rot" style={{ marginTop: 14 }}>Responsáveis (obrigatório)</span>
       <div className="flex flex-wrap gap-2">
         {(db.usuarios || []).filter((u) => u.ativo && u.setor !== "consulta").map((u) => (
           <label key={u.id} className={`tag ${f.responsaveis.includes(u.id) ? "tag-neutra" : ""}`} style={{ border: "1px solid var(--line)", padding: "5px 10px", cursor: "pointer" }}>
-            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id])} style={{ accentColor: "#0F5F5B" }} />{u.nome}
+            <input type="checkbox" checked={f.responsaveis.includes(u.id)} onChange={() => { tocar("responsaveis"); set("responsaveis", f.responsaveis.includes(u.id) ? f.responsaveis.filter((x) => x !== u.id) : [...f.responsaveis, u.id]); }} style={{ accentColor: "#0F5F5B" }} />{u.nome}
           </label>
         ))}
       </div>
-      {erros.length > 0 && <div className="msg-erro" style={{ marginTop: 10 }}>{erros.join(". ")}.</div>}
+      {ev.responsaveis && <div className="msg-erro" role="alert">{ev.responsaveis}</div>}
+      {tentouSalvar && erros.length > 0 && <div className="msg-erro" role="alert" style={{ marginTop: 10 }}>Confira os campos destacados acima antes de salvar.{ev.geral ? ` ${ev.geral}` : ""}</div>}
       </div>
       {sugerir && <SugestoesMetas setorMeta={f.setor} onUsar={usarSugestao} />}
       </div>
@@ -10958,6 +11027,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
   const [item, setItem] = useState("");
   const [comentario, setComentario] = useState("");
   const [excluir, setExcluir] = useState(false);
+  const [remocao, setRemocao] = useState(null);
   const [recusando, setRecusando] = useState(false);
   const [motivoRecusa, setMotivoRecusa] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -10989,14 +11059,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       novaNotificacao(d,{titulo:`Conclusão recusada: ${q.titulo}`,texto:motivoRecusa.trim(),rota:{pag:"metas"},usuarios:[...new Set([...(q.responsaveis||[]),...(solicitante?[solicitante]:[])])]});return d;
     }, "Meta: conclusão recusada", {detalhe:`${m.titulo}: ${motivoRecusa.trim()}`}, "Recusa registrada. A meta voltou para Em andamento.", onFechar);
   };
-  const aprovar = () => envio.executar(d => {
-    const q = d.metas.find(x => x.id === m.id);
-    if (!q || !podeAprovarConclusao(q, usuario)) throw new Error("A meta não aguarda mais aprovação.");
-    q.status = "Concluído"; q.solicitacaoConclusao = null;
-    registrarHistoricoMeta(d, q, "Conclusão aprovada", `${usuario.nome} aprovou a conclusão da meta.`, usuario);
-    novaNotificacao(d, { titulo: `Conclusão aprovada: ${q.titulo}`, texto: `${usuario.nome} aprovou a conclusão.`, rota: { pag: "metas" }, usuarios: q.responsaveis });
-    return d;
-  }, "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
+  const aprovar = () => envio.executar(d => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, "Conclusão aprovada.", onFechar);
   const enviarAnexo = async (arq) => {
     setErroArquivo("");
     if (!arq || enviando || envio.bloqueada) return;
@@ -11032,7 +11095,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
     : vePendenteAprovacao(m) && respMeta(m, usuario) ? <Tag tipo="pend">Aguardando aprovação</Tag> : null;
   return (
     <Modal titulo={m.titulo} largura={680} onFechar={fechar}
-      rodape={<><button className="btn" onClick={fechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><Trash2 size={15} />Excluir</button>}{gerencia && <button className="btn" disabled={envio.bloqueada} onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
+      rodape={<><button className="btn" onClick={fechar}>Fechar</button>{gerencia && <button className="btn btn-perigo" onClick={() => setExcluir(true)}><FolderOpen size={15} />Arquivar</button>}{gerencia && <button className="btn" disabled={envio.bloqueada} onClick={onEditar}><Pencil size={15} />Editar</button>}{podeAprovarConclusao(m,usuario) && <button className="btn btn-perigo" onClick={() => setRecusando(true)}><Undo2 size={15} />Recusar conclusão</button>}{acaoConclusao}</>}>
       <EstadoConfirmacaoEdicao envio={envio} />
       {recusando && <section className="bloco-modal" aria-label="Recusar conclusão">
         <label className="rot" htmlFor="motivo-recusa-meta">Motivo da recusa</label>
@@ -11056,12 +11119,13 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       {m.devolutiva && (() => {
         const etapa1 = m.devolutiva.analiseIA?.etapa1;
         const etapa2 = m.devolutiva.analiseIA?.etapa2;
-        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2);
+        const { contagem, pendentes, pronto } = resumoEtapa2(etapa2, etapa1);
         return (
           <section className="bloco-modal">
             <h3 className="titulo-bloco">Análise de IA da devolutiva</h3>
             {etapa1?.resumo && <p>{etapa1.resumo}</p>}
             {!etapa1 && <p className="ajuda" style={{ margin: "0 0 8px" }}>A devolutiva ainda não foi analisada pela IA.</p>}
+            {analisePendenteDevolutiva(m.devolutiva) && <p className="msg-erro" role="status" style={{ margin: "0 0 8px" }}>Análise de IA pendente{analisePendenteDevolutiva(m.devolutiva).desde ? ` desde ${dataHoraBR(analisePendenteDevolutiva(m.devolutiva).desde)}` : ""}: a devolutiva e os anexos foram salvos, mas a IA não respondeu ({analisePendenteDevolutiva(m.devolutiva).motivo || "serviço indisponível"}).</p>}
             {etapa1 && (
               <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
                 <Tag tipo="neutra"><Sparkles size={12} />Etapa 1: {etapa1.itens.length} item(ns) a corrigir</Tag>
@@ -11081,11 +11145,11 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       <section className="bloco-modal">
       <h3 className="titulo-bloco">Checklist <span className="conta-bloco">{(m.checklist || []).filter((c) => c.concluido).length} de {(m.checklist || []).length}</span></h3>
       {(m.checklist || []).map((c) => (
-        <div key={c.id} className="flex items-center gap-2" style={{ padding: "4px 0" }}>
-          <input type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
+        <div key={c.id} className="flex items-center gap-2 linha-checklist" style={{ padding: "4px 0" }}>
+          <input id={`ck-${c.id}`} type="checkbox" checked={!!c.concluido} disabled={!colabora} style={{ width: 17, height: 17, accentColor: "#0F5F5B" }} aria-label={c.titulo}
             onChange={() => alterar((q) => { const x = q.checklist.find((y) => y.id === c.id); x.concluido = !x.concluido; x.concluido_por = x.concluido ? usuario.nome : ""; x.concluido_em = x.concluido ? new Date().toISOString() : ""; }, c.concluido ? "Checklist reaberto" : "Checklist concluído", c.titulo)} />
-          <span style={{ flex: 1, textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</span>
-          {colabora && <button className="btn-icone" onClick={() => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo)} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
+          <label htmlFor={`ck-${c.id}`} style={{ flex: 1, cursor: colabora ? "pointer" : "default", textDecoration: c.concluido ? "line-through" : "none", color: c.concluido ? "var(--muted)" : "var(--text)" }}>{c.titulo}{c.concluido && c.concluido_por ? <span className="ajuda" style={{ margin: "0 0 0 6px" }}>por {c.concluido_por}</span> : null}</label>
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("checklist", c.titulo), onConfirmar: () => alterar((q) => { q.checklist = q.checklist.filter((y) => y.id !== c.id); }, "Checklist removido", c.titulo) })} aria-label={`Remover ${c.titulo}`}><Trash2 size={13} /></button>}
         </div>
       ))}
       {colabora && (
@@ -11105,7 +11169,7 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
           <span style={{ flex: 1, minWidth: 140 }}><strong style={{ fontWeight: 650 }}>{a.nome}</strong><span className="ajuda" style={{ display: "block", margin: 0 }}>{(a.tamanho / 1024).toFixed(0)} KB, enviado por {a.por} em {dataBR(a.data)}</span></span>
           <VerArquivoMeta arquivo={a} />
           <button className="btn btn-sm" onClick={() => baixarAnexo(a)}><Download size={13} />Baixar</button>
-          {colabora && <button className="btn-icone" onClick={() => removerAnexo(a)} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
+          {colabora && <button className="btn-icone" onClick={() => setRemocao({ ...confirmacaoRemocaoMeta("anexo", a.nome), onConfirmar: () => removerAnexo(a) })} aria-label={`Remover ${a.nome}`}><Trash2 size={14} /></button>}
         </div>
       ))}
       {!(m.arquivos || []).length && <p className="ajuda" style={{ margin: 0 }}>Nenhum arquivo enviado.</p>}
@@ -11144,7 +11208,8 @@ function ModalDetalheMeta({ db, metaId, usuario, ir, mutar, setToast, onEditar, 
       </section>
       {analiseIA && <ModalAnaliseDevolutiva db={db} meta={m} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseIA(false)} />}
       {relatorioIA && <ModalRelatorioDevolutiva meta={m} onFechar={() => setRelatorioIA(false)} />}
-      {excluir && <ModalConfirmar titulo="Excluir esta meta?" texto="O histórico permanecerá registrado." rotuloBotao="Excluir meta" onFechar={() => setExcluir(false)} onConfirmar={() => { mutar((d) => { d.metas = d.metas.filter((x) => x.id !== m.id); return d; }, "Meta excluída", { detalhe: `${m.titulo}. Meta excluída do planejamento.` }); setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta excluída na demonstração." : "Exclusão da meta aguardando confirmação."); }} />}
+      {remocao && <div onKeyDown={(e) => e.stopPropagation()}><ModalConfirmar {...remocao} onFechar={() => setRemocao(null)} onConfirmar={() => { setRemocao(null); remocao.onConfirmar(); }} /></div>}
+      {excluir && <ModalMotivo titulo="Arquivar esta meta?" texto="A meta sai das listas e dos indicadores e fica guardada no Arquivo de metas, com checklist, comentários, anexos e histórico. A Diretoria pode restaurá-la quando quiser." rotuloBotao="Arquivar meta" perigo onFechar={() => setExcluir(false)} onConfirmar={(motivo) => { try { Promise.resolve(mutar((d) => { arquivarMeta(d, m.id, motivo, usuario); registrarHistoricoMeta(d, m, "Arquivada", `Meta arquivada por ${usuario.nome}. Motivo: ${motivo}`, usuario); return d; }, "Meta arquivada", { detalhe: `${m.titulo}. Meta arquivada. Motivo: ${motivo}` })).catch((e) => setToast(e.message)); } catch (e) { setToast(e.message); return; } setExcluir(false); onFechar(); setToast(AMBIENTE.DEMO ? "Meta arquivada na demonstração." : "Arquivamento da meta aguardando confirmação."); }} />}
     </Modal>
   );
 }
@@ -11155,13 +11220,10 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
   const acao = podeSolicitarConclusao(m, usuario) ? "Concluir" : podeAprovarConclusao(m, usuario) ? "Aprovar conclusão" : vePendenteAprovacao(m) && respMeta(m, usuario) ? "Aguardando aprovação" : "";
   const icone = normalizarEscolhaIcone(m.icone) || sugerirIcone(`${m.titulo} ${m.setor || ""}`);
   const feitos = (m.checklist || []).filter((c) => c.concluido).length;
-  const sinal = atrasada ? { Ic: AlertTriangle, cor: "var(--danger)", fundo: "var(--danger-bg)", titulo: "Atrasada" }
-    : m.status === "Aguardando aprovação" ? { Ic: AlertCircle, cor: "#2563B8", fundo: "#E5EFFB", titulo: "Aguardando aprovação" }
-    : m.status === "Em andamento" ? { Ic: MoreHorizontal, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Em andamento" }
-    : m.status === "Concluído" ? { Ic: Check, cor: "var(--ok)", fundo: "#E3F3EA", titulo: "Concluído" }
-    : { Ic: X, cor: "var(--muted)", fundo: "var(--pill)", titulo: "Cancelado" };
+  const selo = seloStatusMeta(m.status, !!atrasada);
+  const sinal = { Ic: { atrasada: AlertTriangle, aprovacao: AlertCircle, andamento: MoreHorizontal, concluido: Check }[selo.chave] || X, cor: selo.cor, fundo: selo.fundo, titulo: (selo.chave === "atrasada" && textoAtraso(m.prazo, diaCivilEvento(new Date()))) || selo.rotulo };
   return (
-    <div className={`meta-card${atrasada ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
+    <div className={`meta-card${selo.chave === "atrasada" ? " atrasada" : ""}${compacto ? " compacto" : ""}${acoesOrdem ? " meta-arrastavel" : ""}${destinoArraste ? " meta-destino" : ""}`} style={{ "--meta-setor-cor": corSetor(m.setor, db.setoresMeta) }}
       draggable={!!acoesOrdem}
       onDragStart={e => { if (!acoesOrdem) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); acoesOrdem.iniciar(); }}
       onDragOver={e => { if (!acoesOrdem?.aceita()) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDestinoArraste(true); }}
@@ -11183,6 +11245,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
         <span className="meta-card-rodape">
           <span className="flex flex-wrap items-center gap-2">
             <span className="chip-setor">{m.setor || "Sem setor"}</span>
+            <span className="selo-status-meta" style={{ background: sinal.fundo, color: sinal.cor }}>{sinal.titulo}</span>
             {(m.checklist || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><ListTodo size={12} /> {feitos}/{m.checklist.length}</span>}
             {(m.comentarios || []).length > 0 && !compacto && <span className="ajuda" style={{ margin: 0 }}><MessageSquare size={12} /> {m.comentarios.length}</span>}
             {(m.arquivos || []).length > 0 && <span className="ajuda" style={{ margin: 0 }}><Paperclip size={12} /> {m.arquivos.length}</span>}
@@ -11197,7 +11260,7 @@ function CartaoMeta({ db, m, usuario, onAbrir, atrasada, acoesOrdem, compacto })
     </div>
   );
 }
-function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [] }) {
+function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlanejamento = [], metasArquivadas = [] }) {
   const timbradoOficios = useTimbrado(db);
   const arrasteMeta = useRef(null);
   const envioSetor = useConfirmacaoEdicao(mutar, setToast), envioOS = useConfirmacaoEdicao(mutar, setToast);
@@ -11210,6 +11273,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const [analiseDevolutiva, setAnaliseDevolutiva] = useState(null);
   const [cadastroDevolutiva, setCadastroDevolutiva] = useState(null);
   const [setorModal, setSetorModal] = useState(null);
+  const [setorRemocao, setSetorRemocao] = useState(null);
   const [osModal, setOsModal] = useState(null);
   const [osAberta, setOsAberta] = useState(null);
   const [comentarioOS, setComentarioOS] = useState("");
@@ -11223,7 +11287,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
   const visiveis = todasVisiveis.filter((m) => metaNoSetor(m, filtroSetor) && normalizar(m.titulo || "").includes(normalizar(buscaTitulo.trim())));
   const metasLocais = visiveis.filter(m=>!m._compartilhado);
   const inicioSemana = semanaISO(semanaOffset);
-  const daSemana = visiveis.filter((m) => m.semana_inicio === inicioSemana);
+  const daSemana = visiveis.filter((m) => metaNaSemana(m, inicioSemana));
   const ativas = visiveis.filter((m) => !["Concluído", "Cancelado"].includes(m.status));
   const atrasadas = ativas.filter((m) => m.prazo && m.prazo < hoje);
   const metasDe = (id) => visiveis.filter((m) => respMeta(m, {id}));
@@ -11280,8 +11344,10 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
     <div className="contem largo pagina-metas">
       {!AMBIENTE.DEMO && metasLocais.length>0 && <p role="status" className="card" style={{padding:14}}>Há {metasLocais.length} meta(s) neste aparelho ainda sem confirmação de envio. Elas só aparecerão aos responsáveis após a sincronização. Confira o aviso de salvamento no topo.</p>}
       <div className="cabeca"><div><h1>Metas</h1><p>Controle semanal de metas, ordens de serviço e setores, no mesmo fluxo do ERP.</p></div></div>
+      {gerencia && <ArquivoMetas metas={metasArquivadas} usuario={usuario} mutar={mutar} setToast={setToast} registrarHistorico={registrarHistoricoMeta} Modal={Modal} />}
       {gerencia && <div className="flex flex-wrap gap-2" style={{marginBottom:12}}><button className={`btn${tela==='planejamento'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('planejamento');}}>Planejamento futuro</button><button className={`btn${tela==='home'?' btn-primario':''}`} onClick={()=>{setColaborador(null);setTela('home');}}>Visão atual de Metas</button></div>}
       {barra}
+      {(tela === "home" || tela === "planejamento") && aprovaMetas(usuario) && <AprovacoesPendentesMetas metas={todasVisiveis} usuarios={db.usuarios} hoje={hoje} podeAprovar={(m) => podeAprovarConclusao(m, usuario)} onAbrir={abrir} setToast={setToast} aprovar={(m) => (AMBIENTE.DEMO ? mutar : mutar.confirmado)((d) => aprovarConclusaoMeta(d, m.id, usuario), "Meta: conclusão aprovada", { detalhe: m.titulo }, { permitirOffline: true })} />}
       {tela==='planejamento' && gerencia && <PlanejamentoMetas db={db} ideias={ideiasPlanejamento} usuario={usuario} mutar={mutar} onAbrir={abrir} onNova={()=>setEditando('nova')} setToast={setToast} registrarHistorico={registrarHistoricoMeta}/>}
 
       {tela === "devolutivas" && <Secao titulo="Devolutivas" nota="Devolutivas existentes e seus vínculos são preservados. Busque por município, núcleo ou título." acao={gerencia ? <button className="btn btn-primario" onClick={() => setAnaliseDevolutiva("nova")}>Cadastrar devolutiva</button> : podeGerirDevolutivaPosProtocolo(null,usuario) && <button className="btn btn-primario" onClick={() => setCadastroDevolutiva("nova")}>Cadastrar devolutiva</button>}>
@@ -11313,8 +11379,8 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
           <Secao titulo="Semana selecionada" nota="Controle semanal de metas. Os prazos individuais continuam visíveis dentro de cada card.">
             {daSemana.length ? <MetasAgrupadas metas={daSemana} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />} /> : <p className="ajuda" style={{ margin: 0 }}>{buscaTitulo.trim() ? "Nenhuma meta com esse título nesta semana." : "Nenhuma meta programada para esta semana."}</p>}
           </Secao>
-          <Secao titulo="Metas atrasadas" nota="Metas vencidas por setor, com responsáveis e prazos visíveis.">
-            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
+          <Secao titulo="Metas atrasadas" nota="Metas vencidas, da mais atrasada para a mais recente, com setor, responsáveis e dias de atraso em cada card.">
+            {atrasadas.length ? <MetasAgrupadas metas={atrasadas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada />} /> : <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta atrasada.</p>}
           </Secao>
           <h3 style={{ fontSize: 17, margin: "18px 0 10px" }}>Colaboradores</h3>
           <div className="fg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
@@ -11340,7 +11406,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
                     <span className="flex items-center gap-2">
                       <label className="setor-cor-controle">Cor<input type="color" aria-label={`Cor do setor ${s.nome}`} value={corSetor(s.nome, db.setoresMeta)} onChange={e => { const cor = e.currentTarget.value; mutar(d => { d.setoresMeta = d.setoresMeta.map(x => x.nome === s.nome ? {...x, cor} : x); return d; }, "Cor do setor alterada", {detalhe:s.nome}); }} /></label>
                       <button className="btn-icone" onClick={() => setSetorModal(s)} aria-label={`Editar ${s.nome}`}><Pencil size={14} /></button>
-                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
+                      <button className="btn-icone" style={{ color: "var(--danger)" }} disabled={qtd > 0} title={qtd ? "Há metas neste setor" : ""} onClick={() => setSetorRemocao({ ...confirmacaoRemocaoMeta("setor", s.nome), onConfirmar: () => mutar((d) => { d.setoresMeta = d.setoresMeta.filter((x) => x.nome !== s.nome); return d; }, "Setor de metas excluído", { detalhe: s.nome }) })} aria-label={`Excluir ${s.nome}`}><Trash2 size={14} /></button>
                     </span>
                   </div>
                 );
@@ -11352,8 +11418,12 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 
       {tela === "home" && colaborador && (
         <Secao titulo={`Metas de ${colaborador.nome}`} nota={`${SETORES[colaborador.setor]?.nome}. ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status)).length} ativa(s), ${metasDe(colaborador.id).filter((m) => !["Concluído", "Cancelado"].includes(m.status) && m.prazo && m.prazo < hoje).length} em atraso.`} acao={<button className="btn btn-sm" onClick={() => setColaborador(null)}><ChevronLeft size={14} />Voltar</button>}>
-          <div className="grade-metas">{metasDe(colaborador.id).map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-          {!metasDe(colaborador.id).length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          {(() => { const { abertas, encerradas } = separarMetasColaborador(metasDe(colaborador.id)); return <>
+            {abertas.length > 0 && <MetasAgrupadas metas={abertas} ordenar={ordenarMetasAtrasadas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} atrasada={m.prazo && m.prazo < hoje} />} />}
+            {!abertas.length && encerradas.length > 0 && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta em aberto para este colaborador.</p>}
+            {encerradas.length > 0 && <details className="metas-encerradas"><summary>Concluídas e canceladas ({encerradas.length})</summary><MetasAgrupadas metas={encerradas} ordenar={ordenarMetasEncerradas} db={db} renderMeta={(m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={abrir} compacto={compacto} />} /></details>}
+            {!abertas.length && !encerradas.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta para este colaborador.</p>}
+          </>; })()}
         </Secao>
       )}
 
@@ -11447,6 +11517,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
       {editando && <ModalMetaERP db={db} meta={editando.id ? editando : null} prefill={editando === "nova" || editando.id ? null : editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {analiseDevolutiva && <ModalAnaliseDevolutiva db={db} meta={analiseDevolutiva === "nova" ? null : analiseDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setAnaliseDevolutiva(null)} />}
       {cadastroDevolutiva && <ModalCadastroDevolutiva db={db} meta={cadastroDevolutiva === "nova" ? null : cadastroDevolutiva} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setCadastroDevolutiva(null)} />}
+      {setorRemocao && <ModalConfirmar {...setorRemocao} onFechar={() => setSetorRemocao(null)} onConfirmar={() => { setSetorRemocao(null); setorRemocao.onConfirmar(); }} />}
       {setorModal && <ModalSetorMeta db={db} inicial={setorModal.id ? setorModal : null} onSalvar={salvarSetor} envio={envioSetor} onFechar={() => { if (envioSetor.fechar()) setSetorModal(null); }} />}
       {osModal && <ModalOrdemServico db={db} inicial={osModal.id ? osModal : null} onSalvar={salvarOS} envio={envioOS} onFechar={() => { if (envioOS.fechar()) setOsModal(null); }} />}
     </div>
@@ -11456,6 +11527,7 @@ function PaginaMetas({ db, usuario, ir, mutar, setToast, metaInicial, ideiasPlan
 function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
   const [detalhe, setDetalhe] = useState(null);
   const [nova, setNova] = useState(false);
+  const [editando, setEditando] = useState(null);
   const gerencia = gerenciaMetas(usuario);
   const hoje = new Date().toISOString().slice(0, 10);
   const doNucleo = (db.metas || []).filter((m) => (m.associacao_tipo === "nucleo" && m.associacao_id === n.id) || (m.nucleos || []).includes(n.id)).filter((m) => podeVerMeta(m, usuario));
@@ -11464,7 +11536,8 @@ function AbaMetasNucleo({ db, n, usuario, ir, mutar, setToast }) {
       acao={gerencia && <button className="btn btn-sm btn-primario" onClick={() => setNova(true)}><Plus size={14} />Nova meta</button>}>
       {!doNucleo.length && <p className="ajuda" style={{ margin: 0 }}>Nenhuma meta ligada a este processo.</p>}
       <div className="grade-metas">{doNucleo.map((m) => <CartaoMeta key={m.id} db={db} m={m} usuario={usuario} onAbrir={(x) => setDetalhe(x.id)} atrasada={m.prazo && m.prazo < hoje && !["Concluído", "Cancelado"].includes(m.status)} />)}</div>
-      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => {}} onFechar={() => setDetalhe(null)} />}
+      {detalhe && <ModalDetalheMeta db={db} metaId={detalhe} usuario={usuario} ir={ir} mutar={mutar} setToast={setToast} onEditar={() => { const m = metaParaEditar(db.metas, detalhe); setDetalhe(null); setEditando(m); }} onFechar={() => setDetalhe(null)} />}
+      {editando && <ModalMetaERP db={db} meta={editando} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setEditando(null)} />}
       {nova && <ModalMetaERP db={db} meta={null} prefill={{ associacao_tipo: "nucleo", associacao_id: n.id, setor: "", responsaveis: [] }} usuario={usuario} mutar={mutar} setToast={setToast} onFechar={() => setNova(false)} />}
     </Secao>
   );
@@ -12716,6 +12789,8 @@ export default function App() {
     return () => { eventos.forEach((e) => window.removeEventListener(e, marcar)); clearInterval(iv); };
   }, [usuarioId]); // eslint-disable-line
 
+  useAvisosMetasVencidas({ db, usuario, mutar, pronto: AMBIENTE.DEMO || (compartilhado.ready() && compartilhado.summaryReady && navigator.onLine !== false) });
+
   mutar.confirmado = (fn,acao,extra={},opcoes) => {
     if (!AMBIENTE.DEMO && compartilhado.ready()) return compartilhado.mutateConfirmed(fn,acao ? entrada(acao,extra) : null,opcoes);
     return Promise.reject(Object.assign(new Error("Conecte-se ao servidor para confirmar o salvamento."), {code:"SESSAO_ENCERRADA"}));
@@ -12849,7 +12924,7 @@ export default function App() {
   };
   const mutarAgente=(fn,acao,extra={})=>salvarPorAgente(mutar,fn,acao,extra);
   mutarAgente.confirmado=(fn,acao,extra={},opcoes)=>salvarPorAgente(mutar.confirmado,fn,acao,extra,opcoes);
-  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:db.metas.filter(metaOperacional)}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
+  const props = { onAcao:executarAgente, carregarMunicipio, abrirCliente, db: dadosVisiveis({...db,metas:metasAtivas(db.metas.filter(metaOperacional))}), usuario, ir, mutar, setToast, offline:{...offline,pacotes:pacotesVisiveis(offline.pacotes,mapaArquivo)}, conexao, comercial:{...comercial,pacotes:pacotesVisiveis(comercial.pacotes,mapaArquivo,true)}, recarregar: compartilhado.refresh };
   const telaLarga = ["mailing", "calendario", "processos", "metas", "chat", "home", "agentes"].includes(rota.pag);
 
   return (
@@ -12908,7 +12983,7 @@ export default function App() {
           {naHierarquia && <div style={{ padding:"8px 18px", display:"flex", justifyContent:"flex-end" }}><BotaoArquivo geral /></div>}
           <Protecao chave={`${rota.pag}_${rota.id || rota.nucleoId || rota.aba || ""}`}>
           {rota.pag === "home" && <PaginaHome {...props} />}
-          {rota.pag === "mailing" && <Mailing key={usuario.id} db={db} usuario={{...usuario,id:`erp_${usuario.erpRef}`}} ir={ir} itensMailing={{eventos:(db.eventos||[]).filter(e=>podeVerEventoCalendario(e,db,usuario)),metas:(db.metas||[]).filter(m=>podeVerMeta(m,usuario)),planos:db.planos||[]}} abrirAgente={()=>ir({pag:"pessoalIA"})} />}
+          {rota.pag === "mailing" && <Mailing key={usuario.id} db={db} usuario={{...usuario,id:`erp_${usuario.erpRef}`}} ir={ir} itensMailing={{eventos:(db.eventos||[]).filter(e=>podeVerEventoCalendario(e,db,usuario)),metas:metasAtivas(db.metas).filter(m=>podeVerMeta(m,usuario)),planos:db.planos||[]}} abrirAgente={()=>ir({pag:"pessoalIA"})} />}
           {rota.pag === "pessoalIA" && <AgentePessoalTeste key={usuario.id} {...props} />}
           {rota.pag === "campoOffline" && <PaginaCampoOffline key={`${rota.aba || "topografia"}_${rota.nucleoId || "lista"}`} {...props} nucleoId={rota.nucleoId} aba={rota.aba} />}
           {["processos","andamentos","semanal"].includes(rota.pag) && <div className="crm-nav" style={{padding:"12px 18px"}}><button className="btn" onClick={()=>ir({pag:"processos"})}><Columns3 size={17} aria-hidden="true"/>Processos</button><button className="btn" onClick={()=>ir({pag:"andamentos"})}><History size={17} aria-hidden="true"/>Andamentos</button>{acessoCRM(usuario).pos&&<button className="btn" onClick={()=>ir({pag:"semanal"})}><CalendarDays size={17} aria-hidden="true"/>Gestão Semanal</button>}</div>}
@@ -12918,7 +12993,7 @@ export default function App() {
           {rota.pag === "andamentos" && <Andamentos {...props} />}
           {rota.pag === "semanal" && <GestaoSemanal {...props} />}
           {rota.pag === "prefeitura" && <GestaoSemanal {...props} municipioId={rota.id} />}
-          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} ideiasPlanejamento={db.metas.filter(ideiaPlanejamento)} metaInicial={rota.id} />}
+          {rota.pag === "metas" && <PaginaMetas key={rota.id||"metas"} {...props} ideiasPlanejamento={db.metas.filter(ideiaPlanejamento)} metasArquivadas={db.metas.filter(metaArquivada)} metaInicial={rota.id} />}
           {rota.pag === "financeiro" && <Financeiro db={db} usuario={usuario} />}
           {rota.pag === "planos" && <PaginaPlanos {...props} />}
           {rota.pag === "plano" && <PaginaPlano key={rota.id} {...props} planoId={rota.id} />}

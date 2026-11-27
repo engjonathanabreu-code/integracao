@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {requisicao} from './dados-compartilhados.js';
-import {resumoDiagnostico,instalacaoDiagnostico,coberturaDispositivos} from './diagnostico-sincronizacao.js';
+import {resumoDiagnostico,instalacaoDiagnostico,coberturaDispositivos,aparelhosComPendenciaParada} from './diagnostico-sincronizacao.js';
 const habilitado=import.meta.env.VITE_DIAGNOSTICO_SINCRONIZACAO==='1';
 export default function DiagnosticoSincronizacao({sync,usuario,usuarios}){
  const atual=useRef();atual.current={sync,usuario};
@@ -28,6 +28,7 @@ export default function DiagnosticoSincronizacao({sync,usuario,usuarios}){
  }catch{if(atual.current.usuario.erpRef===conta){setErro('Não foi possível consultar os relatos. Os estados continuam desconhecidos.');setRelatos(null);}}finally{if(atual.current.usuario.erpRef===conta)setOcupado(false);}};
  return <details style={{padding:'8px 18px'}}><summary>Diagnóstico dos dispositivos</summary><p>Relatos incluem somente versão, último contato e contagens por módulo e código de erro. Não acessam arquivos nem controlam aparelhos. Computadores ainda não registrados permanecem desconhecidos.</p>
   <button className="btn btn-sm" disabled={ocupado} onClick={consultar}>{ocupado?'Consultando…':'Consultar relatos'}</button>{erro&&<p role="status">{erro}</p>}
+  {relatos&&(parados=>parados.length?<section aria-label="Aparelhos com pendência parada"><p><strong>Aparelhos com pendência há mais de 2 dias: {parados.length}</strong>. O que ficou neles só é enviado quando alguém abrir o sistema nesse aparelho, com conexão.</p><ul>{parados.map(r=><li key={`${r.usuario_id}|${r.instalacao_id}`}>{r.nome} · {r.instalacao_id?.slice(0,8)} · sem contato há {r.dias} dias (desde {new Date(r.ultimo_contato).toLocaleString()}) · {r.pendencias} pendência(s){r.arquivos?`, ${r.arquivos} de arquivos`:''} · versão {r.versao}</li>)}</ul></section>:<p>Nenhum aparelho com pendência parada há mais de 2 dias nos relatos consultados.</p>)(aparelhosComPendenciaParada(usuarios,relatos,agora))}
   {relatos&&<ul>{coberturaDispositivos(usuarios,relatos,agora).map((r,n)=><li key={r.instalacao_id||n}>{r.nome} · {r.instalacao_id?.slice(0,8)||'sem relato'} · {r.estado==='desconhecido'?'Estado desconhecido':'Relato recente'}{r.ultimo_contato&&<> · último contato {new Date(r.ultimo_contato).toLocaleString()} · versão {r.versao} · pendências no último relato: {r.resumo.reduce((n,x)=>n+x.quantidade,0)}<details><summary>Ver contagens</summary><ul>{r.resumo.map((g,i)=><li key={i}>{g.modulo} · {g.estado} · {g.codigo}: {g.quantidade}</li>)}</ul></details></>}</li>)}</ul>}
  </details>;
 }

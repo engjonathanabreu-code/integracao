@@ -1,15 +1,14 @@
 import {parseNum} from './requisitos-moradores.js';
 import {validarRestricoesProcesso} from './diagnostico-validacao.js';
-const centavos=v=>Math.round(parseNum(v)*100);
+import {lerDinheiro,erroDinheiro,semPontoDeMilhar} from './leitor-dinheiro.js';
+// Vazio conta como zero; formato recusado vira NaN e nunca um valor adivinhado.
+const centavos=v=>{const r=lerDinheiro(v);return r.ok?r.centavos??0:NaN;};
 const texto=c=>(c/100).toFixed(2).replace('.',',');
 export const ENTRADA_PARCELADA='Com Entrada Parcelada';
 export const entradaParcelaVazia=()=>({valor:'',vencimento:''});
 const ehPlano=f=>f?.modalidade===ENTRADA_PARCELADA;
 const dinheiroExato=v=>{
- const s=String(v??'').trim();
- if(!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(s)&&!/^\d+\.\d{1,2}$/.test(s))return NaN;
- const [i,d='']=s.includes(',')?s.replaceAll('.','').split(','):/^\d+\.\d{1,2}$/.test(s)?s.split('.'):[s.replaceAll('.','')];
- const n=Number(i)*100+Number(d.padEnd(2,'0'));
+ const r=lerDinheiro(v),n=r.ok&&!r.vazio?r.centavos:NaN;
  return Number.isSafeInteger(n)&&n<=99_999_999_999_999?n:NaN;
 };
 const dataValida=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
@@ -23,6 +22,7 @@ export function calcularEntradaParcelada(f){
  const parcela=dinheiroExato(f?.valorParcela);
  return {itens,valores,total,entrada,saldo,qtd,numeroValido,padrao,parcela,ultima:saldo-parcela*(qtd-1)};
 }
+const CAMPOS_DINHEIRO=['valorTotal','entrada','valorParcela'];
 const semParcelamento=f=>/^(Isento|Custeado)/.test(f?.modalidade||'')||f?.modalidade==='À vista';
 // Hidden inputs keep what was typed under another modality. Without instalments
 // the Financeiro columns numero_parcelas/dia_vencimento must be empty (NULL).
@@ -33,6 +33,8 @@ export function normalizarCondicoesVenda(f){
 // in every modality. '' = nothing would be refused.
 export function erroRestricoesCondicoes(f){
  if(!f||ehPlano(f))return '';
+ const formato=erroFormatoCondicoes(f);
+ if(formato)return formato;
  return validarRestricoesProcesso({processo:{comercial:normalizarCondicoesVenda(f)}})[0]?.mensagem||'';
 }
 // Contrato-only condition stays outside the legacy Financeiro-bound comercial fields.
@@ -43,6 +45,7 @@ export function gravarCondicaoVenda(registro,f,{atualizadoEm,por}={}){
   registro.planoEntradaParcelada={...plano,valorTotal:texto(total),valorParcela:texto(parcela),parcelasEntrada:itens.map(({vencimento},i)=>({valor:texto(valores[i]),vencimento})),atualizadoEm,por};
  }else{
   const {parcelasEntrada,...legacy}=normalizarCondicoesVenda(f);
+  for(const k of CAMPOS_DINHEIRO)if(Object.hasOwn(legacy,k))legacy[k]=semPontoDeMilhar(legacy[k]);
   registro.comercial={...legacy,atualizadoEm,por};
   if(registro.planoEntradaParcelada)registro.planoEntradaParcelada=null;
  }
@@ -69,7 +72,7 @@ export function atualizarCondicoes(f,chave,valor){
  }
  const total=centavos(novo.valorTotal);
  if(chave==='entradaTipo'&&valor==='percentual'){
-  novo.entradaPercentual=total>0?(centavos(novo.entrada)/total*100).toFixed(6).replace(/0+$/,'').replace(/\.$/,'').replace('.',','):'';
+  novo.entradaPercentual=total>0&&Number.isFinite(centavos(novo.entrada))?(centavos(novo.entrada)/total*100).toFixed(6).replace(/0+$/,'').replace(/\.$/,'').replace('.',','):'';
  }
  if(novo.modalidade!=='Entrada e parcelas'){novo.entrada='';novo.entradaPercentual='';}
  else if(novo.entradaTipo==='percentual'&&['entradaPercentual','valorTotal','modalidade'].includes(chave)){
@@ -85,6 +88,15 @@ export function atualizarCondicoes(f,chave,valor){
 // The form rules come first (their messages name the field); the database
 // CHECKs are a backstop for every modality, including those without instalments.
 export function validarCondicoesVenda(f){return regrasCondicoesVenda(f)||erroRestricoesCondicoes(f);}
+// Só os campos que a modalidade usa: os demais ficam ocultos e não são gravados como valor.
+export function erroFormatoCondicoes(f){
+ if(!f||ehPlano(f)||/^(Isento|Custeado)/.test(f.modalidade||''))return '';
+ const campos=[['valorTotal','Valor total']];
+ if(f.modalidade==='Entrada e parcelas')campos.push(['entrada','Entrada']);
+ if(f.modalidade!=='À vista')campos.push(['valorParcela','Valor da parcela']);
+ for(const [k,nome] of campos){const e=erroDinheiro(f[k],nome);if(e)return e;}
+ return '';
+}
 function regrasCondicoesVenda(f){
  if(/^(Isento|Custeado)/.test(f.modalidade))return '';
  if(ehPlano(f)){
@@ -100,6 +112,8 @@ function regrasCondicoesVenda(f){
   if(!Number.isSafeInteger(parcela)||parcela<=0||!Number.isSafeInteger(ultima)||ultima<=0||Math.abs(ultima-parcela)>=qtd)return 'O valor das parcelas não corresponde ao saldo.';
   return '';
  }
+ const formato=erroFormatoCondicoes(f);
+ if(formato)return formato;
  const total=centavos(f.valorTotal);
  if(!Number.isSafeInteger(total)||total<=0)return 'Informe um valor total maior que zero.';
  if(f.modalidade==='À vista')return '';

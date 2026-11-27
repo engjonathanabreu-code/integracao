@@ -14,7 +14,7 @@ const assert=require('node:assert/strict');
   await page.getByRole('dialog').locator('input[type="file"]').setInputFiles({name:'anexo-ficticio.txt',mimeType:'text/plain',buffer:Buffer.from('conteudo ficticio preservado')});
   await page.getByRole('button',{name:'Remover anexo-ficticio.txt',exact:true}).waitFor();
   const antes=await page.evaluate(async()=>{const {keys}=await window.storage.list('integracao-meta-arq-v1-');return {chave:keys[0],bytes:(await window.storage.get(keys[0])).value};});
-  await page.getByRole('button',{name:'Remover anexo-ficticio.txt',exact:true}).click();
+  await page.getByRole('button',{name:'Remover anexo-ficticio.txt',exact:true}).click();await page.getByRole('button',{name:'Remover arquivo',exact:true}).click();
   await page.getByRole('dialog').getByText('Nenhum arquivo enviado.',{exact:true}).waitFor();
   const depois=await page.evaluate(async chave=>{try{return (await window.storage.get(chave)).value;}catch{return null;}},antes.chave);
   assert.equal(depois,antes.bytes,'remover metadado não apaga bytes referenciados por uma intenção anterior');
