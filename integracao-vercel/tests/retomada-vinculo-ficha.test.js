@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {criarDiarioCompartilhado} from '../src/diario-compartilhado.js';
-import {projetar,prepararEdicao} from '../src/dados-compartilhados.js';
+import {projetar,prepararEdicao,validarVinculoMoradoresDoEnvio} from '../src/dados-compartilhados.js';
 import {fixture,blank,id} from './fixture.js';
 import {CONTA,novaFila} from './apoio-sync-fila.js';
-import {podeRetomarVinculo} from '../src/retomada-vinculo-ficha.js';
+import {processarIntencao} from '../src/fila-intencoes.js';
+import {podeRetomarVinculo,podeRetomarVinculoFixado} from '../src/retomada-vinculo-ficha.js';
 
 const reg=id(44),can=id(4),anterior=id(45);
 const erro={codigo:'CLIENTE_SEM_VINCULO_CANONICO',fase:'preparacao',status:422,categoria:'validacao',rejeicaoConfirmada:true};
@@ -20,7 +21,7 @@ function processo(base,alteracao){
  const depois=structuredClone(antes);depois.processos.find(p=>p.id===reg).endereco.bairro=alteracao;
  return [antes,depois];
 }
-function criar(base,fila,c){
+function criar(base,fila,c,opcoes={}){
  return criarDiarioCompartilhado({conta:CONTA,ativo:()=>true,estadoSessao:()=>'valida',fila,atualizou(){},
   carregar:async()=>{c.leituras++;return projetar(structuredClone(base),blank());},
   preparar:async(st,dep)=>({operacoes:prepararEdicao(st.db,dep,st,st.db.usuarios[0]),sent:{},identicos:{}}),
@@ -33,7 +34,7 @@ function criar(base,fila,c){
    return {aliases:{}};
   },
   consultarRecibo:async()=>assert.fail('pedido nunca enviado não depende de recibo antigo'),
-  confirmar:async(item,remoto)=>{c.confirmacoes++;assert.equal(remoto.db.processos.find(p=>p.id===reg).endereco.bairro,item.preparado.depois.processos[0].endereco.bairro);}
+  confirmar:async(item,remoto)=>{c.confirmacoes++;assert.equal(remoto.db.processos.find(p=>p.id===reg).endereco.bairro,item.preparado.depois.processos[0].endereco.bairro);},...opcoes
  });
 }
 const bloquear=(editar,item,extra={})=>editar(item.id,i=>Object.assign(i,{estado:'bloqueado_validacao',fase:'preparacao',proximaTentativa:Number.MAX_SAFE_INTEGER,erro,...extra}));
@@ -126,4 +127,68 @@ test('conflito de vínculo no envio não cai na conciliação genérica e não l
   assert.equal((await ler(it.id)).estado,'bloqueado_conflito');
   assert.equal((await ler(dep.id)).estado,'pendente_local');
  }finally{d.fechar();}
+});
+
+async function gravarBloqueioReal(fila,formato){
+ const [a,b]=processo(servidor(),'Local'),anterior=a.processos.find(p=>p.id===reg),depois=b.processos.find(p=>p.id===reg);
+ const it=await fila.enfileirar({conta:CONTA,unidade:JSON.stringify(['processos',reg]),modulo:'processos',operacoes:[],preparar:true,
+  intencao:{arquivos:{},edicoes:[{colecao:'processos',id:reg,antes:{existe:true,valor:anterior},depois:{existe:true,valor:depois}}]}});
+ const semEnvio=async()=>assert.fail('nenhum envio na versão anterior');
+ await assert.rejects(processarIntencao(fila,{conta:CONTA,dono:'anterior',somenteId:it.id,sessaoAtual:()=>true,
+  preparar:async()=>{
+   if(formato==='preparacao'){
+    const st=projetar(servidor({valido:false}),blank());
+    return {operacoes:prepararEdicao(a,b,st,st.db.usuarios[0]),antes:a,depois:b,sent:{}};
+   }
+   return {operacoes:[{table:'integracao_moradores',key:{colecao:'processos',registro_id:reg},insert:true,
+     changes:{dados:{remessaId:id(3),codigo:'TST01_065'},referencia_tabela:null,referencia_id:null}}],
+    antes:a,depois:b,sent:{}};
+  },validarEnvio:i=>validarVinculoMoradoresDoEnvio(i.payload,i.preparado.depois),
+  consultarRecibo:semEnvio,enviar:semEnvio,reler:semEnvio}),{code:'CLIENTE_SEM_VINCULO_CANONICO'});
+ return it;
+}
+
+test('os dois formatos reais do bloqueio sobrevivem a reabertura e só o pedido seguro grava',async()=>{
+ for(const formato of ['preparacao','fixado']){
+  const {fila:f0,abrir,ler}=novaFila(),it=await gravarBloqueioReal(f0,formato),bloqueado=await ler(it.id);
+  assert.equal(bloqueado.estado,'bloqueado_validacao');assert.equal(bloqueado.tentativasTotais,0);
+  assert.equal(!!bloqueado.payload,formato==='fixado');
+  await f0.fechar();
+  const fila=abrir(),base=servidor(),c=cont(),consultados=[];
+  const d=criar(base,fila,c,{consultarRecibo:async item=>{consultados.push(item.pedido);return null;}});
+  try{
+   await d.executar();await d.executar();
+   const original=await ler(it.id);
+   if(formato==='fixado'){
+    assert.deepEqual(consultados,[it.id]);
+    assert.equal(original.estado,'substituido');
+    assert.deepEqual(original.payload,bloqueado.payload);
+    assert.notEqual(original.substituidaPor,it.id);
+    assert.deepEqual(c.envios,[original.substituidaPor]);
+    assert.equal((await ler(original.substituidaPor)).estado,'confirmado');
+   }else{
+    assert.deepEqual(consultados,[]);
+    assert.deepEqual(c.envios,[it.id]);assert.equal(original.estado,'confirmado');
+   }
+   assert.equal(c.confirmacoes,1);assert.equal(base.integracao_moradores[0].dados.endereco.bairro,'Local');
+  }finally{d.fechar();}
+ }
+});
+
+test('recibo ausente não comprovado e envio incerto deixam payload fixado intocado',async()=>{
+ for(const modo of ['erro','indefinido','recibo-invalido','ja-enviado']){
+  const {fila:f0,abrir,editar,ler}=novaFila(),it=await gravarBloqueioReal(f0,'fixado');
+  if(modo==='ja-enviado')await editar(it.id,i=>{i.enviadoEm=1;i.tentativasTotais=1;});
+  const antes=await ler(it.id);await f0.fechar();let consultas=0;const c=cont(),d=criar(servidor(),abrir(),c,{consultarRecibo:async()=>{
+   consultas++;if(modo==='erro')throw Object.assign(Error('indisponível'),{status:403});
+   if(modo==='recibo-invalido')return {aliases:{}};return undefined;
+  }});
+  try{
+   await d.executar();await d.executar();const atual=await ler(it.id);
+   assert.equal(podeRetomarVinculoFixado(atual),false);
+   assert.deepEqual(c.envios,[]);assert.equal(consultas,modo==='ja-enviado'?0:1);
+   assert.equal(atual.estado,'bloqueado_validacao');assert.deepEqual(atual.payload,antes.payload);
+   assert.equal(atual.substituidaPor,undefined);
+  }finally{d.fechar();}
+ }
 });

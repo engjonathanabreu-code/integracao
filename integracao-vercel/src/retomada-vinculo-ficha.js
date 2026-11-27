@@ -21,11 +21,22 @@ export function escopoRetomadaVinculo(item){
  return f;
 }
 
+const falhouAntesDeEnviar=item=>item?.estado==='bloqueado_validacao'&&item.erro?.codigo===codigo&&
+ item.fase==='preparacao'&&item.erro.fase==='preparacao'&&!item.vinculoCanonicoReavaliado&&
+ item.recibo==null&&item.enviadoEm==null&&item.confirmadoEm==null&&
+ item.tentativas===0&&(item.tentativasTotais??0)===0&&!!escopoRetomadaVinculo(item);
+
 export function podeRetomarVinculo(item){
- return item?.estado==='bloqueado_validacao'&&item.erro?.codigo===codigo&&
-  item.fase==='preparacao'&&item.erro.fase==='preparacao'&&!item.vinculoCanonicoReavaliado&&
-  item.payload==null&&item.preparado==null&&item.recibo==null&&item.enviadoEm==null&&item.confirmadoEm==null&&
-  item.tentativas===0&&(item.tentativasTotais??0)===0&&!!escopoRetomadaVinculo(item);
+ return falhouAntesDeEnviar(item)&&item.payload==null&&item.preparado==null;
+}
+
+// Some older clients froze the payload then refused it in validarEnvio,
+// before noting any outbound attempt. Never change or send that frozen payload.
+export function podeRetomarVinculoFixado(item,{reservado=false}={}){
+ return falhouAntesDeEnviar(item)&&!!item.vinculoFixadoReavaliado===reservado&&
+  Array.isArray(item.payload)&&item.payload.length>0&&
+  item.preparado?.antes!=null&&item.preparado?.depois!=null&&
+  arquivosVazios(item.preparado.sent||{})&&arquivosVazios(item.preparado.identicos||{});
 }
 
 export function vinculoConfirmadoParaRetomada(item,edicoes,remoto){

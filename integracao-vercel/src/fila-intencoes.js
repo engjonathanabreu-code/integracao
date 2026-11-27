@@ -1,4 +1,4 @@
-import {podeRetomarVinculo} from './retomada-vinculo-ficha.js';
+import {podeRetomarVinculo,podeRetomarVinculoFixado} from './retomada-vinculo-ficha.js';
 import {conflitoReconciliavelPreferencias,escopoPreferencias} from './reconciliacao-preferencias.js';
 import {elegivelRetomadaCrm} from './retomada-remota-validacao.js';
 import {motivoEspera} from './estado-sincronizacao.js';
@@ -216,14 +216,15 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     if(somenteId&&item.id!==somenteId)continue;
     if(ignorarIds.includes(item.id))continue;
     const retomarVinculo=!somenteLeitura&&!somenteId&&podeRetomarVinculo(item);
-    const elegivel=retomarVinculo||['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
+    const retomarVinculoFixado=!somenteLeitura&&!somenteId&&podeRetomarVinculoFixado(item);
+    const elegivel=retomarVinculo||retomarVinculoFixado||['pendente_local','resultado_desconhecido','falha_transitoria','confirmado_aguardando_leitura'].includes(item.estado)||somenteLeitura&&['bloqueado_validacao','bloqueado_conflito'].includes(item.estado);
     if(item.leaseAte>tempo||!elegivel||somenteConvergencia&&!conflitoReconciliavelMetas(item,tempo)&&!conflitoArquivoReconciliavel(item,tempo)&&!conflitoReconciliavelPreferencias(item,tempo)&&!recusadoComReciboConsultavel(item,tempo)||somenteLeitura&&!somenteConvergencia&&(!item.payload||exigirRecibo&&!item.recibo))continue;
     // One read-only retry after this repair, even when the old code exhausted
     // its attempts. The marker is committed together with the existing lease.
     const reabrirReleitura=!somenteLeitura&&!somenteId&&item.proximaTentativa===Number.MAX_SAFE_INTEGER&&
      item.estado==='confirmado_aguardando_leitura'&&item.erro?.codigo==='LEITURA_DIVERGENTE'&&
      !item.releituraRetencaoVerificada&&!item.releituraDivergenteVerificada&&estruturaReleituraNotificacoesLegadas(item,conta);
-    if(!somenteLeitura&&item.proximaTentativa>tempo&&!reabrirReleitura&&!retomarVinculo)continue;
+    if(!somenteLeitura&&item.proximaTentativa>tempo&&!reabrirReleitura&&!retomarVinculo&&!retomarVinculoFixado)continue;
     if(items.some(antes=>antes.ordem<item.ordem&&antes.original.unidade===item.original.unidade&&!['confirmado','substituido','dispensado'].includes(antes.estado)))continue;
     const resolver=id=>{let d=items.find(i=>i.id===id);const vistos=new Set();while(d?.substituidaPor&&!vistos.has(d.id)){vistos.add(d.id);d=items.find(i=>i.id===d.substituidaPor);}return d;};
     const escopo=escopoArquivosDaIntencao(item,items);
@@ -235,7 +236,8 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
     }
     if(escopo&&!item.escopoArquivos)item.escopoArquivos=escopo;
     if(retomarVinculo){item.vinculoCanonicoReavaliado=true;item.estado='pendente_local';item.proximaTentativa=tempo;}
-    if(!somenteConvergencia)item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
+    if(retomarVinculoFixado)item.vinculoFixadoReavaliado=true;
+    if(!somenteConvergencia&&!retomarVinculoFixado)item.fase=!item.payload?'preparacao':item.estado==='confirmado_aguardando_leitura'?'releitura':item.estado==='resultado_desconhecido'?'recibo':'envio';
     if(!somenteLeitura&&(item.fase==='envio'||item.fase==='recibo'))item.estado='resultado_desconhecido';
     if(reabrirReleitura)item.releituraRetencaoVerificada=true;
     if(somenteConvergencia)item.reconciliacaoVerificadaEm=tempo;
@@ -281,6 +283,19 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
   if(atual.recibo||atual.estado!=='bloqueado_validacao'||atual.erro?.rejeicaoConfirmada!==false)
    throw erro('A pendência mudou durante a consulta.','REVISAO_NECESSARIA');
   atual.reciboReconciliacaoConsultado=true;soltar(atual);
+ });
+ // Replace, never rewrite, a frozen payload after an authenticated null
+ // receipt. The caller's lease and original order/dependencies are preserved.
+ const substituirVinculoFixado=(item,ausencia)=>alterarReserva(item,async(atual,s)=>{
+  if(ausencia!==null||!podeRetomarVinculoFixado(atual,{reservado:true}))
+   throw erro('O pedido original não pode ser substituído.','REVISAO_NECESSARIA');
+  const id=crypto.randomUUID(),agoraMs=agora();
+  const novo={conta:atual.conta,id,pedido:id,checksum:atual.checksum,original:structuredClone(atual.original),
+   ordem:atual.ordem,estado:'pendente_local',clienteVersao:VERSAO_CLIENTE,tentativas:0,tentativasTotais:0,
+   criadoEm:agoraMs,atualizadoEm:agoraMs,proximaTentativa:agoraMs,
+   dependencias:dependenciasEfetivasDaIntencao(atual),vinculoCanonicoReavaliado:true};
+  await requisicao(s.intencoes.add(novo));
+  atual.estado='substituido';atual.substituidaPor=id;soltar(atual);
  });
  const confirmarLeitura=item=>alterarReserva(item,atual=>{
   if(!atual.recibo)throw erro('A leitura não substitui o recibo de gravação.','RECIBO_AUSENTE');
@@ -516,7 +531,7 @@ export function abrirFilaIntencoes({indexedDB=globalThis.indexedDB,nome='integra
  async function exportar(conta){
   contaValida(conta);return transacao('readonly',async s=>({protocolo:PROTOCOLO,conta,intencoes:await requisicao(s.intencoes.index('conta').getAll(conta)),originais:await requisicao(s.originais.index('conta').getAll(conta))}));
  }
- return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,marcarConciliacaoAutomatica,retomarTransitorias,rearmarCadastro,registrarAusenciaReciboReconciliacao,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,dispensarArquivoSemGravacao,dispensarJaPresente,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
+ return {enfileirar,listar,reservar,liberarReserva,renovarReserva,observarPrazoReserva,nomeTrava:item=>JSON.stringify(['integracao-intencao-v2',nome,item.conta,item.id]),fixarPayload,retomar,marcarConciliacaoAutomatica,retomarTransitorias,rearmarCadastro,registrarAusenciaReciboReconciliacao,reabrirPreparacoesAoReconectar,reabrirReleiturasTemporarias,substituir,substituirVinculoFixado,aceitarRemoto,aceitarLeituraAtual,registrarEnvio,registrarRecibo,confirmarLeitura,confirmarEstadoExistente,dispensarCampoIdentico,dispensarArquivoSemGravacao,dispensarJaPresente,registrarFalha,preservarLegado,classificarLegadoSemEfeito,exportar,async fechar(){if(conexao)(await conexao).close();conexao=null;migradas=new Set();}};
 }
 
 // Web Locks outlive timer throttling while a tab is waiting on an upload/read.
@@ -581,6 +596,21 @@ export async function processarIntencao(fila,opcoes){
  try{
   aoReservar(item.id);
   conferir();
+  if(podeRetomarVinculoFixado(item,{reservado:true})){
+   // An inconclusive lookup must not turn the original into a retryable send.
+   let existente;
+   try{
+    existente=await passo(()=>consultarRecibo(item));conferir();
+    if(existente===null)return await fila.substituirVinculoFixado(item,existente);
+    if(existente?.protocoloRecibo!==1)throw erro('Consulta inconclusiva.','RECIBO_INCONCLUSIVO');
+    item=await fila.registrarRecibo(item,existente);conferir();
+   }catch(e){
+    if(e.code==='SESSAO_ALTERADA')throw e;
+    try{await fila.liberarReserva(item);}catch(falha){if(falha.code!=='RESERVA_EXPIRADA')throw falha;}
+    return item; // The original is still blocked; allow independent work in this pass.
+   }
+   fase='releitura';await passo(()=>reler(item));conferir();return await fila.confirmarLeitura(item);
+  }
   if(!item.payload){
    fase='preparacao';const pronto=await passo(()=>preparar(item));conferir();
    if(pronto.provaEstado){
